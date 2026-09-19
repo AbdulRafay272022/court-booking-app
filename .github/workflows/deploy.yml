@@ -127,7 +127,17 @@ jobs:
             echo "echo '$(base64 -w0 docker-compose.prod.yml)' | base64 -d > /opt/court-booking-app/docker-compose.prod.yml"
             cat infra/scripts/remote-deploy.sh
           } > remote.sh
-          jq -n --rawfile script remote.sh '{commands: [$script]}' > params.json
+
+          # AWS-RunShellScript executes its commands with /bin/sh (dash on
+          # Ubuntu) no matter what shebang the payload carries -- and here the
+          # shebang in remote-deploy.sh is just a comment mid-file anyway. dash
+          # rejects `set -o pipefail`, which is worth keeping. So ship the
+          # script as base64, write it to a temp file, and run it with bash
+          # explicitly. (A file, not `bash -s` on stdin, so a command inside
+          # that reads stdin can't swallow the rest of the script.)
+          REMOTE_B64="$(base64 -w0 remote.sh)"
+          WRAPPER="$(printf 'f=$(mktemp); echo %s | base64 -d > "$f"; bash "$f"; rc=$?; rm -f "$f"; exit $rc' "'${REMOTE_B64}'")"
+          jq -n --arg cmd "$WRAPPER" '{commands: [$cmd]}' > params.json
 
           CMD_ID="$(aws ssm send-command \
             --instance-ids "$EC2_INSTANCE_ID" \

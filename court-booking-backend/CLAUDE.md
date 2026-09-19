@@ -556,4 +556,30 @@ web image, what's deferred to later parts).
      identical -- check the variable's exact value if this error ever comes
      back with the trust policy verified. (Thumbprints are irrelevant here:
      AWS stopped validating them for GitHub's provider in 2023.)
+  10. **SSM `AWS-RunShellScript` runs commands with `/bin/sh` (dash on
+      Ubuntu), never bash -- regardless of any `#!/bin/bash` in the
+      payload** (and mid-file that shebang is only a comment anyway). The
+      first real CI deploy died on `set: Illegal option -o pipefail`. Fixed at
+      the invocation point in `.github/workflows/deploy.yml`, not by weakening
+      the script: the assembled script is shipped as base64, written to a temp
+      file on the instance, and run with `bash "$f"`. (A file rather than
+      `bash -s` so a command that reads stdin can't swallow the script.) Any
+      future SSM command with bashisms (`pipefail`, `[[ ]]`, arrays) needs the
+      same treatment. Verified 2026-09-19 by running the identical wrapper
+      through the real SSM document against the instance: the old form
+      reproduced CI's error byte for byte; the wrapper ran under bash 5.2.21.
+  11. **`/health/ready` reports `s3: "not_configured"` in production even
+      though S3 works**: `_check_s3` in `app/api/health.py` returns
+      `not_configured` whenever `AWS_ACCESS_KEY_ID` is empty, but production
+      deliberately leaves the keys blank and uses the EC2 instance role. So
+      readiness gives no S3 signal here. Confirmed reachable by calling the
+      app's own `bucket_reachable()` for both buckets from inside the
+      container (both True). Not changed (tests may depend on the current
+      behavior) -- if you want readiness to actually cover S3 in prod, key the
+      check on the bucket settings instead of the access key.
+  12. **Cron starts firing at first boot, before any container exists**, so
+      `/var/log/court-booking-jobs.log` opens with a wall of `No such
+      container` (and a few `UndefinedTable` between deploy and `migrate`).
+      Expected, not a bug; judge the jobs by the most recent
+      `jobs.runner.completed` lines.
 
