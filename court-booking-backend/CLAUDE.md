@@ -198,6 +198,38 @@ PowerShell 5.1 for the `PowerShell` tool — `.venv/Scripts/python.exe`, not
 `.venv/bin/python`. The native Postgres service already owns port 5432
 locally, hence the 5433 remap in `docker-compose.yml`.
 
+## Deployment pipeline (2026-09-19, Part 0)
+
+This project's actual **git repository lives one level up**, at the repo
+root (`../`), as a single monorepo covering both `court-booking-backend/`
+and `court-booking-frontend/` — not two separate repos. It didn't exist as
+a git repo at all until this pass (see that root's own history for the
+"apps/mobile was a broken gitlink" fix, a real bug worth knowing about if
+you ever see `apps/mobile` looking empty after a clone). GitHub:
+`AbdulRafay272022/court-booking-app`, private.
+
+This backend's own `Dockerfile` is now actively used by CI (previously
+only exercised locally via `docker compose up`) — `../.github/workflows/deploy.yml`
+builds it on every push to `main`, pushes to ECR
+(`court-booking-app-backend`, account `959666773387`, region
+`ap-south-1`), and — once an EC2 instance and its deploy secrets exist (a
+later part; deliberately not provisioned yet) — pulls and restarts it
+there via `../docker-compose.prod.yml`. Nothing about the Dockerfile
+itself needed to change for this; it already builds cleanly standalone
+(`docker build .` from this directory), confirmed directly rather than
+assumed.
+
+**`.env.example` is now also the reference for what the EC2 instance's
+real `.env` needs to contain** (that file lives only on the instance
+itself once it exists, `docker-compose.prod.yml`'s `env_file: .env` —
+never committed). Any new required setting added to `config.py` should
+keep `.env.example` current for exactly this reason, not just for local
+dev onboarding.
+
+See `../infra/README.md` and `../court-booking-frontend/CLAUDE.md`'s
+matching section for the rest of the pipeline (ECR/OIDC Terraform, the
+web image, what's deferred to later parts).
+
 ## Known gotchas worth remembering
 
 - **Grid-alignment enforcement on `create_hold`

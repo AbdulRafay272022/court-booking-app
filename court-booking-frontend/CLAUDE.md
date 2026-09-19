@@ -386,6 +386,53 @@ visible text, e.g. a bell) need `accessibilityLabel` (RN) / `aria-label`
 (web) added deliberately so `getByLabel()` can find them — there's no
 reliable positional/coordinate way to hit them headlessly.
 
+## Deployment pipeline (2026-09-19, Part 0)
+
+This project's git repository lives **one level up**, at the repo root
+(`../`), as a single monorepo covering both `court-booking-frontend/` and
+`court-booking-backend/` — it didn't exist as a git repo at all until this
+pass. GitHub: `AbdulRafay272022/court-booking-app`, private.
+
+**`apps/web/Dockerfile` is new** (didn't exist before this pass) and
+**`apps/web/next.config.ts` gained `output: "standalone"`** — both
+required for a production image, and both live-verified for real
+(`docker build` + `docker run`, a genuine 200 on `/login`), not just
+typechecked. Two things worth knowing if you ever touch either:
+
+- **The Docker build context must be the workspace root
+  (`court-booking-frontend/`), not `apps/web/`** — this is an npm
+  workspaces monorepo (`apps/web` depends on `packages/types` and
+  `packages/api-client`, raw-TS packages with no build step of their
+  own), so `npm ci` needs the root `package.json`/`package-lock.json` in
+  scope to resolve workspace linking. `docker build -f apps/web/Dockerfile .`
+  run from `apps/web/` itself will fail; it has to be
+  `docker build -f apps/web/Dockerfile -t <tag> .` run from
+  `court-booking-frontend/`. `../.github/workflows/deploy.yml` gets this
+  right (`context: court-booking-frontend`); don't "fix" it to look more
+  conventional.
+- **Next's `output: "standalone"` build, in a monorepo, puts `server.js`
+  at `.next/standalone/apps/web/server.js`, not at the standalone root**
+  (mirrors the workspace path) — confirmed by actually inspecting the
+  build output rather than assuming the single-app-repo layout most
+  Next.js Docker examples show. `public/` and `.next/static` have to be
+  copied to sit *next to* `server.js` (i.e. into `apps/web/public` and
+  `apps/web/.next/static` inside the final image), not to the image
+  root — got this wrong on the first pass (assets 404'd), caught by
+  actually running the container rather than trusting the Dockerfile
+  logic on paper.
+
+`apps/mobile` has **no Dockerfile and isn't part of this pipeline** — it
+ships via Expo/EAS (see Sprint 9 above), a completely different
+distribution path, not a container at all.
+
+See `../infra/README.md` for the ECR/GitHub-Actions-OIDC Terraform (no
+long-lived AWS keys — the deploy workflow assumes an IAM role via OIDC,
+scoped to only this repo) and `../court-booking-backend/CLAUDE.md`'s
+matching section for the backend-image half of the pipeline. EC2
+provisioning itself is deliberately deferred to a later part — the
+workflow's SSH-deploy step checks for `EC2_HOST`/`EC2_SSH_KEY` secrets
+and skips cleanly (a warning, not a failure) until they exist.
+
 ## Gotchas worth remembering
 
 - **`VenueOut` (the backend's actual read schema) does not return
