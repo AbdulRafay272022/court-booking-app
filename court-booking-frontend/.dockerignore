@@ -1,0 +1,16 @@
+# Docker build context = this directory (court-booking-frontend/) for
+# apps/web/Dockerfile. Keep host-installed and generated state OUT of it so a
+# local build sees exactly what a clean CI checkout sees. Without this, COPY
+# apps/web swept in the host's untracked apps/web/node_modules, which is what
+# let a broken Dockerfile (missing nested node_modules) build fine locally and
+# fail only in CI. See the builder-stage comment in apps/web/Dockerfile.
+**/node_modules
+**/.next
+**/.expo
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+.git
+.gitignore

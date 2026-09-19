@@ -17,10 +17,17 @@ COPY packages/api-client/package.json packages/api-client/package.json
 # apps/web -- apps/mobile's own image (if one ever exists) is unrelated.
 RUN npm ci
 
-FROM node:20-slim AS builder
-WORKDIR /workspace
-COPY --from=deps /workspace/node_modules ./node_modules
-COPY package.json package-lock.json ./
+# Built ON the deps stage (not a fresh image with only /workspace/node_modules
+# copied in): npm places two Tailwinds in this workspace -- mobile's NativeWind
+# needs 3.x, hoisted to the root node_modules, while the web app's 4.x is
+# nested at apps/web/node_modules (see package-lock.json). Copying only the
+# root node_modules silently dropped the nested one, so `next build` resolved
+# Tailwind 3.x (no index.css) and failed with "Can't resolve 'tailwindcss'".
+# This only ever passed locally because, with no .dockerignore, COPY apps/web
+# swept in the host's untracked apps/web/node_modules; a clean CI checkout has
+# no such directory. Basing on deps carries every nested node_modules along,
+# and ../.dockerignore keeps host node_modules out so local == CI.
+FROM deps AS builder
 COPY apps/web ./apps/web
 COPY packages/types ./packages/types
 COPY packages/api-client ./packages/api-client

@@ -712,4 +712,19 @@ directly rather than more frontend code:
   with a made-up value). `SUPPORT_WHATSAPP_NUMBER` in both `lib/support.ts`
   files is also still the `+923000000000` placeholder -- needs the real
   number from the project owner.
+- **The web Dockerfile's builder stage must be `FROM deps`, not a fresh image
+  with only the root `node_modules` copied in** (found 2026-09-19, first real
+  CI run). This workspace has two Tailwinds: mobile's NativeWind needs 3.x
+  (hoisted to the root `node_modules`), web needs 4.x (nested at
+  `apps/web/node_modules` per `package-lock.json`). Copying only the root
+  `node_modules` lost the nested one, so `next build` resolved Tailwind 3 (no
+  `index.css`) and failed with `Can't resolve 'tailwindcss'`. It had only ever
+  built locally because there was no `.dockerignore`, so `COPY apps/web` swept
+  in the host's untracked `apps/web/node_modules`. `court-booking-frontend/.dockerignore`
+  now excludes host `node_modules`/`.next`/`.env*` so a local Docker build
+  matches CI. **Lesson: "verified with `docker build` locally" only counts if
+  the context is a clean checkout** -- verify with `git archive HEAD
+  court-booking-frontend | tar -x -C <dir>` as the build context.
+  (Reproducing this outside Docker is easy: `npm ci`, delete
+  `apps/web/node_modules`, `next build` -> identical error.)
 
