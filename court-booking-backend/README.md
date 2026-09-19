@@ -113,7 +113,7 @@ chat/OCR testing exercise a real key) — just don't mistake this
 environment-specific noise for a real regression when running the suite
 from a `.env` with that override.
 
-265 tests across 25 files, one per resource area (`test_auth.py`,
+267 tests across 25 files, one per resource area (`test_auth.py`,
 `test_venues.py`, `test_courts.py`, `test_availability.py`,
 `test_bookings.py`, `test_concurrency.py`, `test_payments.py`,
 `test_waitlist.py`, `test_owners.py`, `test_marketing.py`, `test_users.py`,
@@ -200,6 +200,14 @@ The schema mirrors this shape, table by table:
   be replayed directly. Sessions carry device metadata so a user can be
   logged into several devices and revoke one without touching the others.
   FCM tokens and notification history live under `/users/me/*`, not `/auth`.
+  **Temporary (Meta Business Verification pending):** the OTP is currently
+  sent as free-form WhatsApp text rather than the `whatsapp_otp`
+  Authentication template (`WhatsAppService.send_otp`), so it only reaches a
+  recipient who has messaged the business number within the last 24h;
+  anyone else gets `502 OTP_DELIVERY_FAILED` (Meta error 131047 -- handled by
+  the finding #6 path below, not a 500). Revert to the template send once one
+  is approved -- steps in CLAUDE.md's "TEMPORARY: OTP is sent as free-form
+  WhatsApp text" gotcha.
   **`DEV_FIXED_OTP`** (blank by default) lets local dev skip WhatsApp
   delivery / DB brute-forcing entirely — set it (e.g. `111111`) in a local
   `.env` and every `request-otp` call returns that code instead of a random

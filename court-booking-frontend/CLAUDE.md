@@ -428,10 +428,17 @@ distribution path, not a container at all.
 See `../infra/README.md` for the ECR/GitHub-Actions-OIDC Terraform (no
 long-lived AWS keys — the deploy workflow assumes an IAM role via OIDC,
 scoped to only this repo) and `../court-booking-backend/CLAUDE.md`'s
-matching section for the backend-image half of the pipeline. EC2
-provisioning itself is deliberately deferred to a later part — the
-workflow's SSH-deploy step checks for `EC2_HOST`/`EC2_SSH_KEY` secrets
-and skips cleanly (a warning, not a failure) until they exist.
+matching section for the backend-image half of the pipeline. **EC2 is
+provisioned now (Section 25) and deploys go over SSM Run Command, not SSH**
+— the `EC2_HOST`/`EC2_SSH_KEY` secrets this paragraph used to describe no
+longer exist. The workflow reads three Actions **variables** (Settings →
+Secrets and variables → Actions → *Variables*, not Secrets): `AWS_ROLE_ARN`,
+`EC2_INSTANCE_ID` (`terraform output ec2_instance_id`) and `API_BASE_URL`
+(`terraform output api_base_url`, origin only, no `/api/v1`). Missing
+`EC2_INSTANCE_ID` skips the deploy step with a warning; `EC2_INSTANCE_ID`
+set without `API_BASE_URL` fails the job on purpose. `gh` isn't installed
+on this machine, so the current values weren't checked from here — look at
+the repo's Variables page.
 
 ## Gotchas worth remembering
 
@@ -658,15 +665,31 @@ directly rather than more frontend code:
 - **Revisit the web session-storage tradeoff** (`apps/web/lib/auth-store.ts`)
   before scaling past the pilot — localStorage was chosen deliberately for
   now per Section 9.3's explicit allowance, not by default.
-- **Rotate the `GEMINI_API_KEY`** committed in the backend's `.env` (flagged
-  in the backend's own `CLAUDE.md`) now that it's been exercised for real by
-  this project's chat *and* OCR flows, and eventually get a real
-  `ANTHROPIC_API_KEY` so `AI_PROVIDER`/`AI_VISION_PROVIDER` can move back to
-  the checked-in defaults — until then, remember the backend test suite
-  reads as short of its real total from this repo's `.env` for reasons
-  that have nothing to do with the code (see the Gotcha below and the
-  backend's own `CLAUDE.md` for the current real count/reason) — it's not
-  an actual regression.
+- **`GEMINI_API_KEY` was rotated (2026-09-20, per the project owner)** and
+  the new key is in production SSM; whether the local backend `.env` was
+  updated to match wasn't checked. **Production deliberately runs on Gemini**
+  (`AI_PROVIDER`/`AI_VISION_PROVIDER` both `gemini`, `ANTHROPIC_API_KEY`
+  blank on purpose -- verified inside the running container), so "get a real
+  `ANTHROPIC_API_KEY`" is no longer a blocker, just an option. The local
+  backend test suite still reads as short of its real total from this repo's
+  `.env` for reasons that have nothing to do with the code (see the Gotcha
+  below and the backend's own `CLAUDE.md`) — not an actual regression.
+- **Production OTP delivery only works for testers who messaged the
+  business WhatsApp number first (temporary)**: Meta Business Verification,
+  the Authentication template and a payment method on the WhatsApp Business
+  account don't exist yet, so the backend sends the code as free-form text
+  (2026-09-20), which needs an open 24h window; anyone else gets
+  `OTP_DELIVERY_FAILED` from `POST /auth/request-otp`. That's a known
+  external prerequisite, not a frontend or backend bug -- don't debug the
+  login screens over it. **The login screens have no hint telling a user to
+  message the number first** (deliberately not built; testers do it by hand),
+  so real users would just see the failure. Details and the revert steps are
+  in the backend `CLAUDE.md`. **One
+  real frontend gap this exposes** (checked 2026-09-20): `OTP_DELIVERY_FAILED`
+  is not in `packages/types/src/errors.ts`'s `ErrorCode` union or either
+  app's `lib/error-messages.ts`, so the login screen falls back to the
+  backend's own `error.message` text rather than a purpose-written one. It
+  works, but add the code to all three when convenient.
 - **Admin console's other tabs** (bookings/users/disputes/suspend) if a real
   need for them shows up — currently out of scope per
   `FRONTEND_INTEGRATION.md`'s own framing of admin as an internal tool
@@ -705,13 +728,17 @@ directly rather than more frontend code:
   job is gated on the `EC2_INSTANCE_ID` Actions variable and refuses to
   run if `API_BASE_URL` is unset (which would deploy a localhost-pointing
   web image).
-- **Still open before a useful device build**: `apps/mobile/app.json`
-  `extra.apiBaseUrl` is still `http://localhost:8000` -- it needs the real
-  `https://api.<elastic-ip>.sslip.io`, which doesn't exist until
-  `terraform apply` allocates the Elastic IP (deliberately not filled in
-  with a made-up value). `SUPPORT_WHATSAPP_NUMBER` in both `lib/support.ts`
+- **Still open before a useful device build** (re-checked 2026-09-20):
+  `apps/mobile/app.json` `extra.apiBaseUrl` **is** now the real
+  `https://api.3.6.48.6.sslip.io` (set in the Section 25 commit, after
+  `terraform apply` allocated the Elastic IP) -- earlier text saying it's
+  still `localhost` is out of date. What's genuinely still missing: no
+  `eas.json`, and `app.json` has no `android.package` /
+  `ios.bundleIdentifier`. `SUPPORT_WHATSAPP_NUMBER` in both `lib/support.ts`
   files is also still the `+923000000000` placeholder -- needs the real
-  number from the project owner.
+  number from the project owner. If the API hostname ever changes
+  (sslip.io → a real domain), `app.json` needs updating too, and the web
+  image needs a rebuild (see the `NEXT_PUBLIC_API_BASE_URL` note above).
 - **The web Dockerfile's builder stage must be `FROM deps`, not a fresh image
   with only the root `node_modules` copied in** (found 2026-09-19, first real
   CI run). This workspace has two Tailwinds: mobile's NativeWind needs 3.x

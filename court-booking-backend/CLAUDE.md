@@ -65,7 +65,7 @@ course of a session, one or two sections at a time. Sections delivered so far:
     per-finding writeup.
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 265
+Postgres/PostGIS instance, and documented in README.md. Current state: 267
 tests passing, 76 routes, 19 tables, no Alembic drift. Run the suite with
 `AI_PROVIDER=claude AI_VISION_PROVIDER=claude` if your local `.env`
 overrides either to `gemini` for manual testing — otherwise several
@@ -261,6 +261,10 @@ web image, what's deferred to later parts).
   during Part B.1's manual provider verification (2026-09-07, user
   approved) — rotating it is more clearly warranted now than "if it was
   ever used," since it now definitely has been, by this project.
+  Update 2026-09-20: the project owner rotated the key and the new one is in
+  production SSM (Section 25, item 13). Whether the local dev `.env` was
+  updated to match wasn't checked -- if local Gemini calls start 401/403ing,
+  that's the first place to look.
 - **`tests/test_gemini.py` was not a real test** — module-level script code
   (no test functions) using the real `google-genai` SDK (installed,
   contradicting this project's own "no vendor SDK dependency" rule) to
@@ -483,8 +487,9 @@ web image, what's deferred to later parts).
   "fix" the waitlist back toward reserving a slot for the FIFO-first
   entry, or treat the self-checkin path as redundant with the owner-scan
   one, without checking whether that decision has actually changed.
-- **Section 25 (AWS pilot deployment, 2026-09-19) -- Terraform written,
-  validated and planned (45 resources), NOT YET APPLIED.** Full layout in
+- **Section 25 (AWS pilot deployment, 2026-09-19) -- Terraform applied, stack
+  is live** (items 8-12 record the apply/deploy problems hit along the way;
+  item 13 is the verified state as of 2026-09-20). Full layout in
   `../infra/README.md`. Things that were genuinely surprising, worth
   knowing before touching any of it:
   1. **No Alembic migration creates PostGIS.** Locally the
@@ -582,4 +587,88 @@ web image, what's deferred to later parts).
       container` (and a few `UndefinedTable` between deploy and `migrate`).
       Expected, not a bug; judge the jobs by the most recent
       `jobs.runner.completed` lines.
+  13. **Production state as of 2026-09-20** (verified that day, not assumed):
+      - SSM `/court-booking-app/secrets/` holds the three generated values
+        plus `GEMINI_API_KEY` (rotated by the project owner),
+        `WHATSAPP_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` and
+        `WHATSAPP_APP_SECRET`. **`ANTHROPIC_API_KEY` is blank on purpose**,
+        so `bootstrap.sh env` picks Gemini: inside the running container
+        `AI_PROVIDER` and `AI_VISION_PROVIDER` are both `gemini`. `OPENAI_API_KEY`
+        and `SENTRY_DSN` are not in SSM either, so **Sentry is still off**
+        (the code is wired; the DSN was never provided).
+      - `/health` and `/health/ready` both return 200 over the public
+        `https://api.<elastic-ip>.sslip.io`, i.e. nginx + the Let's Encrypt cert
+        work on sslip.io. `/health/ready` shows `whatsapp: ok`, which only
+        means the token and phone-number ID are configured, not that Meta
+        accepts them. `s3: not_configured` is the known item 11 quirk.
+      - With `WHATSAPP_APP_SECRET` set, `POST /webhooks/whatsapp` now
+        enforces `X-Hub-Signature-256` for real (Section 23, finding #1).
+      - **Still pending, all outside the code:** registering the webhook with
+        Meta (the project owner does this themselves and holds the verify
+        token; don't print or ask for it), Meta Business Verification (which
+        Authentication templates require), creating the WhatsApp
+        Authentication message template, and adding a payment method to the
+        WhatsApp Business account. **Until then OTP delivery only works
+        through the temporary free-form send described in the gotcha at the
+        end of this file -- and fails (`OTP_DELIVERY_FAILED`) for anyone who
+        hasn't messaged the business number in the last 24h. Expected, not
+        a new bug; don't chase it as an error.**
+  14. **Changing a secret after first deploy** (done for real on 2026-09-20):
+      put the value in SSM, re-run `bootstrap.sh env`, then **recreate** the
+      container -- `docker compose -f docker-compose.prod.yml up -d
+      --force-recreate backend`. A plain `restart` keeps the old environment
+      because `env_file` is read when the container is created. Run by hand
+      (not through `remote-deploy.sh`), that compose command needs
+      `ECR_REGISTRY` (`<account>.dkr.ecr.ap-south-1.amazonaws.com`) and
+      `IMAGE_TAG` exported first or the image reference doesn't resolve. `env`
+      rewrites the whole `.env`, so a hand edit made on the instance is
+      silently lost on the next run (the generated secrets are safe: they use
+      `--no-overwrite`). To run this from a laptop, send it through SSM Run
+      Command as a base64-wrapped script executed with `bash` (same reason as
+      item 10) and pass the payload as `--parameters file://params.json`;
+      inline JSON quoting is not worth the pain.
+  15. **Operator-machine traps when driving AWS from here** (Windows + Git
+      Bash): (a) Git Bash rewrites an argument that starts with `/` into a
+      Windows path, so `--name /court-booking-app/...` fails validation --
+      prefix the command with `MSYS_NO_PATHCONV=1`; (b) the AWS CLI default
+      region on this machine is **us-east-1**, not `ap-south-1`, so every
+      command needs an explicit `--region ap-south-1` (a `put-parameter`
+      without it lands in the wrong region and looks like the secret is
+      missing -- on 2026-09-20 the four secrets first appeared absent, then
+      present; the cause wasn't established); (c) `gh` isn't installed here, so
+      GitHub Actions variables can't be listed from this machine. **Working
+      rule for Claude sessions: confirm a secret exists with
+      `ssm describe-parameters` (names and dates only) and confirm the app
+      loaded it with a set/empty check inside the container -- never print a
+      secret's value.**
+- **TEMPORARY: OTP is sent as free-form WhatsApp text, not the
+  Authentication template (2026-09-20) -- revert once a template is
+  approved.** Authentication templates need Meta Business Verification,
+  which isn't done. `WhatsAppService.send_otp` (`app/services/whatsapp_service.py`)
+  now sends `type: "text"` ("<code> is your verification code. For your
+  security, do not share this code. It expires in N minutes.", N from
+  `OTP_EXPIRE_MINUTES`) via `send_text`. Nothing in `AuthService.request_otp`
+  changed -- generation, hashing, expiry and rate limiting are as before; only
+  the delivery call is different.
+  - **The catch:** free text is delivered only inside the recipient's open
+    24h customer-service window, i.e. they must already have messaged the
+    business number. Otherwise Meta answers HTTP 400 / error `131047`. For
+    now testers open the window by hand; there is deliberately no app-side
+    "message us first" flow. Real users who haven't will not get a code.
+  - **Failure path (confirmed by test, no new handling added):** the 400
+    makes `_send`'s `raise_for_status` raise `HTTPStatusError`; tenacity
+    retries it 3x (~3s of backoff, three calls to Meta -- a 400 like this is
+    deterministic, so the retries are wasted, but that's existing `_send`
+    behavior and was left alone) and re-raises `RetryError`.
+    `request_otp`'s `except Exception` (broader than `httpx.HTTPError`)
+    catches it, deletes the OTP row so it doesn't burn a rate-limit slot, and
+    returns 502 `OTP_DELIVERY_FAILED` -- never a raw 500. See
+    `tests/test_auth.py::test_otp_send_uses_freeform_text_not_template` and
+    `::test_otp_send_with_no_open_window_fails_cleanly` (the latter mocks a
+    131047 response at the httpx layer so the real retry path runs).
+  - **To revert:** in `send_otp`, replace the body with
+    `return await self.send_registered_template(to_phone_number, "whatsapp_otp", [code])`
+    (the `whatsapp_otp` entry is still in `whatsapp_templates.py`, untouched),
+    delete the two tests above (they assert the temporary behavior), and
+    remove this note plus the matching README/`infra/README.md` lines.
 

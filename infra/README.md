@@ -122,6 +122,65 @@ the expiry job sends WhatsApp notifications. Cron on the instance already has th
 network path to RDS, WhatsApp and the AI APIs at $0. Trade-off: the jobs die if the
 instance does — but so does the app.
 
+## Changing a secret after the first deploy
+
+Secrets live in SSM under `/court-booking-app/secrets/<NAME>`; the instance's `.env`
+is only a rendering of them. To change or add one:
+
+```bash
+# 1. put it in SSM (SSM rejects an empty value -- to leave a key blank, just don't create it)
+aws ssm put-parameter --region ap-south-1 --type SecureString --overwrite \
+  --name /court-booking-app/secrets/GEMINI_API_KEY --value "..."
+
+# 2. on the instance (Session Manager, or SSM Run Command): rebuild .env from SSM
+sudo /opt/court-booking-app/bootstrap.sh env
+
+# 3. RECREATE the container -- `docker restart` keeps the old environment, because
+#    env_file is only read when a container is created
+cd /opt/court-booking-app
+export ECR_REGISTRY=<account-id>.dkr.ecr.ap-south-1.amazonaws.com IMAGE_TAG=latest
+docker compose -f docker-compose.prod.yml up -d --force-recreate backend
+```
+
+- `bootstrap.sh env` rewrites the whole `.env`: a hand edit on the instance is lost.
+  The three generated secrets (`SESSION_TOKEN_SECRET`, `BANK_DETAILS_ENCRYPTION_KEY`,
+  `WHATSAPP_WEBHOOK_VERIFY_TOKEN`) are created with `--no-overwrite` and survive it.
+  Never regenerate `BANK_DETAILS_ENCRYPTION_KEY`: every stored bank detail becomes unreadable.
+- **AI provider is derived, not set**: `ANTHROPIC_API_KEY` present → `claude`; else
+  `GEMINI_API_KEY` present → `gemini`; else `claude` with a warning and no working AI.
+- To confirm what the app actually loaded without printing a secret, check set/empty
+  inside the container (`docker exec court-booking-backend sh -c 'test -n "$GEMINI_API_KEY" && echo set'`),
+  and list names/dates with `aws ssm describe-parameters` rather than `get-parameter`.
+
+**Running AWS commands from the Windows/Git Bash dev machine:** (a) Git Bash rewrites an
+argument starting with `/` into a Windows path, so `--name /court-booking-app/...` fails
+validation unless the command is prefixed with `MSYS_NO_PATHCONV=1`; (b) that machine's
+default AWS region is `us-east-1`, so always pass `--region ap-south-1` -- a
+`put-parameter` without it lands in the wrong region and looks like the secret is missing.
+
+## Current state (verified 2026-09-20)
+
+- Applied and live: instance, RDS, buckets, CloudFront, ECR, OIDC role, Elastic IP
+  `3.6.48.6` (see `terraform output`; don't release or replace it, the cert and every
+  hostname hang off it). `https://api.3.6.48.6.sslip.io/health` and `/health/ready`
+  return 200 with a valid Let's Encrypt certificate.
+- Secrets in SSM: the three generated ones plus `GEMINI_API_KEY`, `WHATSAPP_API_TOKEN`,
+  `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`. **Not set:** `ANTHROPIC_API_KEY`
+  (blank on purpose, so production runs on Gemini), `OPENAI_API_KEY`, and `SENTRY_DSN`
+  (so error tracking is off).
+- **Still to do, none of it Terraform:** register the webhook with Meta
+  (`terraform output whatsapp_webhook_url` + the verify token from SSM); create the
+  WhatsApp Authentication message template (needs Meta Business Verification) and add a
+  payment method to the WhatsApp Business account. Until then the backend sends OTPs as
+  free-form text, which only reaches someone who messaged the business number in the last
+  24h -- a temporary code change, revert steps in the backend `CLAUDE.md`; set `SENTRY_DSN`; raise
+  `db_backup_retention_days` (1 day is a Free-plan limit) and do the dry-run restore
+  described in `court-booking-backend/RUNBOOK.md`; replace the sslip.io hostnames with a
+  real domain when one is bought.
+- GitHub Actions **variables** the deploy reads: `AWS_ROLE_ARN`, `EC2_INSTANCE_ID`,
+  `API_BASE_URL` (see "First-time deploy" above). `gh` isn't installed on the dev machine, so
+  their current values weren't checked from there.
+
 ## Cost to expect (approximate — check the AWS pricing pages and your account's free-tier status)
 
 EC2 `t3.micro` + RDS `db.t3.micro` + 20 GB storage each, plus the Elastic IP's

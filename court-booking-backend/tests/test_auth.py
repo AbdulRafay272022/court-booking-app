@@ -250,3 +250,94 @@ async def test_refresh_issues_new_token_and_revokes_old(client, monkeypatch):
     assert (
         await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {new_token}"})
     ).status_code == 200
+
+
+# --- TEMPORARY free-form OTP delivery (tied to Meta Business Verification) ---
+# WhatsAppService.send_otp sends type "text" instead of the `whatsapp_otp`
+# template until an Authentication template is approved. Revert these two
+# tests together with send_otp (see its docstring / CLAUDE.md).
+
+
+async def test_otp_send_uses_freeform_text_not_template(client, monkeypatch):
+    import re
+
+    sent = []
+
+    async def fake_send(self, payload):
+        sent.append(payload)
+        return {"messages": [{"id": "wamid.local"}]}
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", fake_send)
+    phone = "+923001115555"
+
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    assert resp.status_code == 200
+
+    assert len(sent) == 1
+    payload = sent[0]
+    assert payload["type"] == "text"
+    assert "template" not in payload
+    assert payload["to"] == phone.lstrip("+")
+    body = payload["text"]["body"]
+    assert "do not share this code" in body
+    assert f"{get_settings().OTP_EXPIRE_MINUTES} minutes" in body
+
+    # Generation/hashing is untouched: the code that went out over WhatsApp
+    # is the one verify-otp accepts.
+    code = re.match(r"(\d{6}) is your verification code", body).group(1)
+    verify = await client.post("/api/v1/auth/verify-otp", json={"phone": phone, "otp": code})
+    assert verify.status_code == 200, verify.text
+
+
+async def test_otp_send_with_no_open_window_fails_cleanly(client, db_session, monkeypatch):
+    """No open 24h window -> Meta answers HTTP 400 / error 131047. That must
+    come out as OTP_DELIVERY_FAILED (finding #6's existing handling), not a
+    raw 500, and must not leave an OTP row consuming a rate-limit slot. Mocked
+    at the httpx layer (not `_send`) so the real raise_for_status + retry path
+    is exercised."""
+    import httpx
+    from sqlalchemy import select
+
+    from app.models.user import OtpRequest
+    from app.services.whatsapp_service import WhatsAppService
+
+    monkeypatch.setattr(get_settings(), "WHATSAPP_API_TOKEN", "test-token")
+
+    async def no_sleep(_seconds):
+        return None
+
+    # `_send` retries 3x with exponential backoff; skip the real waiting.
+    monkeypatch.setattr(WhatsAppService._send.retry, "sleep", no_sleep)
+
+    graph_calls = []
+    real_post = httpx.AsyncClient.post
+
+    async def fake_post(self, url, *args, **kwargs):
+        if "graph.facebook.com" not in str(url):
+            return await real_post(self, url, *args, **kwargs)  # the test client's own requests
+        graph_calls.append(kwargs["json"])
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "(#131047) Re-engagement message",
+                    "type": "OAuthException",
+                    "code": 131047,
+                }
+            },
+            request=httpx.Request("POST", str(url)),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    phone = "+923001116666"
+
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+
+    assert graph_calls, "the free-form send should actually have been attempted"
+    assert graph_calls[0]["type"] == "text"
+    assert resp.status_code == 502
+    assert resp.json()["error"]["code"] == "OTP_DELIVERY_FAILED"
+    rows = (
+        await db_session.execute(select(OtpRequest).where(OtpRequest.phone == phone))
+    ).scalars().all()
+    assert rows == []
