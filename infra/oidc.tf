@@ -12,7 +12,9 @@ data "aws_caller_identity" "current" {}
 resource "aws_iam_role" "github_actions_ecr_push" {
   name = "${var.project_name}-github-actions-ecr-push"
 
-  # Scoped to this exact repo (any branch/PR/tag under it) -- no other
+  # Scoped to this exact repo, by name AND immutable numeric IDs (see the
+  # github_owner_id/github_repo_id variables for why the IDs are required).
+  # Any branch/PR/tag under it -- no other
   # repo's Actions run, in this account or anywhere else, can assume this
   # role. Long-lived AWS access keys are deliberately avoided: OIDC means
   # nothing but a short-lived, per-run token ever exists, and there's
@@ -31,7 +33,7 @@ resource "aws_iam_role" "github_actions_ecr_push" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_owner}/${var.github_repo}:*"
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:*"
           }
         }
       }

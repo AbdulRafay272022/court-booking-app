@@ -540,4 +540,20 @@ web image, what's deferred to later parts).
      change, no rebuild). Watch for other Free-plan restrictions the same
      way if RDS settings change. Also: RDS `engine_version = "16"` resolved
      to 16.13 with PostGIS 3.4.6, matching the local 16-3.4 image.
+  9. **GitHub's OIDC `sub` claim now embeds immutable numeric IDs**, so the
+     Part 0 trust policy (`repo:<owner>/<repo>:*`) silently never matched:
+     the token actually says
+     `repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main`, and the
+     `@<id>` segments defeat the wildcard. Every deploy failed at
+     `AssumeRoleWithWebIdentity` with a generic "Not authorized" that gives
+     no hint about the mismatch. Found 2026-09-19 by reading the real `sub`
+     out of the failed CloudTrail events (`aws cloudtrail lookup-events
+     --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity`
+     -- `userIdentity.userName` is the sub) instead of guessing. The role is
+     now pinned to `github_owner_id`/`github_repo_id` in `infra/variables.tf`.
+     Note AWS returns the *same* "Not authorized" message when the role ARN
+     itself doesn't exist, so a wrong `AWS_ROLE_ARN` Actions variable looks
+     identical -- check the variable's exact value if this error ever comes
+     back with the trust policy verified. (Thumbprints are irrelevant here:
+     AWS stopped validating them for GitHub's provider in 2023.)
 

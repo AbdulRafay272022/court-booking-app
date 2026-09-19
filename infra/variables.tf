@@ -28,6 +28,27 @@ variable "github_repo" {
   default     = "court-booking-app"
 }
 
+# GitHub's OIDC `sub` claim now embeds immutable numeric IDs:
+#   repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main
+# rather than the older repo:<owner>/<repo>:ref:... form. A trust policy
+# written against the old form never matches (the wildcard can't bridge the
+# @<id> segments) -- AssumeRoleWithWebIdentity is denied with a generic
+# "Not authorized". These values were read from the actual failed
+# AssumeRoleWithWebIdentity events in CloudTrail on 2026-09-19, not guessed.
+# Pinning the IDs also means a renamed/deleted-and-recreated repo (or a new
+# owner reusing the old username) can't inherit this role.
+variable "github_owner_id" {
+  description = "Numeric GitHub owner (user/org) ID, as embedded in the OIDC sub claim."
+  type        = string
+  default     = "160610501"
+}
+
+variable "github_repo_id" {
+  description = "Numeric GitHub repository ID, as embedded in the OIDC sub claim."
+  type        = string
+  default     = "1377316289"
+}
+
 # --- Section 25: AWS pilot deployment ---
 
 variable "vpc_cidr" {
