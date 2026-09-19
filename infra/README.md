@@ -1,26 +1,132 @@
 # infra/
 
-Terraform for this project's AWS resources. Currently just the ECR
-repositories and the GitHub Actions OIDC deploy role (Part 0 of the
-deployment pipeline) — EC2/VPC/networking is a later part, not yet added
-here.
+Terraform for this project's AWS resources (region `ap-south-1`, Mumbai — closest
+region to the Karachi pilot; AWS has none in Pakistan).
 
-State is local (`terraform.tfstate`, gitignored) — fine for one operator;
-move to an S3 backend before more than one person runs `apply` against
-this.
+| File | What it defines |
+|---|---|
+| `ecr.tf`, `oidc.tf` | ECR repos + the GitHub Actions OIDC role (Part 0). `oidc.tf` also grants that role `ssm:SendCommand` on the one app instance — that's how deploys reach it. |
+| `network.tf` | VPC, 1 public + 2 private subnets, IGW, `ec2-sg` (80/443 only — **no port 22**), `rds-sg` (5432 from `ec2-sg` only). No NAT Gateway, by design. |
+| `compute.tf` | The `t3.micro` Ubuntu 24.04 instance, its IAM role (SSM + ECR pull + this project's S3/KMS/SSM params only), the Elastic IP, and the `sslip.io` hostnames. |
+| `database.tf` | RDS Postgres 16, `db.t3.micro`, single-AZ, private subnets, not publicly accessible, encrypted, **1-day** automated backups (Free-plan limit; see RUNBOOK.md). |
+| `storage.tf` | KMS key, private payment-proofs bucket (KMS, versioned), venue-photos bucket served **only** via CloudFront (Origin Access Control), and the SSM params the instance reads. |
+| `scripts/` | `user_data.sh.tftpl` (first boot), `bootstrap.sh` (re-runnable setup phases), `court-booking.cron` (background jobs), `remote-deploy.sh` (what a deploy runs on the box). |
+
+State is local (`terraform.tfstate`, gitignored) — fine for one operator. It contains
+the generated RDS password, so **move it to an encrypted S3 backend before a second
+person runs `apply`**, and never commit or share it.
+
+## First-time deploy, in order
 
 ```bash
 cd infra
 terraform init
-terraform plan
-terraform apply
+terraform plan -out=tfplan      # review it -- 45 resources on first apply
+terraform apply tfplan
+terraform output                # instance id, Elastic IP, URLs
 ```
 
-Region is `ap-south-1` (Mumbai) by default — see `variables.tf`. This
-project's resources live in the same shared AWS account as other
-unrelated projects; everything here is tagged `project = "court-booking-app"`
-(via the provider's `default_tags`) to stay distinguishable.
+Then, once, **before the first deploy**:
 
-After `apply`, `terraform output` prints the two ECR repository URLs and
-the `github_actions_role_arn` — the latter goes into the GitHub repo as
-the `AWS_ROLE_ARN` secret/variable the deploy workflow assumes via OIDC.
+1. **GitHub → repo → Settings → Actions → Variables**: set `AWS_ROLE_ARN`
+   (already set from Part 0), `EC2_INSTANCE_ID` (`terraform output ec2_instance_id`)
+   and `API_BASE_URL` (`terraform output api_base_url`).
+   `API_BASE_URL` is baked into the web image at build time — set it *before* the
+   push that will be deployed, or the web app's browser code will call `localhost`.
+2. **Put your secrets in SSM** (values never enter Terraform state). Anything omitted
+   is left blank in `.env`; `SESSION_TOKEN_SECRET`, `BANK_DETAILS_ENCRYPTION_KEY` and
+   `WHATSAPP_WEBHOOK_VERIFY_TOKEN` are generated for you on the box.
+   ```bash
+   for k in ANTHROPIC_API_KEY GEMINI_API_KEY WHATSAPP_API_TOKEN WHATSAPP_PHONE_NUMBER_ID WHATSAPP_APP_SECRET; do
+     read -rsp "$k: " v; echo
+     aws ssm put-parameter --region ap-south-1 --type SecureString --overwrite \
+       --name "/court-booking-app/secrets/$k" --value "$v"
+   done
+   ```
+   With an `ANTHROPIC_API_KEY` present the app runs on Claude; with only a
+   `GEMINI_API_KEY` it falls back to Gemini (the bootstrap script picks).
+3. **Connect** (no SSH — see below) and run the bootstrap phases:
+   ```bash
+   aws ssm start-session --region ap-south-1 --target "$(terraform output -raw ec2_instance_id)"
+   sudo /opt/court-booking-app/bootstrap.sh env       # builds .env / .env.web from SSM
+   sudo /opt/court-booking-app/bootstrap.sh db-init   # CREATE EXTENSION postgis on RDS
+   ```
+4. **Deploy the containers**: push to `main` (or run the workflow manually). The
+   workflow builds both images, pushes to ECR, and runs `remote-deploy.sh` on the
+   instance via SSM.
+5. Back on the box:
+   ```bash
+   sudo /opt/court-booking-app/bootstrap.sh migrate                 # alembic upgrade head + alembic check
+   sudo /opt/court-booking-app/bootstrap.sh nginx-cert <your-email> # nginx + one Let's Encrypt cert for both hostnames
+   ```
+
+## Connecting to the instance
+
+There is no SSH: no port 22, no key pair. Use Session Manager (needs the
+[Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)):
+
+```bash
+aws ssm start-session --region ap-south-1 --target <instance-id>
+```
+
+…or the EC2 console's **Connect → Session Manager** tab. Session Manager is
+outbound-only from the instance and authenticated by IAM, so nothing is exposed
+inbound and there's no IP allow-list to keep accurate on shared Wi-Fi.
+
+## The `sslip.io` hostnames are a deliberate placeholder
+
+No domain is purchased yet. For Elastic IP `52.66.12.34`:
+
+- web: `https://52.66.12.34.sslip.io`
+- API: `https://api.52.66.12.34.sslip.io` (this is `apiBaseUrl`)
+- WhatsApp webhook: `https://api.52.66.12.34.sslip.io/api/v1/webhooks/whatsapp`
+  (note the `/api/v1` prefix — every route except `/health*` is mounted under it)
+
+sslip.io is a public wildcard-DNS service; any `<anything>.<ip>.sslip.io` resolves
+to that IP, so Nginx routes by hostname exactly as it will with a real domain.
+
+**Caveats:** sslip.io is a free third-party service (an outage there is a
+resolution outage for you), and Let's Encrypt applies issuance rate limits per
+registered domain, which sslip.io shares with everyone else using it — if `certbot`
+reports a rate limit, that's why, and it's a reason to buy a domain rather than a
+bug. The certificate is tied to the Elastic IP: **don't release or replace it**
+without redoing the hostnames.
+
+### Migrating off `sslip.io` (small and contained — not a redeploy)
+
+1. Buy a domain; point `A` records for `@` (or `app`) and `api` at the same Elastic IP.
+2. On the instance, change the two `server_name` values in
+   `/etc/nginx/sites-available/court-booking` (or re-run `bootstrap.sh nginx-cert`
+   after updating `WEB_HOST`/`API_HOST` in `/etc/court-booking/host.env`) and re-run
+   Certbot for the new hostnames.
+3. Update `ALLOWED_ORIGINS` (re-run `bootstrap.sh env`), the GitHub `API_BASE_URL`
+   variable (then push, so the web image rebuilds), `apps/mobile/app.json`
+   `extra.apiBaseUrl`, and the webhook URL registered with the WhatsApp BSP.
+
+## Background jobs
+
+Run from the instance's cron (`scripts/court-booking.cron`) via
+`docker exec court-booking-backend python -m app.jobs.runner <job>`, logging to
+`/var/log/court-booking-jobs.log`:
+
+| Job | Schedule (PKT) |
+|---|---|
+| `expiry` (expiry/no-show/escalation/waitlist cleanup) | every minute |
+| `reminders` (2h-ahead booking reminders) | every 10 min |
+| `digest` (owner WhatsApp daily digest) | 08:00 |
+| `growth` (nightly `slot_stats`) | 02:00 |
+
+**Why not Lambda + EventBridge** (the original plan): a Lambda attached to a VPC
+subnet has no internet access without a NAT Gateway (~$35/month, not free tier), and
+the expiry job sends WhatsApp notifications. Cron on the instance already has the
+network path to RDS, WhatsApp and the AI APIs at $0. Trade-off: the jobs die if the
+instance does — but so does the app.
+
+## Cost to expect (approximate — check the AWS pricing pages and your account's free-tier status)
+
+EC2 `t3.micro` + RDS `db.t3.micro` + 20 GB storage each, plus the Elastic IP's
+public-IPv4 charge, a KMS key (standard SSM parameters, which this uses,
+are free). Roughly **$30–35/month** if nothing is free-tier-covered; free-tier
+eligibility depends on when the account was created. Note the RDS instance has
+`deletion_protection` on and takes a final snapshot on delete — `terraform destroy`
+needs `-var deletion_protection=false` applied first, on purpose.

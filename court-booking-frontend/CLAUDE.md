@@ -686,3 +686,30 @@ directly rather than more frontend code:
   have zero frontend UI** — see the "Backend pre-launch hardening pass"
   paragraph under Sprint 9 above for what exists API-side and what
   building the UI would need.
+- **`NEXT_PUBLIC_API_BASE_URL` is baked into the client bundle at `next
+  build`, NOT read from the running container's environment** (found
+  2026-09-19, Section 25). `apps/web/lib/config.ts` reads it for client
+  components too, and Next inlines `NEXT_PUBLIC_*` at build time, so the
+  Part 0 image -- whose Dockerfile comment claimed it was runtime-only --
+  would have shipped a site whose browser code calls
+  `http://localhost:8000`. The Dockerfile now takes it as a build `ARG`;
+  `.github/workflows/deploy.yml` passes the `API_BASE_URL` Actions
+  variable (`terraform output api_base_url`). Consequence: **changing the
+  API hostname requires rebuilding the web image**, not just editing
+  `.env.web` on the instance. Server Components read it at runtime too,
+  which is why `.env.web` still sets it -- but that only covers server
+  fetches.
+- **The EC2 deploy path is SSM Run Command, not SSH** (Section 25, user's
+  decision -- no port 22, no key pair; see `../infra/README.md`).
+  `deploy.yml`'s old `EC2_HOST`/`EC2_SSH_KEY` secrets are gone; the deploy
+  job is gated on the `EC2_INSTANCE_ID` Actions variable and refuses to
+  run if `API_BASE_URL` is unset (which would deploy a localhost-pointing
+  web image).
+- **Still open before a useful device build**: `apps/mobile/app.json`
+  `extra.apiBaseUrl` is still `http://localhost:8000` -- it needs the real
+  `https://api.<elastic-ip>.sslip.io`, which doesn't exist until
+  `terraform apply` allocates the Elastic IP (deliberately not filled in
+  with a made-up value). `SUPPORT_WHATSAPP_NUMBER` in both `lib/support.ts`
+  files is also still the `+923000000000` placeholder -- needs the real
+  number from the project owner.
+

@@ -1,8 +1,10 @@
 name: Build, push, deploy
 
 # Runs on every push to main: builds both images, pushes them to ECR, then
-# (once EC2_HOST/EC2_SSH_KEY are configured -- see the "deploy" job's
-# guard) pulls and restarts them on the EC2 instance over SSH. The instance
+# (once the EC2_INSTANCE_ID Actions variable is set -- see the "deploy"
+# job's guard) pulls and restarts them on the EC2 instance via SSM Run
+# Command. There is no SSH path into the instance at all (no port 22, no
+# key pair) -- see infra/network.tf. The instance
 # itself never runs `docker build` -- a t3.micro's 1GB RAM isn't reliably
 # enough to build a Next.js app or the Python dependency set without
 # risking an OOM kill mid-build. Until the EC2 secrets exist, this
@@ -67,6 +69,13 @@ jobs:
           context: court-booking-frontend
           file: court-booking-frontend/apps/web/Dockerfile
           push: true
+          # Baked into the client bundle at build time (NEXT_PUBLIC_*), so it
+          # has to be known HERE, not on the instance. Set the API_BASE_URL
+          # Actions variable from `terraform output api_base_url`. Unset =
+          # the Dockerfile's localhost default, fine for a build-only run
+          # but the deployed site would call localhost from users' browsers.
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.API_BASE_URL || 'http://localhost:8000' }}
           tags: |
             ${{ steps.ecr-login.outputs.registry }}/court-booking-app-web:${{ steps.meta.outputs.tag }}
             ${{ steps.ecr-login.outputs.registry }}/court-booking-app-web:latest
@@ -77,34 +86,63 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Check EC2 deploy secrets are configured
+      - uses: actions/checkout@v4
+
+      - name: Check deploy target is configured
         id: check
+        env:
+          EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
         run: |
-          if [ -n "${{ secrets.EC2_HOST }}" ] && [ -n "${{ secrets.EC2_SSH_KEY }}" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ -z "$EC2_INSTANCE_ID" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::EC2_HOST/EC2_SSH_KEY secrets are not set yet -- images were built and pushed to ECR, but the restart-on-EC2 step is skipped until the instance exists (see infra/, a later part of the deployment setup). Nothing to fix here; this is expected until then."
+            echo "::warning::EC2_INSTANCE_ID Actions variable is not set -- images were built and pushed to ECR, but the restart-on-EC2 step is skipped until the instance exists (terraform output ec2_instance_id). Expected until then."
+          elif [ -z "$API_BASE_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::EC2_INSTANCE_ID is set but API_BASE_URL is not -- the web image just built would point browsers at localhost. Set API_BASE_URL (terraform output api_base_url), then re-run."
+            exit 1
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Pull and restart on EC2
+      - name: Configure AWS credentials (OIDC)
         if: steps.check.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1.0.3
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          # The instance authenticates to ECR itself via its own IAM
-          # instance profile (see infra's later EC2 setup) -- `aws ecr
-          # get-login-password` needs no credentials passed over SSH.
-          script: |
-            set -euo pipefail
-            cd /opt/court-booking-app
-            export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-            export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
-            export IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
-              docker login --username AWS --password-stdin "$ECR_REGISTRY"
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
-            docker image prune -f
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Pull and restart on EC2 (SSM Run Command)
+        if: steps.check.outputs.configured == 'true'
+        env:
+          EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          set -euo pipefail
+          # Assemble the remote script: variables, then this commit's compose
+          # file (the instance never clones the repo), then the deploy steps.
+          {
+            echo "export AWS_REGION='${AWS_REGION}' IMAGE_TAG='${IMAGE_TAG}'"
+            echo "mkdir -p /opt/court-booking-app"
+            echo "echo '$(base64 -w0 docker-compose.prod.yml)' | base64 -d > /opt/court-booking-app/docker-compose.prod.yml"
+            cat infra/scripts/remote-deploy.sh
+          } > remote.sh
+          jq -n --rawfile script remote.sh '{commands: [$script]}' > params.json
+
+          CMD_ID="$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${IMAGE_TAG}" \
+            --parameters file://params.json \
+            --query Command.CommandId --output text)"
+          echo "SSM command: $CMD_ID"
+
+          # `wait` exits non-zero if the command fails or times out; on
+          # failure, show what the instance actually printed.
+          if ! aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$EC2_INSTANCE_ID"; then
+            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$EC2_INSTANCE_ID" \
+              --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json
+            exit 1
+          fi
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$EC2_INSTANCE_ID" \
+            --query StandardOutputContent --output text

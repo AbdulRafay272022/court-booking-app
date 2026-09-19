@@ -1,0 +1,12 @@
+# This repo is edited on Windows (core.autocrlf=true) but everything below runs
+# on Linux: bash scripts on the EC2 instance and in CI, and Terraform embeds
+# infra/scripts/* into the instance's user-data. A CRLF `#!/bin/bash\r` fails
+# with "bad interpreter", so force LF in the working copy too, not just in the
+# repository.
+*.sh          text eol=lf
+*.tftpl       text eol=lf
+*.cron        text eol=lf
+infra/scripts/* text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+*.tf          text eol=lf

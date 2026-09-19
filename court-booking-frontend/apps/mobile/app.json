@@ -41,7 +41,7 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost:8000"
+      "apiBaseUrl": "https://api.3.6.48.6.sslip.io"
     }
   }
 }

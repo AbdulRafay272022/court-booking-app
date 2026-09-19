@@ -1,0 +1,48 @@
+#!/bin/bash
+# First-boot provisioning only: packages, swap, SSM agent, and dropping the
+# bootstrap script + cron file onto disk. Secrets/config/certs are NOT done
+# here -- they need the Elastic IP associated and SSM params populated, so
+# they're an explicit, re-runnable step: `sudo /opt/court-booking-app/bootstrap.sh`.
+set -euxo pipefail
+exec > >(tee -a /var/log/court-booking-user-data.log) 2>&1
+export DEBIAN_FRONTEND=noninteractive
+
+# 1GB RAM: backend + web + nginx + docker daemon is tight. Swap is cheap insurance against OOM kills.
+if ! swapon --show | grep -q /swapfile; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+# SSM agent ships as a snap on Canonical's Ubuntu AMIs; make sure, don't assume.
+if ! snap list amazon-ssm-agent >/dev/null 2>&1; then
+  snap install amazon-ssm-agent --classic
+fi
+systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service
+
+apt-get update
+apt-get install -y ca-certificates curl unzip nginx certbot python3-certbot-nginx postgresql-client docker.io docker-compose-v2
+systemctl enable --now docker
+
+# The AWS CLI isn't in Ubuntu 24.04's apt repos; install v2 from AWS.
+if ! command -v aws >/dev/null 2>&1; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install
+fi
+
+mkdir -p /opt/court-booking-app /etc/court-booking
+cat > /etc/court-booking/host.env <<HOSTENV
+WEB_HOST=${web_host}
+API_HOST=${api_host}
+AWS_REGION=${region}
+PROJECT=${project}
+HOSTENV
+
+echo '${bootstrap_b64}' | base64 -d > /opt/court-booking-app/bootstrap.sh
+chmod 700 /opt/court-booking-app/bootstrap.sh
+echo '${cron_b64}' | base64 -d > /etc/cron.d/court-booking
+chmod 644 /etc/cron.d/court-booking
+
+echo "user-data complete: $(date -u)"

@@ -1,0 +1,16 @@
+# Background jobs (Section 25 deviation: cron on this host instead of
+# Lambda+EventBridge -- see infra/compute.tf). Each runs inside the running
+# backend container via app.jobs.runner. `flock -n` skips a run if the
+# previous one is still going, so a slow run never stacks up on itself.
+# Cron runs in UTC; PKT = UTC+5.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Expiry / no-show / escalation / waitlist cleanup: every minute.
+* * * * *      root flock -n /var/lock/cb-expiry.lock    docker exec court-booking-backend python -m app.jobs.runner expiry    >> /var/log/court-booking-jobs.log 2>&1
+# 2h-ahead booking reminders (idempotent via notification_log): every 10 min.
+*/10 * * * *   root flock -n /var/lock/cb-reminders.lock docker exec court-booking-backend python -m app.jobs.runner reminders >> /var/log/court-booking-jobs.log 2>&1
+# Owner WhatsApp daily digest: 08:00 PKT.
+0 3 * * *      root flock -n /var/lock/cb-digest.lock    docker exec court-booking-backend python -m app.jobs.runner digest    >> /var/log/court-booking-jobs.log 2>&1
+# Nightly slot_stats / growth materialization: 02:00 PKT.
+0 21 * * *     root flock -n /var/lock/cb-growth.lock    docker exec court-booking-backend python -m app.jobs.runner growth    >> /var/log/court-booking-jobs.log 2>&1

@@ -105,13 +105,70 @@ worked by checking the printed summary dict (`expired_bookings`,
 zeros on a second immediate run is expected, not a sign it didn't work the
 first time.
 
+## Database backup / restore (RDS)
+
+The pilot database is **RDS Postgres 16** (`court-booking-app-db`,
+`ap-south-1`, single-AZ, encrypted, private subnets) — this closes
+`AUDIT_FINDINGS.md` D.1 ("no managed Postgres provider chosen"). Settings,
+as defined in `infra/database.tf` (not hand-edited in the console):
+
+- **Automated backups: on, 1-day retention** (`backup_retention_period`),
+  daily window 20:00–21:00 UTC (01:00–02:00 PKT). This also enables
+  **point-in-time restore** to any second inside that ~24-hour window.
+  **1 day is a Free-plan limit, not a considered choice**: the account is on
+  the AWS Free plan, which rejected anything higher when the instance was
+  created (`FreeTierRestrictionError`, 2026-09-19). The practical meaning: a
+  bad migration, a bug that corrupts rows, or an accidental delete that
+  isn't noticed within about a day **cannot be restored from RDS backups**.
+  To raise it: upgrade the AWS account plan, set `db_backup_retention_days`
+  (7+ recommended before real payments flow) in `infra/variables.tf`, and
+  `terraform apply` -- an in-place change, no rebuild. Until then, consider
+  a manual `aws rds create-db-snapshot` before any risky migration (manual
+  snapshots don't expire and aren't subject to the retention window).
+- **Final snapshot on delete** (`skip_final_snapshot = false`) and
+  **`deletion_protection = true`**, so a stray `terraform destroy` can't
+  silently take the data with it.
+- Backups cover the database only. Two things live *outside* it and must be
+  protected separately: **`BANK_DETAILS_ENCRYPTION_KEY`** (SSM parameter
+  `/court-booking-app/secrets/BANK_DETAILS_ENCRYPTION_KEY` — lose it and every
+  stored bank detail is unreadable, even from a perfect restore) and the
+  payment-proof bucket (versioned + KMS-encrypted, noncurrent versions
+  expire after 90 days; current proofs are never expired).
+
+**Restore** (RDS restores into a *new* instance; it never overwrites in
+place):
+
+```bash
+aws rds restore-db-instance-to-point-in-time \
+  --region ap-south-1 \
+  --source-db-instance-identifier court-booking-app-db \
+  --target-db-instance-identifier court-booking-app-db-restore-test \
+  --restore-time 2026-01-01T10:00:00Z \
+  --db-subnet-group-name court-booking-app-db \
+  --vpc-security-group-ids <rds-sg id> \
+  --no-publicly-accessible
+```
+
+then point a scratch `DATABASE_URL` at the new endpoint (from the app
+instance — RDS is not reachable from anywhere else) and sanity-check row
+counts. Delete the scratch instance afterwards.
+
+- [ ] **Dry-run restore before the pilot starts — NOT YET DONE.** Do one
+  point-in-time restore to a scratch instance as above, confirm PostGIS and
+  the `one_live_booking_per_slot` index came across, then delete it. A backup
+  that has never been restored is unverified.
+
+## Background jobs run from the instance's cron
+
+Section 25 runs the scheduled jobs from the app instance's cron, not
+EventBridge/Lambda (a VPC Lambda would need a ~$35/mo NAT to reach WhatsApp).
+See `infra/README.md` for the table. Check they're firing with
+`tail /var/log/court-booking-jobs.log` on the instance (via SSM Session
+Manager — there is no SSH). If cron missed runs, the manual trigger above
+still applies.
+
 ## Not yet covered here
 
-- **Database backup/restore** — no managed Postgres provider had been
-  chosen for the pilot as of this runbook's writing; see the "Backups"
-  section of `README.md`'s Deployment notes once that decision is made.
-  Do one dry-run restore to a scratch instance before the pilot starts,
-  regardless of provider.
 - **Rotating the WhatsApp/AI vendor credentials themselves** (as opposed
   to failing over which provider is active) — infra-specific, not
   documented here.

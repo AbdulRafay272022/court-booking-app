@@ -879,25 +879,26 @@ already-solved problem.
 
 `Dockerfile` builds on `python:3.12-slim` regardless of the local dev Python
 version. `docker-compose.yml` is for local dev only (Postgres/PostGIS +
-LocalStack for S3); production expects a managed Postgres with PostGIS and
-real AWS credentials.
+LocalStack for S3). The pilot runs on AWS `ap-south-1`, defined entirely in
+Terraform under `../infra/` -- **see `../infra/README.md` for the layout, the
+`terraform apply` steps, how to connect (SSM Session Manager, no SSH), and how
+the jobs are scheduled.** In short: one `t3.micro` (host nginx + the backend and
+web containers pulled from ECR), RDS Postgres 16 in private subnets, a
+KMS-encrypted private payment-proofs bucket, venue photos behind CloudFront, and
+background jobs from the instance's cron (`python -m app.jobs.runner <job>`).
 
-### Backups (finding #20 — needs a decision before pilot launch)
+**The URLs are `sslip.io` hostnames -- a deliberate placeholder for a real
+domain, not a mistake.** For Elastic IP `A.B.C.D`: web is
+`https://A.B.C.D.sslip.io`, API is `https://api.A.B.C.D.sslip.io`. Moving to a
+purchased domain later is small and contained (point A records at the same
+Elastic IP, re-run Certbot, update `server_name`/`ALLOWED_ORIGINS`/`apiBaseUrl`)
+-- not a redeploy. Full steps are in `../infra/README.md`.
 
-**No managed Postgres provider had been chosen for the pilot as of this
-writing**, so this section can't document a real procedure yet — that's a
-decision for a human, not something to invent here. Once a provider is
-picked:
+### Backups (finding #20 / D.1 -- resolved: RDS)
 
-1. Confirm its automated daily-backup feature is actually enabled (most
-   managed Postgres offerings default this on, but verify — don't assume).
-2. Do one real dry-run restore to a scratch instance before the pilot's
-   first real booking/payment, and time how long it takes — that number
-   is what "how long until we're back up" actually means during a real
-   incident, not a guess.
-3. Note the retention window (how many days back you can restore to) and
-   write it here once known, so RUNBOOK.md's incident response can
-   reference a real number instead of "check with the provider."
-
-This is infra/process, not code — there's nothing in this repo that
-needs to change for it, only a provider choice and a verified drill.
+RDS Postgres, **1-day** automated backups with point-in-time restore (the AWS Free
+plan caps retention there -- see RUNBOOK.md for what that means), final
+snapshot on delete, deletion protection on. The settings, the restore command,
+and the still-open **dry-run-restore checklist item** are in `RUNBOOK.md`'s
+"Database backup / restore (RDS)" section. The dry-run restore has not been done
+yet -- an unrestored backup is unverified.

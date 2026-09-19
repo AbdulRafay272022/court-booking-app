@@ -17,10 +17,15 @@
 services:
   backend:
     image: ${ECR_REGISTRY}/court-booking-app-backend:${IMAGE_TAG:-latest}
+    # Fixed name: the host's cron (infra/scripts/court-booking.cron) runs the
+    # background jobs with `docker exec court-booking-backend ...`.
+    container_name: court-booking-backend
     restart: unless-stopped
     env_file: .env
     ports:
-      - "8000:8000"
+      # Loopback only: host nginx (TLS termination, routed by hostname) is
+      # the sole public entry point; the security group also blocks these.
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -32,6 +37,6 @@ services:
     restart: unless-stopped
     env_file: .env.web
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - backend

@@ -74,3 +74,32 @@ resource "aws_iam_role_policy" "ecr_push" {
     ]
   })
 }
+
+# Deploy = `aws ssm send-command` against this one instance (there is no SSH
+# path into it at all -- see network.tf). Scoped to that instance and the
+# stock AWS-RunShellScript document, nothing broader.
+resource "aws_iam_role_policy" "ssm_deploy" {
+  name = "ssm-deploy"
+  role = aws_iam_role.github_actions_ecr_push.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SendCommandToAppInstance"
+        Effect = "Allow"
+        Action = "ssm:SendCommand"
+        Resource = [
+          aws_instance.app.arn,
+          "arn:aws:ssm:${var.aws_region}::document/AWS-RunShellScript",
+        ]
+      },
+      {
+        Sid      = "ReadCommandResult"
+        Effect   = "Allow"
+        Action   = ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"]
+        Resource = "*"
+      }
+    ]
+  })
+}

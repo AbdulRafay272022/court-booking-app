@@ -24,9 +24,15 @@ COPY package.json package-lock.json ./
 COPY apps/web ./apps/web
 COPY packages/types ./packages/types
 COPY packages/api-client ./packages/api-client
-# The web app's actual public API base URL is read at runtime from
-# NEXT_PUBLIC_API_BASE_URL (see apps/web/lib/api.ts) via the container's
-# environment, not baked in at build time -- no ARG/build-time secret needed.
+# NEXT_PUBLIC_* values are INLINED INTO THE CLIENT BUNDLE at `next build`
+# time -- setting them on the running container's environment does nothing
+# for code that runs in the browser (lib/config.ts is used by client
+# components). An earlier version of this comment claimed runtime-only,
+# which shipped an image whose browser code would call http://localhost:8000.
+# The value is public (it's visible in every browser's network tab), so a
+# build ARG is appropriate -- the deploy workflow passes vars.API_BASE_URL.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 RUN npm run build --workspace=@court-booking/web
 
 # `output: "standalone"` (next.config.ts) traces only the files this app
