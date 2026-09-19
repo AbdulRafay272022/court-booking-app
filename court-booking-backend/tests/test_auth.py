@@ -1,0 +1,252 @@
+from app.config import get_settings
+
+
+def _mock_otp(monkeypatch):
+    captured = {}
+
+    async def fake_send_otp(self, phone, code):
+        captured["code"] = code
+        return {"messages": [{"id": "wamid.local"}]}
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_otp", fake_send_otp)
+    return captured
+
+
+async def test_request_otp_returns_expiry(client, monkeypatch):
+    _mock_otp(monkeypatch)
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": "+923001234567"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["expires_in"] == get_settings().OTP_EXPIRE_MINUTES * 60
+    assert "message" in body
+
+
+async def test_otp_request_rate_limiting(client, monkeypatch):
+    _mock_otp(monkeypatch)
+    phone = "+923001110001"
+    for _ in range(5):
+        resp = await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+        assert resp.status_code == 200
+
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    assert resp.status_code == 429
+
+
+async def test_otp_send_failure_does_not_consume_rate_limit(client, db_session, monkeypatch):
+    """A WhatsApp delivery failure must not both burn a rate-limit attempt
+    for an OTP that never arrived AND surface as a raw 500 -- see finding #6
+    in AUDIT_FINDINGS.md."""
+    from sqlalchemy import select
+
+    from app.models.user import OtpRequest
+
+    async def failing_send(self, payload):
+        raise RuntimeError("simulated WhatsApp Cloud API outage")
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", failing_send)
+    phone = "+923001114444"
+
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    assert resp.status_code == 502
+    assert resp.json()["error"]["code"] == "OTP_DELIVERY_FAILED"
+
+    rows = (
+        await db_session.execute(select(OtpRequest).where(OtpRequest.phone == phone))
+    ).scalars().all()
+    assert rows == [], "the OTP row must be rolled back on delivery failure, not left consuming a rate-limit slot"
+
+    # A subsequent successful path should still have all 5 attempts available.
+    _mock_otp(monkeypatch)
+    for _ in range(5):
+        ok = await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+        assert ok.status_code == 200, ok.text
+
+    locked = await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    assert locked.status_code == 429
+
+
+async def test_verify_otp_issues_token(client, monkeypatch):
+    captured = _mock_otp(monkeypatch)
+
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": "+923001234567"})
+    assert resp.status_code == 200
+
+    resp = await client.post(
+        "/api/v1/auth/verify-otp",
+        json={"phone": "+923001234567", "otp": captured["code"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user"]["phone"] == "+923001234567"
+    assert body["token"]
+    assert body["is_new_user"] is True
+
+    me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {body['token']}"})
+    assert me.status_code == 200
+    assert me.json()["user"]["phone"] == "+923001234567"
+    assert "session" in me.json()
+
+
+async def test_dev_fixed_otp_used_when_debug_and_set(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "DEBUG", True)
+    monkeypatch.setattr(settings, "DEV_FIXED_OTP", "111111")
+    captured = _mock_otp(monkeypatch)
+
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": "+923001234568"})
+    assert resp.status_code == 200
+    assert captured["code"] == "111111"
+
+    resp = await client.post(
+        "/api/v1/auth/verify-otp",
+        json={"phone": "+923001234568", "otp": "111111"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["user"]["phone"] == "+923001234568"
+
+
+async def test_dev_fixed_otp_ignored_when_debug_is_false(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "DEBUG", False)
+    monkeypatch.setattr(settings, "DEV_FIXED_OTP", "111111")
+    captured = _mock_otp(monkeypatch)
+
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": "+923001234569"})
+    assert resp.status_code == 200
+    assert captured["code"] != "111111"
+
+    resp = await client.post(
+        "/api/v1/auth/verify-otp",
+        json={"phone": "+923001234569", "otp": "111111"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_verify_otp_wrong_code_increments_attempts(client, monkeypatch):
+    _mock_otp(monkeypatch)
+    await client.post("/api/v1/auth/request-otp", json={"phone": "+923001112222"})
+
+    resp = await client.post(
+        "/api/v1/auth/verify-otp", json={"phone": "+923001112222", "otp": "000000"}
+    )
+    assert resp.status_code == 400
+
+
+async def test_verify_otp_locked_after_five_wrong_attempts(client, monkeypatch):
+    _mock_otp(monkeypatch)
+    await client.post("/api/v1/auth/request-otp", json={"phone": "+923001113333"})
+
+    for _ in range(5):
+        resp = await client.post(
+            "/api/v1/auth/verify-otp", json={"phone": "+923001113333", "otp": "000000"}
+        )
+        assert resp.status_code == 400
+
+    # A 6th attempt (even with an otherwise-valid-shaped code) is locked out.
+    resp = await client.post(
+        "/api/v1/auth/verify-otp", json={"phone": "+923001113333", "otp": "111111"}
+    )
+    assert resp.status_code == 429
+
+
+async def test_me_requires_auth(client):
+    resp = await client.get("/api/v1/auth/me")
+    assert resp.status_code == 401
+
+
+async def test_invalid_phone_number_rejected(client):
+    resp = await client.post("/api/v1/auth/request-otp", json={"phone": "0300123"})
+    assert resp.status_code == 422
+
+
+async def test_session_persistence_and_logout(client, monkeypatch):
+    captured = _mock_otp(monkeypatch)
+    await client.post("/api/v1/auth/request-otp", json={"phone": "+923004440001"})
+    verify = await client.post(
+        "/api/v1/auth/verify-otp", json={"phone": "+923004440001", "otp": captured["code"]}
+    )
+    token = verify.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert (await client.get("/api/v1/auth/me", headers=headers)).status_code == 200
+    assert (
+        await client.get("/api/v1/auth/me", headers={"Authorization": "Bearer garbage"})
+    ).status_code == 401
+
+    logout = await client.post("/api/v1/auth/logout", headers=headers)
+    assert logout.status_code == 200
+    assert logout.json()["message"]
+
+    assert (await client.get("/api/v1/auth/me", headers=headers)).status_code == 401
+
+
+async def test_multi_device_sessions_are_independent(client, monkeypatch):
+    captured = {}
+
+    async def fake_send_otp(self, phone, code):
+        captured["code"] = code
+        return {"messages": [{"id": "x"}]}
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_otp", fake_send_otp)
+    phone = "+923005550001"
+
+    await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    verify_a = await client.post(
+        "/api/v1/auth/verify-otp",
+        json={"phone": phone, "otp": captured["code"], "device_id": "device-a", "device_name": "Pixel"},
+    )
+    token_a = verify_a.json()["token"]
+
+    await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    verify_b = await client.post(
+        "/api/v1/auth/verify-otp",
+        json={"phone": phone, "otp": captured["code"], "device_id": "device-b", "device_name": "iPhone"},
+    )
+    token_b = verify_b.json()["token"]
+
+    assert token_a != token_b
+    assert verify_a.json()["user"]["id"] == verify_b.json()["user"]["id"]
+
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+    assert (await client.get("/api/v1/auth/me", headers=headers_a)).status_code == 200
+    assert (await client.get("/api/v1/auth/me", headers=headers_b)).status_code == 200
+
+    await client.post("/api/v1/auth/logout", headers=headers_a)
+    assert (await client.get("/api/v1/auth/me", headers=headers_a)).status_code == 401
+    assert (await client.get("/api/v1/auth/me", headers=headers_b)).status_code == 200
+
+
+async def test_new_user_vs_returning_user(client, monkeypatch):
+    captured = _mock_otp(monkeypatch)
+    phone = "+923006660001"
+
+    await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    first = await client.post("/api/v1/auth/verify-otp", json={"phone": phone, "otp": captured["code"]})
+    assert first.json()["is_new_user"] is True
+    user_id = first.json()["user"]["id"]
+
+    await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    second = await client.post("/api/v1/auth/verify-otp", json={"phone": phone, "otp": captured["code"]})
+    assert second.json()["is_new_user"] is False
+    assert second.json()["user"]["id"] == user_id
+
+
+async def test_refresh_issues_new_token_and_revokes_old(client, monkeypatch):
+    captured = _mock_otp(monkeypatch)
+    await client.post("/api/v1/auth/request-otp", json={"phone": "+923007770001"})
+    verify = await client.post(
+        "/api/v1/auth/verify-otp", json={"phone": "+923007770001", "otp": captured["code"]}
+    )
+    old_token = verify.json()["token"]
+    headers = {"Authorization": f"Bearer {old_token}"}
+
+    refresh = await client.post("/api/v1/auth/refresh", headers=headers)
+    assert refresh.status_code == 200
+    new_token = refresh.json()["token"]
+    assert new_token != old_token
+
+    assert (await client.get("/api/v1/auth/me", headers=headers)).status_code == 401
+    assert (
+        await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {new_token}"})
+    ).status_code == 200

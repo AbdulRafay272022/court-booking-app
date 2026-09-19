@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  /* Actual font-family values come from next/font/google in layout.tsx, which sets
+     these -x variables on <html>; @theme just gives Tailwind a font-figtree/font-plex/
+     font-mono-plex utility that resolves through to them. */
+  --font-figtree: var(--font-figtree-x);
+  --font-plex: var(--font-plex-x);
+  --font-mono-plex: var(--font-mono-x);
+
+  /* Player-facing system (auth, player app, public web) -- orange/Figtree. */
+  --color-player-bg: #faf8f6;
+  --color-player-surface: #ffffff;
+  --color-player-surface-2: #f4efec;
+  --color-player-border: #e5ded8;
+  --color-player-border-light: #ebe5e1;
+  --color-player-ink: #141a1d;
+  --color-player-ink-muted: #5c544d;
+  --color-player-ink-faint: #7a7068;
+  --color-player-ink-fainter: #9a9791;
+  --color-player-accent: #ef5a2c;
+  --color-player-accent-hover: #c8431c;
+  --color-player-accent-soft: #fff3ee;
+  --color-player-accent-soft-border: #f6dcd1;
+  --color-player-success: #1f7a52;
+  --color-player-success-soft: #e4f0ea;
+  --color-player-success-soft-border: #a9cfbd;
+  --color-player-success-dark: #14563a;
+  --color-player-warn: #8a5a0a;
+  --color-player-warn-soft: #fdf6e9;
+  --color-player-warn-soft-border: #f0dfbc;
+  --color-player-danger: #a8432c;
+  --color-player-danger-soft: #f8e5e0;
+  --color-player-danger-soft-border: #ddbab1;
+  --color-player-teal: #0e6274;
+  --color-player-teal-soft: #ebf2f4;
+
+  /* Owner/business-facing system (owner app, venue onboarding, admin, owner web) -- teal/IBM Plex Sans. */
+  --color-owner-bg: #f4f6f7;
+  --color-owner-surface: #ffffff;
+  --color-owner-border: #dce3e6;
+  --color-owner-border-light: #edf1f2;
+  --color-owner-ink: #101c21;
+  --color-owner-ink-muted: #5b7079;
+  --color-owner-ink-faint: #8399a1;
+  --color-owner-ink-fainter: #a6b6bc;
+  --color-owner-accent: #0e6274;
+  --color-owner-accent-hover: #0a4a58;
+  --color-owner-accent-soft: #ebf2f4;
+  --color-owner-accent-soft-border: #b8d4db;
+  --color-owner-success: #1f7a52;
+  --color-owner-success-soft: #e4f0ea;
+  --color-owner-success-soft-border: #a9cfbd;
+  --color-owner-success-dark: #14563a;
+  --color-owner-warn: #9c5c0a;
+  --color-owner-warn-soft: #fbf0dd;
+  --color-owner-warn-soft-border: #e8d3a8;
+  --color-owner-warn-dark: #7a480a;
+  --color-owner-danger: #8c3823;
+  --color-owner-danger-soft: #f8e5e0;
+  --color-owner-danger-soft-border: #ddbab1;
+}
+
+body {
+  background: var(--color-player-bg);
+  color: var(--color-player-ink);
+}

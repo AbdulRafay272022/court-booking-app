@@ -1,0 +1,137 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { ErrorState } from "@/components/error-state";
+import { friendlyErrorMessage } from "@/lib/error-messages";
+import { formatPKR, formatTimeRange } from "@/lib/format";
+import { useRequireAuth } from "@/lib/use-require-auth";
+import type { Booking, BookingStatus } from "@court-booking/types";
+
+const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger" }> = {
+  held: { label: "HOLDING", tone: "waiting" },
+  payment_submitted: { label: "WAITING FOR APPROVAL", tone: "waiting" },
+  booked: { label: "CONFIRMED", tone: "confirmed" },
+  completed: { label: "COMPLETED", tone: "neutral" },
+  no_show: { label: "NO-SHOW", tone: "danger" },
+  cancelled: { label: "CANCELLED", tone: "danger" },
+};
+
+function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () => void }) {
+  const router = useRouter();
+  const courtQuery = useQuery({ queryKey: ["court", booking.court_id], queryFn: () => api.courts.get(booking.court_id) });
+  const venueQuery = useQuery({
+    queryKey: ["venue", courtQuery.data?.venue_id],
+    queryFn: () => api.venues.get(courtQuery.data!.venue_id),
+    enabled: !!courtQuery.data?.venue_id,
+  });
+  const meta = STATUS_META[booking.status];
+  const isDark = booking.status === "booked" || booking.status === "completed";
+  const canCancel = booking.status === "held" || booking.status === "payment_submitted";
+
+  async function handleCancel() {
+    if (!confirm("Cancel this booking? This can't be undone.")) return;
+    try {
+      await api.bookings.cancel(booking.id);
+      onChanged();
+    } catch (e) {
+      alert(friendlyErrorMessage(e));
+    }
+  }
+
+  return (
+    <div
+      onClick={() => canCancel && router.push(`/booking/${booking.id}/pay`)}
+      className="rounded-2xl p-6 flex flex-col gap-3.5 cursor-pointer"
+      style={{
+        background: isDark ? "#141A1D" : meta.tone === "waiting" ? "#FDF6E9" : "#FFFFFF",
+        border: isDark ? "none" : `1px solid ${meta.tone === "waiting" ? "#F0DFBC" : "#EBE5E1"}`,
+      }}
+    >
+      <div className="flex flex-col gap-1">
+        <span
+          className="text-[11px] font-bold tracking-widest"
+          style={{ color: meta.tone === "waiting" ? "#8A5A0A" : meta.tone === "danger" ? "#A8432C" : isDark ? "#5FBF95" : "#7A7068" }}
+        >
+          {meta.label}
+        </span>
+        <span className="font-bold text-[17px]" style={{ color: isDark ? "#FFFFFF" : "#141A1D" }}>
+          {venueQuery.data?.name ?? "…"}
+        </span>
+        <span className="text-[13px]" style={{ color: isDark ? "#9A928B" : "#7A7068" }}>
+          {courtQuery.data?.name ?? ""} · {formatTimeRange(booking.starts_at, booking.ends_at)}
+        </span>
+      </div>
+      <div className="h-px" style={{ background: isDark ? "#2A3238" : "#F0EBE7" }} />
+      <div className="flex gap-6">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10.5px] font-bold tracking-widest" style={{ color: isDark ? "#6E7A80" : "#9A9791" }}>PAID</span>
+          <span className="font-mono text-[14.5px] font-semibold" style={{ color: isDark ? "#FFFFFF" : "#141A1D" }}>
+            {formatPKR(booking.amount_paid)}
+          </span>
+        </div>
+        {booking.balance_due > 0 ? (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10.5px] font-bold tracking-widest" style={{ color: isDark ? "#6E7A80" : "#9A9791" }}>AT GATE</span>
+            <span className="font-mono text-[14.5px] font-semibold" style={{ color: "#F0A05C" }}>{formatPKR(booking.balance_due)}</span>
+          </div>
+        ) : null}
+      </div>
+      {canCancel ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+          className="self-start text-[13px] font-semibold"
+          style={{ color: isDark ? "#E29B8A" : "#A8432C" }}
+        >
+          Cancel booking
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export default function BookingsPage() {
+  const { ready } = useRequireAuth();
+  const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
+  const query = useQuery({ queryKey: ["bookings-mine", tab], queryFn: () => api.bookings.mine(tab), enabled: ready });
+
+  if (!ready) return null;
+  const bookings = query.data ?? [];
+
+  return (
+    <main className="max-w-3xl mx-auto px-6 py-10 flex flex-col gap-6">
+      <h1 className="text-2xl font-extrabold tracking-tight">Your bookings</h1>
+      <div className="flex gap-2">
+        {(["upcoming", "past"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="px-4 py-2.5 rounded-full text-[13.5px] font-bold"
+            style={{ background: tab === t ? "#141A1D" : "#F4EFEC", color: tab === t ? "#fff" : "#5C544D" }}
+          >
+            {t === "upcoming" ? "Upcoming" : "Past"}
+          </button>
+        ))}
+      </div>
+
+      {query.isLoading ? (
+        <p className="text-player-ink-faint">Loading…</p>
+      ) : query.isError && bookings.length === 0 ? (
+        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="player" />
+      ) : bookings.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <h2 className="font-extrabold text-lg">{tab === "upcoming" ? "Nothing booked yet" : "No past bookings"}</h2>
+          <p className="text-player-ink-muted">{tab === "upcoming" ? "Find a court and book your first slot." : "Bookings you've played show up here."}</p>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {bookings.map((b) => (
+            <BookingCard key={b.id} booking={b} onChanged={() => query.refetch()} />
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}

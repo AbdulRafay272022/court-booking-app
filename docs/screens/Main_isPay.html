@@ -1,0 +1,51 @@
+<!doctype html><html><head><meta charset="utf-8"><style>@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+    body { margin:0; font-family:'Figtree','Segoe UI',system-ui,sans-serif; }
+    a { color:#EF5A2C; } a:hover { color:#C8431C; }
+    * { box-sizing:border-box; }</style></head><body><div style="display:flex; flex-direction:column; height:844px; background:#FAF8F6;">
+
+    <div style="padding:18px 20px; background:#FFFFFF; border-bottom:1px solid #EBE5E1; display:flex; align-items:center; gap:12px;">
+      <div onClick="{{ toChat }}" style="width:44px; height:44px; border-radius:12px; background:#F4EFEC; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#141A1D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+      </div>
+      <div style="font-size:17px; font-weight:700;">Pay to hold your slot</div>
+    </div>
+
+    <div style="flex-grow:1; padding:20px; display:flex; flex-direction:column; gap:16px; overflow:hidden;">
+
+      <div style="background:#141A1D; border-radius:18px; padding:22px; display:flex; flex-direction:column; gap:6px; color:#FFFFFF;">
+        <span style="font-size:11px; font-weight:700; letter-spacing:0.12em; opacity:0.6;">ADVANCE DUE NOW</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:38px; font-weight:600; letter-spacing:-0.02em;">{{ slot.advance }}</span>
+        <span style="font-size:13.5px; opacity:0.65; font-weight:500;">Balance {{ slot.balance }} payable at the venue</span>
+      </div>
+
+      <div style="background:#FFFFFF; border:1px solid #EBE5E1; border-radius:16px; padding:18px; display:flex; flex-direction:column; gap:14px;">
+        <span style="font-size:11px; font-weight:700; letter-spacing:0.1em; color:#9A9791;">SEND TO</span>
+        <div style="display:flex; flex-direction:column; gap:11px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:14px; color:#7A7068; font-weight:500;">Meezan Bank</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600;">•••• 4471</span>
+          </div>
+          <div style="height:1px; background:#F0EBE7;"></div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:14px; color:#7A7068; font-weight:500;">JazzCash</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600;">0300 ••••• 21</span>
+          </div>
+          <div style="height:1px; background:#F0EBE7;"></div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:14px; color:#7A7068; font-weight:500;">Account title</span>
+            <span style="font-size:14px; font-weight:600;">Padel Republic</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="border:2px dashed #E0D9D4; border-radius:16px; padding:26px; display:flex; flex-direction:column; align-items:center; gap:9px; background:#FFFFFF;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#EF5A2C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M7 9l5-5 5 5"></path><path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"></path></svg>
+        <span style="font-size:15px; font-weight:700;">Attach payment screenshot</span>
+        <span style="font-size:13px; color:#7A7068; font-weight:500; text-align:center;">We read the amount automatically,<br>so approval is usually instant</span>
+      </div>
+    </div>
+
+    <div style="padding:16px 20px 24px; background:#FFFFFF; border-top:1px solid #EBE5E1;">
+      <div onClick="{{ toDone }}" style="height:54px; border-radius:14px; background:#EF5A2C; color:#FFFFFF; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; cursor:pointer;">Submit payment proof</div>
+    </div>
+  </div></body></html>

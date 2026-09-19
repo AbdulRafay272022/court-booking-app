@@ -1,0 +1,16 @@
+# Local Claude Code session state -- machine-local, not project config.
+.claude/
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/.terraform.lock.hcl
+infra/*.tfvars
+!infra/*.tfvars.example
+infra/crash.log
+infra/crash.*.log
+
+# OS cruft
+.DS_Store
+Thumbs.db
