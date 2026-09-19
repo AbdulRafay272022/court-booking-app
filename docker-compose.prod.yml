@@ -1,0 +1,37 @@
+# Deployed to the EC2 instance (Part 0, step 4) -- this file references
+# built ECR image URIs directly; the instance never runs `docker build`.
+# NOT used for local dev -- see court-booking-backend/docker-compose.yml
+# for that (Postgres+PostGIS, LocalStack, build-from-source).
+#
+# Real secrets (DATABASE_URL, ANTHROPIC_API_KEY, etc.) live ONLY in .env /
+# .env.web on the instance itself -- never committed here, never passed as
+# plain docker-compose environment: values. See RUNBOOK.md and
+# court-booking-backend/.env.example / court-booking-frontend/apps/web's
+# NEXT_PUBLIC_API_BASE_URL for what each file needs.
+#
+# IMAGE_TAG defaults to "latest" (what the deploy workflow always also
+# pushes alongside the commit-SHA tag) -- override per-deploy if you ever
+# need to pin/roll back to a specific commit's image instead:
+#   IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d
+
+services:
+  backend:
+    image: ${ECR_REGISTRY}/court-booking-app-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  web:
+    image: ${ECR_REGISTRY}/court-booking-app-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env.web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
