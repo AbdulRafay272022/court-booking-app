@@ -12,6 +12,10 @@ infra/crash.log
 infra/crash.*.log
 infra/tfplan*
 
+# Firebase service-account private keys (NOT google-services.json, which is public config)
+*firebase-adminsdk*.json
+*service-account*.json
+
 # OS cruft
 .DS_Store
 Thumbs.db

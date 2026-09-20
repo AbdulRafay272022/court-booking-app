@@ -124,7 +124,7 @@ async def test_cancelling_booking_notifies_all_matching_waitlisters(
     # never goes out over WhatsApp, so we capture pushes, not WhatsApp sends.
     pushed = []
 
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         pushed.append(token)
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)
@@ -174,7 +174,7 @@ async def test_first_waitlisted_player_to_hold_wins_others_see_slot_gone(
     #15's chosen design) -- two notified players racing to actually hold
     the slot resolve exactly like any other two players racing for the
     same slot, via the existing one_live_booking_per_slot unique index."""
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         return None
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)
@@ -249,7 +249,7 @@ async def test_waitlist_advances_to_next_person_after_grace_period(
 ):
     pushed = []
 
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         pushed.append(token)
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)

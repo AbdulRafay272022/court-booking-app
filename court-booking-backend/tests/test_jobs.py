@@ -564,7 +564,7 @@ async def test_booking_reminder_sent_within_window(
 ):
     pushed = []
 
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         pushed.append(token)
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)
@@ -611,7 +611,7 @@ async def test_booking_reminder_ignores_bookings_outside_window(
 ):
     pushed = []
 
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         pushed.append(token)
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)

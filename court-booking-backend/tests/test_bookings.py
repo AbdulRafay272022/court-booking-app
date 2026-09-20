@@ -150,7 +150,7 @@ async def test_double_cancel_is_idempotent_noop(
     a 400, and it must not re-notify or re-wake the waitlist a second time."""
     pushed = []
 
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         pushed.append(token)
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)

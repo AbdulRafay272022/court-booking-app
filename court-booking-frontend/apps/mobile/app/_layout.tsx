@@ -50,11 +50,10 @@ Notifications.setNotificationHandler({
   }),
 });
 
-/** Section 10.2: map a notification's event_type to where it should deep-link. This
- * depends on the backend attaching a `data` payload to push messages, which
- * FRONTEND_INTEGRATION.md documents as not shipped yet (title/body text only) --
- * this listener is correct and ready, but untestable until that lands. Until then it
- * silently no-ops (falls through to whatever screen the app was already showing). */
+/** Section 10.2: map a notification's event_type to where it should deep-link. The
+ * backend attaches `{event_type, reference_id?}` as the FCM `data` payload
+ * (NotificationService._send_push_tier). Events with no route here (or no
+ * `reference_id` where one is needed) just open the app on whatever it was showing. */
 function routeForNotification(data: Record<string, unknown> | undefined): void {
   if (!data) return;
   const eventType = String(data.event_type ?? "");

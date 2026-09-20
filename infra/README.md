@@ -45,6 +45,13 @@ Then, once, **before the first deploy**:
    ```
    With an `ANTHROPIC_API_KEY` present the app runs on Claude; with only a
    `GEMINI_API_KEY` it falls back to Gemini (the bootstrap script picks).
+   **Push notifications (FCM)** need one more secret, `FCM_SERVICE_ACCOUNT_KEY`: the
+   Firebase service-account JSON, **base64-encoded** (it fits SSM's 4 KB standard limit):
+   ```bash
+   aws ssm put-parameter --region ap-south-1 --type SecureString --overwrite \n     --name /court-booking-app/secrets/FCM_SERVICE_ACCOUNT_KEY \n     --value "$(base64 -w0 maidan-firebase-adminsdk.json)"
+   ```
+   Blank/absent means push is skipped (WhatsApp and in-app polling still work). After
+   adding it, re-run `bootstrap.sh env` and recreate the backend container (below).
 3. **Connect** (no SSH — see below) and run the bootstrap phases:
    ```bash
    aws ssm start-session --region ap-south-1 --target "$(terraform output -raw ec2_instance_id)"

@@ -667,6 +667,36 @@ check the server logs before blaming the user's connection.
   catch-all in `RequestContextMiddleware` (inside CORS) returning the JSON error envelope would make every
   unexpected 500 show "Something went wrong" instead of "Can't reach the server".
 
+## Section 32 -- FCM push notifications wired end to end (Android) (2026-09-21)
+
+The push stub is real now. **Not committed/deployed; the Firebase-console half is manual** (steps
+were given to the project owner, not automated).
+
+- **Backend:** `app/services/fcm.py` sends via FCM HTTP v1 over plain `httpx`; the OAuth token is minted
+  from the service-account JSON with python-jose (RS256 JWT -> Google's token endpoint) and cached per
+  process -- no `firebase-admin`/`google-auth`, per the backend's "no vendor SDK" rule.
+  `FCM_SERVICE_ACCOUNT_KEY` takes raw JSON **or base64** (production uses base64 in SSM;
+  `bootstrap.sh env` now renders it). Blank = push skipped. Every push now carries a `data` payload
+  `{event_type, reference_id?}` (that is what `routeForNotification` in `app/_layout.tsx` reads), and a token
+  FCM reports as UNREGISTERED is set `is_active=false`. `NotificationService._push` gained a 4th `data`
+  arg and returns a `PushOutcome`; the test fakes in 5 files take `data=None`.
+- **Mobile:** `app.json` got `android.package` / `ios.bundleIdentifier` = `com.maidan.app`,
+  `android.googleServicesFile: ./google-services.json` (**the file is not in the repo until the owner
+  downloads it from Firebase; commit it -- it is public config, and EAS only uploads tracked files**), and the
+  `expo-notifications` plugin (96x96 white `assets/notification-icon.png` generated from the monochrome logo,
+  orange tint, `defaultChannel: "default"`). New `eas.json` (development/preview/production).
+  `registerForPushNotifications` now creates the Android channel `default` first -- Android 13+ never shows the
+  permission prompt without one, and the backend names that channel in every message.
+- **Android only.** On iOS `getDevicePushTokenAsync` returns an APNs token, which FCM's HTTP API rejects;
+  iOS would need the Firebase SDK (`@react-native-firebase/messaging`) or Expo's push service. **Push does not
+  work in Expo Go on Android** -- it needs a development/preview EAS build.
+- **Deep links:** `payment_submitted` -> Approvals and `slot_reopened` -> Search work. `booking_confirmed` /
+  `payment_rejected` are wired in `routeForNotification` but the backend does not pass a `reference_id` for
+  them yet (`notify_booking_confirmed` / `notify_payment_rejected` take no booking id), so they just open the app.
+- **Verified:** 18 DB-free tests in `tests/test_fcm.py` (real RS256 signature check, token caching, 401 retry,
+  error classification, bad key never raises). **Not run:** the one DB-backed test in that file and the rest of
+  the backend suite (no Postgres/Docker here), `tsc` (no `node_modules`), and everything on a real device.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

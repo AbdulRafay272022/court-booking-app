@@ -11,9 +11,12 @@
       "typedRoutes": true
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.maidan.app"
     },
     "android": {
+      "package": "com.maidan.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E44E1F",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -41,6 +44,14 @@
       ],
       "expo-secure-store",
       "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#EF5A2C",
+          "defaultChannel": "default"
+        }
+      ],
       [
         "expo-location",
         {

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "797909183660",
+    "project_id": "maidan-31556",
+    "storage_bucket": "maidan-31556.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:797909183660:android:526056190c7fbaf05d8309",
+        "android_client_info": {
+          "package_name": "com.maidan.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoPcutdem4IVSLEMSrOABSygT5GRqt14Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

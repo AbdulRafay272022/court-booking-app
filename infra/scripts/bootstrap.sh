@@ -77,6 +77,7 @@ AI_VISION_PROVIDER=${provider}
 ANTHROPIC_API_KEY=${anthropic}
 GEMINI_API_KEY=${gemini}
 OPENAI_API_KEY=$(ssm_get "$P/secrets/OPENAI_API_KEY")
+FCM_SERVICE_ACCOUNT_KEY=$(ssm_get "$P/secrets/FCM_SERVICE_ACCOUNT_KEY")
 SENTRY_DSN=$(ssm_get "$P/secrets/SENTRY_DSN")
 ENV
   # .env.web is only read by `docker compose` for the web container; the

@@ -165,7 +165,7 @@ class Settings(BaseSettings):
     OPENAI_MINI_MODEL: str = "gpt-4o-mini"
     OPENAI_FULL_MODEL: str = "gpt-4o"
 
-    # FCM
+    # FCM: service-account JSON, raw or base64 (see app/services/fcm.py)
     FCM_SERVICE_ACCOUNT_KEY: str = ""
 
     # Sentry

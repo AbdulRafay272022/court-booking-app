@@ -88,7 +88,7 @@ async def test_reject_payment_cancels_booking_and_notifies_waitlist(
     # not WhatsApp sends, to confirm the waiter was notified.
     pushed = []
 
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         pushed.append(token)
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)

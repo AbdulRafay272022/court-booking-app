@@ -1,10 +1,8 @@
-import json
 import uuid
 from datetime import datetime, timezone
 
-import httpx
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -13,6 +11,7 @@ from app.models.message import Message
 from app.models.notification import NotificationLog
 from app.models.user import User
 from app.models.venue import PlanTier, Venue
+from app.services.fcm import PushOutcome, send_push
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
 from app.services.whatsapp_templates import TEMPLATES
@@ -108,31 +107,27 @@ class NotificationService:
         )
         return [row[0] for row in result.all()]
 
-    async def _push(self, token: str, title: str, body: str) -> None:
-        if not self.settings.FCM_SERVICE_ACCOUNT_KEY:
-            logger.info("push.skipped", reason="no_credentials")
-            return
-        try:
-            # A production build mints a short-lived OAuth2 access token from the
-            # service-account JSON via google-auth and posts to the FCM v1 endpoint.
-            # Kept as a best-effort no-op here when that plumbing isn't configured.
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(
-                    "https://fcm.googleapis.com/v1/projects/placeholder/messages:send",
-                    headers={"Content-Type": "application/json"},
-                    content=json.dumps(
-                        {"message": {"token": token, "notification": {"title": title, "body": body}}}
-                    ),
-                )
-        except httpx.HTTPError:
-            logger.warning("push.failed", exc_info=True)
+    async def _push(
+        self, token: str, title: str, body: str, data: dict[str, str] | None = None
+    ) -> PushOutcome:
+        return await send_push(self.settings.FCM_SERVICE_ACCOUNT_KEY, token, title, body, data)
+
+    async def _deactivate_token(self, token: str) -> None:
+        """FCM told us this device token is dead -- stop sending to it."""
+        await self.db.execute(update(FCMToken).where(FCMToken.token == token).values(is_active=False))
+        await self.db.commit()
 
     async def _send_push_tier(
         self, user: User, event_type: str, title: str, body: str, *, reference_id: uuid.UUID | None = None
     ) -> None:
-        """Tier 1: push only."""
+        """Tier 1: push only. The `data` payload is what the mobile app's tap handler
+        deep-links from (apps/mobile/app/_layout.tsx, `routeForNotification`)."""
+        data = {"event_type": event_type}
+        if reference_id is not None:
+            data["reference_id"] = str(reference_id)
         for token in await self._active_tokens(user.id):
-            await self._push(token, title, body)
+            if await self._push(token, title, body, data) == PushOutcome.UNREGISTERED:
+                await self._deactivate_token(token)
             await self._log(
                 user_id=user.id, channel="push", event_type=event_type, reference_id=reference_id
             )

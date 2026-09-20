@@ -228,7 +228,7 @@ async def test_court_deactivation_notifies_players_with_live_bookings(
 
     pushed = []
 
-    async def fake_push(self, token, title, body):
+    async def fake_push(self, token, title, body, data=None):
         pushed.append((token, body))
 
     monkeypatch.setattr("app.services.notification_service.NotificationService._push", fake_push)
