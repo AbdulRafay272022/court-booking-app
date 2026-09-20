@@ -128,7 +128,7 @@ async def test_hold_slot_tool_actually_creates_booking(
 
 
 async def test_propose_booking_confirmation_surfaces_actions(
-    db_session, make_user, make_venue, make_court, monkeypatch
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     settings = get_settings()
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
@@ -136,9 +136,14 @@ async def test_propose_booking_confirmation_surfaces_actions(
     owner = await make_user("+923014000006", role=UserRole.OWNER)
     player = await make_user("+923014000007", role=UserRole.PLAYER)
     venue = await make_venue(owner)
-    court = await make_court(venue)
+    court = await make_court(venue, slot_minutes=60)
+    target = date.today() + timedelta(days=1)
+    # A confirmation may only be proposed for a REAL available slot (see the tests below), so the
+    # court needs a schedule: 17:00 UTC is 22:00 PKT, inside 06:00-23:00 PKT.
+    await make_schedule(court, day_of_week=target.weekday(), open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court, price_per_slot=3000)
 
-    starts_at = (date.today() + timedelta(days=1)).isoformat() + "T17:00:00+00:00"
+    starts_at = target.isoformat() + "T17:00:00+00:00"
     _mock_anthropic_sequence(
         monkeypatch,
         [
@@ -155,6 +160,134 @@ async def test_propose_booking_confirmation_surfaces_actions(
     assert result.actions[0].type == "confirm_booking"
     assert result.actions[0].data["court_id"] == str(court.id)
     assert result.actions[1].type == "decline"
+
+
+async def test_propose_confirmation_rejects_a_time_that_is_not_an_available_slot(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """Production chat 2026-09-20: the model 'proposed' 10:30 PM - 12:00 AM (a block that isn't on the
+    court's grid) and re-proposed a different date each turn. It may now only propose a real slot;
+    otherwise it gets an error telling it to call check_availability, and NO buttons are shown."""
+    owner = await make_user("+923014000030", role=UserRole.OWNER)
+    player = await make_user("+923014000031", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, slot_minutes=90)
+    target = date.today() + timedelta(days=1)
+    await make_schedule(court, day_of_week=target.weekday(), open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court, price_per_slot=3500)
+    service = AIChatService(db_session, get_settings())
+
+    for bad in (
+        target.isoformat() + "T17:30:00+00:00",  # 22:30 PKT: off the 06:00 + 90min grid
+        target.isoformat() + "T17:00:00",  # no timezone
+        "not-a-date",
+    ):
+        actions = []
+        result = await service._execute_tool(
+            player, "propose_booking_confirmation", {"court_id": str(court.id), "starts_at": bad}, actions
+        )
+        assert "error" in result, bad
+        assert actions == [], bad
+
+    actions = []
+    good = await service._execute_tool(
+        player,
+        "propose_booking_confirmation",
+        {"court_id": str(court.id), "starts_at": target.isoformat() + "T16:00:00+00:00"},  # 21:00 PKT
+        actions,
+    )
+    assert good["ok"] is True
+    assert good["label"].endswith("9:00 PM - 10:30 PM")
+    assert [a.type for a in actions] == ["confirm_booking", "decline"]
+
+
+async def test_check_availability_speaks_pakistan_time_and_shows_late_slots(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """The tool hands the model ready-made PKT labels (no UTC to mis-convert -- the 'Utu' players saw),
+    and no longer truncates at 15 slots, which hid the evening slots of a 60-minute court."""
+    owner = await make_user("+923014000032", role=UserRole.OWNER)
+    player = await make_user("+923014000033", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, slot_minutes=60)
+    target = date.today() + timedelta(days=1)
+    await make_schedule(court, day_of_week=target.weekday(), open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court, price_per_slot=2000)
+    service = AIChatService(db_session, get_settings())
+
+    result = await service._execute_tool(
+        player, "check_availability", {"court_id": str(court.id), "date": target.isoformat()}, []
+    )
+    labels = [s["label"] for s in result["slots"]]
+    assert len(labels) == 17  # 06:00 ... 22:00 -- all of them, not the first 15
+    assert labels[0].endswith("6:00 AM - 7:00 AM")
+    assert labels[-1].endswith("10:00 PM - 11:00 PM")
+    assert all("UTC" not in label and "+00:00" not in label for label in labels)
+    assert all(s["starts_at"].endswith("+00:00") for s in result["slots"])  # still UTC for tool round-trips
+
+
+def test_system_prompt_knows_today_and_forbids_mentioning_utc():
+    """The model has no clock (it once offered '15 May' in September) and used to volunteer UTC."""
+    from datetime import timezone
+
+    from app.services.ai_chat_service import build_system_prompt
+
+    prompt = build_system_prompt(datetime(2026, 9, 20, 16, 15, tzinfo=timezone.utc))  # 21:15 PKT
+    assert "Sunday, 20 September 2026, 9:15 PM" in prompt
+    assert "NEVER" in prompt and "UTC" in prompt  # the rule forbidding it
+    assert "label" in prompt
+
+
+async def _availability_then_reply(db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch, phones, reply_text):
+    """check_availability (two 60-min slots: 5-6 PM and 6-7 PM PKT), then a plain-text `reply_text`."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    owner = await make_user(phones[0], role=UserRole.OWNER)
+    player = await make_user(phones[1], role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, slot_minutes=60)
+    target = date.today() + timedelta(days=1)
+    await make_schedule(court, day_of_week=target.weekday(), open_time=time(17, 0), close_time=time(19, 0))
+    await make_pricing_rule(court, price_per_slot=3000)
+    _mock_anthropic_sequence(
+        monkeypatch,
+        [
+            _tool_use_response("check_availability", {"court_id": str(court.id), "date": target.isoformat()}),
+            _text_response(reply_text),
+        ],
+    )
+    result = await AIChatService(db_session, settings).process_message(user=player, message="kal shaam ko?", history=[])
+    return court, target, result
+
+
+async def test_reply_naming_one_offered_slot_gets_a_yes_no_proposal_even_if_the_model_skipped_the_tool(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    """Production chat 2026-09-20: the model asked to book in plain text without calling
+    propose_booking_confirmation, so the player's 'yes' had nothing to confirm. The service now ties
+    a booking question that names exactly one slot from THIS turn's availability to that slot."""
+    court, target, result = await _availability_then_reply(
+        db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch,
+        ("+923014000040", "+923014000041"), "5:00 PM - 6:00 PM available hai, PKR 3,000. Kya main book kar doon?",
+    )
+    assert [a.type for a in result.actions] == ["confirm_booking", "decline"]
+    assert result.actions[0].data == {"court_id": str(court.id), "starts_at": target.isoformat() + "T12:00:00+00:00"}
+
+
+async def test_no_proposal_is_attached_when_the_reply_is_ambiguous_or_not_about_booking(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    _court, _target, both = await _availability_then_reply(
+        db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch,
+        ("+923014000042", "+923014000043"), "5:00 PM - 6:00 PM aur 6:00 PM - 7:00 PM dono khaali hain. Kaunsa book karun?",
+    )
+    assert both.actions == []  # two slots named: which one would "yes" mean?
+
+    _court, _target, info = await _availability_then_reply(
+        db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch,
+        ("+923014000044", "+923014000045"), "5:00 PM - 6:00 PM ka slot khaali hai, Rs. 3,000.",
+    )
+    assert info.actions == []  # informational only: no booking intent, no buttons
 
 
 async def test_cannot_cancel_another_players_booking(

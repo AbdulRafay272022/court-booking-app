@@ -174,8 +174,31 @@ course of a session, one or two sections at a time. Sections delivered so far:
     amplifier: an unhandled 500 has **no CORS headers**, so the browser reports it as a network failure
     (not fixed; an inner catch-all in `RequestContextMiddleware` would).
 
+    **(3) WhatsApp booking chat looped on "yes" and said "UTC" (same day, from the `messages` table
+    -- chat content is in the DB, not `docker logs`).** Four causes, all fixed: (a) `_handle_text`
+    sent only `result.reply` as plain text, so the assistant's Yes/No **buttons were stored in
+    `messages.metadata.actions` but never sent** -- now `WhatsAppService.send_buttons` sends real
+    interactive buttons (falls back to text; **payload shape follows Meta's docs but has not been
+    exercised against the live API**); (b) chat history is plain text, so a typed "yes" had no memory
+    of WHICH slot was proposed and the model re-guessed a different date each turn -- now
+    `webhooks._pending_confirmation` reads the previous AI message's stored `confirm_booking` action and
+    a *plain* affirmative (`_is_plain_affirmative`: "Yesss", "haan bhai book kardo"; anything with a time,
+    a date, "but" or "no" still goes to the model) books it directly, max 30 min old, no LLM call; the
+    "Held!" reply now includes the PKT slot and the venue's bank details (it used to say "send your
+    screenshot" without saying where to pay); (c) the model had no clock ("15 May" in September) and was
+    handed UTC -- `build_system_prompt(now)` injects today's PKT date, rule 7 forbids ever mentioning UTC,
+    and `check_availability` returns a ready-made PKT `label` (and no longer caps at 15 slots, which hid
+    the evening slots of 60-minute courts); (d) `propose_booking_confirmation` now rejects a time that is
+    not a real available slot (it returns an error instead of buttons), `_attach_proposal_for_named_slot`
+    ties a plain-text "shall I book X?" to X when exactly one slot from that turn's availability is named,
+    and `MAX_TOOL_ITERATIONS` went 5 -> 8: at 5 a normal turn (search x2, courts, availability, propose)
+    ran out before the model could answer and the player got "I'm having trouble completing that".
+    Verified against the real Gemini model (`gemini-3.5-flash-lite`) locally, not just mocks. Known
+    leftover: the model sometimes writes `**bold**`, which WhatsApp shows literally (it uses `*bold*`).
+    The in-app (web/mobile) chat path is unchanged: its client renders the buttons itself.
+
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 353
+Postgres/PostGIS instance, and documented in README.md. Current state: 363
 tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
 operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
 round-trips upgrade -> downgrade -> upgrade). Run the suite with

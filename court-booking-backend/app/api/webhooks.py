@@ -1,7 +1,8 @@
 import hashlib
 import hmac
+import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -18,7 +19,9 @@ from app.services.ai_chat_service import AIChatService
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
 from app.services.payment_service import PaymentService
+from app.services.venue_service import VenueService
 from app.services.whatsapp_service import WhatsAppService, mask_phone
+from app.utils.timezone import format_pkt_slot
 
 logger = structlog.get_logger(__name__)
 
@@ -114,15 +117,94 @@ async def _most_recent_held_booking(db: DbSession, user: User) -> Booking | None
     return result.scalar_one_or_none()
 
 
+# A bare "yes" only confirms a proposal made in the message right before it, and only for this long.
+PENDING_CONFIRMATION_MAX_AGE = timedelta(minutes=30)
+
+# Words that may appear in a *plain* confirmation ("Yesss", "haan bhai book kardo", "ok"). Anything
+# else in the message (a time, a date, "but", "no") means the player is saying something more, so it
+# goes to the assistant instead of being treated as a bare yes.
+_AFFIRMATIVE_RE = re.compile(
+    r"^(y+e+s+|y+e+a+h*|y+e+p+|y+u+p+|y+a+|y|h+a+a*n+|h+a+a+|h+n+|o+k+a*y*|ji+|je+e+|g|sure|bilkul|zaroor|"
+    r"confirm(ed)?|kardo|karo|done|theek|thik|book)$"
+)
+_FILLER_WORDS = frozenset(
+    "bhai yaar sir please plz pls thanks thank you it this the kar do karo kardo booking hai hain sahi fine "
+    "go ahead lets let s now abhi".split()
+)
+
+
+def _is_plain_affirmative(text: str) -> bool:
+    """True for a short reply that is nothing but agreement, e.g. "Yesss" or "Haan bhai yes book kardo"."""
+    words = re.sub(r"[^a-z\s]", " ", text.lower()).split()
+    if not words or len(words) > 8:
+        return False
+    if not all(_AFFIRMATIVE_RE.match(w) or w in _FILLER_WORDS for w in words):
+        return False
+    return any(_AFFIRMATIVE_RE.match(w) for w in words)
+
+
+async def _pending_confirmation(db: DbSession, user: User) -> tuple[str, str] | None:
+    """(court_id, starts_at) if the assistant's immediately preceding message proposed a booking
+    (its `confirm_booking` action is stored in the message's metadata) and the player has said
+    nothing since except the message being handled now. WhatsApp never renders the assistant's
+    buttons as text, so a typed "yes" is the normal way to answer -- and the model itself cannot
+    resolve it: chat history is plain text, so it has no memory of WHICH slot was proposed."""
+    rows = (
+        (
+            await db.execute(
+                select(Message)
+                .where(Message.sender_id == user.id, Message.channel == "whatsapp")
+                .order_by(Message.created_at.desc())
+                .limit(2)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(rows) < 2 or rows[0].sender_type != "player" or rows[1].sender_type != "ai":
+        return None
+    proposal = rows[1]
+    if datetime.now(timezone.utc) - proposal.created_at > PENDING_CONFIRMATION_MAX_AGE:
+        return None
+    for action in (proposal.meta or {}).get("actions") or []:
+        if action.get("type") == "confirm_booking":
+            data = action.get("data") or {}
+            if data.get("court_id") and data.get("starts_at"):
+                return data["court_id"], data["starts_at"]
+    return None
+
+
 async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: str) -> None:
+    if _is_plain_affirmative(text):
+        pending = await _pending_confirmation(db, user)
+        if pending is not None:
+            court_id, starts_at = pending
+            await _handle_button_reply(db, settings, user, f"confirm:{court_id}:{starts_at}")
+            return
+
     chat_service = AIChatService(db, settings)
     history = await chat_service.load_history(user, "whatsapp")
     result = await chat_service.process_message(user=user, message=text, history=history)
 
     whatsapp = WhatsAppService(settings)
     # A direct reply to an inbound message is always inside the 24h window by
-    # definition, so this is always free text, never a template.
-    sent = await whatsapp.send_text(user.phone, result.reply)
+    # definition, so this is always free text / buttons, never a template.
+    sent = None
+    confirm = next((a for a in result.actions if a.type == "confirm_booking"), None)
+    if confirm is not None:
+        # The assistant proposed a booking: send real Yes/No buttons. These were always meant to
+        # exist (system prompt rule 1) but this handler used to send only `result.reply` as plain
+        # text, so players saw a question with nothing to tap and typed "yes" into a void.
+        try:
+            sent = await whatsapp.send_buttons(
+                user.phone,
+                result.reply,
+                [(f"confirm:{confirm.data['court_id']}:{confirm.data['starts_at']}", confirm.label), ("decline", "No, thanks")],
+            )
+        except Exception:  # noqa: BLE001 -- fall back to plain text; a typed "yes" still works
+            logger.warning("webhooks.whatsapp.buttons_failed", exc_info=True)
+    if sent is None:
+        sent = await whatsapp.send_text(user.phone, result.reply)
     await _record_message(
         db,
         user=user,
@@ -222,10 +304,21 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
             booking = await booking_service.create_hold(
                 user, uuid.UUID(court_id_str), datetime.fromisoformat(starts_at_str)
             )
-            reply = (
-                f"Held! PKR {float(booking.advance_amount):,.0f} advance is due within "
-                f"{settings.BOOKING_HOLD_MINUTES} minutes to confirm -- send your payment screenshot here."
-            )
+            court = await db.get(Court, booking.court_id)
+            venue = await db.get(Venue, court.venue_id) if court else None
+            where = f"{court.name} at {venue.name}, " if court and venue else ""
+            lines = [
+                f"Held! {where}{format_pkt_slot(booking.starts_at, booking.ends_at)} (Pakistan time).",
+                f"Please pay PKR {float(booking.advance_amount):,.0f} within "
+                f"{settings.BOOKING_HOLD_MINUTES} minutes to confirm:",
+            ]
+            # Say WHERE to pay: this reply used to stop at "send your payment screenshot" with no bank.
+            bank = VenueService(db, settings).decrypted_bank_details(venue) if venue else None
+            for label, key in (("Bank", "bank"), ("Account title", "account_title"), ("Account number", "account_number"), ("IBAN", "iban")):
+                if bank and bank.get(key):
+                    lines.append(f"{label}: {bank[key]}")
+            lines.append("Then send your payment screenshot here.")
+            reply = "\n".join(lines)
         except (ValueError, HTTPException) as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else "that slot"
             reply = f"Sorry, I couldn't hold that slot ({detail}). Want to try another time?"

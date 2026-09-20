@@ -108,6 +108,29 @@ class WhatsAppService:
         }
         return await self._send(payload)
 
+    async def send_buttons(self, to_phone_number: str, body: str, buttons: list[tuple[str, str]]) -> dict:
+        """Interactive reply-button message (Cloud API `interactive` / `button`): `body` plus up to 3
+        (id, title) buttons. Free-form, so only valid inside the 24h window -- which any reply to an
+        inbound message is. A tap comes back as an inbound `interactive.button_reply` carrying `id`
+        (parsed by `parse_inbound_messages`, handled by `webhooks._handle_button_reply`).
+        Meta limits: body 1024 chars, title 20 chars, id 256 chars."""
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone_number.lstrip("+"),
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": body[:1024]},
+                "action": {
+                    "buttons": [
+                        {"type": "reply", "reply": {"id": button_id[:256], "title": title[:20]}}
+                        for button_id, title in buttons[:3]
+                    ]
+                },
+            },
+        }
+        return await self._send(payload)
+
     async def send_otp(self, to_phone_number: str, code: str) -> dict:
         """TEMPORARY -- free-form text instead of the `whatsapp_otp`
         authentication template, because Meta Business Verification (which
