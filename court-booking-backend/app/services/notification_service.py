@@ -257,6 +257,32 @@ class NotificationService:
             owner, "owner_new_booking", "New booking", f"New booking on {court_name} for {starts_at}."
         )
 
+    async def notify_owner_daily_digest(self, *, owner: User, body: str) -> None:
+        """WhatsApp only -- the digest never had a push tier, so this doesn't add one.
+        Goes through send_smart like every other notification in this file (Section 29
+        Part B): digest_job.py used to call whatsapp.send_text directly, skipping the
+        24h-window check. Since the digest is outbound-initiated (not a reply to
+        anything), most owners won't have an open window on a given morning, so an
+        unguarded send_text degrades to an uncaught RetryError -- and with no
+        registered "owner_daily_digest" template, send_smart falls back to the
+        generic one-param template outside the window, same as any other
+        unregistered event_type."""
+        last_inbound = await self.last_inbound_whatsapp_at(owner.phone)
+        _result, template_used = await self.whatsapp.send_smart(
+            owner.phone,
+            body,
+            last_inbound_at=last_inbound,
+            template_name="owner_daily_digest",
+            template_params=[body],
+        )
+        await self._log(
+            user_id=owner.id,
+            channel="whatsapp",
+            event_type="owner_daily_digest",
+            cost_category="utility",
+            template_name=template_used,
+        )
+
     async def notify_venue_pending_review(self, *, user: User, venue_name: str) -> None:
         await self._send_push_and_whatsapp(
             user,

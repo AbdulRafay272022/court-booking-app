@@ -18,6 +18,7 @@ const NAV = [
   { href: "/dashboard/owner/walkin", label: "Add booking" },
   { href: "/dashboard/owner/ledger", label: "Ledger" },
   { href: "/dashboard/owner/growth", label: "Growth" },
+  { href: "/dashboard/owner/settings", label: "Venue settings" },
   { href: "/account", label: "Account" },
 ];
 

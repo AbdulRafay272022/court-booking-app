@@ -17,6 +17,7 @@ import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { usePendingAuth } from "@/lib/pending-auth";
+import { openPrivacy, openTerms } from "@/lib/web-links";
 import {
   AuthScreen,
   ChoicePills,
@@ -227,7 +228,15 @@ export default function SignupScreen() {
       />
 
       <Text className={font} style={{ fontSize: 12.5, lineHeight: 18, color: c.inkFainter, textAlign: "center" }}>
-        By continuing you agree to our Terms and Privacy Policy.
+        By continuing you agree to our{" "}
+        <Text onPress={openTerms} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
+          Terms
+        </Text>{" "}
+        and{" "}
+        <Text onPress={openPrivacy} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
+          Privacy Policy
+        </Text>
+        .
       </Text>
     </AuthScreen>
   );

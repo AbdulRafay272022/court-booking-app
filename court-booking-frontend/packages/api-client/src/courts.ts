@@ -53,3 +53,19 @@ export function createCourtsApi(client: ApiClient) {
     listBlackouts: (courtId: string) => client.request<Blackout[]>(`/courts/${courtId}/blackouts`),
   };
 }
+
+/** Section 29 Part C: plain-language rendering of a court's cancellation policy, shared by
+ * both apps so the pre-booking disclosure (pay screen) and the My Bookings cancel button use
+ * identical wording for the same three states. */
+export function cancellationPolicyText(
+  court: Pick<Court, "cancellation_allowed" | "cancellation_cutoff_hours"> | null | undefined,
+): string {
+  if (!court) return "";
+  if (!court.cancellation_allowed) {
+    return "This venue does not allow cancellations once booked.";
+  }
+  if (court.cancellation_cutoff_hours != null) {
+    return `Free cancellation up to ${court.cancellation_cutoff_hours}h before your booking.`;
+  }
+  return "You can cancel any time before your booking starts.";
+}

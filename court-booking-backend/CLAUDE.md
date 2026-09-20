@@ -78,9 +78,62 @@ course of a session, one or two sections at a time. Sections delivered so far:
 28. Old-number notification on phone change (2026-09-20): after a phone change
     commits, the OLD number gets a best-effort WhatsApp (background task, never
     affects the change). See gotcha 13 in the Section 26 list at the end.
+29. Post-audit fixes, Tier 1 (2026-09-20): four independent fixes from the Full
+    Feature & Flow Audit -- (A) a `use-owner-venues.ts` isLoading race that let
+    Today/Approvals/Ledger/Growth flash their empty state during cold load on
+    both platforms (root cause: a disabled TanStack Query v5 query reports
+    `isLoading: false`, not `true`, while waiting on `activeVenueId` to resolve
+    -- fixed by combining `ownerVenues.isLoading` into each screen's own loading
+    check); (B) `digest_job.py` calling `send_text` directly instead of
+    `send_smart` (skipping the 24h WhatsApp window check) with no per-owner
+    error isolation, so the first owner with a closed window silently aborted
+    the whole morning's run -- fixed via a new
+    `NotificationService.notify_owner_daily_digest` plus a try/except per
+    owner in the loop; (C) a real per-venue cancellation-policy feature (not
+    just a UI fix) so a player can cancel an already-paid booking where the
+    court allows it -- new `courts.cancellation_allowed`/
+    `cancellation_cutoff_hours` columns (migration `19cf7e553535`), enforced in
+    `BookingService._enforce_cancellation_policy`, two new error codes
+    (`CANCELLATION_NOT_ALLOWED`/`CANCELLATION_WINDOW_CLOSED`), set in the venue
+    setup wizard on both platforms, disclosed to the player before they pay,
+    and surfaced as a real Cancel action (with honest "refund is manual, not
+    automatic" copy) on My Bookings; (D) a real Terms of Service and Privacy
+    Policy, hosted at `/terms`/`/privacy` on the web app, linked from both
+    signup screens (mobile links out to the web pages rather than duplicating
+    the text natively). See README.md's "Post-audit fixes (Section 29)" for
+    the full per-part writeup and gotchas. **Tier 2** (venue photos, post-setup
+    schedule/pricing/blackout editing, a walk-in date picker, web waitlist --
+    all frontend-only, no backend changes) followed the same day; see the
+    frontend CLAUDE.md's own Section 29 Tier 2 entry.
+
+    **A separate, real production incident surfaced between Tier 1 and Tier 2**
+    (found live by the project owner, not from the audit): the venue-setup
+    wizard's "Send for review" showed a false-negative network error on the
+    LAST call in its per-court submit loop (`POST courts` -> `POST schedule`
+    -> `POST pricing`, repeated per court) even though every step had actually
+    committed server-side -- reproduced by letting a request reach and complete
+    on the server, then dropping the client's connection before it saw the
+    response (Playwright `route.fetch()` + `route.abort()`), which is a genuine
+    network-layer failure mode, not a bug in how `client.ts` reads a response.
+    The real gap was resilience: retrying replayed the ENTIRE per-court loop
+    with no memory of what had already succeeded, so `POST /courts` (which
+    always inserts) fired again for a court that already existed -- confirmed
+    both in the local repro (2 duplicate "Court 1" rows) and, worse, for real
+    in production (venue "Maidan Court", 2 duplicate court rows 30 minutes
+    apart, matching the reported incident exactly). Fixed with
+    `createdCourtIds: Record<index, courtId>` in the venue-setup store
+    (both platforms, alongside the existing `createdVenueId`), so a retry
+    skips `courts.create` for any court already recorded and only re-runs
+    `setSchedule`/`setPricing` (safe -- the backend replaces, not appends).
+    Verified live: `POST /courts` fires exactly once across two submit
+    attempts with the same induced failure, where it fired twice before the
+    fix. **The affected production venue was deleted** (cascades to its
+    courts/schedule/pricing; verified zero dependent bookings/waitlist rows
+    first) at the project owner's request, returning production to zero
+    venues for a clean re-registration.
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 343
+Postgres/PostGIS instance, and documented in README.md. Current state: 348
 tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
 operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
 round-trips upgrade -> downgrade -> upgrade). Run the suite with

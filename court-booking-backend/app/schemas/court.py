@@ -53,6 +53,10 @@ class CourtCreateIn(BaseModel):
     is_indoor: bool = False
     has_floodlights: bool = False
     capacity: int | None = None
+    # Section 29 Part C. Defaults match the model's own defaults (unrestricted) so a court
+    # created without opinion on this behaves exactly like before this feature existed.
+    cancellation_allowed: bool = True
+    cancellation_cutoff_hours: int | None = Field(default=None, ge=0)
 
 
 class CourtUpdateIn(BaseModel):
@@ -63,6 +67,8 @@ class CourtUpdateIn(BaseModel):
     is_indoor: bool | None = None
     has_floodlights: bool | None = None
     capacity: int | None = None
+    cancellation_allowed: bool | None = None
+    cancellation_cutoff_hours: int | None = Field(default=None, ge=0)
     photo_url: str | None = None
     sort_order: int | None = None
     is_active: bool | None = None
@@ -80,6 +86,8 @@ class CourtOut(BaseModel):
     is_indoor: bool
     has_floodlights: bool
     capacity: int | None
+    cancellation_allowed: bool
+    cancellation_cutoff_hours: int | None
     photo_url: str | None
     sort_order: int
     is_active: bool

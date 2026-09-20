@@ -432,6 +432,128 @@ backend README ("Profile editing", "Email is unique", "Phone change") and its CL
   account are **not confirmed live**, so OTP delivery is still the temporary free-form send (revert steps in the
   backend CLAUDE.md) -- I did not reintroduce or extend any workaround for the 24h window.
 
+## Section 29 — post-audit fixes, Tier 1 (2026-09-20)
+
+Four fixes from a follow-up "Full Feature & Flow Audit" (a UI-quality pass distinct from the
+earlier onboarding audit) -- Tier 1 (must-fix) only, both apps unless noted. Live-tested against
+the real local backend + a production build of the web app (`next build && next start`, per the
+existing WebSocket/Turbopack gotcha below), not just typechecked.
+
+- **The `isLoading` race (root cause of the Approvals false-empty-state bug and, it turned out,
+  a latent risk on every owner screen).** `lib/use-owner-venues.ts`'s `isLoading` was already
+  correct -- nothing downstream combined it with each screen's own query. A screen whose query is
+  `enabled: !!activeVenueId` reports that query's own `isLoading: false` while disabled (TanStack
+  Query v5: `isPending && isFetching`, and a disabled query isn't fetching), so during the window
+  before `activeVenueId` resolves, Today/Approvals/Ledger/Growth (both platforms, 8 screens total)
+  could render their empty state instead of a loading state. Fixed by combining
+  `venuesLoading || query.isLoading` at each call site -- not a new abstraction, since the fix is
+  the same one-line pattern everywhere and the hook's own doc comment now says so explicitly for
+  future screens. Also gave web's `Approvals` an `enabled: !!activeVenueId` guard it never had
+  (confirmed via the audit: it fired once unscoped across every venue the owner has, then again
+  once scoped -- a related bug found while fixing this one, not a separate audit item).
+- **Digest job fix is backend-only** -- see the backend CLAUDE.md's Section 29 Part B.
+- **A real per-venue (per-court) cancellation policy**, not just a "add a cancel button" fix --
+  see the backend CLAUDE.md's Section 29 Part C for the full design (this was a project-owner
+  decision, not something decided unilaterally: cancellation policy needed to be configurable per
+  court, disclosed to the player before they pay, and honest about refunds being manual). Frontend
+  half:
+  - `packages/types/src/court.ts`'s `Court`/`CreateCourtInput` gained
+    `cancellation_allowed`/`cancellation_cutoff_hours`; `packages/api-client/src/courts.ts` gained
+    `cancellationPolicyText()`, a shared plain-language renderer used identically by the pay screen
+    and My Bookings so the wording never drifts between the two.
+  - **Venue setup wizard** (`venue-setup/courts.tsx` mobile, `venue-setup/courts/page.tsx` web)
+    gained a "Cancellations" section, following the same pattern as hours/pricing already in that
+    wizard: one shared setting applied to every court created in that run (not configured
+    per-court in the wizard, even though the backend stores it per-court) -- "Allowed"/"Not
+    allowed" chips plus an optional cutoff-hours field, defaulting to unrestricted (matches the
+    model's own default, so a wizard run that never touches this section behaves exactly like
+    before this feature existed). Live-verified via Playwright + direct API calls (real signup,
+    real venue, real court): toggling "Not allowed" produces a `POST /venues/{id}/courts` body
+    with `cancellation_allowed: false`, and the resulting DB row genuinely has it set (confirmed by
+    querying the dev DB directly, not just trusting the network request -- caught and fixed a stale
+    `uvicorn --reload`-less dev server along the way, which silently ignored the new fields on the
+    first verification pass).
+  - **Pay screen** (`booking/[id]/pay.tsx` mobile, `booking/[id]/pay/page.tsx` web): fetches the
+    booking's court and renders `cancellationPolicyText()` as a real pre-purchase disclosure,
+    before the player submits payment -- not just discoverable later at cancel time.
+  - **My Bookings** (`(tabs)/bookings.tsx` mobile, `bookings/page.tsx` web): a `booked` booking now
+    shows a real Cancel action when the court's policy allows it *and* (if a cutoff is set) enough
+    time remains before start -- computed client-side from the same court data already fetched for
+    that card (a cutoff only ever gets more restrictive as start approaches, so this can't go stale
+    the way a one-shot fetch elsewhere might; the server re-checks it regardless, this is a UX
+    convenience not the source of truth). When cancellation isn't currently possible, the card shows
+    *why* (the policy text, or "The cancellation window for this booking has closed") instead of
+    just omitting the button with no explanation. The confirm dialog and the post-cancel message
+    are both explicit that a refund is manual, not automatic ("A refund request has been sent to the
+    venue -- refunds are handled manually and aren't automatic"), so the UI never implies money
+    comes back instantly when it doesn't.
+  - `packages/types/src/errors.ts` gained `CANCELLATION_NOT_ALLOWED`/`CANCELLATION_WINDOW_CLOSED`;
+    both apps' `lib/error-messages.ts` map them to specific text.
+- **Terms of Service / Privacy Policy** -- real content (not a generic template: describes what
+  this specific app actually collects and does -- phone/email/bank-detail collection, WhatsApp-
+  based OTP and notifications, an AI provider reading chat messages and payment screenshots,
+  S3-hosted payment-proof storage, no self-service account deletion yet), hosted as real Next.js
+  pages at `/terms` and `/privacy` (server-rendered, confirmed via raw `curl` -- no JS needed to
+  see the content, matching the SEO bar the rest of the public site holds itself to). Both signup
+  screens' previously-inert "Terms and Privacy Policy" text is now real tappable links
+  (`target="_blank"` on web; `Linking.openURL` on mobile). **Mobile links out to the web pages
+  rather than duplicating the legal text natively** -- one canonical source, no drift risk between
+  two copies of a legal document; needed a new `WEB_BASE_URL` constant (`lib/config.ts`, mirrors
+  `API_BASE_URL`'s resolution order) and `app.json`'s `extra.webBaseUrl`. Web-side link-through
+  live-verified with Playwright (click "Terms" on the real signup page, confirm it opens `/terms`
+  with the right heading); the mobile tap handler is code-reviewed and typechecks but **not
+  verified on a real device/emulator** -- none was available in this session, same limitation as
+  other mobile-only gotchas below.
+- **Flagged, not decided silently**: the cancellation cutoff design above was a real back-and-forth
+  with the project owner (not a global rule, not simply "any time before start") -- see the backend
+  CLAUDE.md's Section 29 Part C for the shape that was actually agreed. The Terms/Privacy *content*
+  was written from this codebase's own actual data-handling (not a generic template) but has not
+  been reviewed by anyone with legal authority to sign off on it -- do that before treating it as
+  final for a real launch.
+
+## Section 29, Tier 2 -- venue photos, post-setup editing, walk-in date, web waitlist (2026-09-20)
+
+Four more fixes from the same audit, all live-verified against the real local backend + a
+production build of the web app (not just typechecked), same session as Tier 1 above.
+
+- **Venue photos now actually render** (`photo_urls` was fetched everywhere already, just never
+  displayed). Mobile: `VenueCard` (`(player)/_components.tsx`, exported `gradientFor` so the venue
+  detail screen's new hero section reuses the same per-venue color instead of a second hash
+  function) and a new photo-strip hero on `venue/[slug].tsx` (paginated horizontal scroll if
+  photos exist, falls back to the gradient it never had before if none do). Web: `search/page.tsx`'s
+  card and the venue detail page's 3-photo mosaic (`venues/[slug]/page.tsx`, new `PhotoTile` helper)
+  now render the real `photo_urls[0..2]` with the existing gradients as a genuine per-slot fallback,
+  not the default.
+- **Post-setup schedule/pricing/blackout editing** -- the wizard's own copy has always promised
+  "you can change this later"; now it's true. New screen, both platforms (`(owner)/venue-settings.tsx`
+  mobile, `/dashboard/owner/settings` web, linked from Today's icon row / the sidebar nav) that
+  fetches a court via the already-existing `api.courts.get`/`api.courts.update` (confirmed these
+  were already in the api-client, unused until now), lets an owner edit hours and pricing (same
+  UI shape as the wizard's step 2, reusing `venue-setup/_components.tsx` / `components/setup/ui.tsx`,
+  pre-filled from the live `schedule_templates`/`pricing_rules` rather than wizard-draft state) and
+  add blackout dates (`GET`/`POST /courts/{id}/blackouts`, additive, no new backend work needed --
+  every endpoint this screen calls already existed). One bug caught and fixed while live-verifying
+  this on web: the save-confirmation message flashed and immediately vanished, because
+  `handleSave`'s own `invalidateQueries()` triggers a refetch that re-runs the "seed local state
+  from the server" effect a moment later, and that effect unconditionally cleared the confirmation
+  along with reseeding the form -- fixed by only clearing it on an explicit court switch, not on
+  every data refresh.
+- **Walk-in booking date picker** -- `walkin.tsx` (mobile) / `walkin/page.tsx` (web) were hardcoded
+  to `toDateInputValue(new Date())`; both now have a 7-day picker (Today/Tomorrow/weekday+date
+  chips, matching the venue detail screen's own day-tab pattern) and re-query availability for
+  the selected date. Live-verified: picking "Tomorrow" changes the actual `?date=` query param and
+  a walk-in booked there lands on tomorrow's availability, not today's.
+- **Waitlist on web** -- mobile has had "Notify me" on a taken slot for a while; web had zero
+  implementation (no join affordance, no "my waitlist" view, `api.waitlist` never called from web
+  at all). Added to `venue-schedule-client.tsx` (a `booked` cell becomes a real "Notify me" /
+  "On waitlist" button, same `409`-on-double-join handling and the same "we'll let you know" copy
+  as mobile -- deliberately not "reserved," matching the earlier notify-all-reserve-nothing
+  redesign) and to `/account` (a player-only "My waitlist" section, mirroring mobile's profile-tab
+  placement, with a working Leave action). Live-verified end to end with a real walk-in booking
+  (fastest way to get a slot to `booked` without wiring up payment-proof upload in the test), a
+  real player joining via the actual UI, the alert copy, the server-side entry, `/account` showing
+  it, and Leave clearing both the UI and the server row.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

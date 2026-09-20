@@ -224,7 +224,15 @@ function SignupForm() {
         </SubmitButton>
 
         <p className="text-[12.5px] font-medium leading-relaxed text-center" style={{ color: t.faint }}>
-          By continuing you agree to our Terms and Privacy Policy.
+          By continuing you agree to our{" "}
+          <Link href="/terms" target="_blank" className="underline font-semibold" style={{ color: t.accent }}>
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" target="_blank" className="underline font-semibold" style={{ color: t.accent }}>
+            Privacy Policy
+          </Link>
+          .
         </p>
       </form>
     </AuthShell>

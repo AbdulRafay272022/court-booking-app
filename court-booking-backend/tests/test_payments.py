@@ -706,6 +706,142 @@ async def test_player_cancel_of_paid_booking_creates_refund_record(
         assert any(str(entry.booking_id) == booking["id"] for entry in queue)
 
 
+async def _book_and_pay(client, court, owner_headers, customer_headers, days_ahead: int = 1) -> dict:
+    """Shared setup for the cancellation-policy tests below: hold, submit proof, owner
+    approves -- returns the now-`booked` booking dict."""
+    booking = await _hold_booking(client, court, customer_headers, days_ahead=days_ahead)
+    submit = await client.post(
+        f"/api/v1/bookings/{booking['id']}/payment-proof",
+        headers=customer_headers,
+        files={"image": ("proof.jpg", io.BytesIO(_sample_png_bytes()), "image/jpeg")},
+    )
+    payment_id = submit.json()["payment"]["id"]
+    approve = await client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers)
+    assert approve.json()["booking"]["status"] == "booked"
+    return booking
+
+
+async def test_cancel_blocked_when_venue_disallows_cancellation(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    """Section 29 Part C: a court can opt out of player cancellation for a paid booking
+    entirely, not just gate it behind a time window."""
+    _mock_upload(monkeypatch)
+    owner = await make_user("+923005000040", role=UserRole.OWNER)
+    customer = await make_user("+923005000041", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, cancellation_allowed=False)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=2000)
+    owner_headers = await make_auth_headers(owner)
+    customer_headers = await make_auth_headers(customer)
+
+    booking = await _book_and_pay(client, court, owner_headers, customer_headers)
+
+    cancel = await client.post(
+        f"/api/v1/bookings/{booking['id']}/cancel", headers=customer_headers, json={"reason": "changed plans"}
+    )
+    assert cancel.status_code == 400
+    assert cancel.json()["error"]["code"] == "CANCELLATION_NOT_ALLOWED"
+
+    get = await client.get(f"/api/v1/bookings/{booking['id']}", headers=customer_headers)
+    assert get.json()["status"] == "booked"
+
+
+async def test_cancel_blocked_within_cutoff_window(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    """A booking held for tomorrow 10:00 UTC is at most ~34h out (worst case: booked at
+    00:01 today) -- a 48h cutoff always falls inside that window regardless of what time
+    of day this test runs, so this is deterministic without freezing the clock."""
+    _mock_upload(monkeypatch)
+    owner = await make_user("+923005000042", role=UserRole.OWNER)
+    customer = await make_user("+923005000043", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, cancellation_allowed=True, cancellation_cutoff_hours=48)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=2000)
+    owner_headers = await make_auth_headers(owner)
+    customer_headers = await make_auth_headers(customer)
+
+    booking = await _book_and_pay(client, court, owner_headers, customer_headers, days_ahead=1)
+
+    cancel = await client.post(
+        f"/api/v1/bookings/{booking['id']}/cancel", headers=customer_headers, json={"reason": "changed plans"}
+    )
+    assert cancel.status_code == 400
+    assert cancel.json()["error"]["code"] == "CANCELLATION_WINDOW_CLOSED"
+    assert cancel.json()["error"]["details"]["cutoff_hours"] == 48
+
+    get = await client.get(f"/api/v1/bookings/{booking['id']}", headers=customer_headers)
+    assert get.json()["status"] == "booked"
+
+
+async def test_cancel_succeeds_outside_cutoff_window_and_creates_refund_record(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, db_session_factory, monkeypatch
+):
+    """A booking held for tomorrow 10:00 UTC is at least ~10h out (worst case: booked at
+    23:59 today) -- a 2h cutoff always falls outside that window, so this is deterministic
+    without freezing the clock. Confirms a configured (non-null) cutoff doesn't itself
+    block a cancel that's genuinely outside it, and that the existing refund-record path
+    (Section 23 finding #13) still fires."""
+    from sqlalchemy import select
+
+    from app.models.dispute import PaymentDispute
+
+    _mock_upload(monkeypatch)
+    owner = await make_user("+923005000044", role=UserRole.OWNER)
+    customer = await make_user("+923005000045", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, cancellation_allowed=True, cancellation_cutoff_hours=2)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=2000)
+    owner_headers = await make_auth_headers(owner)
+    customer_headers = await make_auth_headers(customer)
+
+    booking = await _book_and_pay(client, court, owner_headers, customer_headers, days_ahead=1)
+
+    cancel = await client.post(
+        f"/api/v1/bookings/{booking['id']}/cancel", headers=customer_headers, json={"reason": "changed plans"}
+    )
+    assert cancel.status_code == 200
+    assert cancel.json()["booking"]["status"] == "cancelled"
+
+    async with db_session_factory() as session:
+        result = await session.execute(select(PaymentDispute).where(PaymentDispute.booking_id == booking["id"]))
+        disputes = result.scalars().all()
+        assert len(disputes) == 1
+        assert disputes[0].reason == "player_cancelled_paid_booking"
+
+
+async def test_existing_courts_default_to_unrestricted_cancellation(db_session_factory, make_user, make_venue):
+    """Directly exercises the migration's SERVER default (not the ORM's Python-side
+    default) by inserting a raw courts row through Core with cancellation_allowed and
+    cancellation_cutoff_hours both omitted -- this is what happened to every already-
+    existing court when `19cf7e553535_add_court_cancellation_policy_fields` ran against
+    production: the ADD COLUMN's server_default backfills every pre-existing row, not
+    just new ones the ORM inserts. Confirms that backfill preserves today's de facto
+    unrestricted behavior rather than silently locking out cancellation everywhere."""
+    import uuid
+
+    from sqlalchemy import insert
+
+    from app.models.court import Court
+
+    owner = await make_user("+923005000046", role=UserRole.OWNER)
+    venue = await make_venue(owner)
+
+    async with db_session_factory() as session:
+        court_id = uuid.uuid4()
+        await session.execute(
+            insert(Court.__table__).values(id=court_id, venue_id=venue.id, name="Legacy Court", sport="padel")
+        )
+        await session.commit()
+        court = await session.get(Court, court_id)
+        assert court.cancellation_allowed is True
+        assert court.cancellation_cutoff_hours is None
+
+
 async def test_undecodable_file_with_spoofed_content_type_rejected(
     client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
 ):

@@ -27,6 +27,14 @@ class Court(UUIDPkMixin, TimestampMixin, Base):
         Boolean, default=False, server_default=text("false"), nullable=False
     )
     capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Section 29 Part C: a player-cancellable PAID (booked) slot is a per-court policy, not a
+    # single global rule -- some venues (or specific courts) don't allow it at all, others allow
+    # it up to N hours before start. Defaults preserve today's de facto behavior (unrestricted)
+    # for every existing court until an owner actively opts into a stricter policy.
+    cancellation_allowed: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    cancellation_cutoff_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     is_active: Mapped[bool] = mapped_column(

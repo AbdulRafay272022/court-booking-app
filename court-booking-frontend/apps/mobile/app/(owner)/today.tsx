@@ -11,7 +11,7 @@ import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { openSupportWhatsApp } from "@/lib/support";
 import { confirmLogout } from "@/lib/logout";
-import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon } from "@/components/icons";
+import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
@@ -25,7 +25,7 @@ const STATUS_STYLE: Record<string, { border: string; bg: string }> = {
 };
 
 export default function OwnerTodayScreen() {
-  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher } = useOwnerVenues();
+  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
 
   const todayQuery = useQuery({
@@ -125,7 +125,7 @@ export default function OwnerTodayScreen() {
         </View>
       ) : null}
 
-      {todayQuery.isLoading ? (
+      {venuesLoading || todayQuery.isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#0E6274" />
         </View>
@@ -219,6 +219,9 @@ export default function OwnerTodayScreen() {
         </IconButton>
         <IconButton onPress={() => router.push("/(owner)/growth")}>
           <TrendingUpIcon size={18} color="#5B7079" />
+        </IconButton>
+        <IconButton onPress={() => router.push("/(owner)/venue-settings")}>
+          <SettingsIcon />
         </IconButton>
       </View>
     </SafeAreaView>

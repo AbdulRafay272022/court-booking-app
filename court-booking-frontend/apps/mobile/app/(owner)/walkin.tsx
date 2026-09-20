@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -29,10 +29,17 @@ export default function WalkInScreen() {
     if (!courtId && courts.length > 0) setCourtId(courts[0].id);
   }, [courts, courtId]);
 
-  const today = toDateInputValue(new Date());
+  // Section 29 Tier 2 Part 3: a walk-in used to always book against today only -- an owner
+  // taking a phone booking for tomorrow (a completely normal case) had no way to do it here.
+  const next7Days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; }),
+    [],
+  );
+  const [dateIdx, setDateIdx] = useState(0);
+  const date = toDateInputValue(next7Days[dateIdx]);
   const availabilityQuery = useQuery({
-    queryKey: ["court-availability", courtId, today],
-    queryFn: () => api.availability.forCourtOnDate(courtId!, today),
+    queryKey: ["court-availability", courtId, date],
+    queryFn: () => api.availability.forCourtOnDate(courtId!, date),
     enabled: !!courtId,
   });
 
@@ -105,7 +112,28 @@ export default function WalkInScreen() {
         </View>
 
         <View className="gap-2">
-          <FieldLabel>Time · today</FieldLabel>
+          <FieldLabel>Date</FieldLabel>
+          <View className="flex-row flex-wrap gap-2">
+            {next7Days.map((d, i) => (
+              <Pressable
+                key={i}
+                onPress={() => {
+                  setDateIdx(i);
+                  setStartsAt(undefined);
+                }}
+                className="px-3.5 rounded-[10px] items-center justify-center"
+                style={{ minHeight: 46, backgroundColor: dateIdx === i ? "#0E6274" : "#FFFFFF", borderWidth: dateIdx === i ? 0 : 1, borderColor: "#DCE3E6" }}
+              >
+                <Text className="font-plex-semibold text-[13px]" style={{ color: dateIdx === i ? "#FFFFFF" : "#101C21" }}>
+                  {i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View className="gap-2">
+          <FieldLabel>Time</FieldLabel>
           {availabilityQuery.isLoading ? (
             <ActivityIndicator color="#0E6274" />
           ) : (

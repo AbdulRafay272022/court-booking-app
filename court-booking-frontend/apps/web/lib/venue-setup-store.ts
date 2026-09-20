@@ -63,15 +63,30 @@ interface VenueSetupState {
   defaultCloseTime: string;
   perDayOverrides: Partial<Record<number, DayOverride>>;
   pricingRules: PricingRuleDraft[];
+  // Section 29 Part C: applied to every court created in this wizard run (same pattern as
+  // hours/pricing above -- one shared setting, not configured per court in the wizard, though
+  // the backend stores it per-court so a future settings screen can diverge them later).
+  cancellationAllowed: boolean;
+  /** Empty string = no cutoff (cancellable any time before start). */
+  cancellationCutoffHours: string;
   /** Set once POST /venues succeeds, so a retry after a partial submit failure
    * (e.g. court creation failing) doesn't create a second duplicate venue. */
   createdVenueId: string | null;
+  /** Court-array index -> already-created court id (the same idempotency pattern as
+   * createdVenueId above, one level down). `POST /courts` always inserts a new row, so
+   * without this, a retry after ANY later step fails (or the client just never sees a
+   * response the server already committed -- a real, observed failure mode, not just a
+   * hypothetical) re-creates every court from scratch, duplicating the ones that already
+   * succeeded. setSchedule/setPricing are safe to re-run unconditionally (the backend
+   * replaces, not appends), so only court creation itself needs this guard. */
+  createdCourtIds: Record<number, string>;
 
   setField: <K extends keyof VenueSetupState>(key: K, value: VenueSetupState[K]) => void;
   toggleSport: (sport: string) => void;
   addCourt: () => void;
   updateCourt: (index: number, patch: Partial<CourtDraft>) => void;
   removeCourt: (index: number) => void;
+  setCreatedCourtId: (index: number, courtId: string) => void;
   setDayOverride: (day: number, override: DayOverride) => void;
   addPricingRule: () => void;
   updatePricingRule: (id: string, patch: Partial<PricingRuleDraft>) => void;
@@ -98,7 +113,10 @@ const initialState = {
   defaultCloseTime: "23:00",
   perDayOverrides: {} as Partial<Record<number, DayOverride>>,
   pricingRules: [makeRule("All day")],
+  cancellationAllowed: true,
+  cancellationCutoffHours: "",
   createdVenueId: null as string | null,
+  createdCourtIds: {} as Record<number, string>,
 };
 
 export const useVenueSetupStore = create<VenueSetupState>()(
@@ -117,17 +135,25 @@ export const useVenueSetupStore = create<VenueSetupState>()(
         });
       },
 
-      addCourt: () => set({ courts: [...get().courts, makeCourt(get().courts.length + 1)] }),
+      // Editing the court list after a failed/partial submit attempt invalidates the
+      // index -> created-court-id correlation below, so each of these clears it -- safer
+      // to redo a cheap idempotent step than to risk a stale index pointing at the wrong
+      // court after a reorder/removal.
+      addCourt: () => set({ courts: [...get().courts, makeCourt(get().courts.length + 1)], createdCourtIds: {} }),
 
       updateCourt: (index, patch) => {
         const courts = [...get().courts];
         courts[index] = { ...courts[index], ...patch };
-        set({ courts });
+        set({ courts, createdCourtIds: {} });
       },
 
       removeCourt: (index) => {
         const courts = get().courts.filter((_, i) => i !== index);
-        set({ courts: courts.length > 0 ? courts : [makeCourt(1)] });
+        set({ courts: courts.length > 0 ? courts : [makeCourt(1)], createdCourtIds: {} });
+      },
+
+      setCreatedCourtId: (index, courtId) => {
+        set({ createdCourtIds: { ...get().createdCourtIds, [index]: courtId } });
       },
 
       setDayOverride: (day, override) => {

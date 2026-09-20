@@ -84,15 +84,31 @@ export default function VenueCourtsScreen() {
 
       const schedules = buildSchedules();
       const pricingRules = buildPricingRules();
+      const cutoffHours = store.cancellationCutoffHours.trim()
+        ? Number(store.cancellationCutoffHours)
+        : null;
 
-      for (const court of store.courts) {
-        const { court: created } = await api.courts.create(venueId, {
-          name: court.name,
-          sport: court.sport,
-          slot_minutes: court.slotMinutes,
-        });
-        await api.courts.setSchedule(created.id, schedules);
-        await api.courts.setPricing(created.id, pricingRules);
+      // Resumable: courtId is reused from a prior attempt when we have one (POST /courts
+      // always inserts, so re-running it for an already-created court would duplicate the
+      // row) -- setSchedule/setPricing are safe to re-run unconditionally either way (the
+      // backend replaces, not appends), so a retry that's already fully done just redoes
+      // those two harmlessly and reaches the end.
+      for (let i = 0; i < store.courts.length; i++) {
+        const court = store.courts[i];
+        let courtId = store.createdCourtIds[i];
+        if (!courtId) {
+          const { court: created } = await api.courts.create(venueId, {
+            name: court.name,
+            sport: court.sport,
+            slot_minutes: court.slotMinutes,
+            cancellation_allowed: store.cancellationAllowed,
+            cancellation_cutoff_hours: store.cancellationAllowed ? cutoffHours : null,
+          });
+          courtId = created.id;
+          store.setCreatedCourtId(i, courtId);
+        }
+        await api.courts.setSchedule(courtId, schedules);
+        await api.courts.setPricing(courtId, pricingRules);
       }
 
       const finishedVenueId = venueId;
@@ -282,6 +298,35 @@ export default function VenueCourtsScreen() {
           >
             <Text className="font-plex-semibold text-owner-accent text-[13px]">+ Add a peak-hours rule</Text>
           </Pressable>
+        </SectionCard>
+
+        <SectionCard>
+          <SectionLabel>Cancellations</SectionLabel>
+          <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
+            Can a player cancel a booking after they've already paid?
+          </Text>
+          <View className="flex-row gap-2">
+            <Chip
+              label="Allowed"
+              selected={store.cancellationAllowed}
+              onPress={() => store.setField("cancellationAllowed", true)}
+            />
+            <Chip
+              label="Not allowed"
+              selected={!store.cancellationAllowed}
+              onPress={() => store.setField("cancellationAllowed", false)}
+            />
+          </View>
+          {store.cancellationAllowed ? (
+            <TextField
+              label="Require cancelling at least this many hours before (optional)"
+              value={store.cancellationCutoffHours}
+              onChangeText={(v) => store.setField("cancellationCutoffHours", v.replace(/\D/g, ""))}
+              keyboardType="number-pad"
+              placeholder="Leave blank for no limit"
+              mono
+            />
+          ) : null}
         </SectionCard>
 
         <Text className="font-plex-medium text-owner-ink-faint text-[13px]">

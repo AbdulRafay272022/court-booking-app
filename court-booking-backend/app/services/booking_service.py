@@ -259,6 +259,8 @@ class BookingService:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_BOOKING_STATE, "Booking cannot be cancelled"
             )
+        if cancelled_by == CancelledBy.PLAYER and booking.status == BookingStatus.BOOKED:
+            await self._enforce_cancellation_policy(booking)
         old_status = booking.status
         ok = await self._atomic_transition(
             booking,
@@ -296,6 +298,35 @@ class BookingService:
         await self.db.commit()
         await self.db.refresh(booking)
         return booking
+
+    async def _enforce_cancellation_policy(self, booking: Booking) -> None:
+        """A player cancelling an already-PAID (booked) booking is gated by the court's own
+        policy (Section 29 Part C -- a business decision, not a global rule): some
+        courts/venues don't allow it at all, others allow it up to a configured number of
+        hours before start. A plain pre-check, not the atomic-transition pattern -- this is a
+        business-rule gate, not a concurrency-integrity concern (nothing bad happens if the
+        policy changes between this check and the commit; the worst case is a cancel that was
+        allowed a moment ago and no longer is, which is an acceptable, narrow race for a
+        setting an owner rarely touches)."""
+        court = await self.db.get(Court, booking.court_id)
+        if court is None:
+            return
+        if not court.cancellation_allowed:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.CANCELLATION_NOT_ALLOWED,
+                "This venue doesn't allow cancelling a booking once it's paid for.",
+            )
+        if court.cancellation_cutoff_hours is not None:
+            cutoff_at = booking.starts_at - timedelta(hours=court.cancellation_cutoff_hours)
+            if datetime.now(timezone.utc) >= cutoff_at:
+                raise AppError(
+                    status.HTTP_400_BAD_REQUEST,
+                    ErrorCode.CANCELLATION_WINDOW_CLOSED,
+                    f"The cancellation window for this booking closed {cutoff_at.isoformat()} "
+                    f"({court.cancellation_cutoff_hours}h before the booking).",
+                    details={"cutoff_at": cutoff_at.isoformat(), "cutoff_hours": court.cancellation_cutoff_hours},
+                )
 
     async def _flag_refund_for_voluntary_cancel(self, booking: Booking) -> None:
         """Same underlying gap as _flag_unclaimed_payments (finding #5),

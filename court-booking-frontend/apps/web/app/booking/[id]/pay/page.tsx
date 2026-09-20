@@ -10,6 +10,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { supportWhatsAppUrl } from "@/lib/support";
+import { cancellationPolicyText } from "@court-booking/api-client";
 
 function useCountdown(target: string | null | undefined) {
   const [now, setNow] = useState(Date.now());
@@ -47,6 +48,15 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
   const booking = bookingQuery.data;
   const secondsLeft = useCountdown(booking?.status === "held" ? booking.held_until : null);
   const expired = booking?.status === "held" && secondsLeft === 0;
+
+  // Section 29 Part C: a real pre-purchase disclosure -- the player should know the venue's
+  // cancellation policy before paying, not discover it later if they try to cancel and can't.
+  const courtQuery = useQuery({
+    queryKey: ["court", booking?.court_id],
+    queryFn: () => api.courts.get(booking!.court_id),
+    enabled: !!booking?.court_id,
+  });
+  const policyText = cancellationPolicyText(courtQuery.data);
 
   useEffect(() => {
     if (booking?.status === "cancelled" && booking.cancelled_by === "owner" && !rejectionReason) {
@@ -219,6 +229,8 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
                 />
               </div>
             )}
+
+            {policyText ? <p className="text-center text-player-ink-faint text-[12.5px] leading-[1.4] px-2">{policyText}</p> : null}
           </>
         )}
       </div>

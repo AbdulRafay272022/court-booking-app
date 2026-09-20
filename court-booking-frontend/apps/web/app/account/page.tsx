@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CITY_OPTIONS, GENDER_OPTIONS, validateProfile, type City, type Gender } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { formatShortDate, formatTime } from "@/lib/format";
 import { ChoicePills, FormMessage, SelectField, TextField } from "@/components/auth/fields";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { TONES } from "@/components/auth/tone";
@@ -18,6 +20,25 @@ export default function AccountPage() {
   const user = useAuthStore((s) => s.user)!;
   const tone = user.role === "owner" || user.role === "admin" ? "owner" : "player";
   const t = TONES[tone];
+  const queryClient = useQueryClient();
+
+  // Section 29 Tier 2 Part 4: mobile's player profile tab has had a "My Waitlist" section for a
+  // while -- web had no waitlist UI anywhere. Player-only (owners don't join waitlists).
+  const waitlistQuery = useQuery({
+    queryKey: ["waitlist-mine"],
+    queryFn: () => api.waitlist.mine(),
+    enabled: user.role === "player",
+  });
+  const activeEntries = (waitlistQuery.data ?? []).filter((e) => e.is_active);
+
+  async function leaveWaitlist(entryId: string) {
+    try {
+      await api.waitlist.leave(entryId);
+      await queryClient.invalidateQueries({ queryKey: ["waitlist-mine"] });
+    } catch (e) {
+      alert(`Couldn't leave the waitlist: ${friendlyErrorMessage(e)}`);
+    }
+  }
 
   const [f, setF] = useState({ name: user.name ?? "", email: user.email ?? "", city: user.city ?? "", gender: user.gender ?? "" });
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -73,6 +94,27 @@ export default function AccountPage() {
           {user.role === "owner" ? "Venue owner" : user.role === "admin" ? "Admin" : "Player"}
         </p>
       </div>
+
+      {user.role === "player" && activeEntries.length > 0 ? (
+        <section className="flex flex-col gap-3" aria-label="My Waitlist">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.11em]" style={{ color: t.faint }}>
+            My waitlist
+          </h2>
+          {activeEntries.map((entry) => (
+            <div key={entry.id} className={row} style={{ background: t.surface, border: `1px solid ${t.border}` }}>
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-[14.5px] font-semibold">{entry.venue_name} · {entry.court_name}</span>
+                <span className="text-[12px] font-medium" style={{ color: t.muted }}>
+                  {formatShortDate(entry.slot_starts_at)} · {formatTime(entry.slot_starts_at)} · #{entry.position} in line
+                </span>
+              </div>
+              <button onClick={() => leaveWaitlist(entry.id)} className="shrink-0 text-[13px] font-bold text-player-danger">
+                Leave
+              </button>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <form onSubmit={handleSave} noValidate className="flex flex-col gap-5 rounded-3xl p-6" style={{ background: t.surface, border: `1px solid ${t.border}` }}>
         <h2 className="text-[11px] font-bold uppercase tracking-[0.11em]" style={{ color: t.faint }}>

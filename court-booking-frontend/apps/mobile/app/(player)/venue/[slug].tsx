@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import { formatDistance, formatPKR, formatTime, toDateInputValue } from "@/lib/f
 import { pollInterval } from "@/lib/polling";
 import { ChevronLeftIcon, StarIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
-import { DayTab, EmptyState } from "../_components";
+import { DayTab, EmptyState, gradientFor } from "../_components";
 
 function nextDays(count: number): Date[] {
   const today = new Date();
@@ -130,8 +130,23 @@ export default function VenueDetailScreen() {
     );
   }
 
+  const photos = venue.photo_urls ?? [];
+
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
+      {photos.length > 0 ? (
+        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={{ height: 180 }}>
+          {photos.map((url, i) => (
+            <Image key={i} source={{ uri: url }} style={{ width: 393, height: 180 }} resizeMode="cover" />
+          ))}
+        </ScrollView>
+      ) : (
+        <View className="h-[100px] items-start justify-end p-4" style={{ backgroundColor: gradientFor(venue.id) }}>
+          <Text className="font-figtree-bold text-white text-[13px]" style={{ opacity: 0.85 }}>
+            {venue.sports.join(" · ")}
+          </Text>
+        </View>
+      )}
       <View className="px-5 pt-5 pb-3.5 bg-player-surface border-b border-player-border-light gap-3">
         <View className="flex-row items-center gap-3">
           <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">

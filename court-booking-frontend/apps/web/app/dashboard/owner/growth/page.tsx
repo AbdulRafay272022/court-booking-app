@@ -15,7 +15,7 @@ function formatHourRange(hour: number): string {
 }
 
 export default function OwnerGrowthPage() {
-  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher } = useOwnerVenues();
+  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
 
   const query = useQuery({
     queryKey: ["owner-growth", activeVenueId],
@@ -49,7 +49,7 @@ export default function OwnerGrowthPage() {
         </div>
       ) : null}
 
-      {query.isLoading ? (
+      {venuesLoading || query.isLoading ? (
         <p className="text-owner-ink-faint">Loading…</p>
       ) : ineligible ? (
         <div className="bg-owner-surface border border-owner-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">

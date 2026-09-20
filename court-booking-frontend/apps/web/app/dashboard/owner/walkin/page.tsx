@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
@@ -25,10 +25,17 @@ export default function OwnerWalkinPage() {
     if (!courtId && courts.length > 0) setCourtId(courts[0].id);
   }, [courts, courtId]);
 
-  const today = toDateInputValue(new Date());
+  // Section 29 Tier 2 Part 3: a walk-in used to always book against today only -- an owner
+  // taking a phone booking for tomorrow (a completely normal case) had no way to do it here.
+  const next7Days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; }),
+    [],
+  );
+  const [dateIdx, setDateIdx] = useState(0);
+  const date = toDateInputValue(next7Days[dateIdx]);
   const availabilityQuery = useQuery({
-    queryKey: ["court-availability", courtId, today],
-    queryFn: () => api.availability.forCourtOnDate(courtId!, today),
+    queryKey: ["court-availability", courtId, date],
+    queryFn: () => api.availability.forCourtOnDate(courtId!, date),
     enabled: !!courtId,
   });
 
@@ -93,7 +100,23 @@ export default function OwnerWalkinPage() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">TIME · TODAY</span>
+        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">DATE</span>
+        <div className="flex gap-2 flex-wrap">
+          {next7Days.map((d, i) => (
+            <button
+              key={i}
+              onClick={() => { setDateIdx(i); setStartsAt(undefined); }}
+              className="px-3.5 py-2.5 rounded-lg text-[13px] font-semibold"
+              style={{ background: dateIdx === i ? "#0E6274" : "#FFFFFF", color: dateIdx === i ? "#fff" : "#101C21", border: dateIdx === i ? "none" : "1px solid #DCE3E6" }}
+            >
+              {i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">TIME</span>
         <div className="flex gap-2 flex-wrap">
           {slots.map((slot) => {
             const taken = slot.status !== "available";

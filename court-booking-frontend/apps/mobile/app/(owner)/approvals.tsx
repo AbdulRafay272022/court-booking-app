@@ -16,7 +16,7 @@ import { EmptyState } from "./_dashboard-components";
 const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks like a duplicate", "Other"];
 
 export default function ApprovalsScreen() {
-  const { activeVenueId } = useOwnerVenues();
+  const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -26,6 +26,11 @@ export default function ApprovalsScreen() {
   const query = useQuery({
     queryKey: ["owner-pending-approvals", activeVenueId],
     queryFn: () => api.owners.pendingApprovals(activeVenueId),
+    // Was unconditional before -- fired once with activeVenueId still undefined (an unscoped
+    // fetch across every venue the owner has) and again once it resolved. Gating on it, like
+    // every other owner screen, avoids that flash and keeps this query's own isLoading
+    // meaningful once combined with venuesLoading below (Section 29 Part A).
+    enabled: !!activeVenueId,
     refetchInterval: (query) => pollInterval(query, 15_000),
   });
 
@@ -90,7 +95,7 @@ export default function ApprovalsScreen() {
         </View>
       </View>
 
-      {query.isLoading ? (
+      {venuesLoading || query.isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#0E6274" />
         </View>

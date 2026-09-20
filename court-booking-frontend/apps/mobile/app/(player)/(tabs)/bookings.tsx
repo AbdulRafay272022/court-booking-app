@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTimeRange } from "@/lib/format";
 import type { Booking, BookingStatus } from "@court-booking/types";
+import { cancellationPolicyText } from "@court-booking/api-client";
 import { EmptyState } from "../_components";
 
 const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger" }> = {
@@ -30,28 +31,54 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
   const [cancelling, setCancelling] = useState(false);
   const meta = STATUS_META[booking.status];
   const isDark = booking.status === "booked" || booking.status === "completed";
-  const canCancel = booking.status === "held" || booking.status === "payment_submitted";
   const canResumePay = booking.status === "held" || booking.status === "payment_submitted";
 
+  // Section 29 Part C: a paid (booked) booking is only cancellable if this specific court's
+  // policy allows it -- and, if it has a cutoff, only while enough time remains before start.
+  // Computed client-side from the same court data already fetched for this card (a cutoff only
+  // ever gets MORE restrictive as start approaches, never less, so this can't go stale the way
+  // a one-shot fetch elsewhere might). The server re-checks this at cancel time regardless --
+  // this is a UX convenience, not the source of truth.
+  const court = courtQuery.data;
+  const withinCutoff =
+    court?.cancellation_cutoff_hours != null &&
+    new Date(booking.starts_at).getTime() - Date.now() < court.cancellation_cutoff_hours * 3_600_000;
+  const canCancelBooked = booking.status === "booked" && !!court?.cancellation_allowed && !withinCutoff;
+  const canCancel = booking.status === "held" || booking.status === "payment_submitted" || canCancelBooked;
+  const bookedNotCancellable = booking.status === "booked" && !canCancelBooked && !!court;
+
   async function handleCancel() {
-    Alert.alert("Cancel this booking?", "This can't be undone.", [
-      { text: "Keep it", style: "cancel" },
-      {
-        text: "Cancel booking",
-        style: "destructive",
-        onPress: async () => {
-          setCancelling(true);
-          try {
-            await api.bookings.cancel(booking.id);
-            onChanged();
-          } catch (e) {
-            Alert.alert("Couldn't cancel", friendlyErrorMessage(e));
-          } finally {
-            setCancelling(false);
-          }
+    const isPaid = booking.status === "booked";
+    Alert.alert(
+      "Cancel this booking?",
+      isPaid
+        ? "A refund request will be sent to the venue. Refunds are handled manually by the venue, not automatically."
+        : "This can't be undone.",
+      [
+        { text: "Keep it", style: "cancel" },
+        {
+          text: "Cancel booking",
+          style: "destructive",
+          onPress: async () => {
+            setCancelling(true);
+            try {
+              await api.bookings.cancel(booking.id);
+              if (isPaid) {
+                Alert.alert(
+                  "Booking cancelled",
+                  "A refund request has been sent to the venue — refunds are handled manually and aren't automatic.",
+                );
+              }
+              onChanged();
+            } catch (e) {
+              Alert.alert("Couldn't cancel", friendlyErrorMessage(e));
+            } finally {
+              setCancelling(false);
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   }
 
   return (
@@ -108,6 +135,10 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
             {cancelling ? "Cancelling…" : "Cancel booking"}
           </Text>
         </Pressable>
+      ) : bookedNotCancellable ? (
+        <Text className="font-figtree-medium text-[12px]" style={{ color: isDark ? "#6E7A80" : "#9A9791" }}>
+          {withinCutoff ? "The cancellation window for this booking has closed." : cancellationPolicyText(court)}
+        </Text>
       ) : null}
     </Pressable>
   );

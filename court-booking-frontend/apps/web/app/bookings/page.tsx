@@ -10,6 +10,7 @@ import { formatPKR, formatTimeRange } from "@/lib/format";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { SiteHeader } from "@/components/nav-auth";
 import type { Booking, BookingStatus } from "@court-booking/types";
+import { cancellationPolicyText } from "@court-booking/api-client";
 
 const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger" }> = {
   held: { label: "HOLDING", tone: "waiting" },
@@ -30,12 +31,31 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
   });
   const meta = STATUS_META[booking.status];
   const isDark = booking.status === "booked" || booking.status === "completed";
-  const canCancel = booking.status === "held" || booking.status === "payment_submitted";
+  const canResumePay = booking.status === "held" || booking.status === "payment_submitted";
+
+  // Section 29 Part C: same client-side eligibility check as mobile -- a cutoff only ever gets
+  // more restrictive as start approaches, so this can't go stale the way a one-shot fetch might.
+  // The server re-checks this at cancel time regardless; this is a UX convenience, not the
+  // source of truth.
+  const court = courtQuery.data;
+  const withinCutoff =
+    court?.cancellation_cutoff_hours != null &&
+    new Date(booking.starts_at).getTime() - Date.now() < court.cancellation_cutoff_hours * 3_600_000;
+  const canCancelBooked = booking.status === "booked" && !!court?.cancellation_allowed && !withinCutoff;
+  const canCancel = canResumePay || canCancelBooked;
+  const bookedNotCancellable = booking.status === "booked" && !canCancelBooked && !!court;
 
   async function handleCancel() {
-    if (!confirm("Cancel this booking? This can't be undone.")) return;
+    const isPaid = booking.status === "booked";
+    const confirmMessage = isPaid
+      ? "Cancel this booking? A refund request will be sent to the venue. Refunds are handled manually by the venue, not automatically."
+      : "Cancel this booking? This can't be undone.";
+    if (!confirm(confirmMessage)) return;
     try {
       await api.bookings.cancel(booking.id);
+      if (isPaid) {
+        alert("Booking cancelled. A refund request has been sent to the venue — refunds are handled manually and aren't automatic.");
+      }
       onChanged();
     } catch (e) {
       alert(friendlyErrorMessage(e));
@@ -44,7 +64,7 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
 
   return (
     <div
-      onClick={() => canCancel && router.push(`/booking/${booking.id}/pay`)}
+      onClick={() => canResumePay && router.push(`/booking/${booking.id}/pay`)}
       className="rounded-2xl p-6 flex flex-col gap-3.5 cursor-pointer"
       style={{
         background: isDark ? "#141A1D" : meta.tone === "waiting" ? "#FDF6E9" : "#FFFFFF",
@@ -88,6 +108,10 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
         >
           Cancel booking
         </button>
+      ) : bookedNotCancellable ? (
+        <span className="text-[12px]" style={{ color: isDark ? "#6E7A80" : "#9A9791" }}>
+          {withinCutoff ? "The cancellation window for this booking has closed." : cancellationPolicyText(court)}
+        </span>
       ) : null}
     </div>
   );

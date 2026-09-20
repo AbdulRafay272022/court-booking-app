@@ -356,6 +356,12 @@ The schema mirrors this shape, table by table:
   through their deadline and wakes up the waitlist for that slot; it also
   notifies the *owner* (not just the player) when a payment review timed out
   on them specifically (`cancellation_reason == "payment_review_expired"`).
+  **A player cancelling an already-`booked` (paid) booking is gated by that
+  court's own cancellation policy** (`courts.cancellation_allowed`/
+  `cancellation_cutoff_hours`, Section 29 Part C) — `CANCELLATION_NOT_ALLOWED`
+  or `CANCELLATION_WINDOW_CLOSED` otherwise. `held`/`payment_submitted`
+  cancels are never gated by this — only a paid booking has anything for the
+  policy to protect.
 
 - **Pricing**: `price` is resolved from the highest-priority matching
   `pricing_rules` row at booking time; `advance_amount` = `price *
@@ -967,6 +973,74 @@ previously lived only in `CLAUDE.md`. **Backups (finding #20) remain
 undocumented on purpose** — no managed Postgres provider had been chosen
 for the pilot as of this writing; see the Deployment section's "Backups"
 subsection for what's still needed once one is picked.
+
+## Post-audit fixes (Section 29)
+
+Four fixes from a follow-up "Full Feature & Flow Audit" (a separate, deeper pass than
+`AUDIT_FINDINGS.md`, covering every screen's actual UI quality, not just security/data-integrity),
+landed 2026-09-20. Tier 1 (must-fix) only — see the frontend `CLAUDE.md` for the same work's
+frontend half.
+
+**Part A — the `isLoading` bug (root cause, fixed once).** `useOwnerVenues()`'s own `isLoading`
+was already correct (true while the owner's venues are being fetched) but nothing consumed it —
+every dependent screen (Today, Approvals, Ledger, Growth, both platforms) ran its own query as
+`enabled: !!activeVenueId`, and a *disabled* TanStack Query v5 query reports `isLoading: false`
+(`isPending && isFetching` — `isFetching` is false while disabled), not `true`, during the window
+before `activeVenueId` resolves. A screen that only checked its own query's `isLoading` could
+render its empty state during a genuine loading window — confirmed as the exact cause of
+Approvals' false "nothing to review" flash. Fixed by combining `ownerVenues.isLoading` into each
+screen's own loading check (`venuesLoading || query.isLoading`), consistently across all 8
+screens; also gave `Approvals` an `enabled: !!activeVenueId` guard it never had (it fired once
+unscoped across every venue the owner has, then again once scoped — a related bug found while
+fixing this one). No dedicated test suite exists for either frontend app (see the frontend
+CLAUDE.md's own gotcha on this) — verified by code review of the identical pattern across all 8
+screens plus a live Playwright check of the wizard/court-creation half of this same pass.
+
+**Part B — owner daily digest silently broke most mornings.** `digest_job.py` called
+`whatsapp.send_text` directly, skipping the 24h-window check every other WhatsApp send in this
+codebase goes through (`send_smart`), with no per-owner error isolation in its `for owner in
+owners` loop. Since the digest is outbound-initiated (not a reply to anything), most owners
+won't have an open window on a given morning — `send_text` → `_send`'s retry-then-raise then
+propagates an uncaught exception that aborted the entire run, silently skipping every owner
+after the first failure in that morning's iteration order. Never previously documented anywhere.
+Fixed with a new `NotificationService.notify_owner_daily_digest` (routes through `send_smart`,
+logs to `notification_log` like every other send) and a try/except around each owner's send
+inside the job, logging `digest_job.owner_failed` per failure and returning
+`{"sent": N, "failed": [owner_id, ...]}` instead of a bare count. `tests/test_jobs.py::test_digest_job_one_owner_failure_does_not_block_others`
+— confirmed this test fails against the pre-fix code (temporarily reverted the try/except to
+verify, then restored) before trusting it as a real regression guard.
+
+**Part C — a real per-venue cancellation policy, not just a UI fix.** The audit found a paid
+(`booked`) booking had no cancel action anywhere in either frontend, even though the backend's
+refund-dispute path for it already existed. Rather than a flat global rule, this shipped as a
+genuine per-**court** policy (matching where `schedule_templates`/`pricing_rules` already live) —
+a project-owner decision, not something picked unilaterally:
+- `courts.cancellation_allowed` (bool, default `true`) and `courts.cancellation_cutoff_hours`
+  (nullable int, default `NULL` = no cutoff) — migration `19cf7e553535`, additive/nullable, so
+  every existing court keeps today's de facto unrestricted behavior until an owner opts into a
+  stricter policy. `tests/test_payments.py::test_existing_courts_default_to_unrestricted_cancellation`
+  exercises this via a raw Core insert (bypassing the ORM's Python-side default) to specifically
+  test the migration's *server* default — what actually backfills a pre-existing production row.
+- Enforced in `BookingService._enforce_cancellation_policy`, called from `cancel_booking` only
+  when `cancelled_by == PLAYER` and the booking is currently `BOOKED` — a plain pre-check, not
+  the atomic-transition pattern used elsewhere in this file, since this is a business-rule gate
+  (nothing bad happens if the policy changes between the check and the commit), not a
+  concurrency-integrity concern like payment approval races are.
+- Two new error codes: `CANCELLATION_NOT_ALLOWED` (court disallows it outright) and
+  `CANCELLATION_WINDOW_CLOSED` (allowed, but too close to start — the message and `details`
+  include the actual cutoff timestamp, not just a generic 400).
+- `POST /venues/{id}/courts` and `PATCH /courts/{id}` both accept the two new fields (the PATCH
+  path needed no code change — it already applies `payload.model_dump(exclude_unset=True)`
+  generically); `CourtOut` returns them so the frontend can render the policy before a player
+  pays.
+- `tests/test_payments.py::test_cancel_blocked_when_venue_disallows_cancellation`,
+  `test_cancel_blocked_within_cutoff_window`, `test_cancel_succeeds_outside_cutoff_window_and_creates_refund_record`
+  — the two "blocked" tests use a `days_ahead=1` hold (tomorrow 10:00 UTC, so between ~10h and
+  ~34h out depending on time of day) against cutoffs chosen to be deterministic either way (48h
+  always inside the window, 2h always outside it) rather than freezing the clock.
+
+**Part D — Terms of Service / Privacy Policy** — see the frontend CLAUDE.md; no backend changes
+beyond what Part C's schema needed.
 
 ## Local development extras
 

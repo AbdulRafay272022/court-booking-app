@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { StarIcon } from "@/components/icons";
 import { formatDistance } from "@/lib/format";
 import type { VenueSummary } from "@court-booking/types";
@@ -27,7 +27,7 @@ export function SportChip({
 
 const GRADIENTS = ["#12657A", "#2E5F49", "#8A4A2E", "#5B4A8A"];
 
-function gradientFor(id: string): string {
+export function gradientFor(id: string): string {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   return GRADIENTS[hash % GRADIENTS.length];
@@ -35,12 +35,16 @@ function gradientFor(id: string): string {
 
 export function VenueCard({ venue, onPress }: { venue: VenueSummary; onPress: () => void }) {
   const distance = formatDistance(venue.distance_meters);
+  const photo = venue.photo_urls?.[0];
   return (
     <Pressable
       onPress={onPress}
       className="bg-player-surface border border-player-border-light rounded-[18px] overflow-hidden"
     >
       <View className="h-24 items-end justify-end p-3" style={{ backgroundColor: gradientFor(venue.id) }}>
+        {photo ? (
+          <Image source={{ uri: photo }} className="absolute inset-0 w-full h-full" resizeMode="cover" />
+        ) : null}
         <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.92)" }}>
           <Text className="font-figtree-bold text-[11.5px]" style={{ color: gradientFor(venue.id) }}>
             {venue.sports.join(" · ")}

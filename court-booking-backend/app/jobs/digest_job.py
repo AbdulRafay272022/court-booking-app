@@ -11,11 +11,21 @@ from app.services.notification_service import NotificationService
 logger = structlog.get_logger(__name__)
 
 
-async def send_owner_daily_digests(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
+async def send_owner_daily_digests(session_factory: async_sessionmaker = AsyncSessionLocal) -> dict:
     """Send each venue owner a WhatsApp summary of today's bookings, revenue, and
-    payments awaiting review. Intended to run once daily (e.g. 08:00 local time)."""
+    payments awaiting review. Intended to run once daily (e.g. 08:00 local time).
+
+    Section 29 Part B: this used to call `whatsapp.send_text` directly (skipping the
+    24h-window check every other notification goes through) with no per-owner error
+    isolation -- since the digest is outbound-initiated, most owners won't have an
+    open window on a given morning, so the first owner in iteration order whose send
+    failed aborted the whole run, silently skipping everyone after them. Fixed by
+    routing through NotificationService.notify_owner_daily_digest (send_smart, falls
+    back to a template outside the window) and wrapping each owner's send in its own
+    try/except so one failure can never block the rest."""
     settings = get_settings()
     sent = 0
+    failed: list[str] = []
 
     async with session_factory() as db:
         notifications = NotificationService(db, settings)
@@ -34,8 +44,12 @@ async def send_owner_daily_digests(session_factory: async_sessionmaker = AsyncSe
                     f"(PKR {d.revenue_today:.0f}), {d.payments_awaiting_review} payments to verify, "
                     f"{d.upcoming_bookings_7_days} bookings in the next 7 days."
                 )
-            await notifications.whatsapp.send_text(owner.phone, "\n".join(lines))
-            sent += 1
+            try:
+                await notifications.notify_owner_daily_digest(owner=owner, body="\n".join(lines))
+                sent += 1
+            except Exception:
+                failed.append(str(owner.id))
+                logger.warning("digest_job.owner_failed", owner_id=str(owner.id), exc_info=True)
 
-    logger.info("digest_job.completed", owners_notified=sent)
-    return sent
+    logger.info("digest_job.completed", owners_notified=sent, owners_failed=len(failed))
+    return {"sent": sent, "failed": failed}

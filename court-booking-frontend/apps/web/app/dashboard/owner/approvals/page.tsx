@@ -12,7 +12,7 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks like a duplicate", "Other"];
 
 export default function OwnerApprovalsPage() {
-  const { activeVenueId } = useOwnerVenues();
+  const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -22,6 +22,11 @@ export default function OwnerApprovalsPage() {
   const query = useQuery({
     queryKey: ["owner-pending-approvals", activeVenueId],
     queryFn: () => api.owners.pendingApprovals(activeVenueId),
+    // Was unconditional before -- fired once with activeVenueId still undefined (an unscoped
+    // fetch across every venue the owner has) and again once it resolved. Gating on it, like
+    // every other owner screen, avoids that flash and keeps this query's own isLoading
+    // meaningful once combined with venuesLoading below (Section 29 Part A).
+    enabled: !!activeVenueId,
     refetchInterval: (query) => pollInterval(query, 15_000),
   });
 
@@ -78,7 +83,9 @@ export default function OwnerApprovalsPage() {
         <p className="text-owner-ink-faint text-sm">{list.length === 0 ? "Nothing waiting" : `1 of ${list.length} waiting`}</p>
       </div>
 
-      {query.isError && list.length === 0 ? (
+      {venuesLoading || query.isLoading ? (
+        <p className="p-10 text-center text-owner-ink-faint">Loading…</p>
+      ) : query.isError && list.length === 0 ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
       ) : !current ? (
         <div className="bg-owner-surface border border-owner-border rounded-xl p-10 text-center text-owner-ink-faint">

@@ -21,7 +21,7 @@ function rangeFor(key: RangeKey): { start: string; end: string } {
 }
 
 export default function OwnerLedgerPage() {
-  const { activeVenue, activeVenueId } = useOwnerVenues();
+  const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
@@ -121,7 +121,7 @@ export default function OwnerLedgerPage() {
             </tr>
           </thead>
           <tbody>
-            {query.isLoading ? (
+            {venuesLoading || query.isLoading ? (
               <tr>
                 <td colSpan={8} className="text-center py-10 text-owner-ink-faint">Loading…</td>
               </tr>

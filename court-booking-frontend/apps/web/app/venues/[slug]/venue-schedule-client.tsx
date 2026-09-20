@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { ApiError } from "@court-booking/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTime, toDateInputValue } from "@/lib/format";
@@ -29,11 +30,48 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: string; venueName: string; courts: Court[] }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
   const days = useMemo(() => nextDays(6), []);
   const [dateIdx, setDateIdx] = useState(0);
   const [isFocused, setIsFocused] = useState(true);
   const date = toDateInputValue(days[dateIdx]);
+
+  // Section 29 Tier 2 Part 4: mobile has had "Notify me" on a taken slot for a while -- web had
+  // no waitlist implementation at all (no join affordance, no api.waitlist call anywhere).
+  // Copy deliberately says "we'll let you know", never "reserved"/"held" -- matches the earlier
+  // waitlist redesign (notify everyone, reserve nothing; whoever holds first gets the slot).
+  const waitlistQuery = useQuery({
+    queryKey: ["waitlist-mine"],
+    queryFn: () => api.waitlist.mine(),
+    enabled: status === "signedIn",
+  });
+  const joinedKeys = new Set(
+    (waitlistQuery.data ?? []).filter((e) => e.is_active).map((e) => `${e.court_id}|${e.slot_starts_at}`),
+  );
+  const [joiningKey, setJoiningKey] = useState<string | null>(null);
+
+  async function handleJoinWaitlist(courtId: string, slotStartsAt: string) {
+    if (status !== "signedIn") {
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+    const key = `${courtId}|${slotStartsAt}`;
+    setJoiningKey(key);
+    try {
+      const { position } = await api.waitlist.join({ court_id: courtId, slot_starts_at: slotStartsAt });
+      await queryClient.invalidateQueries({ queryKey: ["waitlist-mine"] });
+      alert(`You're on the list — we'll let you know if this slot opens up. You're #${position} in line.`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        await queryClient.invalidateQueries({ queryKey: ["waitlist-mine"] });
+      } else {
+        alert(`Couldn't join the waitlist: ${friendlyErrorMessage(e)}`);
+      }
+    } finally {
+      setJoiningKey(null);
+    }
+  }
 
   useEffect(() => {
     function onVisibility() {
@@ -126,6 +164,29 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
                     const s = court.slots[rowIdx];
                     if (!s) return <td key={court.court_id} />;
                     const isOpen = s.status === "available";
+                    const isBooked = s.status === "booked";
+                    const waitlistKey = `${court.court_id}|${s.starts_at}`;
+                    const onWaitlist = joinedKeys.has(waitlistKey);
+                    const joining = joiningKey === waitlistKey;
+                    if (isBooked) {
+                      return (
+                        <td key={court.court_id} className="px-3.5 py-2">
+                          <button
+                            onClick={() => !onWaitlist && handleJoinWaitlist(court.court_id, s.starts_at)}
+                            disabled={onWaitlist || joining}
+                            className="h-10 w-full rounded-lg flex items-center justify-center font-mono text-[12px] font-semibold px-1"
+                            style={{
+                              background: onWaitlist ? "#EEF4F2" : "#F4F1EE",
+                              border: onWaitlist ? "1px solid #C9E0D8" : "none",
+                              color: onWaitlist ? "#1F7A52" : "#A8A099",
+                              cursor: onWaitlist ? "default" : "pointer",
+                            }}
+                          >
+                            {joining ? "…" : onWaitlist ? "On waitlist" : "Notify me"}
+                          </button>
+                        </td>
+                      );
+                    }
                     return (
                       <td key={court.court_id} className="px-3.5 py-2">
                         <button

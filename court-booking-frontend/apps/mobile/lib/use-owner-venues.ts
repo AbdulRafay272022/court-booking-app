@@ -26,6 +26,13 @@ export function useOwnerVenues() {
       if (userId) select(userId, venueId);
     },
     showSwitcher: venues.length > 1,
+    // Every screen with its own `enabled: !!activeVenueId` query MUST OR this into that
+    // query's own isLoading before rendering an empty/error state. A disabled TanStack Query
+    // v5 query reports isLoading: false (isPending && isFetching -- isFetching is false while
+    // disabled), so during the cold-load window where THIS query hasn't resolved yet (and
+    // activeVenueId is still undefined), a screen that only checks its own query.isLoading sees
+    // false and can render "no data" instead of "loading" (Section 29 Part A -- this exact bug
+    // hit Approvals as a false "nothing to review" flash).
     isLoading: query.isLoading,
   };
 }

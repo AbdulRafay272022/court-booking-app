@@ -37,7 +37,7 @@ const STATUS_LABEL: Record<string, { label: string; bg: string; fg: string }> = 
 const SOURCE_LABEL: Record<string, string> = { app: "APP", whatsapp: "WHATSAPP", walkin: "WALK-IN", phone: "PHONE" };
 
 export default function LedgerScreen() {
-  const { activeVenue, activeVenueId } = useOwnerVenues();
+  const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
@@ -117,7 +117,7 @@ export default function LedgerScreen() {
         </View>
       ) : null}
 
-      {query.isLoading ? (
+      {venuesLoading || query.isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#0E6274" />
         </View>

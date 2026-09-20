@@ -57,10 +57,25 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
       </div>
 
       <div className="grid grid-cols-3 gap-2.5 px-6 md:px-14 py-6 bg-player-surface">
-        <div className="col-span-2 h-64 rounded-2xl" style={{ background: "linear-gradient(135deg,#12657A,#0A3E4A)" }} />
+        <PhotoTile
+          className="col-span-2 h-64 rounded-2xl"
+          url={venue.photo_urls?.[0]}
+          alt={venue.name}
+          fallback="linear-gradient(135deg,#12657A,#0A3E4A)"
+        />
         <div className="grid grid-rows-2 gap-2.5">
-          <div className="rounded-2xl" style={{ background: "linear-gradient(135deg,#1F7A52,#14382A)" }} />
-          <div className="rounded-2xl" style={{ background: "linear-gradient(135deg,#3A3532,#211E1C)" }} />
+          <PhotoTile
+            className="rounded-2xl"
+            url={venue.photo_urls?.[1]}
+            alt={venue.name}
+            fallback="linear-gradient(135deg,#1F7A52,#14382A)"
+          />
+          <PhotoTile
+            className="rounded-2xl"
+            url={venue.photo_urls?.[2]}
+            alt={venue.name}
+            fallback="linear-gradient(135deg,#3A3532,#211E1C)"
+          />
         </div>
       </div>
 
@@ -114,4 +129,12 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
     </main>
     </>
   );
+}
+
+function PhotoTile({ url, alt, fallback, className }: { url?: string; alt: string; fallback: string; className: string }) {
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt={alt} className={`${className} object-cover`} />;
+  }
+  return <div className={className} style={{ background: fallback }} />;
 }

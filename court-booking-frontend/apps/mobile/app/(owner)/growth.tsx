@@ -19,7 +19,7 @@ function formatHourRange(hour: number): string {
 }
 
 export default function GrowthScreen() {
-  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher } = useOwnerVenues();
+  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
 
   const query = useQuery({
     queryKey: ["owner-growth", activeVenueId],
@@ -46,7 +46,7 @@ export default function GrowthScreen() {
         {showSwitcher ? <VenueSwitcher venues={venues} activeVenueId={activeVenueId} onSelect={setVenueId} /> : null}
       </View>
 
-      {query.isLoading ? (
+      {venuesLoading || query.isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#0E6274" />
         </View>

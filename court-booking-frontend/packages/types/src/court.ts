@@ -37,6 +37,11 @@ export interface Court {
   is_indoor: boolean;
   has_floodlights: boolean;
   capacity: number | null;
+  // Section 29 Part C: per-court, not global -- some courts don't allow a player to cancel an
+  // already-paid (booked) booking at all; others allow it up to cancellation_cutoff_hours
+  // before start (null = no cutoff, cancellable any time before start).
+  cancellation_allowed: boolean;
+  cancellation_cutoff_hours: number | null;
   photo_url: string | null;
   sort_order: number;
   is_active: boolean;
@@ -52,6 +57,8 @@ export interface CreateCourtInput {
   is_indoor?: boolean;
   has_floodlights?: boolean;
   capacity?: number;
+  cancellation_allowed?: boolean;
+  cancellation_cutoff_hours?: number | null;
 }
 
 export interface ScheduleTemplateInput {

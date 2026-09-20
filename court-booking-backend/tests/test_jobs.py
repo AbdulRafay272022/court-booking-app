@@ -236,19 +236,57 @@ async def test_send_owner_daily_digests_runs_without_error(
 ):
     sent = []
 
-    async def fake_send_text(self, to, body):
-        sent.append(to)
-        return {"messages": [{"id": "x"}]}
+    async def fake_send_smart(self, to_phone_number, body, *, last_inbound_at, template_name, template_params):
+        sent.append(to_phone_number)
+        return {"messages": [{"id": "x"}]}, None
 
-    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_text", fake_send_text)
+    # send_smart, not send_text directly -- Section 29 Part B routed the digest through
+    # the window-aware path every other notification uses.
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_smart", fake_send_smart)
 
     owner = await make_user("+923010000007", role=UserRole.OWNER)
     venue = await make_venue(owner)
     await make_court(venue)
 
-    count = await send_owner_daily_digests(session_factory=db_session_factory)
-    assert count == 1
+    result = await send_owner_daily_digests(session_factory=db_session_factory)
+    assert result == {"sent": 1, "failed": []}
     assert owner.phone in sent
+
+
+async def test_digest_job_one_owner_failure_does_not_block_others(
+    db_session_factory, make_user, make_venue, make_court, monkeypatch
+):
+    """The original bug: digest_job called whatsapp.send_text directly with no
+    per-owner isolation, so the first owner whose send raised (e.g. a closed 24h
+    WhatsApp window -- the common case, since the digest is outbound-initiated)
+    aborted the whole run, silently skipping every owner after them. This test
+    would have failed against the old code: the loop had no try/except, so
+    owner2's raise would propagate out of send_owner_daily_digests entirely and
+    owner3 would never be attempted."""
+    owner1 = await make_user("+923010000013", role=UserRole.OWNER)
+    owner2 = await make_user("+923010000014", role=UserRole.OWNER)
+    owner3 = await make_user("+923010000015", role=UserRole.OWNER)
+    for owner in (owner1, owner2, owner3):
+        venue = await make_venue(owner)
+        await make_court(venue)
+
+    sent = []
+
+    async def fake_send_smart(self, to_phone_number, body, *, last_inbound_at, template_name, template_params):
+        if to_phone_number == owner2.phone:
+            raise RuntimeError("simulated Meta rejection (e.g. closed 24h window)")
+        sent.append(to_phone_number)
+        return {"messages": [{"id": "x"}]}, None
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_smart", fake_send_smart)
+
+    result = await send_owner_daily_digests(session_factory=db_session_factory)
+
+    assert result["sent"] == 2
+    assert result["failed"] == [str(owner2.id)]
+    assert owner1.phone in sent
+    assert owner3.phone in sent
+    assert owner2.phone not in sent
 
 
 async def test_materialize_nightly_stats_writes_audit_log_and_slot_stats(

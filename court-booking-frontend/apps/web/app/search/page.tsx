@@ -76,7 +76,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
               href={`/venues/${v.slug}`}
               className="bg-player-surface border border-player-border-light rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
             >
-              <div className="h-32" style={{ background: "linear-gradient(135deg,#12657A,#0A3E4A)" }} />
+              {v.photo_urls?.[0] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={v.photo_urls[0]} alt={v.name} className="h-32 w-full object-cover" />
+              ) : (
+                <div className="h-32" style={{ background: "linear-gradient(135deg,#12657A,#0A3E4A)" }} />
+              )}
               <div className="p-4 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-bold text-[16px]">{v.name}</h3>

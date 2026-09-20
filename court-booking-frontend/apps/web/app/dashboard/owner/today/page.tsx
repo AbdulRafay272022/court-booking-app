@@ -19,7 +19,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function OwnerTodayPage() {
-  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher } = useOwnerVenues();
+  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
 
   const todayQuery = useQuery({
@@ -95,7 +95,7 @@ export default function OwnerTodayPage() {
       ) : null}
 
       <div className="bg-owner-surface border border-owner-border rounded-xl overflow-hidden">
-        {todayQuery.isLoading ? (
+        {venuesLoading || todayQuery.isLoading ? (
           <p className="p-8 text-center text-owner-ink-faint">Loading…</p>
         ) : todayQuery.isError && !data ? (
           <ErrorState message={friendlyErrorMessage(todayQuery.error)} onRetry={() => todayQuery.refetch()} tone="owner" />

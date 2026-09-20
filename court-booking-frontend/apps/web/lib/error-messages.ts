@@ -21,6 +21,8 @@ const MESSAGES: Record<string, string> = {
   BOOKING_NOT_FOUND: "We couldn't find that booking.",
   INVALID_BOOKING_STATE: "That action can't be done on this booking anymore.",
   NOT_YOUR_BOOKING: "This isn't your booking.",
+  CANCELLATION_NOT_ALLOWED: "This venue doesn't allow cancelling a booking once it's paid for.",
+  CANCELLATION_WINDOW_CLOSED: "The cancellation window for this booking has closed.",
   VENUE_NOT_APPROVED: "This venue isn't live yet.",
   VENUE_NOT_FOUND: "We couldn't find that venue.",
   NOT_VENUE_OWNER: "You don't manage this venue.",
