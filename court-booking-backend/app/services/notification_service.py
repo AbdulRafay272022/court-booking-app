@@ -14,7 +14,7 @@ from app.models.notification import NotificationLog
 from app.models.user import User
 from app.models.venue import PlanTier, Venue
 from app.services.sms_service import SMSService
-from app.services.whatsapp_service import WhatsAppService
+from app.services.whatsapp_service import WhatsAppService, describe_send_failure
 from app.services.whatsapp_templates import TEMPLATES
 
 logger = structlog.get_logger(__name__)
@@ -137,6 +137,37 @@ class NotificationService:
                 user_id=user.id, channel="push", event_type=event_type, reference_id=reference_id
             )
 
+    async def _whatsapp_smart_best_effort(
+        self, user: User, body: str, *, template_name: str, template_params: list[str]
+    ) -> tuple[str | None, str | None]:
+        """WhatsApp leg of a notification, which must NEVER fail the action that triggered it.
+
+        Returns (template_used, error_message); error_message is None on success. Every caller
+        runs AFTER its own state change has been committed (venue approved, payment approved,
+        booking cancelled...), so raising here cannot undo that -- it can only turn a successful
+        action into a 500. Production incident 2026-09-20: approving a venue saved, then Meta
+        rejected the not-yet-registered `venue_approved` template (132001), the error escaped,
+        and the admin saw a "server connection error" (a bare 500 has no CORS headers) for an
+        approval that had actually worked. Failures are logged and recorded as a `failed`
+        notification_log row instead. (OTP delivery is deliberately NOT routed through here: there
+        a delivery failure is the answer, see AuthService.request_otp.)"""
+        last_inbound = await self.last_inbound_whatsapp_at(user.phone)
+        try:
+            _result, template_used = await self.whatsapp.send_smart(
+                user.phone,
+                body,
+                last_inbound_at=last_inbound,
+                template_name=template_name,
+                template_params=template_params,
+            )
+            return template_used, None
+        except Exception as exc:  # noqa: BLE001 -- see docstring: any failure must be contained
+            outcome, code = describe_send_failure(exc)
+            logger.warning(
+                "notification.whatsapp_failed", event_type=template_name, outcome=outcome, meta_error_code=code
+            )
+            return None, f"{outcome}; meta_error_code={code}; {type(exc).__name__}: {str(exc)[:200]}"
+
     async def _send_push_and_whatsapp(
         self,
         user: User,
@@ -151,13 +182,8 @@ class NotificationService:
         to fall back to outside the 24h window (see whatsapp_templates.py);
         if there's no dedicated template for it, the generic one-param
         fallback is used automatically."""
-        last_inbound = await self.last_inbound_whatsapp_at(user.phone)
-        _result, template_used = await self.whatsapp.send_smart(
-            user.phone,
-            body,
-            last_inbound_at=last_inbound,
-            template_name=event_type,
-            template_params=template_params or [body],
+        template_used, whatsapp_error = await self._whatsapp_smart_best_effort(
+            user, body, template_name=event_type, template_params=template_params or [body]
         )
         # cost_category describes what *kind* of message this is (per Meta's
         # own template categorization), independent of whether this
@@ -173,6 +199,8 @@ class NotificationService:
             reference_id=reference_id,
             cost_category=cost_category,
             template_name=template_used,
+            status_value="failed" if whatsapp_error else "sent",
+            error_message=whatsapp_error,
         )
         await self._send_push_tier(user, event_type, title, body, reference_id=reference_id)
 
@@ -358,22 +386,25 @@ class NotificationService:
         if minutes_elapsed >= self.settings.ESCALATION_WHATSAPP_MINUTES and not await self.has_sent(
             owner.id, "payment_submitted_whatsapp", booking_id
         ):
-            last_inbound = await self.last_inbound_whatsapp_at(owner.phone)
-            _result, template_used = await self.whatsapp.send_smart(
-                owner.phone,
+            template_used, whatsapp_error = await self._whatsapp_smart_best_effort(
+                owner,
                 body,
-                last_inbound_at=last_inbound,
                 template_name="payment_submitted_owner",
                 template_params=[court_name, "", "", player_name, f"PKR {amount:,.0f}"],
             )
+            # Logged either way: has_sent() keys on this row, so a failed send is not retried
+            # every minute by the expiry job (the SMS step below still gets its turn).
             await self._log(
                 user_id=owner.id,
                 channel="whatsapp",
                 event_type="payment_submitted_whatsapp",
                 reference_id=booking_id,
                 template_name=template_used,
+                status_value="failed" if whatsapp_error else "sent",
+                error_message=whatsapp_error,
             )
-            fired.append("whatsapp")
+            if not whatsapp_error:
+                fired.append("whatsapp")
 
         if minutes_elapsed >= self.settings.ESCALATION_SMS_MINUTES and not await self.has_sent(
             owner.id, "payment_submitted_sms", booking_id

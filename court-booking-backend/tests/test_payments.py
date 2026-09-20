@@ -814,6 +814,34 @@ async def test_cancel_succeeds_outside_cutoff_window_and_creates_refund_record(
         assert disputes[0].reason == "player_cancelled_paid_booking"
 
 
+async def test_payment_approval_survives_a_failed_whatsapp_notification(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    """Same failure mode as venue approval (see test_admin): the approval commits, then the
+    player's WhatsApp confirmation fails. The owner must still get a 200 and a `booked` booking,
+    not a 500 for an action that actually succeeded."""
+    _mock_upload(monkeypatch)
+
+    async def failing_send(self, payload):
+        raise RuntimeError("(#132001) Template name does not exist in the translation")
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", failing_send)
+
+    owner = await make_user("+923005000052", role=UserRole.OWNER)
+    customer = await make_user("+923005000053", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=2000)
+    owner_headers = await make_auth_headers(owner)
+    customer_headers = await make_auth_headers(customer)
+
+    booking = await _book_and_pay(client, court, owner_headers, customer_headers)  # asserts approve -> booked
+
+    got = await client.get(f"/api/v1/bookings/{booking['id']}", headers=customer_headers)
+    assert got.json()["status"] == "booked"
+
+
 async def test_two_courts_at_one_venue_enforce_cancellation_independently(
     client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
 ):

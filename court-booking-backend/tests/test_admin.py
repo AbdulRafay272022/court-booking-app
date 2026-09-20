@@ -28,6 +28,46 @@ async def test_admin_can_view_platform_stats(client, make_user, make_venue, make
     assert body["total_courts"] >= 1
 
 
+async def test_venue_approval_survives_a_failed_whatsapp_notification(
+    client, make_user, make_venue, make_auth_headers, db_session_factory, monkeypatch
+):
+    """Production incident 2026-09-20: approving a venue saved the approval, then the owner's
+    WhatsApp notification failed (Meta 132001, the `venue_approved` template isn't registered
+    yet) and the uncaught error turned the request into a 500 -- which the browser showed as a
+    "server connection error" even though the venue WAS approved. A failed notification must
+    never fail the action that triggered it; it is recorded as a failed notification instead."""
+    from sqlalchemy import select
+
+    from app.models.notification import NotificationLog
+
+    async def failing_send(self, payload):
+        raise RuntimeError("(#132001) Template name does not exist in the translation")
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", failing_send)
+
+    admin = await make_user("+923008000090", role=UserRole.ADMIN)
+    owner = await make_user("+923008000091", role=UserRole.OWNER)
+    venue = await make_venue(owner, status=VenueStatus.PENDING)
+    headers = await make_auth_headers(admin)
+
+    resp = await client.post(f"/api/v1/admin/venues/{venue.id}/approve", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "approved"
+
+    async with db_session_factory() as session:
+        rows = (
+            await session.execute(
+                select(NotificationLog).where(
+                    NotificationLog.user_id == owner.id, NotificationLog.event_type == "venue_approved"
+                )
+            )
+        ).scalars().all()
+    whatsapp = [r for r in rows if r.channel == "whatsapp"]
+    assert len(whatsapp) == 1
+    assert whatsapp[0].status == "failed"
+    assert "132001" in (whatsapp[0].error_message or "")
+
+
 async def test_admin_can_approve_pending_venue(client, make_user, make_venue, make_auth_headers, monkeypatch):
     # Mock at the _send level (shared by send_text and send_template) since
     # the owner won't have an open 24h WhatsApp window in this test, so the

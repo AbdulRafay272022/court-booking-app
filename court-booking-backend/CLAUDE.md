@@ -152,8 +152,30 @@ course of a session, one or two sections at a time. Sections delivered so far:
     court elsewhere is a generic `404 NOT_FOUND`, another owner's venue is
     `403 NOT_VENUE_OWNER` -- the three codes the frontend now treats as "stale draft".
 
+    **Follow-up incidents the same day (both found from production logs, read with
+    `aws ssm send-command --region ap-south-1` running `docker logs court-booking-backend`):**
+    (1) *"Can't reach the server" on Send for review* was a **500** from `POST /courts/{id}/schedule`:
+    hours 06:00 -> 02:00 violate `schedule_templates` `CHECK (open_time < close_time)`; hours past
+    midnight are not supported (engine and constraint are per calendar day), so `ScheduleTemplateIn`
+    now rejects `close_time <= open_time` with a 422 and the frontends validate first.
+    (2) *"Server connection error" after approving a venue* -- the approval had committed, then
+    `notify_venue_approved` -> `WhatsAppService.send_smart` failed (Meta `132001`, the
+    `venue_approved` template isn't registered) and the uncaught `RetryError` made the request a 500.
+    **`NotificationService._send_push_and_whatsapp` (used by venue approve/reject/changes, payment
+    approve/reject, booking cancel, court deactivation...) and the escalation WhatsApp leg now go
+    through `_whatsapp_smart_best_effort`: a WhatsApp failure is logged
+    (`notification.whatsapp_failed`) and recorded as a `notification_log` row with `status='failed'` +
+    `error_message`, and never fails the triggering request.** Tests:
+    `test_venue_approval_survives_a_failed_whatsapp_notification`,
+    `test_payment_approval_survives_a_failed_whatsapp_notification`. Do NOT route OTP delivery through
+    it (a failed OTP send must still surface as `OTP_DELIVERY_FAILED`). Consequence to know: until the
+    Meta templates are approved, most of these notifications simply do not arrive outside the 24h window
+    -- check `notification_log WHERE status='failed'`, not the API response. Both incidents shared one
+    amplifier: an unhandled 500 has **no CORS headers**, so the browser reports it as a network failure
+    (not fixed; an inner catch-all in `RequestContextMiddleware` would).
+
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 351
+Postgres/PostGIS instance, and documented in README.md. Current state: 353
 tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
 operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
 round-trips upgrade -> downgrade -> upgrade). Run the suite with
