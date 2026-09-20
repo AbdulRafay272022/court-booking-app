@@ -74,6 +74,9 @@ export default function VenueSettingsScreen() {
   const [defaultCloseTime, setDefaultCloseTime] = useState("23:00");
   const [perDayOverrides, setPerDayOverrides] = useState<Partial<Record<number, DayOverride>>>({});
   const [pricingRules, setPricingRules] = useState<PricingRuleDraft[]>([]);
+  // Section 31: per-court cancellation policy, seeded from the selected court like hours/prices.
+  const [cancellationAllowed, setCancellationAllowed] = useState(true);
+  const [cancellationCutoffHours, setCancellationCutoffHours] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [blackoutTitle, setBlackoutTitle] = useState("");
@@ -99,6 +102,8 @@ export default function VenueSettingsScreen() {
     }
     setPerDayOverrides(byDay);
     setPricingRules(court.pricing_rules.length > 0 ? court.pricing_rules.map(ruleToDraft) : [makeRule()]);
+    setCancellationAllowed(court.cancellation_allowed);
+    setCancellationCutoffHours(court.cancellation_cutoff_hours != null ? String(court.cancellation_cutoff_hours) : "");
   }, [courtQuery.data]);
 
   function buildSchedules(): ScheduleTemplateInput[] {
@@ -138,11 +143,17 @@ export default function VenueSettingsScreen() {
     }
     setSaving(true);
     try {
+      await api.courts.update(activeCourtId, {
+        cancellation_allowed: cancellationAllowed,
+        cancellation_cutoff_hours: cancellationAllowed && cancellationCutoffHours.trim() ? Number(cancellationCutoffHours) : null,
+      });
       await api.courts.setSchedule(activeCourtId, buildSchedules());
       await api.courts.setPricing(activeCourtId, rules);
       await queryClient.invalidateQueries({ queryKey: ["court-settings", activeCourtId] });
       await queryClient.invalidateQueries({ queryKey: ["court", activeCourtId] });
-      Alert.alert("Saved", "Hours and pricing updated.");
+      // The owner dashboard's court lists and the player-facing pay screen read the policy too.
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      Alert.alert("Saved", "Hours, pricing and cancellation policy updated.");
     } catch (e) {
       Alert.alert("Couldn't save", friendlyErrorMessage(e));
     } finally {
@@ -300,6 +311,27 @@ export default function VenueSettingsScreen() {
             >
               <Text className="font-plex-semibold text-owner-accent text-[13px]">+ Add a rate</Text>
             </Pressable>
+          </SectionCard>
+
+          <SectionCard>
+            <SectionLabel>Cancellations</SectionLabel>
+            <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
+              Can a player cancel a booking on this court after they've already paid?
+            </Text>
+            <View className="flex-row gap-2">
+              <Chip label="Allowed" selected={cancellationAllowed} onPress={() => setCancellationAllowed(true)} />
+              <Chip label="Not allowed" selected={!cancellationAllowed} onPress={() => setCancellationAllowed(false)} />
+            </View>
+            {cancellationAllowed ? (
+              <TextField
+                label="Require cancelling at least this many hours before (optional)"
+                value={cancellationCutoffHours}
+                onChangeText={(v) => setCancellationCutoffHours(v.replace(/\D/g, ""))}
+                keyboardType="number-pad"
+                placeholder="Leave blank for no limit"
+                mono
+              />
+            ) : null}
           </SectionCard>
 
           <PrimaryButton label="Save changes" onPress={handleSave} loading={saving} />

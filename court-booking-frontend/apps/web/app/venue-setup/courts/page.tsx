@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { isStaleVenueDraftError } from "@court-booking/api-client";
 import type { PricingRuleInput, ScheduleTemplateInput } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -20,6 +21,9 @@ export default function VenueCourtsPage() {
   const store = useVenueSetupStore();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Section 31 Part 2: the saved draft pointed at a venue/court that no longer exists (or isn't
+  // ours). Shown as a recovery panel with a next step, not as a bare error.
+  const [staleDraft, setStaleDraft] = useState(false);
 
   const pricedRules = store.pricingRules.filter((r) => Number(r.pricePerSlot) > 0);
   const isValid = store.courts.length > 0 && store.courts.every((c) => c.name.trim()) && pricedRules.length > 0;
@@ -50,6 +54,11 @@ export default function VenueCourtsPage() {
   async function handleSubmit() {
     setSubmitting(true);
     setError(null);
+    setStaleDraft(false);
+    // Ids read from the saved draft (as opposed to created during this run) are the only ones
+    // whose failure can mean "stale draft" -- see isStaleVenueDraftError.
+    const draftHadVenue = !!store.createdVenueId;
+    const draftCourtIds = { ...store.createdCourtIds };
     try {
       // Same idempotency pattern as mobile: remember the venue once POST /venues succeeds, so a
       // retry after a later step fails doesn't create a duplicate venue.
@@ -75,7 +84,6 @@ export default function VenueCourtsPage() {
 
       const schedules = buildSchedules();
       const pricingRules = buildPricingRules();
-      const cutoffHours = store.cancellationCutoffHours.trim() ? Number(store.cancellationCutoffHours) : null;
       // Resumable: courtId is reused from a prior attempt when we have one (POST /courts
       // always inserts, so re-running it for an already-created court would duplicate the
       // row) -- setSchedule/setPricing are safe to re-run unconditionally either way (the
@@ -85,12 +93,14 @@ export default function VenueCourtsPage() {
         const court = store.courts[i];
         let courtId = store.createdCourtIds[i];
         if (!courtId) {
+          // Section 31: each court carries its own cancellation policy.
+          const cutoffHours = court.cancellationCutoffHours.trim() ? Number(court.cancellationCutoffHours) : null;
           const { court: created } = await api.courts.create(venueId, {
             name: court.name,
             sport: court.sport,
             slot_minutes: court.slotMinutes,
-            cancellation_allowed: store.cancellationAllowed,
-            cancellation_cutoff_hours: store.cancellationAllowed ? cutoffHours : null,
+            cancellation_allowed: court.cancellationAllowed,
+            cancellation_cutoff_hours: court.cancellationAllowed ? cutoffHours : null,
           });
           courtId = created.id;
           store.setCreatedCourtId(i, courtId);
@@ -103,7 +113,14 @@ export default function VenueCourtsPage() {
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       router.replace(`/venue-setup/status?venueId=${venueId}`);
     } catch (e) {
-      setError(friendlyErrorMessage(e));
+      if (isStaleVenueDraftError(e) && (draftHadVenue || Object.keys(draftCourtIds).length > 0)) {
+        // Clear the stale ids right away so a reload can't loop back into the same failure.
+        store.setField("createdVenueId", null);
+        store.setField("createdCourtIds", {});
+        setStaleDraft(true);
+      } else {
+        setError(friendlyErrorMessage(e));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -150,6 +167,24 @@ export default function VenueCourtsPage() {
                   <Chip key={m} label={`${m} min`} selected={court.slotMinutes === m} onClick={() => store.updateCourt(index, { slotMinutes: m })} />
                 ))}
               </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <FieldLabel>Cancellations</FieldLabel>
+              <p className="text-[13px] font-medium text-owner-ink-faint">Can a player cancel a booking on this court after they&apos;ve already paid?</p>
+              <div className="flex gap-2">
+                <Chip label="Allowed" selected={court.cancellationAllowed} onClick={() => store.updateCourt(index, { cancellationAllowed: true })} />
+                <Chip label="Not allowed" selected={!court.cancellationAllowed} onClick={() => store.updateCourt(index, { cancellationAllowed: false })} />
+              </div>
+              {court.cancellationAllowed ? (
+                <Field
+                  label="Require cancelling at least this many hours before (optional)"
+                  value={court.cancellationCutoffHours}
+                  onChange={(e) => store.updateCourt(index, { cancellationCutoffHours: e.target.value.replace(/\D/g, "") })}
+                  inputMode="numeric"
+                  placeholder="Leave blank for no limit"
+                  mono
+                />
+              ) : null}
             </div>
           </div>
         ))}
@@ -220,24 +255,24 @@ export default function VenueCourtsPage() {
         </button>
       </SectionCard>
 
-      <SectionCard>
-        <SectionLabel>Cancellations</SectionLabel>
-        <p className="text-[13px] font-medium text-owner-ink-faint">Can a player cancel a booking after they&apos;ve already paid?</p>
-        <div className="flex gap-2">
-          <Chip label="Allowed" selected={store.cancellationAllowed} onClick={() => store.setField("cancellationAllowed", true)} />
-          <Chip label="Not allowed" selected={!store.cancellationAllowed} onClick={() => store.setField("cancellationAllowed", false)} />
+      {staleDraft ? (
+        <div role="alert" className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border px-4 py-3 flex flex-col gap-3">
+          <p className="text-owner-danger text-[13.5px] font-semibold">
+            Your previous session for this venue has expired. Let&apos;s start fresh.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              store.reset();
+              setStaleDraft(false);
+              router.replace("/venue-setup/register");
+            }}
+            className="self-start min-h-10 px-4 rounded-lg bg-owner-accent text-white text-[13.5px] font-semibold"
+          >
+            Start fresh
+          </button>
         </div>
-        {store.cancellationAllowed ? (
-          <Field
-            label="Require cancelling at least this many hours before (optional)"
-            value={store.cancellationCutoffHours}
-            onChange={(e) => store.setField("cancellationCutoffHours", e.target.value.replace(/\D/g, ""))}
-            inputMode="numeric"
-            placeholder="Leave blank for no limit"
-            mono
-          />
-        ) : null}
-      </SectionCard>
+      ) : null}
 
       {error ? (
         <p role="alert" className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border text-owner-danger text-[13.5px] font-semibold px-4 py-3">

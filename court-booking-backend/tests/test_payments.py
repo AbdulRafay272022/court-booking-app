@@ -814,6 +814,79 @@ async def test_cancel_succeeds_outside_cutoff_window_and_creates_refund_record(
         assert disputes[0].reason == "player_cancelled_paid_booking"
 
 
+async def test_two_courts_at_one_venue_enforce_cancellation_independently(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    """Section 31: the policy lives on the court, so two courts at the SAME venue can differ.
+    Court A forbids cancelling a paid booking; Court B allows it. Each booking is judged by
+    its own court's rule, never the venue's or a sibling court's."""
+    _mock_upload(monkeypatch)
+    owner = await make_user("+923005000047", role=UserRole.OWNER)
+    player_a = await make_user("+923005000048", role=UserRole.PLAYER)
+    player_b = await make_user("+923005000049", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court_a = await make_court(venue, name="Court A", cancellation_allowed=False)
+    court_b = await make_court(venue, name="Court B", cancellation_allowed=True, cancellation_cutoff_hours=None)
+    for court in (court_a, court_b):
+        await _open_all_week(make_schedule, court)
+        await make_pricing_rule(court, price_per_slot=2000)
+    owner_headers = await make_auth_headers(owner)
+    headers_a = await make_auth_headers(player_a)
+    headers_b = await make_auth_headers(player_b)
+
+    booking_a = await _book_and_pay(client, court_a, owner_headers, headers_a)
+    booking_b = await _book_and_pay(client, court_b, owner_headers, headers_b)
+
+    blocked = await client.post(f"/api/v1/bookings/{booking_a['id']}/cancel", headers=headers_a, json={})
+    assert blocked.status_code == 400
+    assert blocked.json()["error"]["code"] == "CANCELLATION_NOT_ALLOWED"
+
+    allowed = await client.post(f"/api/v1/bookings/{booking_b['id']}/cancel", headers=headers_b, json={})
+    assert allowed.status_code == 200
+    assert allowed.json()["booking"]["status"] == "cancelled"
+
+    # Court A's booking is untouched by Court B's cancellation.
+    still_booked = await client.get(f"/api/v1/bookings/{booking_a['id']}", headers=headers_a)
+    assert still_booked.json()["status"] == "booked"
+
+
+async def test_patching_one_courts_policy_leaves_sibling_court_alone(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    """The post-setup Venue Settings screen edits ONE court via PATCH /courts/{id}. Changing
+    Court A's policy (including clearing a cutoff back to null) must not move Court B's."""
+    _mock_upload(monkeypatch)
+    owner = await make_user("+923005000050", role=UserRole.OWNER)
+    player = await make_user("+923005000051", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court_a = await make_court(venue, name="Court A", cancellation_allowed=False)
+    court_b = await make_court(venue, name="Court B", cancellation_allowed=True, cancellation_cutoff_hours=48)
+    for court in (court_a, court_b):
+        await _open_all_week(make_schedule, court)
+        await make_pricing_rule(court, price_per_slot=2000)
+    owner_headers = await make_auth_headers(owner)
+    player_headers = await make_auth_headers(player)
+
+    patch_a = await client.patch(
+        f"/api/v1/courts/{court_a.id}",
+        headers=owner_headers,
+        json={"cancellation_allowed": True, "cancellation_cutoff_hours": None},
+    )
+    assert patch_a.status_code == 200
+    assert patch_a.json()["cancellation_allowed"] is True
+    assert patch_a.json()["cancellation_cutoff_hours"] is None
+
+    # Sibling court kept its own policy.
+    get_b = await client.get(f"/api/v1/courts/{court_b.id}")
+    assert get_b.json()["cancellation_allowed"] is True
+    assert get_b.json()["cancellation_cutoff_hours"] == 48
+
+    # And the new rule is what's actually enforced on Court A now.
+    booking_a = await _book_and_pay(client, court_a, owner_headers, player_headers)
+    cancel = await client.post(f"/api/v1/bookings/{booking_a['id']}/cancel", headers=player_headers, json={})
+    assert cancel.status_code == 200
+
+
 async def test_existing_courts_default_to_unrestricted_cancellation(db_session_factory, make_user, make_venue):
     """Directly exercises the migration's SERVER default (not the ORM's Python-side
     default) by inserting a raw courts row through Core with cancellation_allowed and

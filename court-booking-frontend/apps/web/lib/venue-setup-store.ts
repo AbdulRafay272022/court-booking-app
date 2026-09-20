@@ -7,6 +7,11 @@ export interface CourtDraft {
   name: string;
   sport: string;
   slotMinutes: number;
+  // Section 31: cancellation policy is per court (the backend has always stored it per court;
+  // the wizard used to apply one shared setting to every court it created).
+  cancellationAllowed: boolean;
+  /** Empty string = no cutoff (cancellable any time before start). */
+  cancellationCutoffHours: string;
 }
 
 export interface PricingRuleDraft {
@@ -28,7 +33,7 @@ export const SLOT_MINUTES_OPTIONS = [60, 90, 120];
 export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function makeCourt(index: number): CourtDraft {
-  return { name: `Court ${index}`, sport: "Padel", slotMinutes: 90 };
+  return { name: `Court ${index}`, sport: "Padel", slotMinutes: 90, cancellationAllowed: true, cancellationCutoffHours: "" };
 }
 
 function makeRule(name: string): PricingRuleDraft {
@@ -63,12 +68,6 @@ interface VenueSetupState {
   defaultCloseTime: string;
   perDayOverrides: Partial<Record<number, DayOverride>>;
   pricingRules: PricingRuleDraft[];
-  // Section 29 Part C: applied to every court created in this wizard run (same pattern as
-  // hours/pricing above -- one shared setting, not configured per court in the wizard, though
-  // the backend stores it per-court so a future settings screen can diverge them later).
-  cancellationAllowed: boolean;
-  /** Empty string = no cutoff (cancellable any time before start). */
-  cancellationCutoffHours: string;
   /** Set once POST /venues succeeds, so a retry after a partial submit failure
    * (e.g. court creation failing) doesn't create a second duplicate venue. */
   createdVenueId: string | null;
@@ -113,8 +112,6 @@ const initialState = {
   defaultCloseTime: "23:00",
   perDayOverrides: {} as Partial<Record<number, DayOverride>>,
   pricingRules: [makeRule("All day")],
-  cancellationAllowed: true,
-  cancellationCutoffHours: "",
   createdVenueId: null as string | null,
   createdCourtIds: {} as Record<number, string>,
 };
@@ -178,6 +175,26 @@ export const useVenueSetupStore = create<VenueSetupState>()(
     }),
     {
       name: "maidan.venue-setup-draft",
+      version: 2,
+      // v1 drafts kept ONE shared cancellation setting on the draft itself; carry it onto every
+      // court so an owner mid-wizard keeps what they'd already chosen (and no court is left
+      // without the per-court fields, which would render as an undefined chip state).
+      migrate: (persisted, version) => {
+        const state = (persisted ?? {}) as Record<string, unknown>;
+        if (version < 2) {
+          const allowed = typeof state.cancellationAllowed === "boolean" ? state.cancellationAllowed : true;
+          const cutoff = typeof state.cancellationCutoffHours === "string" ? state.cancellationCutoffHours : "";
+          const courts = Array.isArray(state.courts) ? (state.courts as Partial<CourtDraft>[]) : [];
+          state.courts = courts.map((c) => ({
+            ...c,
+            cancellationAllowed: c.cancellationAllowed ?? allowed,
+            cancellationCutoffHours: c.cancellationCutoffHours ?? cutoff,
+          }));
+          delete state.cancellationAllowed;
+          delete state.cancellationCutoffHours;
+        }
+        return state as unknown as VenueSetupState;
+      },
       storage: createJSONStorage(() => window.localStorage),
     },
   ),

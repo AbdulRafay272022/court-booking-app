@@ -26,6 +26,7 @@ export * from "./owners";
 export * from "./admin";
 export * from "./users";
 export * from "./session";
+export * from "./venue-draft";
 
 export function createCourtBookingApi(config: ApiClientConfig) {
   const client = createApiClient(config);

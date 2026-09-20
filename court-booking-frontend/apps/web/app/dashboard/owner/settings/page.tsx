@@ -69,6 +69,9 @@ export default function VenueSettingsPage() {
   const [defaultCloseTime, setDefaultCloseTime] = useState("23:00");
   const [perDayOverrides, setPerDayOverrides] = useState<Partial<Record<number, DayOverride>>>({});
   const [pricingRules, setPricingRules] = useState<PricingRuleDraft[]>([]);
+  // Section 31: per-court cancellation policy, seeded from the selected court like hours/prices.
+  const [cancellationAllowed, setCancellationAllowed] = useState(true);
+  const [cancellationCutoffHours, setCancellationCutoffHours] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -94,6 +97,8 @@ export default function VenueSettingsPage() {
     }
     setPerDayOverrides(byDay);
     setPricingRules(court.pricing_rules.length > 0 ? court.pricing_rules.map(ruleToDraft) : [makeRule()]);
+    setCancellationAllowed(court.cancellation_allowed);
+    setCancellationCutoffHours(court.cancellation_cutoff_hours != null ? String(court.cancellation_cutoff_hours) : "");
     // Deliberately NOT clearing saveMessage here: handleSave's own invalidateQueries() triggers
     // a refetch that re-runs this effect moments after a successful save, which cleared the
     // "Hours and pricing updated" confirmation almost as soon as it appeared (caught live while
@@ -143,11 +148,17 @@ export default function VenueSettingsPage() {
     setSaving(true);
     setSaveMessage(null);
     try {
+      await api.courts.update(activeCourtId, {
+        cancellation_allowed: cancellationAllowed,
+        cancellation_cutoff_hours: cancellationAllowed && cancellationCutoffHours.trim() ? Number(cancellationCutoffHours) : null,
+      });
       await api.courts.setSchedule(activeCourtId, buildSchedules());
       await api.courts.setPricing(activeCourtId, rules);
       await queryClient.invalidateQueries({ queryKey: ["court-settings", activeCourtId] });
       await queryClient.invalidateQueries({ queryKey: ["court", activeCourtId] });
-      setSaveMessage({ kind: "ok", text: "Hours and pricing updated." });
+      // The owner dashboard's court lists and the player-facing pay screen read the policy too.
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setSaveMessage({ kind: "ok", text: "Hours, pricing and cancellation policy updated." });
     } catch (e) {
       setSaveMessage({ kind: "error", text: friendlyErrorMessage(e) });
     } finally {
@@ -303,6 +314,25 @@ export default function VenueSettingsPage() {
             >
               + Add a rate
             </button>
+          </SectionCard>
+
+          <SectionCard>
+            <SectionLabel>Cancellations</SectionLabel>
+            <p className="text-[13px] font-medium text-owner-ink-faint">Can a player cancel a booking on this court after they&apos;ve already paid?</p>
+            <div className="flex gap-2">
+              <Chip label="Allowed" selected={cancellationAllowed} onClick={() => setCancellationAllowed(true)} />
+              <Chip label="Not allowed" selected={!cancellationAllowed} onClick={() => setCancellationAllowed(false)} />
+            </div>
+            {cancellationAllowed ? (
+              <Field
+                label="Require cancelling at least this many hours before (optional)"
+                value={cancellationCutoffHours}
+                onChange={(e) => setCancellationCutoffHours(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                placeholder="Leave blank for no limit"
+                mono
+              />
+            ) : null}
           </SectionCard>
 
           {saveMessage ? (

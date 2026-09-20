@@ -131,9 +131,29 @@ course of a session, one or two sections at a time. Sections delivered so far:
     courts/schedule/pricing; verified zero dependent bookings/waitlist rows
     first) at the project owner's request, returning production to zero
     venues for a clean re-registration.
+31. Per-court cancellation policy in the UI + venue-not-found recovery (2026-09-20).
+    **The spec's premise was wrong, verified before writing anything:** it said
+    `cancellation_allowed`/`cancellation_cutoff_hours` live on the *venue* and asked for a
+    migration moving them to `courts`. They have only ever been on `courts` (Section 29
+    Part C, migration `19cf7e553535`; `venues` has no such columns), enforcement
+    (`BookingService._enforce_cancellation_policy`) already reads the booking's own court, and
+    the pay screen already fetched that court. So **no migration was written** (a
+    backfill-then-drop would have failed on the missing venue columns) and there is **no
+    backend code change**: only two tests pinning the behaviour that was already true
+    (`test_two_courts_at_one_venue_enforce_cancellation_independently`,
+    `test_patching_one_courts_policy_leaves_sibling_court_alone`). The real gap was
+    frontend-only: the wizard applied ONE shared setting to every court it created, and the
+    post-setup Venue Settings screen had no cancellation controls at all. Both fixed on both
+    platforms; see the frontend CLAUDE.md's Section 31 for that half and for Part 2 (a
+    stale wizard draft -- `createdVenueId` pointing at a deleted venue -- is now a recoverable
+    state instead of a dead-end error). Backend-relevant facts: `PATCH /courts/{id}` with an
+    explicit `cancellation_cutoff_hours: null` clears the cutoff (`exclude_unset` keeps explicit
+    nulls); a missing venue on `POST /venues/{id}/courts` is `404 VENUE_NOT_FOUND`, a missing
+    court elsewhere is a generic `404 NOT_FOUND`, another owner's venue is
+    `403 NOT_VENUE_OWNER` -- the three codes the frontend now treats as "stale draft".
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 348
+Postgres/PostGIS instance, and documented in README.md. Current state: 350
 tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
 operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
 round-trips upgrade -> downgrade -> upgrade). Run the suite with

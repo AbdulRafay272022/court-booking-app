@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { isStaleVenueDraftError } from "@court-booking/api-client";
 import type { PricingRuleInput, ScheduleTemplateInput } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -21,6 +22,9 @@ function toTimeString(hhmm: string): string {
 export default function VenueCourtsScreen() {
   const store = useVenueSetupStore();
   const [submitting, setSubmitting] = useState(false);
+  // Section 31 Part 2: the saved draft pointed at a venue/court that no longer exists (or isn't
+  // ours). Shown as a recovery panel with a next step, not as a bare error alert.
+  const [staleDraft, setStaleDraft] = useState(false);
 
   const totalPricedRules = store.pricingRules.filter((r) => Number(r.pricePerSlot) > 0);
   const isValid = store.courts.length > 0 && totalPricedRules.length > 0;
@@ -61,6 +65,11 @@ export default function VenueCourtsScreen() {
       return;
     }
     setSubmitting(true);
+    setStaleDraft(false);
+    // Ids read from the saved draft (as opposed to created during this run) are the only ones
+    // whose failure can mean "stale draft" -- see isStaleVenueDraftError.
+    const draftHadVenue = !!store.createdVenueId;
+    const draftCourtIds = { ...store.createdCourtIds };
     try {
       let venueId = store.createdVenueId;
       if (!venueId) {
@@ -84,9 +93,6 @@ export default function VenueCourtsScreen() {
 
       const schedules = buildSchedules();
       const pricingRules = buildPricingRules();
-      const cutoffHours = store.cancellationCutoffHours.trim()
-        ? Number(store.cancellationCutoffHours)
-        : null;
 
       // Resumable: courtId is reused from a prior attempt when we have one (POST /courts
       // always inserts, so re-running it for an already-created court would duplicate the
@@ -97,12 +103,14 @@ export default function VenueCourtsScreen() {
         const court = store.courts[i];
         let courtId = store.createdCourtIds[i];
         if (!courtId) {
+          // Section 31: each court carries its own cancellation policy.
+          const cutoffHours = court.cancellationCutoffHours.trim() ? Number(court.cancellationCutoffHours) : null;
           const { court: created } = await api.courts.create(venueId, {
             name: court.name,
             sport: court.sport,
             slot_minutes: court.slotMinutes,
-            cancellation_allowed: store.cancellationAllowed,
-            cancellation_cutoff_hours: store.cancellationAllowed ? cutoffHours : null,
+            cancellation_allowed: court.cancellationAllowed,
+            cancellation_cutoff_hours: court.cancellationAllowed ? cutoffHours : null,
           });
           courtId = created.id;
           store.setCreatedCourtId(i, courtId);
@@ -115,7 +123,14 @@ export default function VenueCourtsScreen() {
       store.reset();
       router.replace({ pathname: "/(owner)/venue-setup/pending", params: { venueId: finishedVenueId } });
     } catch (e) {
-      Alert.alert("Couldn't send for review", friendlyErrorMessage(e));
+      if (isStaleVenueDraftError(e) && (draftHadVenue || Object.keys(draftCourtIds).length > 0)) {
+        // Clear the stale ids right away so a relaunch can't loop back into the same failure.
+        store.setField("createdVenueId", null);
+        store.setField("createdCourtIds", {});
+        setStaleDraft(true);
+      } else {
+        Alert.alert("Couldn't send for review", friendlyErrorMessage(e));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -181,6 +196,34 @@ export default function VenueCourtsScreen() {
                     />
                   ))}
                 </View>
+              </View>
+              <View className="gap-2">
+                <FieldLabel>Cancellations</FieldLabel>
+                <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
+                  Can a player cancel a booking on this court after they've already paid?
+                </Text>
+                <View className="flex-row gap-2">
+                  <Chip
+                    label="Allowed"
+                    selected={court.cancellationAllowed}
+                    onPress={() => store.updateCourt(index, { cancellationAllowed: true })}
+                  />
+                  <Chip
+                    label="Not allowed"
+                    selected={!court.cancellationAllowed}
+                    onPress={() => store.updateCourt(index, { cancellationAllowed: false })}
+                  />
+                </View>
+                {court.cancellationAllowed ? (
+                  <TextField
+                    label="Require cancelling at least this many hours before (optional)"
+                    value={court.cancellationCutoffHours}
+                    onChangeText={(v) => store.updateCourt(index, { cancellationCutoffHours: v.replace(/\D/g, "") })}
+                    keyboardType="number-pad"
+                    placeholder="Leave blank for no limit"
+                    mono
+                  />
+                ) : null}
               </View>
             </View>
           ))}
@@ -300,34 +343,23 @@ export default function VenueCourtsScreen() {
           </Pressable>
         </SectionCard>
 
-        <SectionCard>
-          <SectionLabel>Cancellations</SectionLabel>
-          <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
-            Can a player cancel a booking after they've already paid?
-          </Text>
-          <View className="flex-row gap-2">
-            <Chip
-              label="Allowed"
-              selected={store.cancellationAllowed}
-              onPress={() => store.setField("cancellationAllowed", true)}
-            />
-            <Chip
-              label="Not allowed"
-              selected={!store.cancellationAllowed}
-              onPress={() => store.setField("cancellationAllowed", false)}
-            />
+        {staleDraft ? (
+          <View className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border px-4 py-3 gap-3">
+            <Text className="font-plex-semibold text-owner-danger text-[13.5px]">
+              Your previous session for this venue has expired. Let's start fresh.
+            </Text>
+            <Pressable
+              onPress={() => {
+                store.reset();
+                setStaleDraft(false);
+                router.replace("/(owner)/venue-setup/register");
+              }}
+              className="self-start min-h-10 px-4 rounded-lg bg-owner-accent items-center justify-center"
+            >
+              <Text className="font-plex-semibold text-white text-[13.5px]">Start fresh</Text>
+            </Pressable>
           </View>
-          {store.cancellationAllowed ? (
-            <TextField
-              label="Require cancelling at least this many hours before (optional)"
-              value={store.cancellationCutoffHours}
-              onChangeText={(v) => store.setField("cancellationCutoffHours", v.replace(/\D/g, ""))}
-              keyboardType="number-pad"
-              placeholder="Leave blank for no limit"
-              mono
-            />
-          ) : null}
-        </SectionCard>
+        ) : null}
 
         <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
           We'll review it and come back to you within a day.

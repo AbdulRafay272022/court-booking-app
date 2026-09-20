@@ -113,7 +113,7 @@ chat/OCR testing exercise a real key) — just don't mistake this
 environment-specific noise for a real regression when running the suite
 from a `.env` with that override.
 
-307 tests across 25 files, one per resource area (`test_auth.py`,
+350 tests across 25 files, one per resource area (`test_auth.py`,
 `test_venues.py`, `test_courts.py`, `test_availability.py`,
 `test_bookings.py`, `test_concurrency.py`, `test_payments.py`,
 `test_waitlist.py`, `test_owners.py`, `test_marketing.py`, `test_users.py`,
@@ -1041,6 +1041,19 @@ a project-owner decision, not something picked unilaterally:
 
 **Part D — Terms of Service / Privacy Policy** — see the frontend CLAUDE.md; no backend changes
 beyond what Part C's schema needed.
+
+## Per-court cancellation policy in the owner UI (Section 31)
+
+No backend change: the policy has been per **court** since Section 29 Part C, and
+`_enforce_cancellation_policy` already judges each booking by its own court, so two courts at one
+venue can differ (pinned by `test_two_courts_at_one_venue_enforce_cancellation_independently` and
+`test_patching_one_courts_policy_leaves_sibling_court_alone` in `tests/test_payments.py`). What
+changed is the owner UI, which used to set one shared value for every court in the venue-setup
+wizard and had no cancellation controls after setup: each court now carries its own
+Allowed / Not allowed + optional cutoff, in the wizard and on the Venue Settings screen (which
+saves through `PATCH /courts/{id}`; send `cancellation_cutoff_hours: null` to clear a cutoff).
+See the frontend `CLAUDE.md`'s Section 31, which also covers how the wizard now recovers when its
+saved draft points at a venue that no longer exists.
 
 ## Local development extras
 

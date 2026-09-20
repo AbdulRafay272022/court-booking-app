@@ -464,7 +464,8 @@ existing WebSocket/Turbopack gotcha below), not just typechecked.
   - **Venue setup wizard** (`venue-setup/courts.tsx` mobile, `venue-setup/courts/page.tsx` web)
     gained a "Cancellations" section, following the same pattern as hours/pricing already in that
     wizard: one shared setting applied to every court created in that run (not configured
-    per-court in the wizard, even though the backend stores it per-court) -- "Allowed"/"Not
+    per-court in the wizard, even though the backend stores it per-court) **[superseded by
+    Section 31: it is per court now, inside each court's card]** -- "Allowed"/"Not
     allowed" chips plus an optional cutoff-hours field, defaulting to unrestricted (matches the
     model's own default, so a wizard run that never touches this section behaves exactly like
     before this feature existed). Live-verified via Playwright + direct API calls (real signup,
@@ -591,6 +592,59 @@ icons, opacity 0.07-0.14).
   signup as owner, toggle back to player, wizard step 1) and mobile via the Expo web target
   (login, signup as player, signup as owner) -- not device-tested, same standing limitation as
   everywhere else in this file.
+
+## Section 31 -- per-court cancellation in the UI, stale-draft recovery (2026-09-20)
+
+**Premise check first:** the ticket said the policy lived on the *venue* and needed moving to
+`courts`. It has only ever been on `courts` (backend CLAUDE.md, Section 31), and enforcement and the
+pay-screen disclosure already read the booking's own court. So this is frontend-only work, no
+migration. The real gaps were that the wizard set ONE value for every court and the post-setup
+Venue Settings screen had no cancellation controls.
+
+- **Wizard (both apps):** the Cancellations block moved out of its own venue-wide card into each
+  court's card (below Slot length), stored on `CourtDraft.cancellationAllowed` /
+  `cancellationCutoffHours`. `POST /venues/{id}/courts` sends that court's own values.
+- **Draft migration:** `useVenueSetupStore` is now persist `version: 2` with a `migrate` that copies a
+  v1 draft's shared setting onto every court and drops the old top-level fields, so an owner mid-wizard
+  keeps their choice and no court renders with undefined chip state. Verified with a real v1 draft in
+  localStorage on both platforms.
+- **Venue Settings (both apps):** already per court (court tabs), so it just gained a Cancellations
+  card seeded from the selected court; **Save changes** now also calls `api.courts.update` first
+  (`PATCH /courts/{id}`; cutoff `null` clears it), then schedule and pricing, and invalidates
+  `owner-venues`. Verified independent per-court edits, including clearing a cutoff.
+- **Wording:** `cancellationPolicyText` now says "This **court** does not allow cancellations once
+  booked" (it said "venue", which is wrong when courts differ).
+- **Stale draft recovery (Part 2):** `isStaleVenueDraftError` (`packages/api-client/src/venue-draft.ts`)
+  matches `404 VENUE_NOT_FOUND`, `404 NOT_FOUND` (a remembered court id whose court is gone) and
+  `403 NOT_VENUE_OWNER` (a draft left over from another account on a shared browser -- the draft key is
+  global, not per user). The wizard applies it **only when the failing call used an id read from the saved
+  draft**, never to an id created in the same run. On a match it clears `createdVenueId` /
+  `createdCourtIds` immediately (so a reload can't loop), and shows "Your previous session for this venue
+  has expired. Let's start fresh." with a **Start fresh** button that calls `store.reset()` and reopens
+  step 1. A genuine network failure (`REQUEST_TIMEOUT`, no status) still gets the normal error and keeps
+  the ids. Note the typed form fields survive until the owner presses Start fresh.
+- **Live-tested, not just typechecked:** web production build on :3100 -- 34/34 Playwright checks; mobile
+  via Expo web on :8082 -- 24/24. Backend suite 350 passing. The mobile Expo server was started with
+  `EXPO_PUBLIC_API_BASE_URL=http://localhost:8000` and the script asserts no request ever left for a
+  non-local API host (`app.json` points at production). **Not device-tested** (same standing limit).
+
+Things worth knowing / not done:
+- **Existing hazard, unchanged:** `updateCourt`/`addCourt`/`removeCourt` in the store clear
+  `createdCourtIds`, so editing ANY court field after a partial submit failure makes the retry
+  `POST /courts` every court again (duplicates -- the same shape as the 2026-09-20 production incident).
+  Per-court cancellation fields make that edit path slightly more likely. Fix is to PATCH already-created
+  courts instead of re-creating; left alone as out of scope.
+- **Unexplained, not investigated:** in the scripted web run the app rotated a brand-new owner session
+  (`revoked_reason = refreshed`) about 8 seconds after it was created, although ~8h remained and
+  `shouldRefreshSoon` should have been false. Another tab holding the old token would be logged out by
+  that. Worth a look at what `expiresAt` the store holds after `restoreSession`.
+- **Test-harness traps hit here:** don't re-write the session in `addInitScript` on every navigation
+  (the app rotates its token, so the old one 401s -- seed only when localStorage is empty); RN-web
+  `SectionLabel` puts UPPERCASE text in the DOM (match case-insensitively); `page.waitForFunction` with an
+  `async` predicate resolves immediately (poll from Node instead); the local dev DB has no seeded admin
+  (make one by `UPDATE users SET role='admin'` on a throwaway user); `.test` is a rejected email TLD.
+- Test data from these runs (users `92300#######@example.com`, venues "S31 ...") was left in the local dev
+  DB because the bulk-delete was blocked; see the session summary for the cleanup SQL.
 
 ## How this project gets worked (recipe for the next sprint)
 

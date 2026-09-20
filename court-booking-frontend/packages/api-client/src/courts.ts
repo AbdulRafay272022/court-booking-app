@@ -62,7 +62,7 @@ export function cancellationPolicyText(
 ): string {
   if (!court) return "";
   if (!court.cancellation_allowed) {
-    return "This venue does not allow cancellations once booked.";
+    return "This court does not allow cancellations once booked.";
   }
   if (court.cancellation_cutoff_hours != null) {
     return `Free cancellation up to ${court.cancellation_cutoff_hours}h before your booking.`;
