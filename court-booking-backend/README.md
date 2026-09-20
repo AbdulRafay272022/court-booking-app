@@ -52,7 +52,7 @@ everything is under `/api/v1`):
 
 | Area | Base path | Highlights |
 |---|---|---|
-| Auth | `/auth` | `request-otp`, `verify-otp`, `refresh`, `logout`, `me` |
+| Auth | `/auth` | `signup`, `verify-signup-otp`, `login`, `request-otp` + `reverify-phone`, `request-password-reset` + `verify-password-reset`, `refresh`, `logout`, `me` (password login; WhatsApp OTP only proves the phone -- see Key design notes) |
 | Users | `/users/me` | `fcm-token` (register/delete), `notifications` history |
 | Venues | `/venues` | list (geo search), create, get (by id or `by-slug/{slug}`), update, `photos`, `announcements` (Tier 3 marketing) |
 | Courts | `/courts`, `/venues/{id}/courts` | create/get/update/deactivate, `schedule`, `pricing`, `blackouts` |
@@ -113,7 +113,7 @@ chat/OCR testing exercise a real key) — just don't mistake this
 environment-specific noise for a real regression when running the suite
 from a `.env` with that override.
 
-272 tests across 25 files, one per resource area (`test_auth.py`,
+307 tests across 25 files, one per resource area (`test_auth.py`,
 `test_venues.py`, `test_courts.py`, `test_availability.py`,
 `test_bookings.py`, `test_concurrency.py`, `test_payments.py`,
 `test_waitlist.py`, `test_owners.py`, `test_marketing.py`, `test_users.py`,
@@ -176,7 +176,7 @@ write, never a migration.
 
 The schema mirrors this shape, table by table:
 
-- `users`, `sessions` (per-device, revocable), `otp_requests` — phone+OTP auth, no passwords
+- `users` (argon2id `password_hash`, `email` with a case-insensitive unique index on `lower(email)`, `city`, `gender`, `phone_verified_at`), `sessions` (per-device, revocable, 8h), `otp_requests` (purpose-bound: signup / reverify / password_reset / phone_change; phone_change codes are also bound to the requesting `user_id`), `login_attempts` (failed-password rate limit) — password login; OTP only proves phone ownership
 - `venues` (slug, geo `location`, `sports[]`, encrypted `bank_details` JSONB, approval workflow, `plan_tier`), `courts`
 - `schedule_templates`, `pricing_rules`, `blackouts` — the availability inputs
 - `bookings` — the core state machine (see below)
@@ -188,35 +188,117 @@ The schema mirrors this shape, table by table:
 
 ## Key design notes
 
-- **Auth** is phone + OTP (no passwords) — see `SESSION_TOKEN_*`/`OTP_*` in
-  `config.py`. Endpoints: `POST /auth/request-otp`, `POST /auth/verify-otp`
-  (returns `token` + `is_new_user`), `POST /auth/refresh` (rotates the
-  session), `POST /auth/logout`, `GET /auth/me` (returns `{user, session}`).
-  OTPs are plain SHA-256 at rest, deliberately not a slow password hash — a
-  6-digit code has ~20 bits of entropy regardless of hash cost, and it's dead
-  in 5 minutes anyway; the actual protection is the 5-minute expiry, the
-  5-attempt cap, and the 5-request/15-minute rate limit. Session tokens are
-  opaque bearer tokens, HMAC-hashed before storage so a leaked DB row can't
-  be replayed directly. Sessions carry device metadata so a user can be
-  logged into several devices and revoke one without touching the others.
+- **Auth (Section 26): signup form + password login; WhatsApp OTP only proves
+  the phone.** This replaced the original phone+OTP-only model, in which
+  every login was an OTP and every session lasted a year.
+  - **Signup**: `POST /auth/signup` takes name, email (required, stored
+    lowercase, *contact info only -- not a login identifier*), phone, `city`
+    (fixed pilot list of ten, a Postgres enum), `gender`, password (min 8, no
+    complexity rules, max 128) + confirm, and `role` (`player` | `owner`;
+    `admin` is not selectable). It creates the account with
+    `phone_verified_at = NULL` and sends an OTP; `POST /auth/verify-signup-otp`
+    sets `phone_verified_at` and issues the first session. Signing up on a
+    phone that already has a *verified* account is `409 PHONE_ALREADY_REGISTERED`
+    (never overwrites); an abandoned, never-verified signup *can* be
+    overwritten by a retry, so nobody can squat on someone else's number.
+  - **Login**: `POST /auth/login` (phone + password). **The phone-verification
+    check runs before the password check**: if `phone_verified_at` is NULL or
+    older than `PHONE_VERIFICATION_TRUST_DAYS` (365) the answer is
+    `403 PHONE_REVERIFICATION_REQUIRED` (even for a wrong password) so the
+    client can route to OTP instead of saying "wrong password". A pre-Section-26
+    account with no password is `403 PASSWORD_NOT_SET` (it sets one through the
+    reset flow). Otherwise wrong password / unknown phone are the *same*
+    `401 INVALID_CREDENTIALS` (an unknown phone still pays for one argon2
+    check, so latency doesn't reveal it either). Failed attempts are rows in
+    `login_attempts`: 5 per phone per 15 min then `429 LOGIN_RATE_LIMITED`,
+    counted for unknown phones too, cleared on success or a password reset.
+    Deliberate consequence: PHONE_REVERIFICATION_REQUIRED / PASSWORD_NOT_SET do
+    tell a caller that a phone has an account -- the spec needs those codes.
+  - **Re-verification**: `POST /auth/request-otp` (sends a code; silent for an
+    unknown phone; for a pending signup it's the "resend" and yields a signup
+    code) then `POST /auth/reverify-phone` (sets `phone_verified_at`, issues
+    **no** session -- an OTP proves the phone, not the password, so the client
+    follows with a normal password login). `verify-signup-otp` only completes a
+    *pending* signup, and OTPs are purpose-bound (`otp_requests.purpose`), so a
+    code minted for one flow can't be redeemed in another. There is no OTP
+    login any more: the old `POST /auth/verify-otp` is gone (it would have
+    bypassed the password).
+  - **Forgot / set password**: `POST /auth/request-password-reset` then
+    `POST /auth/verify-password-reset` (phone, code, new password + confirm).
+    It ends **every** session for the account (other devices are logged out),
+    refreshes `phone_verified_at` and clears the login lockout, and does not log
+    anyone in. It is also how an existing (pre-Section-26) account sets its
+    first password. Same free-form WhatsApp send, same caveats (below).
+  - **Sessions**: `SESSION_TOKEN_EXPIRE_HOURS` = **8**, fixed per token,
+    opaque bearer tokens HMAC-hashed at rest, per-device rows. Clients must
+    call `POST /auth/refresh` **proactively** (it rotates a still-valid token
+    into a fresh 8h one; an expired token cannot be refreshed). Refresh does
+    not outlive phone verification: past 365 days it answers
+    `401 PHONE_REVERIFICATION_REQUIRED`, otherwise an always-active user would
+    never be re-verified.
+  - **Profile editing**: `PATCH /auth/me` edits `name`, `email`, `city`,
+    `gender` (and `avatar_url`) for both roles; all optional, but an explicit
+    `null` for name/email/city/gender is rejected (they're required at signup).
+    `phone`, `password` and `role` are not accepted here (unknown fields are
+    ignored, so a client can't sneak them in). Password change is *only* the
+    forgot-password flow -- there is deliberately no second, "old password"
+    path.
+  - **Email is unique, case-insensitively.** A functional unique index
+    `uq_users_email_lower` on `lower(email)` makes it a database guarantee (two
+    racing signups can't both win). The API answers `409 EMAIL_ALREADY_IN_USE`
+    on signup and on profile update (the IntegrityError is caught and mapped, not
+    a 500). An email held only by an **abandoned, never-verified signup** does not
+    block anyone: it is released (nulled, with an `email_released_abandoned_signup`
+    audit row) exactly like an abandoned phone, so nobody can squat. Migration
+    `651abc777d2c` resolves pre-existing duplicates *before* creating the index --
+    earliest account (by `created_at`) keeps the address, later ones are NULLed,
+    every change is an `email_deduplicated_by_migration` audit row, and the
+    migration prints what it did.
+  - **Phone change**: `POST /auth/request-phone-change` (`new_phone` +
+    **current password**) then `POST /auth/verify-phone-change` (`new_phone` +
+    code). The code goes to the **new** number (purpose `phone_change`, bound to
+    the requesting user so another user's code can't be redeemed). Requirements /
+    behavior: authenticated; the new number must not belong to a *verified*
+    account (`409 PHONE_ALREADY_REGISTERED`; a stale unverified holder is deleted
+    on success); the password is required so a stolen 8h token can't take over
+    the account (`403 INVALID_CREDENTIALS` -- deliberately not 401, so clients
+    don't read it as an expired session; wrong guesses share the login lockout,
+    `429 LOGIN_RATE_LIMITED`; `PASSWORD_NOT_SET` for a legacy account without a
+    password). Nothing changes until the code is verified: a failed or abandoned
+    attempt leaves the original number, sessions and login untouched. On success,
+    in one transaction: phone updated, `phone_verified_at = now`, **every**
+    session revoked (`revoked_reason = "phone_changed"`, this one too -- the
+    response says `sign_in_again: true`), lockouts cleared; any failure rolls the
+    whole thing back. The user then logs in with the new number and the
+    *existing* password.
+  - **Passwords** are argon2id (`argon2-cffi`, hashed/verified off the event
+    loop with `asyncio.to_thread`) -- deliberately *not* the Fernet used for
+    bank details (reversible encryption is the wrong tool) and not the plain
+    SHA-256 used for OTPs (fine for a 5-minute, attempt-capped 6-digit code,
+    not for a reusable password). OTPs stay plain SHA-256: ~20 bits of entropy
+    regardless of hash cost, dead in 5 minutes; the real protection is the
+    expiry, the 5-attempt cap and the 5-request/15-minute limit.
   FCM tokens and notification history live under `/users/me/*`, not `/auth`.
-  **Temporary (Meta Business Verification pending):** the OTP is currently
+  **Temporary (Meta Business Verification pending):** OTPs are currently
   sent as free-form WhatsApp text rather than the `whatsapp_otp`
-  Authentication template (`WhatsAppService.send_otp`), so it only reaches a
+  Authentication template (`WhatsAppService.send_otp`), so they only reach a
   recipient who has messaged the business number within the last 24h.
   Anyone else either gets `502 OTP_DELIVERY_FAILED` (Meta rejects the send
   outright -- the finding #6 path, not a 500) or, more commonly, a plain 200
   with no message, because Meta accepted the send and failed it afterwards in
   a delivery-status webhook. Those outcomes are now logged
   (`whatsapp.send.accepted` / `.rejected`, `whatsapp.status`) so the real
-  reason is visible. Revert to the template send once one is approved --
-  steps in CLAUDE.md's "TEMPORARY: OTP is sent as free-form WhatsApp text"
-  gotcha.
+  reason is visible. **This matters more now**: a brand-new player cannot
+  finish signup without an open window. Revert to the template send once one
+  is approved -- steps in CLAUDE.md's "TEMPORARY: OTP is sent as free-form
+  WhatsApp text" gotcha.
   **`DEV_FIXED_OTP`** (blank by default) lets local dev skip WhatsApp
   delivery / DB brute-forcing entirely — set it (e.g. `111111`) in a local
-  `.env` and every `request-otp` call returns that code instead of a random
+  `.env` and every OTP request returns that code instead of a random
   one. Double-gated on `DEBUG=true` so it can't silently activate in a
   shared/staging environment; never give it a real value in `.env.example`.
+  `app/seed.py`'s three demo accounts are phone-verified and share
+  `DEMO_PASSWORD` for local login.
 
 - **Booking concurrency is enforced by the database, not the application.**
   `bookings` has a partial unique index —

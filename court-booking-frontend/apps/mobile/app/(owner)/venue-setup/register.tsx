@@ -239,7 +239,7 @@ export default function VenueRegisterScreen() {
             <SecondaryButton label="Save and finish later" onPress={handleSaveAndExit} />
           </View>
           <View className="flex-1">
-            <PrimaryButton label="Next: courts & pricing" onPress={handleNext} />
+            <PrimaryButton label="Next: courts & pricing" onPress={handleNext} disabled={!isValid} />
           </View>
         </View>
       </ScrollView>

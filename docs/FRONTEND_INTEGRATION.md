@@ -17,86 +17,123 @@ truth for exact field-level types.
   dev and as a deployment starting point, not a live deployment.
 - **API prefix**: every route except `/health` and `/health/ready` is
   under `/api/v1` (`API_V1_PREFIX` in `config.py`). E.g. `POST
-  /api/v1/auth/request-otp`.
+  /api/v1/auth/login`.
 - **CORS**: wide open in the current config (`ALLOWED_ORIGINS=["*"]`,
   `allow_credentials=True`). Fine for local dev against any frontend
   origin; must be locked down to real origins before any real deployment.
 
 ## 2. Auth
 
-Phone + OTP, no passwords. Session tokens are **opaque bearer tokens**,
-not JWTs — the frontend cannot decode them or read anything out of them;
-they're random strings, meaningless until sent back to the backend.
+**Updated 2026-09-20 (Section 26): password login.** Signup is a form plus a
+WhatsApp OTP that proves the phone; login is **phone + password**, not OTP. The
+old phone+OTP-only flow and `POST /auth/verify-otp` no longer exist.
 
-**Header format** on every authenticated request:
+Session tokens are **opaque bearer tokens**, not JWTs -- the frontend cannot
+decode them. Header on every authenticated request:
 ```
 Authorization: Bearer <token>
 ```
 
-### Flow
+### Signup (player or owner -- one form, one endpoint)
 
-1. **`POST /api/v1/auth/request-otp`**
-   Request: `{"phone": "+923001234567"}` (E.164 format, must start with `+`)
-   Response `200`: `{"message": "OTP sent via WhatsApp", "expires_in": 300}`
-   — **the OTP is delivered via WhatsApp only, no SMS fallback.** The
-   frontend should tell the user to check WhatsApp, not their SMS inbox.
-   Rate-limited per phone number (`OTP_MAX_ATTEMPTS`=5 requests per
-   `OTP_RATE_LIMIT_WINDOW_MINUTES`=15) → `429` with `error.code =
-   "OTP_RATE_LIMITED"` past that.
-
-2. **`POST /api/v1/auth/verify-otp`**
-   Request: `{"phone": "+923001234567", "otp": "123456", "device_id": "optional", "device_name": "optional", "platform": "android|ios|web (optional)"}`
-   Response `200`:
+1. **`POST /api/v1/auth/signup`** -> `201 {"message", "phone", "expires_in": 300}`
    ```json
-   {
-     "token": "opaque-bearer-token-string",
-     "expires_at": "2027-09-08T12:00:00Z",
-     "user": {
-       "id": "uuid", "phone": "+923001234567", "name": null,
-       "role": "player", "avatar_url": null, "reliability_score": 1.0,
-       "total_bookings": 0, "total_no_shows": 0, "total_rejections": 0,
-       "created_at": "2026-09-08T12:00:00Z"
-     },
-     "is_new_user": true
-   }
+   {"name": "Bilal Ahmed", "email": "bilal@example.com", "phone": "+923001234567",
+    "city": "karachi", "gender": "male", "password": "at-least-8-chars",
+    "confirm_password": "at-least-8-chars", "role": "player"}
    ```
-   `is_new_user` tells the frontend whether to show an onboarding/profile-
-   completion flow. A brand-new phone number gets a `role: "player"` user
-   created automatically — there is no separate signup step.
-   OTP expires after `OTP_EXPIRE_MINUTES`=5 minutes (`error.code =
-   "OTP_EXPIRED"`), wrong code up to 5 times (`error.code = "INVALID_OTP"`,
-   then `"OTP_RATE_LIMITED"`).
+   `role` is `"player"` (default) or `"owner"`; `"admin"` is rejected. `city` is one of
+   `karachi lahore islamabad rawalpindi faisalabad multan gujranwala peshawar kohat hyderabad`;
+   `gender` is `male|female|other`. Password: min 8, max 128, no complexity rules.
+   Email is required and stored lowercase but is **contact info only -- it can't be
+   used to log in.** Creates the account *unverified* and sends the OTP. A phone that
+   already has a verified account -> `409 PHONE_ALREADY_REGISTERED`.
+2. **`POST /api/v1/auth/verify-signup-otp`** `{phone, otp, device_id?, device_name?, platform?}`
+   -> `200 {"token", "expires_at", "user"}` (no more `is_new_user`). Proves the phone and
+   issues the first session. Errors: `INVALID_OTP`, `OTP_EXPIRED`, `OTP_RATE_LIMITED`.
+3. "Resend code" = `POST /api/v1/auth/request-otp {phone}` -> `200 {"expires_in": 300}`
+   (always 200 for a well-formed phone, whether or not an account exists).
+   **Start the OTP screen's countdown from that `expires_in`** (300s), separate from a
+   ~30s resend cooldown.
 
-3. **Store `token`.** Send it as `Authorization: Bearer <token>` on every
-   subsequent request. Token lifetime is `SESSION_TOKEN_EXPIRE_DAYS`=365
-   days by default — long-lived, so there's no need for a short-token +
-   refresh-token *pair*; there's just one token, refreshable in place.
+A new **owner** goes straight from step 2 into venue setup (`POST /venues`,
+courts, schedule, pricing -- the venue starts `pending`).
 
-4. **`POST /api/v1/auth/refresh`** (Bearer token required) — rotates the
-   current session to a new token (old one is revoked). Response `200`:
-   `{"token": "...", "expires_at": "..."}`. Call this proactively before
-   the stored token's `expires_at`, or reactively on a `401`
-   (`error.code = "SESSION_EXPIRED"`).
+### Login
 
-5. **`POST /api/v1/auth/logout`** (Bearer required) — revokes the current
-   session only (other devices' sessions are untouched). Response `200`:
-   `{"message": "Logged out"}`.
+**`POST /api/v1/auth/login`** `{phone, password, device_id?, device_name?, platform?}`
+-> `200 {"token", "expires_at", "user"}`. Errors to handle specially:
 
-6. **`GET /api/v1/auth/me`** (Bearer required) — `{"user": {...}, "session": {...}}`,
-   the same `user` shape as above plus session metadata
-   (`device_id`/`device_name`/`platform`/`last_active_at`/`expires_at`).
-   Good for an app-launch "am I still logged in, and as whom" check.
+| `error.code` | HTTP | What to do |
+|---|---|---|
+| `INVALID_CREDENTIALS` | 401 | "Invalid phone number or password." Same answer for a wrong password and an unknown phone (no account enumeration). |
+| `LOGIN_RATE_LIMITED` | 429 | 5 failures per phone per 15 min. Suggest waiting or resetting the password. |
+| `PHONE_REVERIFICATION_REQUIRED` | 403 | Phone never verified (unfinished signup) or **>365 days since the last OTP**. Checked *before* the password. Send `request-otp`, show the OTP screen, then `reverify-phone`, then log in again (keep the typed password in memory for the retry). |
+| `PASSWORD_NOT_SET` | 403 | Account predates passwords. Send the user to "set your password" = the forgot-password flow below. |
 
-7. **`PATCH /api/v1/auth/me`** — update `name`/`avatar_url` only (Bearer
-   required). No other profile fields are editable via the API.
+### Phone re-verification
 
-**Not implemented**: there is no self-serve "become a venue owner" flow.
-Every new user is created as `role: "player"`. `POST /venues` (venue
-registration, below) requires `role: "owner"` or `"admin"` — promoting a
-player to owner happens outside the API (direct DB access / admin
-process), not through any documented endpoint. If the frontend needs an
-owner-signup flow, that's a backend gap to raise, not something to work
-around client-side.
+`POST /auth/request-otp {phone}` -> code on WhatsApp, then
+`POST /auth/reverify-phone {phone, otp}` -> `200 {"message"}`. **No token is returned**
+(an OTP proves the phone, not the password): follow with `POST /auth/login`.
+
+### Forgot / set password
+
+`POST /auth/request-password-reset {phone}` -> `200 {"expires_in": 300}` (silent for an
+unknown phone), then `POST /auth/verify-password-reset
+{phone, otp, new_password, confirm_password}` -> `200 {"message"}`. This **ends every
+session for the account** (other devices are logged out) and doesn't log the caller in.
+
+### Sessions: 8 hours, refresh proactively
+
+`expires_at` on every token response is **8 hours** out. You will hit it in normal use, so:
+
+- **`POST /api/v1/auth/refresh`** (Bearer) rotates a still-valid token into a fresh
+  8-hour one -> `{"token", "expires_at"}`; the old token stops working. **Call it before
+  expiry** (app foreground / tab focus, plus a timer) -- an expired token cannot be
+  refreshed. Store `expires_at` next to the token.
+- Refresh stops at the 365-day phone-verification limit: `401 PHONE_REVERIFICATION_REQUIRED`.
+- A `401` from a call that carried a token means the session is gone -> login screen.
+  A **network failure is not a 401**: never sign the user out because the server was
+  unreachable (the reference clients retry the launch-time `/auth/me` with backoff and keep
+  the token).
+- Don't attach a stored token to, or react to 401s from, the public auth endpoints
+  (`signup`, `verify-signup-otp`, `login`, `request-otp`, `reverify-phone`,
+  `request-password-reset`, `verify-password-reset`).
+
+### Other endpoints
+
+- **`POST /api/v1/auth/logout`** (Bearer) -> revokes this session only.
+- **`GET /api/v1/auth/me`** (Bearer) -> `{"user", "session"}`. `user` now also carries
+  `email`, `city`, `gender`, `phone_verified_at`.
+- **`PATCH /api/v1/auth/me`** (Bearer) -> edits `name`, `email`, `city`, `gender`,
+  `avatar_url` (all optional; an explicit `null` for name/email/city/gender is `422`).
+  Returns a bare `User`. Email is unique case-insensitively -> `409 EMAIL_ALREADY_IN_USE`
+  (also on signup). `phone`, `password`, `role` are **not** editable here (silently
+  ignored). Passwords change only through the forgot-password flow.
+- **Phone change** (Bearer, two steps; nothing changes until step 2 succeeds):
+  - **`POST /api/v1/auth/request-phone-change`** `{new_phone, password}` -> `{message, expires_in}`.
+    Sends a code to the **new** number. `password` is the user's *current* password:
+    wrong -> `403 INVALID_CREDENTIALS` (403, not 401, so it isn't read as an expired
+    session; it shares the login lockout -> `429 LOGIN_RATE_LIMITED`). New number
+    already on a verified account -> `409 PHONE_ALREADY_REGISTERED`; same as the
+    current number -> `400`; a legacy account with no password -> `403 PASSWORD_NOT_SET`.
+  - **`POST /api/v1/auth/verify-phone-change`** `{new_phone, otp}` -> `{message, phone,
+    sign_in_again: true}`. Updates the phone, sets `phone_verified_at = now`, and
+    **revokes every session including the caller's**: the very next request with the
+    old token is `401`. The client must sign out locally and send the user to login
+    with the new number and their *existing* password. Wrong/expired code ->
+    `INVALID_OTP` / `OTP_EXPIRED` and nothing changes.
+
+### Known limitation (temporary)
+
+OTPs are sent as free-form WhatsApp text until an Authentication template is approved,
+so they only arrive for a phone that has **messaged the business number within the last
+24 hours**. Otherwise `request-otp`/`signup` may answer `502 OTP_DELIVERY_FAILED`, or a
+clean `200` with no message ever arriving. A successful response does not prove delivery.
+
+Roles: a new account is `player` unless it chose `owner` at signup. `admin` is only ever
+assigned outside the API.
 
 ## 3. Core REST endpoints
 
@@ -431,6 +468,13 @@ envelope with a generic status-derived code, e.g. a plain `404` → code
 | `INVALID_OTP` | 400 | Wrong code — let them retry |
 | `OTP_EXPIRED` | 400 | Code expired/not found — offer to resend |
 | `OTP_RATE_LIMITED` | 429 | Too many attempts/requests — back off |
+| `OTP_DELIVERY_FAILED` | 502 | WhatsApp send failed — offer a retry |
+| `INVALID_CREDENTIALS` | 401 | Wrong password or unknown phone (deliberately the same) |
+| `LOGIN_RATE_LIMITED` | 429 | Too many failed logins for this phone |
+| `PHONE_REVERIFICATION_REQUIRED` | 403 / 401 | Phone unverified or >365 days — route to OTP re-verification |
+| `PASSWORD_NOT_SET` | 403 | Pre-password account — route to the set-password (reset) flow |
+| `PHONE_ALREADY_REGISTERED` | 409 | Signup, or a phone change, to a number that already has an account |
+| `EMAIL_ALREADY_IN_USE` | 409 | Signup or profile update with an email another account uses (case-insensitive) |
 | `SESSION_EXPIRED` | 401 | Token invalid/expired — send to login (or try `/auth/refresh` first if you still have a token) |
 | `SESSION_REVOKED` | 401 | Session was revoked (logged out elsewhere) — send to login |
 | `SLOT_ALREADY_TAKEN` | 409 | **The slot no longer available** — someone else booked it first; refresh availability, don't retry the same request |

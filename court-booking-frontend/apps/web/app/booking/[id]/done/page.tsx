@@ -1,13 +1,14 @@
 "use client";
 
 import { use } from "react";
+import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTimeRange } from "@/lib/format";
 
-export default function DonePage({ params }: PageProps<"/booking/[id]/done">) {
+function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   const { id } = use(params);
   const router = useRouter();
   const bookingQuery = useQuery({ queryKey: ["booking", id], queryFn: () => api.bookings.get(id) });
@@ -85,4 +86,12 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
       </span>
     </div>
   );
+}
+
+/** Booking screens need a session: a signed-out visitor is sent to log in and brought back here,
+ * instead of the page silently signing them out on the first 401 with no explanation. */
+export default function DonePage(props: PageProps<"/booking/[id]/done">) {
+  const { ready } = useRequireAuth();
+  if (!ready) return null;
+  return <DonePageInner {...props} />;
 }

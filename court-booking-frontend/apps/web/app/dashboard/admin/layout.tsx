@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
+import { Logo } from "@/components/auth/logo";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { ready } = useRequireAuth(["admin"]);
@@ -14,9 +15,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-owner-bg text-owner-ink">
       <header className="flex items-center justify-between px-8 py-5 bg-owner-surface border-b border-owner-border">
-        <div>
-          <span className="font-bold text-owner-accent">Maidan Admin</span>
-          <p className="text-xs text-owner-ink-faint">{user?.name ?? "Admin"}</p>
+        <div className="flex items-center gap-3">
+          <Logo tone="owner" size={34} />
+          <div>
+            <span className="font-bold text-owner-accent">Admin</span>
+            <p className="text-xs text-owner-ink-faint">{user?.name ?? "Admin"}</p>
+          </div>
         </div>
         <button
           onClick={() => { useAuthStore.getState().signOut(); router.push("/"); }}

@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, use, useEffect, useRef, useState } from "react";
+import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
@@ -204,10 +205,18 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
   );
 }
 
-export default function ChatPage({ params }: PageProps<"/booking/[id]/chat">) {
+function ChatPageInner({ params }: PageProps<"/booking/[id]/chat">) {
   return (
     <Suspense>
       <ChatInner params={params} />
     </Suspense>
   );
+}
+
+/** Booking screens need a session: a signed-out visitor is sent to log in and brought back here,
+ * instead of the page silently signing them out on the first 401 with no explanation. */
+export default function ChatPage(props: PageProps<"/booking/[id]/chat">) {
+  const { ready } = useRequireAuth();
+  if (!ready) return null;
+  return <ChatPageInner {...props} />;
 }

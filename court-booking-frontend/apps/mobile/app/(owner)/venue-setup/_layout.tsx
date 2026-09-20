@@ -6,6 +6,7 @@ export default function VenueSetupLayout() {
       <Stack.Screen name="register" />
       <Stack.Screen name="courts" />
       <Stack.Screen name="pending" />
+      <Stack.Screen name="rejected" />
     </Stack>
   );
 }

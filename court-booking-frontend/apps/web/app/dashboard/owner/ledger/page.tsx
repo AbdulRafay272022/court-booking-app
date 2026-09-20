@@ -7,6 +7,7 @@ import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatShortDate, formatTime, toDateInputValue } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { filterLedgerByCourt, ledgerRowsToCsv } from "@court-booking/api-client";
 
 type RangeKey = "7d" | "30d" | "month";
 
@@ -26,19 +27,21 @@ export default function OwnerLedgerPage() {
   const [exporting, setExporting] = useState(false);
   const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
 
+  // Scoped to the SELECTED VENUE (the court filter is client-side -- see filterLedgerByCourt).
   const query = useQuery({
-    queryKey: ["owner-ledger", activeVenueId, start, end, courtId],
-    queryFn: () => api.owners.ledger(start, end, courtId),
+    queryKey: ["owner-ledger", activeVenueId, start, end],
+    queryFn: () => api.owners.ledger(start, end, activeVenueId),
     enabled: !!activeVenueId,
   });
 
-  const ledger = query.data;
   const courts = activeVenue?.courts ?? [];
+  const courtName = courts.find((c) => c.id === courtId)?.name;
+  const ledger = query.data && courtName ? filterLedgerByCourt(query.data, courtName, start, end) : query.data;
 
   async function handleExport() {
     setExporting(true);
     try {
-      const csv = await api.owners.ledgerExportCsv(start, end, courtId);
+      const csv = courtName && ledger ? ledgerRowsToCsv(ledger.bookings) : await api.owners.ledgerExportCsv(start, end, activeVenueId);
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

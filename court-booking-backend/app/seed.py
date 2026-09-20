@@ -1,9 +1,9 @@
 """Creates a small set of demo data for local dev (Section 17's `make seed`):
 one admin, one owner with an approved venue/court/schedule/pricing, and one
 player -- enough to poke around the API by hand without configuring
-WhatsApp/OTP delivery (request-otp/verify-otp still works locally: with no
-WHATSAPP_API_TOKEN configured, send_otp no-ops and logs the code instead of
-actually sending it).
+WhatsApp/OTP delivery. The three accounts are already phone-verified and
+share DEMO_PASSWORD, so `POST /auth/login` works immediately (Section 26).
+(With no WHATSAPP_API_TOKEN configured, OTP sends no-op locally.)
 
 Safe to run more than once: each row is looked up by its natural key
 (phone, slug) first and only created if missing, rather than relying on a
@@ -12,7 +12,7 @@ not a concurrent user-facing path, so there's no race to design around here.
 """
 
 import asyncio
-from datetime import time
+from datetime import datetime, time, timezone
 
 import structlog
 from sqlalchemy import select
@@ -22,6 +22,7 @@ from app.models.court import Court
 from app.models.pricing import PricingRule
 from app.models.schedule import ScheduleTemplate
 from app.models.user import User, UserRole
+from app.utils.security import hash_password
 from app.models.venue import Venue, VenueStatus
 
 logger = structlog.get_logger(__name__)
@@ -32,10 +33,22 @@ PLAYER_PHONE = "+923000000003"
 VENUE_SLUG = "demo-arena"
 
 
+# Local-dev-only password for the three demo accounts (Section 26 login is
+# phone + password). Never a real credential: seed.py is for a throwaway local DB.
+DEMO_PASSWORD = "demo-password-123"
+
+
 async def _get_or_create_user(db, phone: str, role: UserRole, name: str) -> User:
     user = await db.scalar(select(User).where(User.phone == phone))
     if user is None:
-        user = User(phone=phone, role=role, name=name)
+        user = User(
+            phone=phone,
+            role=role,
+            name=name,
+            email=f"{name.lower().replace(' ', '.')}@example.com",
+            password_hash=await hash_password(DEMO_PASSWORD),
+            phone_verified_at=datetime.now(timezone.utc),
+        )
         db.add(user)
         await db.flush()
     return user

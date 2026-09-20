@@ -19,7 +19,7 @@ Built from three source documents in `../docs/`:
 - `FRONTEND_INTEGRATION.md` — the backend's actual, current API surface,
   written after an audit pass. **Trust this over `frontend-build-prompt.md`
   wherever they conflict** — it documents real gaps (no self-serve owner
-  signup, push notifications are a non-functional stub, no SMS OTP fallback).
+  signup *(closed by Section 26)*, push notifications are a non-functional stub, no SMS OTP fallback).
 - `maidan-screens.html` — the approved visual design, 24 screens, self-contained
   as a JSON blob (`<script id="screens-data" type="application/json">`) of
   `{title, w, h, doc}` per screen name. It's a 230KB single line — **don't
@@ -48,7 +48,9 @@ packages/types/src/       TypeScript types — mirror the backend's actual Pydan
 packages/api-client/src/  One module per resource area (auth.ts, venues.ts, ...),
                           all composed by createCourtBookingApi() in index.ts.
                           client.ts has the base fetch wrapper: auth header
-                          injection, silent refresh-on-401, ApiError with the
+                          injection (skipped for the public auth calls via `skipAuth`),
+                          refresh-on-401 that only signs out on a server refusal, proactive
+                          `refreshSession()` (Section 26), ApiError with the
                           backend's error envelope. requestText() exists
                           alongside request() for non-JSON responses (CSV export).
                           submitPaymentProof() takes `string | Blob` for the image
@@ -88,6 +90,8 @@ apps/web/                 Next.js 16 (App Router), Tailwind v4 (CSS-first config
 **Sprint 1 (Foundations + auth)** — done, verified.
 - `apps/mobile/app/(auth)/login.tsx`, `otp.tsx` — pixel-matched to
   `AuthLogin`/`AuthOtp`. Real `POST /auth/request-otp` / `verify-otp`.
+  **Superseded by Section 26 (below): login is now phone + password, `otp.tsx` and
+  `verify-otp` no longer exist.**
 - `lib/auth-store.ts` (Zustand) + `lib/api.ts` (wires the api-client's
   `getToken`/`onTokenRefreshed`/`onUnauthorized` to the store) + `lib/device.ts`
   (persistent `device_id`) + `lib/secure-storage.ts`.
@@ -257,6 +261,175 @@ here rather than as a new "Sprint N":
   speced in the original screens, so check with the project owner on
   design before building.
 
+## Section 26 — password auth, signup forms, onboarding gaps (2026-09-20)
+
+**Login is now phone + password, not OTP.** Signup is one form (player or owner, a
+"Signing up as" toggle) followed by a WhatsApp OTP that only *proves the phone*. Sessions
+last **8 hours** and are kept alive by proactive refresh. The backend contract is in
+`../docs/FRONTEND_INTEGRATION.md` §2 and the backend README ("Auth (Section 26)"). Built
+for **both** apps; **not deployed** (see the deploy-order gotcha in the backend CLAUDE.md).
+
+What exists now, on web (`apps/web`) and mobile (`apps/mobile`):
+- **Screens**: signup, login, verify (OTP; `purpose=signup` -> "Verify your new account",
+  `purpose=reverify` -> "Verify your phone"), forgot-password, reset-password. The old
+  phone->OTP `login`/`otp` screens are gone (and with them the dead "Send by SMS instead"
+  alert). Web routes: `/signup /login /verify /forgot-password /reset-password`; mobile:
+  `(auth)/{login,signup,verify,forgot-password,reset-password}`.
+- **Shared, in `packages/`**: `types/src/validation.ts` (the client-side rules behind every
+  smart button: PK mobile, email, name, 8-char password + match, 6-digit OTP, `formatCountdown`),
+  `types/src/user.ts` (`CITY_OPTIONS`, `GENDER_OPTIONS`, `SignupRole`), `api-client/src/auth.ts`
+  (the auth calls) and `api-client/src/session.ts` (`shouldRefreshSoon`, `restoreSession`).
+- **Smart submit buttons** everywhere there's a form (also the venue wizard's Next / Send for
+  review): grey and inert until every required field is actually *valid*, then brand color;
+  a not-ready button ignores clicks (disabled AND guarded). Field errors (red border + message)
+  appear only after a field has been touched.
+- **OTP screens** show two separate clocks: the code's expiry as `MM:SS` (starts from the
+  backend's `expires_in`, remembered per phone+purpose -- `sessionStorage` on web, the
+  in-memory store on mobile; at zero the field is disabled and "Code expired" shows) and a 30s
+  resend cooldown. Don't merge them.
+- **Login routing**: `PHONE_REVERIFICATION_REQUIRED` -> send a code, keep the typed password
+  in memory only (`lib/pending-auth.ts`, never persisted), go to the OTP screen, then retry the
+  login automatically. `PASSWORD_NOT_SET` -> the forgot-password screen in `mode=set` (the
+  existing production user is in this state). `INVALID_CREDENTIALS` is the same message for a
+  wrong password and an unknown phone.
+- **Session handling** (the fix for the audit's "refresh is dead code"): each app stores
+  `expires_at` beside the token and refreshes when < 1h of the 8h remains -- on foreground /
+  tab focus / reconnect and on a 60s timer (`Providers` on web, root `_layout.tsx` on mobile).
+  Cold-start `/auth/me` is retried with backoff (`restoreSession`); **only a real 401 signs the
+  user out.** If the server is unreachable the app runs on a cached profile (`maidan.cached_user`),
+  or with none shows a "Can't reach Maidan -- Try again" screen with the token kept. The api-client
+  no longer signs anyone out on a refresh that failed because the *network* was down, and public
+  auth calls pass `skipAuth` (a wrong password is a 401 that must not trigger refresh/sign-out).
+  Web now also sends a persistent `device_id`.
+- **Owner onboarding (closes the audit's biggest gap)**: an owner can sign up and register a
+  venue with no DB promotion. **Web got its own venue-setup wizard** (`/venue-setup/register`,
+  `/courts`, `/status`; draft persisted in localStorage like mobile's) -- it uses the browser's
+  geolocation for the pin (no reverse-geocode, so the address is typed). Owner gate: web's
+  `dashboard/owner/layout.tsx` (only on Today, so pending owners can still reach Add booking)
+  and mobile's `(owner)/index.tsx` now look at *all* of an owner's venues (the API allows
+  several; Today has a switcher) -- any approved venue -> Today, else the most actionable one:
+  pending/changes_requested -> status screen, all rejected -> the **new rejected screen**
+  (mobile `venue-setup/rejected.tsx`, web `/venue-setup/status`) with the reason and next steps
+  (message support / register a new venue). The rejected case used to fall through to Today
+  with no message. Owner logout added on mobile (Today header, pending, rejected).
+  `useOwnerVenues` defaults to an approved venue, not `venues[0]`.
+- **Web gaps closed**: header reflects the real session (`components/nav-auth.tsx`: Log in /
+  Sign up vs name + My bookings/Dashboard + Log out; also a `SiteHeader` on search, venue and
+  bookings pages); players can log out; `/booking/[id]/chat|pay|done` are gated with
+  `useRequireAuth`; `/login`, `/signup`, `/verify`, forgot/reset redirect an already-signed-in
+  user home; landing CTAs go to `/signup?role=owner`.
+- **Design**: reuses the two existing systems (player orange/Figtree, owner teal/Plex; owner
+  tone switches live when the toggle is "Venue owner"). **The real logo exists now** (added in
+  the Section 26 follow-up, below -- an earlier version of this paragraph said there was none and
+  that `Logo` was an improvised wordmark; that is no longer true). `docs/screens/` has **no** mockup for the signup form (`PlayerSignup.html`
+  is a different, post-signup "Almost done" profile step), nor for password login or
+  forgot-password -- those screens extrapolate from `AuthLogin`/`AuthOtp`/`PlayerSignup`'s
+  tokens (11px tracked labels, 56px/14px inputs, 1.5px ink focus border, white sticky footer).
+  The player-side background is 4-6 faint orange sports icons, re-randomized on every mount,
+  each floating on its own slow loop (web: CSS keyframes in `globals.css`, `prefers-reduced-motion`
+  respected; mobile: `Animated`); `aria-hidden`, behind the form, player tone on auth screens only.
+  No frontend-design skill was available in this environment.
+- **Live-tested, not just typechecked**: against the real local backend + Postgres -- 35 HTTP
+  checks (`live_auth_flow`: signup, verify, login, 8h, refresh, expiry, 365-day, reset, legacy),
+  53 headless-Chromium checks on the web app (every screen, smart buttons, both timers,
+  refresh, offline launch, reverify, forgot password, owner wizard -> DB rows, rejected state)
+  and 30 on the mobile app via Expo's web target. **Not run on a real device**: AppState-driven
+  refresh, SecureStore, `Alert.alert` logout (a no-op on RN-web), the Animated floating icons'
+  actual smoothness.
+
+Things to know / not built (flagged to the project owner, not silently decided):
+- **Password rules are length-only (min 8)** by design -- no complexity rules until decided.
+- ~~Phone-number change has no UI or endpoint~~ and ~~no way to add a second venue~~ -- both
+  built in the follow-up below.
+- **An owner can't resubmit a rejected / changes_requested venue** -- there is no such endpoint
+  and no venue-edit UI; they message support or register a new venue (the project owner confirmed
+  this is fine for now). The existing pending screen's
+  "update the details we flagged and resubmit" line still promises more than exists.
+- Under the temporary free-form OTP (see the backend CLAUDE.md), a brand-new player can only finish
+  signup after messaging the business number first -- nothing in the UI says so yet.
+
+## Section 26 follow-up -- multi-venue, profile, phone change, unique email, real logo (2026-09-20)
+
+Built for **web and mobile**, live-tested, **not committed or deployed**. Backend half: see the
+backend README ("Profile editing", "Email is unique", "Phone change") and its CLAUDE.md gotchas 10-12.
+
+- **Multi-venue dashboard.** An owner's venues each keep their own status (`Live` / `Under review` /
+  `Changes requested` / `Not approved`) shown on the switcher chip / sidebar entry. **One global
+  selected venue per owner id** (`lib/selected-venue.ts` on each app, `lib/use-owner-venues.ts`
+  resolves it: saved choice -> first approved -> first venue) is shared by *every* owner screen --
+  Today, Approvals, Add booking, Ledger, Growth. Before this each screen kept its own selection, so
+  Today could show venue A while Add-booking's court list silently belonged to venue B. A non-live
+  selected venue shows a banner ("… is under review. Players can't find or book it yet -- walk-ins
+  still work") with a link to its status screen. **"+ Add another venue"** (web sidebar / mobile
+  switcher) clears the persisted wizard draft (`useVenueSetupStore.reset()`) and opens the same
+  wizard; the wizard's status screens gained "← Back to your dashboard" when a live venue exists.
+  **Decision (flagged): the selected venue persists across sessions** -- localStorage (web,
+  `maidan.selected_venue`) / AsyncStorage (mobile), keyed by user id so a shared device doesn't leak one
+  owner's choice to another; if the saved venue no longer exists it falls back. Say if you want it
+  reset on login instead.
+- **Real bug found and fixed while testing this:** `api.owners.ledger(start, end, courtId)` passed the
+  selected **court** id in the **venue** slot. The endpoint only filters by `venue_id`, so the ledger was
+  never venue-scoped (a multi-venue owner saw every venue's bookings mixed) and the court tabs sent a
+  court UUID as a venue id. Now the ledger is fetched per selected **venue** and the court filter is
+  client-side (`filterLedgerByCourt` / `ledgerRowsToCsv` in `packages/api-client/src/owners.ts`; the
+  summary is recomputed from the filtered rows, and the CSV export for a court-filtered view is built
+  client-side with the server's columns).
+- **Edit profile + account screens.** Web `/account` (own layout, outside `/dashboard/owner`, works for
+  both roles), mobile `(player)/edit-profile.tsx` and `(owner)/account.tsx` (owner: "Account" button in the
+  Today header; player: "Edit profile" on the You tab). Fields: name, email, city, gender via
+  `api.auth.updateMe`; Save is a smart button (needs a valid *and* changed form). Phone and password are
+  **not inputs**: phone shows read-only with **Change phone number**; password has **Change password**,
+  which goes through forgot-password (web: link; mobile: inline confirm -> sign out -> reset screen) --
+  deliberately no second "old password" path. Duplicate email -> inline "That email address is already in use."
+- **Phone change** (`/account/phone`, mobile `(player|owner)/change-phone.tsx`, shared
+  `components/account/forms.tsx`): new number + **current password** -> code to the new number ->
+  verify. The password is required (flagged decision -- the endpoint spec only said "authenticated"; without
+  it a stolen 8h token could hijack the account). Wrong password shows **"Incorrect password."** (not the
+  login wording -- `INVALID_CREDENTIALS`'s global message says "phone number or password", wrong here).
+  On success every session is dead including this one, so the app **signs out locally and lands on login**
+  with the new number prefilled and "Phone number updated. Log in with your new number." (`?notice=phone-changed`);
+  web calls `suppressAuthRedirect()` first so the sign-out isn't intercepted by the auth guard. The screen
+  says up front that the user will be logged out everywhere. Abandoning / failing at any step leaves the
+  original number and sessions intact.
+- **Email uniqueness in the UI**: signup and profile edit show the inline error on the email field
+  (`EMAIL_ALREADY_IN_USE`), not a generic banner.
+- **Logo** (source: `docs/maidan-logo-{icon,full-light,full-dark}-v2.svg` -- the three files in that folder;
+  no ambiguity about *which* files, some about *use*, below):
+  - `maidan-logo-full-light-v2.svg` -> web `public/brand/maidan-logo-full-light.svg` (header/nav, landing, auth
+    screens, venue-setup, owner sidebar, admin, session-unreachable) and mobile `assets/brand/maidan-logo-full-light.png`
+    (auth screens + player Home header; `Logo` in `components/auth/kit.tsx` renders it with `Image`).
+  - `maidan-logo-icon-v2.svg` -> mobile `assets/icon.png` (1024 opaque RGB -- iOS rejects alpha),
+    `splash-icon.png`, `android-icon-{foreground,background,monochrome}.png`, `favicon.png`; web
+    `public/brand/maidan-logo-icon.svg` and `app/favicon.ico` (16-256).
+  - `maidan-logo-full-dark-v2.svg` -> shipped as `public/brand/maidan-logo-full-dark.svg` and
+    `assets/brand/...-dark.png` but **not referenced anywhere yet** (no dark surface exists; every screen is
+    light-only). Ambiguity, not decided: swap it in if a dark header is ever added.
+  - Processing you should know about: the SVGs carried **C2PA / Content Credentials metadata** (stripped);
+    their wordmark was live `<text>` in Figtree, so it was **outlined** to paths (HarfBuzz + fontTools) so it
+    renders identically without the font installed -- checked pixel-for-pixel against the original (3 of 165,600
+    px differ); the app icon was rasterized with Chromium (Playwright) because there's no SVG renderer in the
+    Expo pipeline. The Android adaptive-icon glyph is scaled to 0.8 to stay inside the safe zone.
+    `app.json`: `expo-splash-screen` previously had **no `image` configured** (so the template splash would
+    have shipped regardless of `splash-icon.png`) -- it now points at the new asset on `#FAF8F6`; the adaptive
+    icon `backgroundColor` is `#E44E1F`.
+  - **Not verified on a device**: the files on disk and the web/Expo-web rendering are verified (logo
+    `naturalWidth` >= 500/700, favicon served). Whether the launcher icon and native splash *actually change* needs a
+    native rebuild (`eas build` or `expo prebuild` + run). `expo prebuild` was blocked in the dev session's
+    permission mode, and there's no device/emulator here -- so **treat the native icon/splash as unverified until
+    the first EAS build**. Expo Go always shows Expo's own icon regardless.
+- **Live-tested (this follow-up)**: backend 338 tests; 33 HTTP checks against the real local server + Postgres
+  (32 pass; the 1 non-pass was a test bug, ledger scoping re-confirmed 1 row per venue); **43 web Playwright checks**
+  (two venues with independent status badges, per-venue request scoping by URL, persistence across reload and
+  logout/login, add-another-venue wizard, profile edit + duplicate email, phone change end-to-end incl. old
+  token 401 and abandoned attempts, real logo/favicon served); **27 mobile checks** via Expo web (switcher, banner,
+  `+ Add venue`, Account, Edit profile, phone change -> signed out -> login notice -> login with new number).
+  Test-only gotcha: the Expo dev server must be started with `EXPO_PUBLIC_API_BASE_URL=http://localhost:8000`
+  -- `app.json`'s `apiBaseUrl` is **production**, and a scripted test that forgets it drives real accounts.
+- **Not built / flagged**: the old number is not notified when a phone change happens; no "sign in again"
+  push to other devices (they just get 401 on next use); Meta's Authentication template + verified business
+  account are **not confirmed live**, so OTP delivery is still the temporary free-form send (revert steps in the
+  backend CLAUDE.md) -- I did not reintroduce or extend any workaround for the 24h window.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before
@@ -312,9 +485,15 @@ this environment and silently degrade to a canned no-actions reply (see
 Gotchas); Gemini's key is real and verified working. Restart `uvicorn` after
 touching `.env` — settings load once at import time.
 
+**Section 26 shortcut for local testing:** the local backend's `.env` has
+`DEBUG=true` + `DEV_FIXED_OTP=111111`, so every OTP is `111111` and no brute-forcing is
+needed (`app/seed.py`'s demo accounts also log in with `DEMO_PASSWORD`). Point the
+apps at the local backend with `EXPO_PUBLIC_API_BASE_URL=http://localhost:8000` (mobile;
+`app.json` now points at production!) / `apps/web/.env.local` (web).
+
 No staging environment exists — this is the only backend there is. WhatsApp
 delivery is NOT configured in this env, so OTPs are never actually delivered.
-To complete a real login/signup flow in testing, brute-force the OTP from the
+The older way to complete a login in testing was to brute-force the OTP from the
 local DB (it's plain unsalted SHA-256, `app/utils/security.py`'s own comment
 says this is intentional given the 5-minute expiry/5-attempt/rate-limit
 protections — legitimate only because it's your own local dev DB). **Watch
@@ -471,9 +650,8 @@ the repo's Variables page.
   Playwright/web loop. Trust the code, don't chase a false negative here.
 - **Backend gaps that are deliberately NOT worked around** (per
   `FRONTEND_INTEGRATION.md` and the build prompt's Section 15): no self-serve
-  owner signup (the "I run a venue" tap on login shows an explanatory alert,
-  doesn't fake a flow), no SMS OTP fallback (the "Send by SMS instead" button
-  is the same treatment), no venue verification document upload endpoint (the
+  owner signup *(closed by Section 26: owners sign up themselves now)*, no SMS OTP fallback (the
+  dead "Send by SMS instead" button was removed with the old OTP screen), no venue verification document upload endpoint (the
   `VenueRegister` mockup's ID/proof-of-address/NTN upload cards were dropped
   from `register.tsx` entirely — don't add them back without a real backend
   endpoint).

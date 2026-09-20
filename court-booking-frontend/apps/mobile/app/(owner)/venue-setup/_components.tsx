@@ -92,6 +92,8 @@ export function Chip({
   );
 }
 
+/** Smart submit: muted grey and inert while `disabled` (the form isn't valid yet), the full owner
+ * teal once it is. `loading` blocks a second submit. */
 export function PrimaryButton({
   label,
   onPress,
@@ -105,12 +107,15 @@ export function PrimaryButton({
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        if (!disabled && !loading) onPress();
+      }}
       disabled={disabled || loading}
-      className="min-h-12 px-7 rounded-lg bg-owner-accent items-center justify-center"
-      style={{ opacity: disabled || loading ? 0.55 : 1 }}
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
+      className="min-h-12 px-7 rounded-lg items-center justify-center"
+      style={{ backgroundColor: disabled ? "#DCE3E6" : "#0E6274", opacity: loading ? 0.7 : 1 }}
     >
-      <Text className="font-plex-semibold text-white text-[14.5px]">
+      <Text className="font-plex-semibold text-[14.5px]" style={{ color: disabled ? "#8399A1" : "#FFFFFF" }}>
         {loading ? "Saving…" : label}
       </Text>
     </Pressable>

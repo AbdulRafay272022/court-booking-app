@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { serverApi } from "@/lib/server-api";
+import { SiteHeader } from "@/components/nav-auth";
 import { capitalize, formatDistance } from "@/lib/format";
 
 const SPORTS = ["padel", "futsal", "cricket", "tennis"];
@@ -27,6 +28,8 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   }
 
   return (
+    <>
+    <SiteHeader />
     <main className="px-6 md:px-14 py-10 flex flex-col gap-7">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-extrabold tracking-tight">
@@ -91,5 +94,6 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         </div>
       )}
     </main>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import "../global.css";
 import { useEffect } from "react";
+import { AppState } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import * as Notifications from "expo-notifications";
@@ -28,11 +29,13 @@ import {
   IBMPlexMono_600SemiBold,
 } from "@expo-google-fonts/ibm-plex-mono";
 
+import { REFRESH_CHECK_INTERVAL_MS, restoreSession, shouldRefreshSoon } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { registerForPushNotifications } from "@/lib/push-notifications";
 import { OfflineBanner } from "@/components/offline-banner";
+import { SessionUnreachable } from "@/components/session-unreachable";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -92,22 +95,47 @@ export default function RootLayout() {
   const fontsLoaded = figtreeLoaded && plexSansLoaded && plexMonoLoaded;
   const ready = fontsLoaded && hasHydrated && status !== "hydrating";
 
+  const restore = async (isRetry = false) => {
+    if (!isRetry) await useAuthStore.getState().hydrate();
+    if (!useAuthStore.getState().token) return;
+    // Retried with backoff. Only a real 401 signs the user out (the api client already did that on
+    // its 401 -> refresh -> onUnauthorized path); a flaky network on launch must NOT drop a valid
+    // stored session onto the login screen -- logging in again costs a WhatsApp send (and may not
+    // even be deliverable), and wouldn't fix a network problem anyway.
+    const result = await restoreSession(() => api.auth.me());
+    if (result.kind === "ok") useAuthStore.getState().setUser(result.data.user, result.data.session);
+    else if (result.kind === "unreachable") await useAuthStore.getState().markUnreachable();
+  };
+
   useEffect(() => {
-    (async () => {
-      await useAuthStore.getState().hydrate();
-      const token = useAuthStore.getState().token;
-      if (!token) return;
-      try {
-        const { user, session } = await api.auth.me();
-        useAuthStore.getState().setUser(user, session);
-      } catch {
-        // A 401 already triggers onUnauthorized -> signOut() inside the api client.
-        // Anything else (e.g. offline at launch) falls back to the login screen
-        // without discarding the token, so a later launch can retry.
-        useAuthStore.getState().markUnverified();
-      }
-    })();
+    void restore();
   }, []);
+
+  // Proactive refresh (Section 26): sessions last 8h, so renew BEFORE expiry -- when the app returns
+  // to the foreground and on a timer while it's open -- rather than waiting for a 401 (by then the
+  // token is already dead and there is nothing left to refresh).
+  useEffect(() => {
+    let running = false;
+    async function maybeRefresh() {
+      const { status: s, expiresAt } = useAuthStore.getState();
+      if (running || s !== "signedIn" || !shouldRefreshSoon(expiresAt)) return;
+      running = true;
+      try {
+        await api.client.refreshSession();
+      } finally {
+        running = false;
+      }
+    }
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void maybeRefresh();
+    });
+    const timer = setInterval(maybeRefresh, REFRESH_CHECK_INTERVAL_MS);
+    void maybeRefresh();
+    return () => {
+      sub.remove();
+      clearInterval(timer);
+    };
+  }, [status]);
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -131,6 +159,9 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <StatusBar style="dark" />
         <OfflineBanner />
+        {status === "unreachable" ? (
+          <SessionUnreachable onRetry={() => void restore(true)} />
+        ) : (
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Protected guard={status === "signedOut"}>
             <Stack.Screen name="(auth)" />
@@ -145,6 +176,7 @@ export default function RootLayout() {
             <Stack.Screen name="(admin)" />
           </Stack.Protected>
         </Stack>
+        )}
       </QueryClientProvider>
     </SafeAreaProvider>
   );

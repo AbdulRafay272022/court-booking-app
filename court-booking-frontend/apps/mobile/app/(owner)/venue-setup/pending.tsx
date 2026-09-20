@@ -7,6 +7,8 @@ import type { Venue } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { CheckIcon, WhatsAppIcon } from "@/components/icons";
+import { confirmLogout } from "@/lib/logout";
+import { useOwnerVenues } from "@/lib/use-owner-venues";
 
 function TimelineRow({
   state,
@@ -63,6 +65,8 @@ function TimelineRow({
 }
 
 export default function VenuePendingScreen() {
+  const { venues: ownerVenues } = useOwnerVenues();
+  const hasLiveVenue = ownerVenues.some((v) => v.status === "approved");
   const { venueId } = useLocalSearchParams<{ venueId: string }>();
   const [venue, setVenue] = useState<Venue | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +130,11 @@ export default function VenuePendingScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerClassName="px-5 pt-5 pb-8 gap-4">
+        {hasLiveVenue ? (
+          <Pressable onPress={() => router.replace("/(owner)/today")} accessibilityRole="button" className="min-h-11 justify-center self-start">
+            <Text className="font-plex-bold text-owner-accent text-[13.5px] underline">← Back to your dashboard</Text>
+          </Pressable>
+        ) : null}
         <View className="bg-owner-surface border border-owner-border rounded-[13px] p-5">
           <TimelineRow
             state="done"
@@ -175,6 +184,10 @@ export default function VenuePendingScreen() {
             Taking too long? Message us and we'll look straight away.
           </Text>
         </View>
+
+        <Pressable onPress={confirmLogout} className="min-h-11 rounded-[9px] border border-owner-border items-center justify-center">
+          <Text className="font-plex-semibold text-owner-ink-muted text-sm">Log out</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );

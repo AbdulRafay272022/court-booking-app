@@ -21,7 +21,19 @@ class Settings(BaseSettings):
     # SESSION_TOKEN_SECRET (logged loudly) for local-dev convenience only;
     # unset + DEBUG=false makes app/utils/encryption.py raise at first use.
     BANK_DETAILS_ENCRYPTION_KEY: str = ""
-    SESSION_TOKEN_EXPIRE_DAYS: int = 365
+    # Section 26: sessions are short-lived (8h) and kept alive by proactive
+    # refresh (POST /auth/refresh) while the user is active. This is NOT the
+    # same clock as phone verification below.
+    SESSION_TOKEN_EXPIRE_HOURS: int = 8
+    # A verified phone stays trusted this long (measured from
+    # users.phone_verified_at); after that, password login is refused with
+    # PHONE_REVERIFICATION_REQUIRED until the user passes an OTP again.
+    PHONE_VERIFICATION_TRUST_DAYS: int = 365
+    PASSWORD_MIN_LENGTH: int = 8
+    # Failed password logins per phone per window before 429 -- same shape as
+    # the OTP limit below (derived from rows, not a counter to keep in sync).
+    LOGIN_MAX_FAILED_ATTEMPTS: int = 5
+    LOGIN_RATE_LIMIT_WINDOW_MINUTES: int = 15
     OTP_EXPIRE_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RATE_LIMIT_WINDOW_MINUTES: int = 15

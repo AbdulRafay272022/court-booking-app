@@ -2,6 +2,7 @@ import type {
   Booking,
   Growth,
   Ledger,
+  LedgerRow,
   OwnerDigest,
   OwnerToday,
   Payment,
@@ -41,4 +42,38 @@ export function createOwnersApi(client: ApiClient) {
     growth: (venueId?: string) =>
       client.request<Growth>(`/owners/growth${toQuery({ venue_id: venueId })}`),
   };
+}
+
+/** The ledger endpoint filters by VENUE only (`venue_id`) -- there is no court filter server-side. The
+ * dashboards used to pass the selected COURT id in the venue slot, which (a) never scoped the ledger to the
+ * selected venue (so a multi-venue owner saw every venue mixed together) and (b) made the court tabs send a
+ * court UUID as a venue id (an empty ledger). Court filtering is client-side now: rows are filtered by court
+ * name and the summary recomputed from what's left. */
+export function filterLedgerByCourt(ledger: Ledger, courtName: string, startDate: string, endDate: string): Ledger {
+  const bookings = ledger.bookings.filter((b) => b.court === courtName);
+  const total = bookings.reduce((n, b) => n + b.amount_paid, 0);
+  const days = Math.max(1, Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86_400_000) + 1);
+  const by_source: Record<string, number> = {};
+  for (const b of bookings) by_source[b.source] = (by_source[b.source] ?? 0) + 1;
+  return {
+    bookings,
+    summary: {
+      total_revenue: total,
+      total_bookings: bookings.length,
+      avg_revenue_per_day: total / days,
+      by_source,
+      by_court: { [courtName]: total },
+    },
+  };
+}
+
+/** Same columns as the server's CSV export (`GET /owners/ledger/export`), for a court-filtered view. */
+export function ledgerRowsToCsv(rows: LedgerRow[]): string {
+  const esc = (v: string | number) => {
+    const t = String(v);
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const lines = [["date", "court", "player", "source", "amount_paid", "balance_due", "status"].join(",")];
+  for (const r of rows) lines.push([r.date, r.court, r.player ?? "", r.source, r.amount_paid, r.balance_due, r.status].map(esc).join(","));
+  return lines.join("\r\n") + "\r\n";
 }

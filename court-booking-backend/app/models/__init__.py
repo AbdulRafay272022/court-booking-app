@@ -12,7 +12,7 @@ from app.models.pricing import PricingRule
 from app.models.review import Review
 from app.models.schedule import ScheduleTemplate
 from app.models.stats import SlotStats
-from app.models.user import OtpRequest, Session, User, UserRole
+from app.models.user import City, Gender, LoginAttempt, OtpPurpose, OtpRequest, Session, User, UserRole
 from app.models.venue import Venue, VenueStatus
 from app.models.waitlist import WaitlistEntry
 

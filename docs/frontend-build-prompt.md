@@ -4,6 +4,11 @@
 
 ---
 
+> **Superseded in part (2026-09-20, Section 26):** the auth sections below (5 AUTH block, 6 AUTH FLOW,
+> the `(auth)/login.tsx` + `(auth)/otp.tsx` screens) describe the ORIGINAL phone+OTP-only login. Login is now
+> phone + password with a signup form; see `FRONTEND_INTEGRATION.md` section 2 for the real contract and the
+> `CLAUDE.md` files for what was built. Everything else here still stands.
+
 ## HOW TO USE THIS DOCUMENT
 
 1. Give this whole file to Claude CLI as the starting prompt.

@@ -20,15 +20,22 @@ export default function OwnerGateScreen() {
           router.replace("/(owner)/venue-setup/register");
           return;
         }
-        const venue = venues[0];
-        if (venue.status === "pending" || venue.status === "changes_requested") {
-          router.replace({
-            pathname: "/(owner)/venue-setup/pending",
-            params: { venueId: venue.id },
-          });
+        // Owners can have several venues (the API doesn't limit it and Today has a switcher), so
+        // look at ALL of them, not just venues[0]: any live venue means Today.
+        if (venues.some((v) => v.status === "approved")) {
+          router.replace("/(owner)/today");
           return;
         }
-        router.replace("/(owner)/today");
+        // Nothing live yet: show the most actionable venue -- one under review or needing changes
+        // before a rejected one, so a rejected second attempt doesn't hide the one still in review.
+        const inReview = venues.find((v) => v.status === "pending" || v.status === "changes_requested");
+        if (inReview) {
+          router.replace({ pathname: "/(owner)/venue-setup/pending", params: { venueId: inReview.id } });
+          return;
+        }
+        // All rejected: this used to fall through to Today with no message at all.
+        router.replace({ pathname: "/(owner)/venue-setup/rejected", params: { venueId: venues[0].id } });
+        return;
       } catch (e) {
         setError(friendlyErrorMessage(e));
       }

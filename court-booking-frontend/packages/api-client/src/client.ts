@@ -35,7 +35,18 @@ interface RequestOpts {
   /** Hit baseUrl directly, skipping the /api/v1 prefix (only /health, /health/ready today). */
   skipApiPrefix?: boolean;
   retried?: boolean;
+  /** For the unauthenticated auth endpoints (signup, login, OTP, password reset): never
+   * attach a stored token and never treat a 401 as "session expired, refresh it". A
+   * failed login is a 401 INVALID_CREDENTIALS, and must not trigger a refresh or a
+   * sign-out just because a stale token happens to still be in storage. */
+  skipAuth?: boolean;
 }
+
+/** "ok": token rotated. "rejected": the server answered and refused (session expired,
+ * revoked, or phone re-verification needed) -- the user really is signed out.
+ * "network": couldn't reach the server -- says nothing about the session, so it must
+ * NOT sign anyone out. */
+export type RefreshOutcome = "ok" | "rejected" | "network";
 
 /** A request that never resolves (dropped connection, dead-air 2G) rejects
  * with this distinct, recognizable error instead of hanging forever. */
@@ -57,25 +68,25 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 }
 
 export function createApiClient(config: ApiClientConfig) {
-  let refreshPromise: Promise<boolean> | null = null;
+  let refreshPromise: Promise<RefreshOutcome> | null = null;
 
-  async function tryRefresh(): Promise<boolean> {
+  async function tryRefresh(): Promise<RefreshOutcome> {
     if (refreshPromise) return refreshPromise;
     refreshPromise = (async () => {
       const token = await config.getToken();
-      if (!token) return false;
+      if (!token) return "rejected" as const;
       try {
         const res = await fetchWithTimeout(
           `${config.baseUrl}${API_PREFIX}/auth/refresh`,
           { method: "POST", headers: { Authorization: `Bearer ${token}` } },
           DEFAULT_TIMEOUT_MS,
         );
-        if (!res.ok) return false;
+        if (!res.ok) return res.status >= 500 ? ("network" as const) : ("rejected" as const);
         const body = (await res.json()) as { token: string; expires_at: string };
         await config.onTokenRefreshed(body.token, body.expires_at);
-        return true;
+        return "ok" as const;
       } catch {
-        return false;
+        return "network" as const;
       } finally {
         refreshPromise = null;
       }
@@ -83,8 +94,17 @@ export function createApiClient(config: ApiClientConfig) {
     return refreshPromise;
   }
 
+  /** Proactive refresh (Section 26): sessions last 8h, so callers refresh BEFORE expiry --
+   * on app foreground / tab focus and on a timer -- rather than waiting for a 401, by which
+   * time the token is already dead and there is nothing left to refresh. */
+  async function refreshSession(): Promise<RefreshOutcome> {
+    const outcome = await tryRefresh();
+    if (outcome === "rejected") await config.onUnauthorized();
+    return outcome;
+  }
+
   async function request<T>(path: string, options: RequestInit = {}, opts: RequestOpts = {}): Promise<T> {
-    const token = await config.getToken();
+    const token = opts.skipAuth ? null : await config.getToken();
     const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
     const headers: Record<string, string> = { ...(options.headers as Record<string, string> | undefined) };
     if (!isFormData && options.body !== undefined && !("Content-Type" in headers)) {
@@ -95,10 +115,11 @@ export function createApiClient(config: ApiClientConfig) {
     const url = opts.skipApiPrefix ? `${config.baseUrl}${path}` : `${config.baseUrl}${API_PREFIX}${path}`;
     const response = await fetchWithTimeout(url, { ...options, headers }, DEFAULT_TIMEOUT_MS);
 
-    if (response.status === 401 && !opts.retried) {
-      const refreshed = await tryRefresh();
-      if (refreshed) return request<T>(path, options, { ...opts, retried: true });
-      await config.onUnauthorized();
+    if (response.status === 401 && !opts.retried && !opts.skipAuth) {
+      const outcome = await tryRefresh();
+      if (outcome === "ok") return request<T>(path, options, { ...opts, retried: true });
+      // Only a server-side refusal means the session is gone; a network blip must not log anyone out.
+      if (outcome === "rejected") await config.onUnauthorized();
     }
 
     if (!response.ok) {
@@ -148,8 +169,8 @@ export function createApiClient(config: ApiClientConfig) {
         xhr.ontimeout = () => reject(timeoutError());
         xhr.onload = async () => {
           if (xhr.status === 401 && !opts.retried) {
-            const refreshed = await tryRefresh();
-            if (refreshed) {
+            const outcome = await tryRefresh();
+            if (outcome === "ok") {
               try {
                 resolve(await requestUpload<T>(path, formData, onProgress, { ...opts, retried: true }));
               } catch (e) {
@@ -157,7 +178,7 @@ export function createApiClient(config: ApiClientConfig) {
               }
               return;
             }
-            await config.onUnauthorized();
+            if (outcome === "rejected") await config.onUnauthorized();
           }
           let body: { error?: { code?: string; message?: string; details?: Record<string, unknown> } } | null =
             null;
@@ -197,9 +218,9 @@ export function createApiClient(config: ApiClientConfig) {
     );
 
     if (response.status === 401) {
-      const refreshed = await tryRefresh();
-      if (refreshed) return requestText(path, options);
-      await config.onUnauthorized();
+      const outcome = await tryRefresh();
+      if (outcome === "ok") return requestText(path, options);
+      if (outcome === "rejected") await config.onUnauthorized();
     }
 
     if (!response.ok) {
@@ -215,7 +236,7 @@ export function createApiClient(config: ApiClientConfig) {
     return response.text();
   }
 
-  return { request, requestText, requestUpload };
+  return { request, requestText, requestUpload, refreshSession };
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;

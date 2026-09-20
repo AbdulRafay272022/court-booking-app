@@ -5,8 +5,8 @@ import { getAuthState, useAuthStore } from "./auth-store";
 export const api = createCourtBookingApi({
   baseUrl: API_BASE_URL,
   getToken: async () => getAuthState().token,
-  onTokenRefreshed: async (token) => {
-    await useAuthStore.getState().setToken(token);
+  onTokenRefreshed: async (token, expiresAt) => {
+    await useAuthStore.getState().setToken(token, expiresAt);
   },
   onUnauthorized: async () => {
     await useAuthStore.getState().signOut();

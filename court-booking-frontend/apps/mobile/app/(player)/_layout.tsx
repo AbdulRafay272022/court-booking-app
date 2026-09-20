@@ -15,6 +15,8 @@ export default function PlayerLayout() {
       <Stack.Screen name="booking/[id]/pay" />
       <Stack.Screen name="booking/[id]/done" />
       <Stack.Screen name="notifications" />
+      <Stack.Screen name="edit-profile" />
+      <Stack.Screen name="change-phone" />
     </Stack>
   );
 }

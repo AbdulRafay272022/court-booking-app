@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { NavAuth } from "@/components/nav-auth";
+import { Logo } from "@/components/auth/logo";
 
 export const metadata: Metadata = {
   title: "Padel & Futsal Court Booking in Karachi",
@@ -10,18 +12,15 @@ export const metadata: Metadata = {
 function NavBar() {
   return (
     <header className="flex items-center gap-8 px-6 md:px-14 py-5 bg-player-surface border-b border-player-border-light">
-      <span className="font-extrabold text-xl tracking-tight">Maidan</span>
+      <Link href="/" aria-label="Maidan home">
+        <Logo size={40} />
+      </Link>
       <nav className="hidden md:flex gap-7 flex-1 text-[14.5px] font-semibold text-player-ink-muted">
-        <Link href="/dashboard/owner/today">For venues</Link>
+        <Link href="/signup?role=owner">For venues</Link>
         <Link href="/search">Find a court</Link>
       </nav>
       <div className="flex-1 md:flex-none" />
-      <Link href="/login" className="text-[14.5px] font-semibold text-player-ink-muted">
-        Sign in
-      </Link>
-      <Link href="/login" className="px-5 py-2.5 rounded-xl bg-player-ink text-white text-[14.5px] font-bold">
-        List your venue
-      </Link>
+      <NavAuth />
     </header>
   );
 }
@@ -44,7 +43,7 @@ export default function LandingPage() {
             down by hand. Approve payments with one tap instead of squinting at screenshots.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/login" className="px-7 py-4 rounded-2xl bg-player-accent text-white font-bold">
+            <Link href="/signup?role=owner" className="px-7 py-4 rounded-2xl bg-player-accent text-white font-bold">
               List your venue free
             </Link>
             <Link href="/search" className="px-6 py-4 rounded-2xl border border-player-border font-semibold">
@@ -102,7 +101,7 @@ export default function LandingPage() {
           venues keep the Pro plan free permanently.
         </p>
         <div className="flex gap-3 pt-2">
-          <Link href="/login" className="px-7 py-3.5 rounded-2xl bg-player-accent text-white font-bold">
+          <Link href="/signup?role=owner" className="px-7 py-3.5 rounded-2xl bg-player-accent text-white font-bold">
             List your venue
           </Link>
         </div>

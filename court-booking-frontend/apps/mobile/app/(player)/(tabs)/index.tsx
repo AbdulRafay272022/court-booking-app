@@ -4,6 +4,7 @@ import { router } from "expo-router";
 
 import { useAuthStore } from "@/lib/auth-store";
 import { BellIcon, SearchIcon } from "@/components/icons";
+import { Logo } from "@/components/auth/kit";
 import { SportChip } from "../_components";
 
 const SPORTS = ["Padel", "Futsal", "Cricket", "Tennis"];
@@ -16,7 +17,7 @@ export default function PlayerHomeScreen() {
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
       <View className="px-5 pt-6 pb-4.5 bg-player-surface gap-4.5">
         <View className="flex-row items-center justify-between">
-          <Text className="font-figtree-extrabold text-player-ink text-[22px] -tracking-[0.03em]">Maidan</Text>
+          <Logo size={36} />
           <View className="flex-row items-center gap-2.5">
             <Pressable
               onPress={() => router.push("/(player)/notifications")}

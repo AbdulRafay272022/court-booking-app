@@ -192,21 +192,27 @@ async def test_not_your_booking_error_code(
     assert resp.json()["error"]["code"] == ErrorCode.NOT_YOUR_BOOKING
 
 
-async def test_invalid_otp_error_code(client, make_user, monkeypatch):
+async def test_invalid_otp_error_code(client, monkeypatch):
     async def fake_send(self, payload):
         return {"messages": [{"id": "x"}]}
 
     monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", fake_send)
 
     phone = "+923012000015"
-    await client.post("/api/v1/auth/request-otp", json={"phone": phone})
-    resp = await client.post("/api/v1/auth/verify-otp", json={"phone": phone, "otp": "000000"})
+    await client.post(
+        "/api/v1/auth/signup",
+        json={
+            "name": "Test User", "email": "t@example.com", "phone": phone, "city": "lahore",
+            "gender": "male", "password": "longenough-1", "confirm_password": "longenough-1",
+        },
+    )
+    resp = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": "000000"})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == ErrorCode.INVALID_OTP
 
 
 async def test_otp_expired_error_code(client):
-    resp = await client.post("/api/v1/auth/verify-otp", json={"phone": "+923012000016", "otp": "123456"})
+    resp = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": "+923012000016", "otp": "123456"})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == ErrorCode.OTP_EXPIRED
 

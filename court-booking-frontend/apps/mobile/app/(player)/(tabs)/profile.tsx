@@ -1,6 +1,7 @@
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -69,6 +70,13 @@ export default function PlayerProfileScreen() {
           <Text className="font-figtree-semibold text-player-ink text-base">
             Need help? WhatsApp us at {SUPPORT_WHATSAPP_NUMBER}
           </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push("/(player)/edit-profile")}
+          accessibilityRole="button"
+          className="h-14 rounded-2xl border border-player-border items-center justify-center"
+        >
+          <Text className="font-figtree-bold text-player-ink text-base">Edit profile</Text>
         </Pressable>
         <Pressable
           onPress={confirmLogout}

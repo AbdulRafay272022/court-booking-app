@@ -15,7 +15,7 @@ course of a session, one or two sections at a time. Sections delivered so far:
 1. Project setup (structure, dependencies, config pattern)
 2. Database schema (raw SQL → SQLAlchemy models, with `one_live_booking_per_slot`
    called out as the single most important line of code in the schema)
-3. Authentication (phone + OTP, no passwords)
+3. Authentication (originally phone + OTP; replaced by password login in Section 26 below)
 4. Venue & court management
 5. Availability engine (on-read slot generation)
 6. Booking service (hold → payment_submitted → booked state machine)
@@ -63,10 +63,22 @@ course of a session, one or two sections at a time. Sections delivered so far:
     non-issues and deliberately NOT fixed -- see the gotchas below. See
     README.md's "Pre-launch hardening (Section 24)" for the full
     per-finding writeup.
+26. Password-based auth (2026-09-20): signup form + password login replace
+    phone+OTP-only login; WhatsApp OTP now only *proves the phone* (signup,
+    re-verification after 365 days, password reset). 8-hour sessions kept
+    alive by proactive refresh, argon2id passwords, per-phone failed-login
+    rate limit, purpose-bound OTPs, `PASSWORD_NOT_SET` path for pre-existing
+    accounts, and the frontends' matching screens (signup for player and
+    owner, login, verify, forgot/reset, web venue-setup wizard). README.md's
+    "Auth (Section 26)" bullet is the full description of the model; this
+    file only tracks what was surprising (gotchas at the end). **Built and
+    live-tested locally; NOT yet deployed** -- see the deploy-order gotcha.
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 272
-tests passing, 76 routes, 19 tables, no Alembic drift. Run the suite with
+Postgres/PostGIS instance, and documented in README.md. Current state: 338
+tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
+operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
+round-trips upgrade -> downgrade -> upgrade). Run the suite with
 `AI_PROVIDER=claude AI_VISION_PROVIDER=claude` if your local `.env`
 overrides either to `gemini` for manual testing — otherwise several
 AI-chat/OCR tests spuriously fail (they mock Claude-specific code paths
@@ -692,4 +704,84 @@ web image, what's deferred to later parts).
     (the `whatsapp_otp` entry is still in `whatsapp_templates.py`, untouched),
     delete the two tests above (they assert the temporary behavior), and
     remove this note plus the matching README/`infra/README.md` lines.
-
+- **Section 26 (password auth) -- things that were genuinely surprising or
+  are easy to get wrong** (2026-09-20). The model itself is in README.md.
+  1. **Deploy order matters: migrate immediately after the new image lands.**
+     The new code selects `users.password_hash/email/city/gender/phone_verified_at`
+     and `otp_requests.purpose`, so between the new container starting and
+     `bootstrap.sh migrate` every user query 500s. The migration
+     (`4785869bebe6`) is additive/nullable so the *old* code tolerates the new
+     schema, but `alembic` lives inside the image, so it can't run first.
+     Sequence: push -> deploy finishes -> `sudo /opt/court-booking-app/bootstrap.sh migrate`
+     at once (pilot traffic makes the window seconds). It also backfills
+     `phone_verified_at = created_at` for existing users (every one was created
+     by passing an OTP) and fixes the `sessions.last_active_at` default (below).
+  2. **The one existing production user has no password.** They hit
+     `403 PASSWORD_NOT_SET` on login and must use "forgot password" (which needs
+     an open 24h WhatsApp window under the temporary free-form send). Not
+     locked out, but not a click either.
+  3. **`extra="ignore"` in `config.py` silently swallows renamed settings.**
+     A stale `SESSION_TOKEN_EXPIRE_DAYS=365` in an old `.env` does nothing now;
+     sessions get the 8h default. `.env.example` was updated (and says so).
+  4. **`sessions.last_active_at`'s default was frozen at migration time**:
+     the initial migration wrote `server_default='now()'` as a *string*, which
+     Postgres folded into the constant `'2026-09-19 17:01:34+00'` at DDL time,
+     so every session started with that timestamp. Fixed in the Section 26
+     migration (`server_default=sa.text('now()')`) and in the model
+     (`func.now()`); it was the only column with the mistake (checked).
+  5. **A login client must never send a stored token to the auth endpoints or
+     react to their 401s.** A wrong password is a normal `401 INVALID_CREDENTIALS`;
+     the api-client used to treat any 401 as "session expired -> refresh ->
+     sign out". Public auth calls now pass `skipAuth`. The client also no longer
+     signs the user out on a refresh that failed because the *network* was down
+     (`RefreshOutcome`: ok / rejected / network) -- only a server refusal does.
+  6. **Refresh is only useful *before* expiry** (an expired token can't be
+     refreshed), and only works because the session is still valid -- which is
+     why the audit found the old reactive refresh to be dead code. It is now
+     driven on app foreground / tab focus and a 60s timer, when < 1h of the 8h
+     window remains (`packages/api-client/src/session.ts`).
+  7. **OTP rate limit is shared across purposes**: 5 codes per phone per 15 min
+     total (signup + resend + re-verify + reset all count). A user who fumbles
+     signup and then forgets their password can hit `OTP_RATE_LIMITED`.
+  8. **Test fixtures**: `make_user` now defaults `phone_verified_at` to now (the
+     login gate would otherwise reject every fixture user); pass
+     `phone_verified_at=None` for a pending signup. `make_auth_headers` builds
+     sessions with `SESSION_TOKEN_EXPIRE_HOURS`.
+  9. **Decisions made without being asked (flagged in the Section 26 report):**
+     password rule is length-only (min 8 -- confirmed by the project owner);
+     refresh also stops at the 365-day limit (confirmed correct); owners can
+     self-select the `owner` role at signup (venues still need admin approval
+     before going live); an owner with a *rejected/changes_requested* venue has no
+     resubmit endpoint (they contact support or register another venue --
+     confirmed as-is). (Email uniqueness and phone change were on this list;
+     both now exist -- see 10-12.)
+  10. **Second migration, `651abc777d2c` -- deploy it together with the first.**
+     After the image lands, `bootstrap.sh migrate` runs BOTH `4785869bebe6` and
+     `651abc777d2c` in one go (it's `alembic upgrade head`). The new code
+     selects `otp_requests.user_id` and the `phone_change` enum value, so the
+     same "migrate immediately" rule as (1) applies. The email-uniqueness step
+     **reads production data**: it finds `lower(email)` duplicates, keeps the
+     earliest account, NULLs the later ones, writes `audit_log` rows and prints a
+     summary -- so read the migrate output. Note pre-Section-26 production users
+     have *no* email at all (column is new), so on the current single production
+     user it is expected to report "0 duplicates". `ALTER TYPE ... ADD VALUE`
+     can't be undone by `downgrade` (Postgres can't drop an enum value), so the
+     downgrade leaves `phone_change` in the type -- harmless.
+     **The production duplicate check could not be run from the dev session**
+     (the SSM read was denied), so the migration's own output is the evidence.
+  11. **Email uniqueness has three moving parts that must stay together**:
+     `EmailStr` lowercases at the schema, the `uq_users_email_lower` index on
+     `lower(email)` is the real guarantee, and `_claim_email` /
+     `_commit_unique_email` in `auth_service.py` turn a clash into
+     `EMAIL_ALREADY_IN_USE` (and release an abandoned signup's email). The index is
+     declared at module level in `models/user.py` (`Index(..., func.lower(User.email))`)
+     so `alembic check` sees no drift. Test fixtures now derive the default
+     signup email from the phone (`signup_body`), because a shared default
+     email would collide.
+  12. **Phone change reuses the login lockout table on purpose**: wrong
+     current-password guesses on `request-phone-change` write `login_attempts`
+     rows for the *user's current phone*, so an attacker holding a stolen token
+     can't get unlimited password guesses through this endpoint that the login
+     endpoint would have refused. Verification codes get the usual OTP attempt cap.
+     Both steps hit the new number, never the old one -- the old number is not
+     notified (flagged; not built).

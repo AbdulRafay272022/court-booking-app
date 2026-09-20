@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
+import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -21,7 +22,7 @@ function useCountdown(target: string | null | undefined) {
   return Math.max(0, Math.floor((new Date(target).getTime() - now) / 1000));
 }
 
-export default function PayPage({ params }: PageProps<"/booking/[id]/pay">) {
+function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
   const { id } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -252,4 +253,12 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
       <span className={`text-sm font-semibold ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
+}
+
+/** Booking screens need a session: a signed-out visitor is sent to log in and brought back here,
+ * instead of the page silently signing them out on the first 401 with no explanation. */
+export default function PayPage(props: PageProps<"/booking/[id]/pay">) {
+  const { ready } = useRequireAuth();
+  if (!ready) return null;
+  return <PayPageInner {...props} />;
 }

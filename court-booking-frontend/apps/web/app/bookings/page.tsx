@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTimeRange } from "@/lib/format";
 import { useRequireAuth } from "@/lib/use-require-auth";
+import { SiteHeader } from "@/components/nav-auth";
 import type { Booking, BookingStatus } from "@court-booking/types";
 
 const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger" }> = {
@@ -101,6 +102,8 @@ export default function BookingsPage() {
   const bookings = query.data ?? [];
 
   return (
+    <>
+    <SiteHeader />
     <main className="max-w-3xl mx-auto px-6 py-10 flex flex-col gap-6">
       <h1 className="text-2xl font-extrabold tracking-tight">Your bookings</h1>
       <div className="flex gap-2">
@@ -133,5 +136,6 @@ export default function BookingsPage() {
         </div>
       )}
     </main>
+    </>
   );
 }

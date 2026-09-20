@@ -65,3 +65,26 @@ body {
   background: var(--color-player-bg);
   color: var(--color-player-ink);
 }
+
+/* Auth-screen background icons (components/auth/floating-icons.tsx): each icon sets its own
+   --dx/--dy/--r0/--r1/--dur/--delay so every one drifts on an independent loop. */
+@keyframes maidan-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(var(--r0));
+  }
+  50% {
+    transform: translate3d(var(--dx), var(--dy), 0) rotate(var(--r1));
+  }
+}
+
+.maidan-float {
+  animation: maidan-float var(--dur) ease-in-out var(--delay) infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .maidan-float {
+    animation: none;
+  }
+}

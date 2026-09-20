@@ -1,3 +1,4 @@
+import { SiteHeader } from "@/components/nav-auth";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { serverApi } from "@/lib/server-api";
@@ -44,6 +45,8 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
   };
 
   return (
+    <>
+    <SiteHeader />
     <main className="pb-16">
       {/* eslint-disable-next-line react/no-danger */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
@@ -109,5 +112,6 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
         </aside>
       </div>
     </main>
+    </>
   );
 }

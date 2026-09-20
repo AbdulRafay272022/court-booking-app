@@ -1,134 +1,135 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { Pressable, Text, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { pkNationalDigits, toE164, validateLogin } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
+import { getDeviceName, getOrCreateDeviceId, getPlatform } from "@/lib/device";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { BuildingIcon, ChevronRightIcon, WhatsAppIcon } from "@/components/icons";
+import { usePendingAuth } from "@/lib/pending-auth";
+import { playerColors } from "@/lib/colors";
+import { AuthScreen, FormMessage, PasswordField, SubmitButton, TextField } from "@/components/auth/kit";
 
-function digitsOnly(value: string): string {
-  return value.replace(/\D/g, "");
-}
+const NOTICES: Record<string, string> = {
+  "password-updated": "Password updated. Log in with your new password.",
+  "phone-verified": "Phone verified. Log in to continue.",
+  "phone-changed": "Phone number updated. Log in with your new number.",
+};
 
 export default function LoginScreen() {
-  const [phoneDigits, setPhoneDigits] = useState("");
-  const [loading, setLoading] = useState(false);
+  const params = useLocalSearchParams<{ phone?: string; notice?: string }>();
+  const [phone, setPhone] = useState(params.phone ? pkNationalDigits(params.phone) : "");
+  const [password, setPassword] = useState("");
+  const [touched, setTouched] = useState({ phone: false, password: false });
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Pakistani mobile numbers: 10 digits after +92, e.g. 3004408817.
-  const isValid = phoneDigits.length === 10 && phoneDigits.startsWith("3");
-  const e164Phone = `+92${phoneDigits}`;
+  const errors = validateLogin({ phone, password });
+  const valid = Object.keys(errors).length === 0;
+  const notice = NOTICES[params.notice ?? ""] ?? null;
 
-  async function handleContinue() {
-    if (!isValid || loading) return;
+  async function handleLogin() {
+    setBusy(true);
     setError(null);
-    setLoading(true);
+    const e164 = toE164(phone);
     try {
-      await api.auth.requestOtp({ phone: e164Phone });
-      router.push({ pathname: "/(auth)/otp", params: { phone: e164Phone } });
-    } catch (e) {
-      setError(friendlyErrorMessage(e));
+      const deviceId = await getOrCreateDeviceId();
+      const res = await api.auth.login({
+        phone: e164,
+        password,
+        device_id: deviceId,
+        device_name: getDeviceName(),
+        platform: getPlatform(),
+      });
+      // Stack.Protected in the root layout reacts to status/role and swaps the visible group.
+      await useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "PHONE_REVERIFICATION_REQUIRED") {
+        // Not a wrong password: the phone needs proving again (never verified, or >365 days).
+        // Send a code, keep the password in memory for the retry, and go to the OTP screen.
+        try {
+          const otp = await api.auth.requestOtp({ phone: e164 });
+          usePendingAuth.getState().rememberOtpExpiry("reverify", e164, otp.expires_in);
+          usePendingAuth.getState().setPassword(password);
+          router.push({ pathname: "/(auth)/verify", params: { purpose: "reverify", phone: e164 } });
+        } catch (otpErr) {
+          setError(friendlyErrorMessage(otpErr));
+        }
+      } else if (err instanceof ApiError && err.code === "PASSWORD_NOT_SET") {
+        // Account from before passwords existed: set one through the reset flow.
+        router.push({ pathname: "/(auth)/forgot-password", params: { phone: e164, mode: "set" } });
+      } else {
+        setError(friendlyErrorMessage(err));
+      }
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
-  function handleOwnerTap() {
-    Alert.alert(
-      "Owner sign-up coming soon",
-      "Self-serve venue registration isn't live yet — message us and we'll get your venue set up by hand.",
-    );
-  }
-
   return (
-    <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="flex-1 px-[26px] pt-8 gap-[34px]">
-        <View className="gap-3.5">
-          <Text className="font-figtree-extrabold text-player-ink text-[30px] tracking-tight">
-            Maidan
+    <AuthScreen
+      title="Welcome back"
+      subtitle="Log in with your mobile number and password."
+      footer={
+        <Text className="font-figtree-medium" style={{ fontSize: 14, color: playerColors.inkMuted }}>
+          New to Maidan?{" "}
+          <Text
+            onPress={() => router.push("/(auth)/signup")}
+            className="font-figtree-bold"
+            style={{ color: playerColors.accent, textDecorationLine: "underline" }}
+          >
+            Create an account
           </Text>
-          <Text className="font-figtree-medium text-player-ink-muted text-[19px] leading-[27px]">
-            Find a court near you and book it in a minute.
-          </Text>
-        </View>
-
-        <View className="gap-[13px]">
-          <Text className="font-figtree-bold text-player-ink-fainter text-[11px] tracking-[1.5px]">
-            MOBILE NUMBER
-          </Text>
-          <View className="flex-row gap-[9px]">
-            <View className="min-w-[88px] h-[58px] px-[15px] rounded-2xl bg-player-surface border border-player-border flex-row items-center gap-2">
-              <Text className="font-mono-semibold text-player-ink-fainter text-[13px]">PK</Text>
-              <Text className="font-mono-semibold text-player-ink text-base">+92</Text>
-            </View>
-            <View className="flex-1 h-[58px] px-4 rounded-2xl bg-player-surface border-[1.5px] border-player-ink flex-row items-center">
-              <TextInput
-                value={phoneDigits}
-                onChangeText={(v) => setPhoneDigits(digitsOnly(v).slice(0, 10))}
-                placeholder="300 4408817"
-                placeholderTextColor="#9A9791"
-                keyboardType="number-pad"
-                maxLength={10}
-                autoFocus
-                className="font-mono-semibold text-player-ink text-[17px] tracking-[0.3px] flex-1"
-              />
-            </View>
-          </View>
-          <View className="flex-row items-center gap-2 pl-0.5">
-            <WhatsAppIcon size={16} color="#1F7A52" />
-            <Text className="font-figtree-medium text-player-ink-muted text-[13.5px]">
-              We'll send your code on WhatsApp
-            </Text>
-          </View>
-          {error ? (
-            <Text className="font-figtree-medium text-player-danger text-[13px]">{error}</Text>
-          ) : null}
-        </View>
-
-        <Pressable
-          onPress={handleContinue}
-          disabled={!isValid || loading}
-          className="h-[58px] rounded-2xl bg-player-accent items-center justify-center active:opacity-90"
-          style={{ opacity: !isValid || loading ? 0.5 : 1 }}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text className="font-figtree-bold text-white text-[16.5px]">Continue</Text>
-          )}
-        </Pressable>
-
-        <View className="flex-row items-center gap-3.5">
-          <View className="flex-1 h-px bg-player-border" />
-          <Text className="font-figtree-semibold text-player-ink-fainter text-[12.5px]">or</Text>
-          <View className="flex-1 h-px bg-player-border" />
-        </View>
-
-        <Pressable
-          onPress={handleOwnerTap}
-          className="bg-player-surface border border-player-border rounded-2xl p-[19px] flex-row items-center gap-[15px]"
-        >
-          <View className="w-11 h-11 rounded-xl bg-player-teal-soft items-center justify-center">
-            <BuildingIcon />
-          </View>
-          <View className="flex-1 gap-0.5">
-            <Text className="font-figtree-bold text-player-ink text-[15px]">I run a venue</Text>
-            <Text className="font-figtree-medium text-player-ink-faint text-[13px] leading-[18px]">
-              List your courts and manage bookings
-            </Text>
-          </View>
-          <ChevronRightIcon />
-        </Pressable>
-      </View>
-
-      <View className="px-[26px] pb-[34px]">
-        <Text className="font-figtree-medium text-player-ink-fainter text-[12.5px] leading-[18px]">
-          By continuing you agree to our{" "}
-          <Text className="font-figtree-semibold text-player-ink-muted underline">Terms</Text> and{" "}
-          <Text className="font-figtree-semibold text-player-ink-muted underline">Privacy Policy</Text>.
         </Text>
+      }
+    >
+      {notice ? <FormMessage kind="success">{notice}</FormMessage> : null}
+
+      <TextField
+        label="Mobile number"
+        mono
+        keyboardType="number-pad"
+        value={phone}
+        onChangeText={(v) => setPhone(pkNationalDigits(v).slice(0, 10))}
+        onBlur={() => setTouched((p) => ({ ...p, phone: true }))}
+        error={errors.phone}
+        showError={touched.phone}
+        placeholder="300 4408817"
+        autoComplete="tel-national"
+        prefix={
+          <Text className="font-mono-semibold" style={{ fontSize: 15, color: playerColors.inkMuted }}>
+            +92
+          </Text>
+        }
+      />
+      <View style={{ gap: 8 }}>
+        <PasswordField
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          onBlur={() => setTouched((p) => ({ ...p, password: true }))}
+          error={errors.password}
+          showError={touched.password}
+          placeholder="Your password"
+          autoComplete="current-password"
+        />
+        <Pressable
+          onPress={() =>
+            router.push({ pathname: "/(auth)/forgot-password", params: phone ? { phone: toE164(phone) } : {} })
+          }
+          style={{ alignSelf: "flex-end", minHeight: 36, justifyContent: "center" }}
+        >
+          <Text className="font-figtree-bold" style={{ fontSize: 13.5, color: playerColors.accent }}>
+            Forgot password?
+          </Text>
+        </Pressable>
       </View>
-    </SafeAreaView>
+
+      {error ? <FormMessage kind="error">{error}</FormMessage> : null}
+
+      <SubmitButton ready={valid} busy={busy} label="Log in" busyLabel="Logging in…" onPress={handleLogin} />
+    </AuthScreen>
   );
 }

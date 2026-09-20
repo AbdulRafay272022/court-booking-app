@@ -290,7 +290,7 @@ export default function VenueCourtsScreen() {
         <View className="flex-row gap-3">
           <SecondaryButton label="Back" onPress={() => router.back()} />
           <View className="flex-1">
-            <PrimaryButton label="Send for review" onPress={handleSubmit} loading={submitting} />
+            <PrimaryButton label="Send for review" onPress={handleSubmit} loading={submitting} disabled={!isValid} />
           </View>
         </View>
       </ScrollView>

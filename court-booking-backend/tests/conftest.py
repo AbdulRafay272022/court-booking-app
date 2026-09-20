@@ -1,7 +1,7 @@
 import os
 import uuid as uuid_module
 from collections.abc import AsyncGenerator, Callable
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5433/court_booking")
 os.environ.setdefault("SESSION_TOKEN_SECRET", "test-secret")
@@ -99,6 +99,9 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
 def make_user(db_session_factory) -> Callable:
     async def _make(phone: str, role: UserRole = UserRole.PLAYER, **kwargs) -> User:
         async with db_session_factory() as session:
+            # Test users are phone-verified by default (the Section 26 gate); pass
+            # phone_verified_at=None to build a pending signup.
+            kwargs.setdefault("phone_verified_at", datetime.now(timezone.utc))
             user = User(phone=phone, role=role, **kwargs)
             session.add(user)
             await session.commit()
@@ -117,7 +120,7 @@ def make_auth_headers(db_session_factory) -> Callable:
                 SessionModel(
                     user_id=user.id,
                     token_hash=hash_token(token, settings.SESSION_TOKEN_SECRET),
-                    expires_at=token_expiry(settings.SESSION_TOKEN_EXPIRE_DAYS),
+                    expires_at=token_expiry(hours=settings.SESSION_TOKEN_EXPIRE_HOURS),
                 )
             )
             await session.commit()

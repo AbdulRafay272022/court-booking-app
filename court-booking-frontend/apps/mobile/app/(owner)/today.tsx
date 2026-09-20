@@ -10,9 +10,11 @@ import { formatDayHeader, formatPKR, formatTime } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { openSupportWhatsApp } from "@/lib/support";
+import { confirmLogout } from "@/lib/logout";
 import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
-import { EmptyState, StatTile, Tab, VenueSwitcher, IconButton } from "./_dashboard-components";
+import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
+import { useVenueSetupStore } from "@/lib/venue-setup-store";
 
 const STATUS_STYLE: Record<string, { border: string; bg: string }> = {
   booked: { border: "#1F7A52", bg: "#FFFFFF" },
@@ -68,11 +70,37 @@ export default function OwnerTodayScreen() {
             >
               <BellIcon />
             </Pressable>
+            <Pressable
+              onPress={() => router.push("/(owner)/account")}
+              accessibilityLabel="Account"
+              accessibilityRole="button"
+              className="h-[42px] px-3 rounded-[11px] bg-owner-bg items-center justify-center"
+            >
+              <Text className="font-plex-semibold text-owner-ink-muted text-[12.5px]">Account</Text>
+            </Pressable>
           </View>
         </View>
 
-        {showSwitcher ? (
-          <VenueSwitcher venues={venues} activeVenueId={activeVenueId} onSelect={setVenueId} />
+        <VenueSwitcher
+          venues={venues}
+          activeVenueId={activeVenueId}
+          onSelect={setVenueId}
+          onAdd={() => {
+            // Reuses the existing setup wizard, from a clean draft (not whatever was left half-done).
+            useVenueSetupStore.getState().reset();
+            router.push("/(owner)/venue-setup/register");
+          }}
+        />
+        {activeVenue ? (
+          <VenueStatusBanner
+            venue={activeVenue}
+            onView={() =>
+              router.push({
+                pathname: activeVenue.status === "rejected" ? "/(owner)/venue-setup/rejected" : "/(owner)/venue-setup/pending",
+                params: { venueId: activeVenue.id },
+              })
+            }
+          />
         ) : null}
 
         <View className="flex-row gap-2.5">

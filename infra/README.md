@@ -158,6 +158,21 @@ validation unless the command is prefixed with `MSYS_NO_PATHCONV=1`; (b) that ma
 default AWS region is `us-east-1`, so always pass `--region ap-south-1` -- a
 `put-parameter` without it lands in the wrong region and looks like the secret is missing.
 
+## Releasing a change that includes a database migration
+
+The backend image contains `alembic/`, so a migration can only run **after** the new image
+is on the instance -- and the new code may read columns the migration adds. Order, and keep
+the gap short:
+
+1. Push to `main` (or run the workflow); wait for the deploy job to finish.
+2. Immediately on the instance: `sudo /opt/court-booking-app/bootstrap.sh migrate`
+   (`alembic upgrade head` + `alembic check`).
+3. Confirm `/health/ready` and one real request.
+
+Between 1 and 2, queries that touch the new columns fail. Prefer additive, nullable migrations
+(the old code then tolerates the new schema) and do it when traffic is lowest. Section 26's
+password-auth migration (`4785869bebe6`) is such a release -- see the backend CLAUDE.md.
+
 ## Current state (verified 2026-09-20)
 
 - Applied and live: instance, RDS, buckets, CloudFront, ECR, OIDC role, Elastic IP
