@@ -11,6 +11,7 @@ from app.models.message import Message
 from app.models.notification import NotificationLog
 from app.models.user import User
 from app.models.venue import PlanTier, Venue
+from app.services.apns import send_apns
 from app.services.fcm import PushOutcome, send_push
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
@@ -110,6 +111,10 @@ class NotificationService:
     async def _push(
         self, token: str, title: str, body: str, data: dict[str, str] | None = None
     ) -> PushOutcome:
+        # iOS tokens are raw APNs tokens (FCM rejects them), so they go straight to Apple.
+        platform = await self.db.scalar(select(FCMToken.platform).where(FCMToken.token == token))
+        if platform == "ios":
+            return await send_apns(self.settings, token, title, body, data)
         return await send_push(self.settings.FCM_SERVICE_ACCOUNT_KEY, token, title, body, data)
 
     async def _deactivate_token(self, token: str) -> None:

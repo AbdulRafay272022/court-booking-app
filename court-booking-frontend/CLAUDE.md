@@ -687,9 +687,15 @@ were given to the project owner, not automated).
   orange tint, `defaultChannel: "default"`). New `eas.json` (development/preview/production).
   `registerForPushNotifications` now creates the Android channel `default` first -- Android 13+ never shows the
   permission prompt without one, and the backend names that channel in every message.
-- **Android only.** On iOS `getDevicePushTokenAsync` returns an APNs token, which FCM's HTTP API rejects;
-  iOS would need the Firebase SDK (`@react-native-firebase/messaging`) or Expo's push service. **Push does not
-  work in Expo Go on Android** -- it needs a development/preview EAS build.
+- **iOS goes straight to Apple, not through FCM.** On iOS `getDevicePushTokenAsync` returns a raw APNs token,
+  which FCM's HTTP API rejects. Instead of adding the Firebase native SDK to the app, the backend routes tokens
+  registered with `platform="ios"` to `app/services/apns.py` (HTTP/2 + an ES256 provider JWT from an Apple `.p8`
+  key; settings `APNS_KEY`/`APNS_KEY_ID`/`APNS_TEAM_ID`/`APNS_BUNDLE_ID`/`APNS_USE_SANDBOX`). The `data` payload
+  is sent under the payload's `body` key, which is where expo-notifications reads it from for a native APNs push.
+  `BadDeviceToken` is deliberately NOT treated as "dead token" (a sandbox/production mix-up returns it for every
+  token); only 410 Unregistered deactivates one. **Written and unit-tested against mocks only -- nothing has
+  ever been sent to real APNs**, and it needs a paid Apple Developer account + a real iPhone to verify.
+  **Push does not work in Expo Go** -- Android or iOS needs a development/preview EAS build.
 - **Deep links:** `payment_submitted` -> Approvals and `slot_reopened` -> Search work. `booking_confirmed` /
   `payment_rejected` are wired in `routeForNotification` but the backend does not pass a `reference_id` for
   them yet (`notify_booking_confirmed` / `notify_payment_rejected` take no booking id), so they just open the app.

@@ -52,6 +52,14 @@ Then, once, **before the first deploy**:
    ```
    Blank/absent means push is skipped (WhatsApp and in-app polling still work). After
    adding it, re-run `bootstrap.sh env` and recreate the backend container (below).
+   **iOS push** (straight to Apple, not FCM) needs three more secrets from the Apple Developer
+   portal (Keys -> "+" -> Apple Push Notifications service; the `.p8` downloads once):
+   `APNS_KEY` (the `.p8` text, base64-encoded like the FCM key), `APNS_KEY_ID` and
+   `APNS_TEAM_ID`. `APNS_BUNDLE_ID` defaults to `com.maidan.app`; `APNS_USE_SANDBOX` defaults to
+   false (right for ad-hoc / TestFlight / App Store builds, wrong for development-client builds).
+   **Note:** the `bootstrap.sh` on an already-provisioned instance is a copy written at first
+   boot -- editing this repo's script does not update it (Terraform ignores `user_data`), so a
+   new `.env` line has to be added to the on-box script too.
 3. **Connect** (no SSH — see below) and run the bootstrap phases:
    ```bash
    aws ssm start-session --region ap-south-1 --target "$(terraform output -raw ec2_instance_id)"

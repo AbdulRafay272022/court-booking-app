@@ -9,14 +9,13 @@ const STORAGE_KEY = "maidan.push_token";
  * `defaultChannel` of the expo-notifications plugin in app.json. */
 const ANDROID_CHANNEL_ID = "default";
 
-/** The backend calls FCM directly (app/services/fcm.py posts to fcm.googleapis.com),
- * not through Expo's push service -- so this must be the raw native device token
- * (`getDevicePushTokenAsync`), not an Expo push token (`ExponentPushToken[...]`),
- * which only Expo's own relay would understand.
+/** The backend sends pushes itself, not through Expo's push service -- so this must be the
+ * raw native device token (`getDevicePushTokenAsync`), not an Expo push token
+ * (`ExponentPushToken[...]`), which only Expo's own relay would understand.
  *
- * Android only, for now: on iOS `getDevicePushTokenAsync` returns an APNs token, which
- * FCM's HTTP API rejects (it needs an FCM registration token, i.e. the Firebase SDK).
- * iOS tokens are registered anyway but the backend will mark them dead on first send. */
+ * Android: an FCM token, sent via app/services/fcm.py. iOS: a raw APNs token, which FCM's
+ * HTTP API would reject, so the backend routes tokens registered with platform "ios"
+ * straight to Apple (app/services/apns.py) -- that's why `platform` matters below. */
 export async function registerForPushNotifications(): Promise<void> {
   try {
     if (Platform.OS === "android") {

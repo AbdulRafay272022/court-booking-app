@@ -168,6 +168,15 @@ class Settings(BaseSettings):
     # FCM: service-account JSON, raw or base64 (see app/services/fcm.py)
     FCM_SERVICE_ACCOUNT_KEY: str = ""
 
+    # APNs: iOS tokens go straight to Apple (see app/services/apns.py). APNS_KEY is the .p8
+    # contents, raw or base64. Any of KEY/KEY_ID/TEAM_ID blank = iOS push is skipped.
+    APNS_KEY: str = ""
+    APNS_KEY_ID: str = ""
+    APNS_TEAM_ID: str = ""
+    APNS_BUNDLE_ID: str = "com.maidan.app"  # must match ios.bundleIdentifier in app.json
+    # Development-client builds register sandbox tokens; ad-hoc / TestFlight / App Store use production.
+    APNS_USE_SANDBOX: bool = False
+
     # Sentry
     SENTRY_DSN: str = ""
 
