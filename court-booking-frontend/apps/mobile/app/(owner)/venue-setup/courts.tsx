@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { isStaleVenueDraftError } from "@court-booking/api-client";
-import type { PricingRuleInput, ScheduleTemplateInput } from "@court-booking/types";
+import { weeklyHoursError, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -27,7 +27,12 @@ export default function VenueCourtsScreen() {
   const [staleDraft, setStaleDraft] = useState(false);
 
   const totalPricedRules = store.pricingRules.filter((r) => Number(r.pricePerSlot) > 0);
-  const isValid = store.courts.length > 0 && totalPricedRules.length > 0;
+  // Hours the database can't store (closing at/before opening, e.g. 06:00 -> 02:00) used to reach the API,
+  // 500, and surface as a "network" error. Caught here so the owner sees what to fix.
+  const hoursProblem = weeklyHoursError(
+    store.sameHoursEveryDay, store.defaultOpenTime, store.defaultCloseTime, store.perDayOverrides, DAY_LABELS,
+  );
+  const isValid = store.courts.length > 0 && totalPricedRules.length > 0 && !hoursProblem;
 
   function buildSchedules(): ScheduleTemplateInput[] {
     if (store.sameHoursEveryDay) {
@@ -60,6 +65,10 @@ export default function VenueCourtsScreen() {
   }
 
   async function handleSubmit() {
+    if (hoursProblem) {
+      Alert.alert("Check your hours", hoursProblem);
+      return;
+    }
     if (!isValid) {
       Alert.alert("Almost there", "Add at least one court and one priced rate before sending for review.");
       return;
@@ -289,6 +298,9 @@ export default function VenueCourtsScreen() {
               })}
             </View>
           )}
+          {hoursProblem ? (
+            <Text className="font-plex-semibold text-owner-danger text-[13px]">{hoursProblem}</Text>
+          ) : null}
         </SectionCard>
 
         <SectionCard>

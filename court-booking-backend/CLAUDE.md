@@ -153,7 +153,7 @@ course of a session, one or two sections at a time. Sections delivered so far:
     `403 NOT_VENUE_OWNER` -- the three codes the frontend now treats as "stale draft".
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 350
+Postgres/PostGIS instance, and documented in README.md. Current state: 351
 tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
 operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
 round-trips upgrade -> downgrade -> upgrade). Run the suite with

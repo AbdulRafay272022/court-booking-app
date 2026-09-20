@@ -86,6 +86,39 @@ async def test_slot_minutes_varies_by_sport(client, make_user, make_venue, make_
     assert futsal.json()["court"]["slot_minutes"] == 60
 
 
+async def test_schedule_closing_before_opening_is_a_clean_422_not_a_500(
+    client, make_user, make_venue, make_court, make_auth_headers
+):
+    """Production incident 2026-09-20: an owner typed 06:00 -> 02:00 (past midnight). The DB's
+    CHECK (open_time < close_time) rejected the INSERT and the API answered an unhandled 500,
+    which the browser (no CORS headers on a 500) showed as "Can't reach the server". It must be
+    a normal validation error, and nothing may be written."""
+    owner = await make_user("+923002000040", role=UserRole.OWNER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    headers = await make_auth_headers(owner)
+
+    for open_time, close_time in [("06:00:00", "02:00:00"), ("06:00:00", "06:00:00"), ("06:00:00", "00:00:00")]:
+        resp = await client.post(
+            f"/api/v1/courts/{court.id}/schedule",
+            headers=headers,
+            json={"schedules": [{"day_of_week": 0, "open_time": open_time, "close_time": close_time}]},
+        )
+        assert resp.status_code == 422, (open_time, close_time, resp.text)
+        assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    court_resp = await client.get(f"/api/v1/courts/{court.id}")
+    assert court_resp.json()["schedule_templates"] == []
+
+    # 23:59 is the latest representable closing time and is accepted.
+    ok = await client.post(
+        f"/api/v1/courts/{court.id}/schedule",
+        headers=headers,
+        json={"schedules": [{"day_of_week": 0, "open_time": "06:00:00", "close_time": "23:59:00"}]},
+    )
+    assert ok.status_code == 200
+
+
 async def test_schedule_upsert_replaces_only_targeted_days(
     client, make_user, make_venue, make_court, make_auth_headers
 ):

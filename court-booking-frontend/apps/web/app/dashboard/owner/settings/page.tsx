@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Court, PricingRuleInput, ScheduleTemplateInput } from "@court-booking/types";
+import { weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -138,8 +138,14 @@ export default function VenueSettingsPage() {
       }));
   }
 
+  const hoursProblem = weeklyHoursError(sameHoursEveryDay, defaultOpenTime, defaultCloseTime, perDayOverrides, DAY_LABELS);
+
   async function handleSave() {
     if (!activeCourtId) return;
+    if (hoursProblem) {
+      setSaveMessage({ kind: "error", text: hoursProblem });
+      return;
+    }
     const rules = buildPricingRules();
     if (rules.length === 0) {
       setSaveMessage({ kind: "error", text: "Add at least one priced rate before saving." });
@@ -263,6 +269,11 @@ export default function VenueSettingsPage() {
                 })}
               </div>
             )}
+            {hoursProblem ? (
+              <p role="alert" className="text-[13px] font-semibold text-owner-danger">
+                {hoursProblem}
+              </p>
+            ) : null}
           </SectionCard>
 
           <SectionCard>

@@ -123,3 +123,37 @@ export function validatePhoneChange(f: { newPhone: string; password: string }): 
   if (!f.password) e.password = "Enter your current password";
   return e;
 }
+
+/** "HH:MM", 24-hour. */
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** One day's opening hours. The database requires open < close within the SAME calendar day
+ * (`schedule_templates.valid_times`) and the availability grid is built per day, so hours that
+ * run past midnight (close 02:00) are not supported yet. Returns a user-facing message, or null
+ * when the pair is fine. Without this check the API used to answer 500 and the browser showed
+ * a misleading "Can't reach the server". */
+export function scheduleHoursError(open: string, close: string): string | null {
+  if (!HHMM.test(open) || !HHMM.test(close)) return "Enter times as HH:MM, for example 06:00 and 23:00.";
+  if (close <= open) {
+    return "Closing time must be later than opening time. Hours past midnight aren't supported yet, so use 23:59 as the latest closing time.";
+  }
+  return null;
+}
+
+/** The whole week: one shared pair, or a pair per day (a day with no override uses the shared
+ * one). `dayLabels[i]` names day `i` in the message. */
+export function weeklyHoursError(
+  sameEveryDay: boolean,
+  defaultOpen: string,
+  defaultClose: string,
+  overrides: Partial<Record<number, { open: string; close: string }>>,
+  dayLabels: readonly string[],
+): string | null {
+  if (sameEveryDay) return scheduleHoursError(defaultOpen, defaultClose);
+  for (let day = 0; day < 7; day++) {
+    const o = overrides[day] ?? { open: defaultOpen, close: defaultClose };
+    const problem = scheduleHoursError(o.open, o.close);
+    if (problem) return `${dayLabels[day] ?? `Day ${day}`}: ${problem}`;
+  }
+  return null;
+}

@@ -646,6 +646,27 @@ Things worth knowing / not done:
 - Test data from these runs (users `92300#######@example.com`, venues "S31 ...") was left in the local dev
   DB because the bulk-delete was blocked; see the session summary for the cleanup SQL.
 
+### Section 31 follow-up: "Can't reach the server" on Send for review (2026-09-20, from the live logs)
+
+The second report after the stale-draft fix was NOT a network problem. Production logs (`docker logs
+court-booking-backend` via SSM, `--region ap-south-1`) showed venue and court created (`201`) and then
+`POST /courts/{id}/schedule` -> **500**: the owner had set closing time **02:00**, and
+`schedule_templates` has `CHECK (open_time < close_time)` (`valid_times`); the availability grid is built
+within one calendar day, so **hours past midnight are not supported**. Nothing validated the times, the
+INSERT threw, and a bare 500 carries **no CORS headers**, so the browser reported a failed fetch, which
+`friendlyErrorMessage` maps to "Can't reach the server". Lesson: **that message can be a server 500**, so
+check the server logs before blaming the user's connection.
+- Fixed: `ScheduleTemplateIn` now rejects `close_time <= open_time` with a normal 422
+  (`test_schedule_closing_before_opening_is_a_clean_422_not_a_500`), and
+  `weeklyHoursError`/`scheduleHoursError` (`packages/types/src/validation.ts`) block Send for review / Save
+  with an inline message naming the day and suggesting 23:59, on both wizards and both settings screens.
+- **Known limitation, not built:** an owner who really closes after midnight can only enter 23:59, and a
+  60-min grid then loses its last slot. Real overnight hours need a DB constraint change, availability-engine
+  work (which day a 1 AM slot belongs to), pricing windows and the PKT conversion. Ask before building.
+- **Not fixed (recommended):** an unhandled 500 still reaches the browser without CORS headers. An inner
+  catch-all in `RequestContextMiddleware` (inside CORS) returning the JSON error envelope would make every
+  unexpected 500 show "Something went wrong" instead of "Can't reach the server".
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

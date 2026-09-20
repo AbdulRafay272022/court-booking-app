@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { isStaleVenueDraftError } from "@court-booking/api-client";
-import type { PricingRuleInput, ScheduleTemplateInput } from "@court-booking/types";
+import { weeklyHoursError, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { DAY_LABELS, SLOT_MINUTES_OPTIONS, SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
@@ -26,7 +26,13 @@ export default function VenueCourtsPage() {
   const [staleDraft, setStaleDraft] = useState(false);
 
   const pricedRules = store.pricingRules.filter((r) => Number(r.pricePerSlot) > 0);
-  const isValid = store.courts.length > 0 && store.courts.every((c) => c.name.trim()) && pricedRules.length > 0;
+  // Hours the database can't store (closing at/before opening, e.g. 06:00 -> 02:00) used to reach the API,
+  // 500, and surface as "Can't reach the server". Caught here so the owner sees what to fix.
+  const hoursProblem = weeklyHoursError(
+    store.sameHoursEveryDay, store.defaultOpenTime, store.defaultCloseTime, store.perDayOverrides, DAY_LABELS,
+  );
+  const isValid =
+    store.courts.length > 0 && store.courts.every((c) => c.name.trim()) && pricedRules.length > 0 && !hoursProblem;
 
   function buildSchedules(): ScheduleTemplateInput[] {
     return Array.from({ length: 7 }, (_, day) => {
@@ -222,6 +228,11 @@ export default function VenueCourtsPage() {
             })}
           </div>
         )}
+        {hoursProblem ? (
+          <p role="alert" className="text-[13px] font-semibold text-owner-danger">
+            {hoursProblem}
+          </p>
+        ) : null}
       </SectionCard>
 
       <SectionCard>

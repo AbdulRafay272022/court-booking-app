@@ -1,13 +1,26 @@
 import uuid
 from datetime import datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ScheduleTemplateIn(BaseModel):
     day_of_week: int = Field(ge=0, le=6)
     open_time: time
     close_time: time
+
+    @model_validator(mode="after")
+    def _close_after_open(self) -> "ScheduleTemplateIn":
+        # schedule_templates has CHECK (open_time < close_time) and the availability grid is
+        # built within one calendar day, so hours that run past midnight (e.g. 06:00 -> 02:00)
+        # are not representable. Without this the INSERT hit the constraint and the request
+        # answered an unhandled 500 (which the browser then reported as a network error).
+        if self.close_time <= self.open_time:
+            raise ValueError(
+                "close_time must be later than open_time; hours past midnight are not supported yet "
+                "(use 23:59 as the latest closing time)"
+            )
+        return self
 
 
 class ScheduleTemplateOut(ScheduleTemplateIn):

@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Court, PricingRuleInput, ScheduleTemplateInput } from "@court-booking/types";
+import { weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -134,8 +134,14 @@ export default function VenueSettingsScreen() {
       }));
   }
 
+  const hoursProblem = weeklyHoursError(sameHoursEveryDay, defaultOpenTime, defaultCloseTime, perDayOverrides, DAY_LABELS);
+
   async function handleSave() {
     if (!activeCourtId) return;
+    if (hoursProblem) {
+      Alert.alert("Check your hours", hoursProblem);
+      return;
+    }
     const rules = buildPricingRules();
     if (rules.length === 0) {
       Alert.alert("Add a price", "At least one priced rate is needed before saving.");
@@ -259,6 +265,9 @@ export default function VenueSettingsScreen() {
                 })}
               </View>
             )}
+            {hoursProblem ? (
+              <Text className="font-plex-semibold text-owner-danger text-[13px]">{hoursProblem}</Text>
+            ) : null}
           </SectionCard>
 
           <SectionCard>
