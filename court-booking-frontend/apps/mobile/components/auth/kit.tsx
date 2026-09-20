@@ -93,6 +93,106 @@ const ICONS: { name: string; body: ReactNode }[] = [
   },
   { name: "star", body: <Path d="M12 2.5l3.1 6.3 6.9 1-5 4.9 1.2 6.9-6.2-3.3-6.2 3.3 1.2-6.9-5-4.9 6.9-1z" /> },
   { name: "shuttle", body: <Path d="M9 3l3 8 3-8M8 11h8l-2 6h-4zM10 21h4" /> },
+  {
+    name: "whistle",
+    body: (
+      <>
+        <Path d="M4 10.5a5 5 0 0 1 5-5h5.5l5-2.5-1.5 3.5-2 1h-1a5 5 0 1 1-5 5" />
+        <Circle cx="9" cy="10.5" r="1.2" />
+      </>
+    ),
+  },
+  {
+    name: "stopwatch",
+    body: (
+      <>
+        <Circle cx="12" cy="13.5" r="8" />
+        <Path d="M12 13.5V9M9.5 2.5h5M12 2.5v2.3" />
+      </>
+    ),
+  },
+  {
+    name: "medal",
+    body: (
+      <>
+        <Path d="M8.3 3l2.4 6.2M15.7 3l-2.4 6.2" />
+        <Circle cx="12" cy="15.2" r="5.8" />
+        <Path d="M12 12.3v2.9l2 1.2" />
+      </>
+    ),
+  },
+  {
+    name: "racket",
+    body: (
+      <>
+        <Circle cx="9.5" cy="9" r="6" />
+        <Path d="M9.5 3.4v11.2M3.9 9h11.2" />
+        <Path d="M13.7 13.2L21 20.5" />
+      </>
+    ),
+  },
+  { name: "flag", body: <Path d="M6 21V3.5M6 4h12.5l-3 4 3 4H6" /> },
+  {
+    name: "cone",
+    body: (
+      <>
+        <Path d="M12 3l4.2 15.5H7.8L12 3z" />
+        <Path d="M9.3 11.8h5.4M7.6 17.7h8.8" />
+      </>
+    ),
+  },
+];
+
+/** Owner-facing background: deliberately different shapes from the player set above (not a
+ * recolor of the same sport icons) -- business/venue-management-adjacent instead. */
+const OWNER_ICONS: { name: string; body: ReactNode }[] = [
+  {
+    name: "building",
+    body: (
+      <>
+        <Path d="M5 3h14v18H5z" />
+        <Path d="M9 7h1.4M13.6 7H15M9 11h1.4M13.6 11H15M9 15h1.4M13.6 15H15" />
+      </>
+    ),
+  },
+  {
+    name: "calendar",
+    body: (
+      <>
+        <Path d="M3 5h18v16H3z" />
+        <Path d="M3 10h18M8 3v4M16 3v4" />
+      </>
+    ),
+  },
+  { name: "chart", body: <Path d="M4 20V10M10 20V4M16 20v-7M3 20h18" /> },
+  {
+    name: "pin",
+    body: (
+      <>
+        <Path d="M12 21s7-7.6 7-12.2A7 7 0 1 0 5 8.8C5 13.4 12 21 12 21z" />
+        <Circle cx="12" cy="8.6" r="2.3" />
+      </>
+    ),
+  },
+  {
+    name: "clipboard",
+    body: (
+      <>
+        <Path d="M6 4h12v17H6z" />
+        <Path d="M9 2h6v3H9z" />
+        <Path d="M9 11.5h6M9 15.5h6" />
+      </>
+    ),
+  },
+  {
+    name: "clock",
+    body: (
+      <>
+        <Circle cx="12" cy="12" r="9" />
+        <Path d="M12 7v5l3.3 2" />
+      </>
+    ),
+  },
 ];
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
@@ -157,22 +257,24 @@ function FloatingIcon({ body, color, left, top, size, opacity, dx, dy, r0, r1, d
   );
 }
 
-/** Faint sports icons drifting behind the player-facing auth screens. Which icons and where is
- * re-randomized every time the screen mounts (4-6 of them, spread over a 3x3 grid so they don't
- * clump); each floats on its own slow loop. Decoration only: hidden from screen readers, behind
- * the form, low opacity, never touchable. Player tone only -- not spread anywhere else. */
-export function FloatingIcons({ color }: { color: string }) {
+/** Faint icons drifting behind the auth screens -- sport icons in player tone, business/venue
+ * icons in owner tone (`icons` prop, Section 30 Part 2: owner tone previously got no background
+ * at all). Which icons and where is re-randomized every time the screen mounts (8-10 of them,
+ * "well beyond the original 4-6" per Section 30 Part 1, spread over a 3x3 grid with repeats
+ * since that's more icons than cells); each floats on its own slow loop. Decoration only: hidden
+ * from screen readers, behind the form, low opacity, never touchable. */
+export function FloatingIcons({ color, icons = ICONS }: { color: string; icons?: { name: string; body: ReactNode }[] }) {
   const placed = useMemo(() => {
-    const count = 4 + Math.floor(Math.random() * 3);
-    const cells = shuffle(Array.from({ length: 9 }, (_, i) => i)).slice(0, count);
-    const icons = shuffle(ICONS).slice(0, count);
+    const count = 8 + Math.floor(Math.random() * 3); // 8-10
+    const cells = Array.from({ length: count }, () => Math.floor(Math.random() * 9));
+    const chosen = shuffle([...icons, ...icons]).slice(0, count);
     return cells.map((cell, i) => ({
-      key: `${icons[i].name}-${cell}`,
-      body: icons[i].body,
+      key: `${chosen[i].name}-${cell}-${i}`,
+      body: chosen[i].body,
       left: (cell % 3) * 33.3 + rand(0, 20),
       top: Math.floor(cell / 3) * 33.3 + rand(0, 20),
-      size: Math.round(rand(44, 80)),
-      opacity: rand(0.07, 0.14),
+      size: Math.round(rand(40, 78)),
+      opacity: rand(0.1, 0.19),
       dx: rand(-20, 20),
       dy: rand(-24, 24),
       r0: rand(-14, 14),
@@ -180,6 +282,7 @@ export function FloatingIcons({ color }: { color: string }) {
       dur: rand(7, 15),
       delay: rand(0, 6),
     }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -214,7 +317,10 @@ export function AuthScreen({
   const c = toneColors(tone);
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: c.bg }} edges={["top", "bottom"]}>
-      {tone === "player" ? <FloatingIcons color={c.accent} /> : null}
+      {/* key={tone}: FloatingIcons only randomizes once per mount, so switching Player <->
+          Venue owner needs a fresh instance to actually reroll into the right icon set --
+          without this the shapes would silently stay whichever set mounted first. */}
+      <FloatingIcons key={tone} color={c.accent} icons={tone === "owner" ? OWNER_ICONS : undefined} />
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 28, gap: 26 }}

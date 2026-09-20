@@ -554,6 +554,44 @@ production build of the web app (not just typechecked), same session as Tier 1 a
   real player joining via the actual UI, the alert copy, the server-side entry, `/account` showing
   it, and Leave clearing both the UI and the server row.
 
+## Section 30 -- signup page visual polish: more icons, real owner theming (2026-09-20)
+
+Two fixes to the auth-screens' floating-icon background, both platforms. **Checked the actual
+code before assuming the premise** ("owner theming doesn't appear to be implemented"): the
+color/font tone system (`TONES`/`toneColors`, threaded through every field/button/label) was
+already fully wired and switching correctly -- confirmed live by reading the computed CSS color
+of an owner-tone link (`rgb(14, 98, 116)` = `#0E6274` exactly) before touching anything. The
+**real** gap was narrower than the ticket assumed: owner tone rendered no background treatment
+at all (`tone === "player" ? <FloatingIcons .../> : null`), and the player icon set was thin (4-6
+icons, opacity 0.07-0.14).
+
+- **Richer player icons**: `floating-icons.tsx` (web) / `kit.tsx` (mobile) both went from 6 hand-
+  drawn sport icons to 12 (added whistle, stopwatch, medal, racket, flag, cone), count per mount
+  from 4-6 to 8-10, opacity from 0.07-0.14 to 0.10-0.19.
+- **A real owner background, not a recolor**: new `OWNER_ICONS` set (building, calendar, chart,
+  pin, clipboard, clock) on both platforms, rendered in owner tone with the owner accent color --
+  previously owner tone got nothing. `FloatingIcons` now takes an `icons` prop (defaults to the
+  sport set) instead of being sport-only.
+- **Real bug found and fixed while wiring this up**: `FloatingIcons` only randomizes its
+  placement once per mount (`useEffect`/`useMemo` with `[]` deps) -- toggling Player <-> Venue
+  owner changed the `icons` prop but the already-mounted instance would have kept showing
+  whichever set rendered first, just recolored. Fixed with `key={tone}` at both call sites
+  (`auth-shell.tsx` web, `AuthScreen` in `kit.tsx` mobile) so switching roles forces a clean
+  remount into the correct icon set -- verified live by toggling Player -> Venue owner -> Player
+  again and confirming a full reroll back to sport icons each time, not leftover teal shapes.
+- **Venue-setup wizard confirmed already fully teal** (a separate, pre-existing owner design
+  system -- `venue-setup/_components.tsx` / `components/setup/ui.tsx`, not the auth kit at all)
+  -- no changes needed there; screenshotted step 1 live to confirm rather than assuming from the
+  code. Deliberately did NOT add a floating-icon background to the wizard itself: it's a dense
+  multi-step form, not a lightweight auth screen, and no other functional/dashboard screen in the
+  app has this decorative treatment -- a judgment call, flagged here rather than made silently.
+- **Login intentionally unchanged in tone** (still always player/orange, per the ticket -- no
+  role context exists before authentication), only got the icon-richness improvement.
+- Live-verified on both platforms: web via Playwright screenshots (login, signup as player,
+  signup as owner, toggle back to player, wizard step 1) and mobile via the Expo web target
+  (login, signup as player, signup as owner) -- not device-tested, same standing limitation as
+  everywhere else in this file.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before
