@@ -75,11 +75,12 @@ inbound and there's no IP allow-list to keep accurate on shared Wi-Fi.
 
 ## The `sslip.io` hostnames are a deliberate placeholder
 
-No domain is purchased yet. For Elastic IP `52.66.12.34`:
+No domain is purchased yet. For the current Elastic IP `3.6.48.6` (`terraform output` is the source
+of truth; an earlier revision of this file listed a stale `52.66.12.34`):
 
-- web: `https://52.66.12.34.sslip.io`
-- API: `https://api.52.66.12.34.sslip.io` (this is `apiBaseUrl`)
-- WhatsApp webhook: `https://api.52.66.12.34.sslip.io/api/v1/webhooks/whatsapp`
+- web: `https://3.6.48.6.sslip.io`
+- API: `https://api.3.6.48.6.sslip.io` (this is `apiBaseUrl`)
+- WhatsApp webhook: `https://api.3.6.48.6.sslip.io/api/v1/webhooks/whatsapp`
   (note the `/api/v1` prefix — every route except `/health*` is mounted under it)
 
 sslip.io is a public wildcard-DNS service; any `<anything>.<ip>.sslip.io` resolves

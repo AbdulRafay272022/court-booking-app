@@ -316,6 +316,113 @@ async def test_phone_change_delivery_failure_is_clean(client, db_session, otp_bo
     assert rows == []
 
 
+# ---------------------------------------- old-number notification (Section 28)
+
+
+async def _do_phone_change(client, otp_box, old):
+    token, _ = await _signed_in(client, otp_box, old)
+    await client.post("/api/v1/auth/request-phone-change", headers=bearer(token), json={"new_phone": NEW, "password": PASSWORD})
+    return await client.post("/api/v1/auth/verify-phone-change", headers=bearer(token), json={"new_phone": NEW, "otp": otp_box.code})
+
+
+async def test_old_number_notified_on_successful_phone_change(client, db_session_factory, otp_box, monkeypatch):
+    """The notice goes to the OLD number, and only AFTER the change is committed (it reads the DB
+    from a separate connection at send time, so an uncommitted change would still show the old phone)."""
+    old = "+923002250001"
+    seen = []
+
+    async def notice(self, old_phone, new_phone):
+        async with db_session_factory() as s:
+            seen.append((old_phone, new_phone, await s.scalar(select(User.phone).where(User.phone == new_phone))))
+        return {"messages": [{"id": "wamid.local"}]}
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_phone_changed_notice", notice)
+    done = await _do_phone_change(client, otp_box, old)
+    assert done.status_code == 200, done.text
+    assert seen == [(old, NEW, NEW)], "called once, with the OLD number, and the new phone was already committed"
+
+
+async def test_no_notice_when_the_phone_change_did_not_happen(client, otp_box):
+    token, _ = await _signed_in(client, otp_box, "+923002250002")
+    await client.post("/api/v1/auth/request-phone-change", headers=bearer(token), json={"new_phone": NEW, "password": PASSWORD})
+    bad = await client.post("/api/v1/auth/verify-phone-change", headers=bearer(token), json={"new_phone": NEW, "otp": "000000"})
+    assert bad.status_code == 400
+    assert otp_box.notices == [], "a failed/abandoned change must not tell the old number anything happened"
+
+
+async def test_notification_send_failure_does_not_affect_phone_change_success(client, db_session, otp_box, monkeypatch):
+    old = "+923002250003"
+
+    async def exploding_notice(self, old_phone, new_phone):
+        raise RuntimeError("simulated WhatsApp outage")
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_phone_changed_notice", exploding_notice)
+    done = await _do_phone_change(client, otp_box, old)
+    assert done.status_code == 200, done.text
+    assert done.json()["phone"] == NEW and done.json()["sign_in_again"] is True
+
+    db_session.expire_all()
+    assert await db_session.scalar(select(User.id).where(User.phone == NEW)) is not None, "the change persisted"
+    assert await db_session.scalar(select(User.id).where(User.phone == old)) is None
+    assert (await login(client, NEW)).status_code == 200
+
+
+async def test_meta_no_open_window_rejection_is_swallowed_and_classified(client, db_session, otp_box, monkeypatch):
+    """The EXPECTED failure under the temporary free-text send: Meta rejects with 131047 (through the
+    real send path + tenacity's RetryError wrapper). The change still succeeds."""
+    import concurrent.futures
+
+    import httpx
+    from tenacity import RetryError
+
+    from app.services.whatsapp_service import WhatsAppService, describe_send_failure
+
+    request = httpx.Request("POST", "https://graph.example/messages")
+    response = httpx.Response(
+        400, request=request, json={"error": {"code": 131047, "message": "Re-engagement message"}}
+    )
+    http_error = httpx.HTTPStatusError("400", request=request, response=response)
+    future: concurrent.futures.Future = concurrent.futures.Future()
+    future.set_exception(http_error)
+    retry_error = RetryError(future)
+
+    assert describe_send_failure(retry_error) == ("no_open_window", 131047)
+    assert describe_send_failure(http_error) == ("no_open_window", 131047)
+    assert describe_send_failure(RuntimeError("boom")) == ("send_failed", None)
+
+    async def rejected_send(self, payload):
+        raise retry_error
+
+    async def real_notice(self, old_phone, new_phone):  # the real method, not the otp_box stub
+        return await self.send_text(old_phone, "notice")
+
+    monkeypatch.setattr(WhatsAppService, "_send", rejected_send)
+    monkeypatch.setattr(WhatsAppService, "send_phone_changed_notice", real_notice)
+    done = await _do_phone_change(client, otp_box, "+923002250004")
+    assert done.status_code == 200, done.text
+    db_session.expire_all()
+    assert await db_session.scalar(select(User.id).where(User.phone == NEW)) is not None
+
+
+async def test_notice_text_names_the_last_four_digits_and_says_contact_support():
+    from types import SimpleNamespace
+
+    from app.services.whatsapp_service import WhatsAppService
+
+    sent = []
+
+    class Capture(WhatsAppService):
+        async def send_text(self, to, body):
+            sent.append((to, body))
+            return {}
+
+    await Capture(SimpleNamespace(WHATSAPP_API_URL="x", WHATSAPP_PHONE_NUMBER_ID="1")).send_phone_changed_notice("+923001112222", NEW)
+    (to, body), = sent
+    assert to == "+923001112222"
+    assert NEW[-4:] in body and NEW not in body, "the full new number is not disclosed to the old one"
+    assert "contact support" in body.lower()
+
+
 async def test_legacy_session_without_a_password_must_set_one_first(client, make_user, make_auth_headers):
     user = await make_user("+923002240016")  # pre-Section-26 account: no password_hash
     headers = await make_auth_headers(user)

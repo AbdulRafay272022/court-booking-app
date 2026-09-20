@@ -270,7 +270,19 @@ The schema mirrors this shape, table by table:
     session revoked (`revoked_reason = "phone_changed"`, this one too -- the
     response says `sign_in_again: true`), lockouts cleared; any failure rolls the
     whole thing back. The user then logs in with the new number and the
-    *existing* password.
+    *existing* password. **Old-number notice (Section 28):** once the change has
+    committed, the *old* number gets a best-effort WhatsApp ("Your Maidan account's
+    phone number was just changed to the number ending 1234. If this wasn't you,
+    contact support immediately.") -- account-takeover detection. It runs as a
+    FastAPI background task after the response is built and swallows every failure,
+    so it can never fail, delay or roll back the change; the outcome is only logged
+    (`phone_change.old_number_notice` with `outcome` = `accepted` / `no_open_window`
+    (Meta 131047) / `send_failed`). **It is best-effort by design**: it's free-form
+    text like the OTP, so under the temporary setup it only delivers to an old number
+    with an open 24h window (most won't), and `accepted` means Meta took it, not that
+    it arrived (see the `whatsapp.status` log). It becomes reliable when the verified
+    business account and an approved Utility template exist -- then switch
+    `WhatsAppService.send_phone_changed_notice` to `send_registered_template`.
   - **Passwords** are argon2id (`argon2-cffi`, hashed/verified off the event
     loop with `asyncio.to_thread`) -- deliberately *not* the Fernet used for
     bank details (reversible encryption is the wrong tool) and not the plain

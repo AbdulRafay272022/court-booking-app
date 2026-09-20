@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.dependencies import AppSettings, CurrentUser, DbSession
@@ -177,9 +177,13 @@ async def request_phone_change(
 
 @router.post("/verify-phone-change", response_model=PhoneChangeOut)
 async def verify_phone_change(
-    payload: PhoneChangeVerifyIn, user: CurrentUser, db: DbSession, settings: AppSettings
+    payload: PhoneChangeVerifyIn, user: CurrentUser, db: DbSession, settings: AppSettings, background: BackgroundTasks
 ) -> PhoneChangeOut:
     """Moves the account to the new number, marks it verified now, and ends EVERY session
-    (including this one): the client must sign in again with the new number."""
-    await AuthService(db, settings).verify_phone_change(user, payload.new_phone, payload.otp)
+    (including this one): the client must sign in again with the new number. Once that has
+    committed, the OLD number gets a best-effort WhatsApp notice -- as a background task, so the
+    response never waits on (or fails because of) the send."""
+    service = AuthService(db, settings)
+    old_phone = await service.verify_phone_change(user, payload.new_phone, payload.otp)
+    background.add_task(service.notify_old_number_of_phone_change, old_phone, payload.new_phone)
     return PhoneChangeOut(phone=payload.new_phone)

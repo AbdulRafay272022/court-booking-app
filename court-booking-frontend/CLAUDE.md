@@ -425,7 +425,9 @@ backend README ("Profile editing", "Email is unique", "Phone change") and its CL
   `+ Add venue`, Account, Edit profile, phone change -> signed out -> login notice -> login with new number).
   Test-only gotcha: the Expo dev server must be started with `EXPO_PUBLIC_API_BASE_URL=http://localhost:8000`
   -- `app.json`'s `apiBaseUrl` is **production**, and a scripted test that forgets it drives real accounts.
-- **Not built / flagged**: the old number is not notified when a phone change happens; no "sign in again"
+- **Not built / flagged**: ~~the old number is not notified when a phone change happens~~ (closed in Section
+  28: the backend sends the old number a best-effort WhatsApp, no frontend change; it is unreliable until the
+  verified business account + template exist, so the phone-change screens deliberately don't promise it); no "sign in again"
   push to other devices (they just get 401 on next use); Meta's Authentication template + verified business
   account are **not confirmed live**, so OTP delivery is still the temporary free-form send (revert steps in the
   backend CLAUDE.md) -- I did not reintroduce or extend any workaround for the 24h window.

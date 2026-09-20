@@ -34,6 +34,27 @@ def _meta_error(response: httpx.Response) -> dict | str:
     }
 
 
+# Meta error 131047: free-form message outside the recipient's 24h customer-service window.
+META_ERR_NO_OPEN_WINDOW = 131047
+
+
+def describe_send_failure(exc: BaseException) -> tuple[str, int | None]:
+    """Classify a failed `_send` for logging: ("no_open_window" | "send_failed", meta error code).
+
+    `_send` is wrapped in tenacity's `retry` without `reraise`, so what escapes is a `RetryError`
+    around the last attempt's `httpx.HTTPStatusError`; unwrap both to reach Meta's error code."""
+    inner: BaseException = exc
+    last_attempt = getattr(exc, "last_attempt", None)
+    if last_attempt is not None:
+        inner = last_attempt.exception() or exc
+    response = getattr(inner, "response", None)
+    code = None
+    if isinstance(response, httpx.Response):
+        err = _meta_error(response)
+        code = err.get("code") if isinstance(err, dict) else None
+    return ("no_open_window" if code == META_ERR_NO_OPEN_WINDOW else "send_failed"), code
+
+
 class WhatsAppService:
     """Thin wrapper around the WhatsApp Cloud API (Graph API)."""
 
@@ -109,6 +130,19 @@ class WhatsAppService:
             f"It expires in {self.settings.OTP_EXPIRE_MINUTES} minutes."
         )
         return await self.send_text(to_phone_number, body)
+
+    async def send_phone_changed_notice(self, old_phone: str, new_phone: str) -> dict:
+        """Tell the OLD number that the account's phone was just changed (account-takeover
+        detection). BEST-EFFORT by design: it is free-form text like `send_otp`, so under the
+        temporary setup it only delivers if the old number has an open 24h window -- most won't.
+        That is expected, not a bug; it becomes reliable once a verified business account and an
+        approved Utility template exist (switch to `send_registered_template` then). Callers must
+        never let a failure here affect the phone change itself."""
+        body = (
+            f"Your Maidan account's phone number was just changed to the number ending "
+            f"{str(new_phone)[-4:]}. If this wasn't you, contact support immediately."
+        )
+        return await self.send_text(old_phone, body)
 
     async def send_template(
         self, to_phone_number: str, template_name: str, language_code: str, components: list | None = None

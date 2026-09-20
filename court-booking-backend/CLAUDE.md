@@ -71,11 +71,16 @@ course of a session, one or two sections at a time. Sections delivered so far:
     accounts, and the frontends' matching screens (signup for player and
     owner, login, verify, forgot/reset, web venue-setup wizard). README.md's
     "Auth (Section 26)" bullet is the full description of the model; this
-    file only tracks what was surprising (gotchas at the end). **Built and
-    live-tested locally; NOT yet deployed** -- see the deploy-order gotcha.
+    file only tracks what was surprising (gotchas at the end). **Deployed
+    2026-09-20** (commit `95607c7`; both migrations, `4785869bebe6` and
+    `651abc777d2c`, applied to production with `bootstrap.sh migrate` right after the
+    image landed). The follow-up added profile editing, unique email and phone change.
+28. Old-number notification on phone change (2026-09-20): after a phone change
+    commits, the OLD number gets a best-effort WhatsApp (background task, never
+    affects the change). See gotcha 13 in the Section 26 list at the end.
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 338
+Postgres/PostGIS instance, and documented in README.md. Current state: 343
 tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
 operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
 round-trips upgrade -> downgrade -> upgrade). Run the suite with
@@ -754,7 +759,7 @@ web image, what's deferred to later parts).
      before going live); an owner with a *rejected/changes_requested* venue has no
      resubmit endpoint (they contact support or register another venue --
      confirmed as-is). (Email uniqueness and phone change were on this list;
-     both now exist -- see 10-12.)
+     both now exist -- see 10-13.)
   10. **Second migration, `651abc777d2c` -- deploy it together with the first.**
      After the image lands, `bootstrap.sh migrate` runs BOTH `4785869bebe6` and
      `651abc777d2c` in one go (it's `alembic upgrade head`). The new code
@@ -783,5 +788,21 @@ web image, what's deferred to later parts).
      rows for the *user's current phone*, so an attacker holding a stolen token
      can't get unlimited password guesses through this endpoint that the login
      endpoint would have refused. Verification codes get the usual OTP attempt cap.
-     Both steps hit the new number, never the old one -- the old number is not
-     notified (flagged; not built).
+     Both *codes* go to the new number.
+  13. **Old-number notice (Section 28, closes the "old number isn't notified"
+     gap from 12).** After `verify_phone_change` commits, the endpoint queues
+     `AuthService.notify_old_number_of_phone_change` as a `BackgroundTasks` job (it
+     runs after the response, so the ~seconds of tenacity retries in `_send` never
+     delay the user, and it uses only `self.whatsapp`, not the request's DB session).
+     The service method catches **everything**; `verify_phone_change` returns the
+     old number so the notice is only ever queued for a change that really committed
+     (no notice on wrong code / abandoned attempts). Log line:
+     `phone_change.old_number_notice outcome=accepted|no_open_window|send_failed`.
+     `no_open_window` is Meta error 131047 and is the *expected* result for most old
+     numbers under the temporary free-text send; `accepted` only means Meta took the
+     message (delivery shows later in `whatsapp.status`). Not a bug to fix today --
+     reliability arrives with the verified account + Utility template
+     (`send_phone_changed_notice` is the one place to swap). `otp_box` (tests) also
+     stubs this method, so no test can reach the real send.
+     `describe_send_failure` unwraps tenacity's `RetryError` (because `_send`'s
+     `@retry` has no `reraise`) to read Meta's code -- keep that in mind if `_send` changes.

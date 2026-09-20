@@ -11,7 +11,7 @@ from app.errors import AppError, ErrorCode
 from app.models.audit import AuditLog
 from app.models.user import LoginAttempt, OtpPurpose, OtpRequest, Session, User
 from app.schemas.auth import SignupIn, UserUpdateIn
-from app.services.whatsapp_service import WhatsAppService
+from app.services.whatsapp_service import WhatsAppService, describe_send_failure, mask_phone
 from app.utils.security import (
     generate_otp,
     generate_session_token,
@@ -277,11 +277,12 @@ class AuthService:
         await self.db.commit()  # persists the cleared lockout before the OTP path commits/raises
         await self._issue_otp(new_phone, OtpPurpose.PHONE_CHANGE, user_id=user.id)
 
-    async def verify_phone_change(self, user: User, new_phone: str, code: str) -> None:
+    async def verify_phone_change(self, user: User, new_phone: str, code: str) -> str:
         """Step 2: prove possession of the new number, then -- in ONE transaction -- move the
         account to it, mark it verified now, and end EVERY session (this one included). Any
         failure (wrong/expired code, number taken in the meantime) rolls back and leaves the
-        original phone untouched."""
+        original phone untouched. Returns the OLD number so the caller can notify it once the
+        response is on its way (`notify_old_number_of_phone_change`)."""
         old_phone = user.phone
         await self._consume_otp(new_phone, code, (OtpPurpose.PHONE_CHANGE,), user_id=user.id)
 
@@ -312,6 +313,32 @@ class AuthService:
                 ErrorCode.PHONE_ALREADY_REGISTERED,
                 "An account with this phone number already exists.",
             ) from exc
+        return old_phone
+
+    async def notify_old_number_of_phone_change(self, old_phone: str, new_phone: str) -> None:
+        """Best-effort WhatsApp to the OLD number after a phone change has COMMITTED (account-
+        takeover detection: the legitimate owner learns their number was replaced).
+
+        Runs as a background task after the response is prepared, and swallows every failure: a
+        send problem must never fail, retry or roll back the change that already happened. The
+        outcome is only logged -- `phone_change.old_number_notice` with `outcome` =
+        `accepted` (Meta took it; actual delivery shows later in a `whatsapp.status` callback),
+        `no_open_window` (Meta error 131047, the expected case under the temporary free-form send)
+        or `send_failed`. Delivery is NOT guaranteed until a verified business account and an
+        approved template replace the temporary free-text send -- by design, not a bug."""
+        try:
+            await self.whatsapp.send_phone_changed_notice(old_phone, new_phone)
+        except Exception as exc:  # noqa: BLE001 -- deliberately catch-all: this must never propagate
+            outcome, meta_code = describe_send_failure(exc)
+            logger.warning(
+                "phone_change.old_number_notice",
+                outcome=outcome,
+                meta_code=meta_code,
+                old_phone=mask_phone(old_phone),
+                error=type(exc).__name__,
+            )
+        else:
+            logger.info("phone_change.old_number_notice", outcome="accepted", old_phone=mask_phone(old_phone))
 
     # ------------------------------------------------------------ re-verify
 

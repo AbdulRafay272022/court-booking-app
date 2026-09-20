@@ -24,6 +24,8 @@ class OtpBox:
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
+        # (old_phone, new_phone) for every "your number was changed" notice
+        self.notices: list[tuple[str, str]] = []
 
     @property
     def code(self) -> str:
@@ -38,7 +40,13 @@ def otp_box(monkeypatch) -> OtpBox:
         box.sent.append((phone, code))
         return {"messages": [{"id": "wamid.local"}]}
 
+    async def fake_notice(self, old_phone, new_phone):
+        box.notices.append((old_phone, new_phone))
+        return {"messages": [{"id": "wamid.local"}]}
+
     monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_otp", fake_send_otp)
+    # Also stubbed so no test can reach the real send if a local .env happens to hold a Meta token.
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_phone_changed_notice", fake_notice)
     return box
 
 
