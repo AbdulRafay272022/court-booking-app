@@ -342,3 +342,45 @@ async def test_whatsapp_created_booking_visible_via_app_api(
     assert listing.status_code == 200
     assert len(listing.json()) == 1
     assert listing.json()[0]["court_id"] == str(court.id)
+
+
+async def test_status_callback_is_logged_and_creates_no_user_or_message(client, db_session, monkeypatch):
+    """A `statuses` callback (delivery outcome of a message we sent) used to
+    be silently ignored. It must now be logged -- a `failed` one at warning
+    level with Meta's error code -- while still creating no user/message and
+    still answering 200 so Meta doesn't retry."""
+    from structlog.testing import capture_logs
+
+    payload = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "statuses": [
+                                {
+                                    "id": "wamid.OTPFAIL",
+                                    "status": "failed",
+                                    "recipient_id": "923118366981",
+                                    "errors": [{"code": 131047, "title": "Re-engagement message"}],
+                                },
+                                {"id": "wamid.OTPOK", "status": "delivered", "recipient_id": "923118366981"},
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    with capture_logs() as logs:
+        resp = await client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert resp.status_code == 200
+
+    by_wamid = {e["wamid"]: e for e in logs if e["event"] == "whatsapp.status"}
+    assert by_wamid["wamid.OTPFAIL"]["log_level"] == "warning"
+    assert by_wamid["wamid.OTPFAIL"]["errors"][0]["code"] == 131047
+    assert by_wamid["wamid.OTPFAIL"]["to"] == "***6981"
+    assert by_wamid["wamid.OTPOK"]["log_level"] == "info"
+
+    assert await db_session.scalar(select(User).where(User.phone == "+923118366981")) is None
+    assert (await db_session.execute(select(Message))).scalars().all() == []

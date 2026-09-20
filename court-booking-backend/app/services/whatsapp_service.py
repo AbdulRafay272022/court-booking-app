@@ -10,6 +10,30 @@ from app.services.whatsapp_templates import TEMPLATES, build_components
 logger = structlog.get_logger(__name__)
 
 
+def mask_phone(phone: str | None) -> str | None:
+    """Last 4 digits only -- enough to correlate log lines, not to identify."""
+    if not phone:
+        return phone
+    return f"***{str(phone)[-4:]}"
+
+
+def _meta_error(response: httpx.Response) -> dict | str:
+    """Meta's `error` object from a failed Graph API response (the response,
+    never the request, so the bearer token can't end up in it), or a
+    truncated body if it isn't JSON."""
+    try:
+        err = response.json().get("error")
+    except ValueError:
+        err = None
+    if not isinstance(err, dict):
+        return response.text[:300]
+    return {
+        k: err.get(k)
+        for k in ("code", "type", "message", "error_subcode", "error_data", "fbtrace_id")
+        if err.get(k) is not None
+    }
+
+
 class WhatsAppService:
     """Thin wrapper around the WhatsApp Cloud API (Graph API)."""
 
@@ -30,8 +54,29 @@ class WhatsAppService:
             return {"messages": [{"id": "local-dev-noop"}]}
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(self.base_url, headers=self._headers(), json=payload)
+            if response.is_error:
+                # Without this, Meta's error object (code/message/error_data)
+                # is lost: raise_for_status() below only keeps the status line.
+                logger.warning(
+                    "whatsapp.send.rejected",
+                    to=mask_phone(payload.get("to")),
+                    type=payload.get("type"),
+                    http_status=response.status_code,
+                    meta_error=_meta_error(response),
+                )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            # HTTP 2xx only means Meta *accepted* the message. Whether it was
+            # delivered comes later, in a `statuses` webhook (see
+            # parse_status_updates and the webhook handler) -- the wamid here
+            # is what ties the two together.
+            logger.info(
+                "whatsapp.send.accepted",
+                to=mask_phone(payload.get("to")),
+                type=payload.get("type"),
+                wamid=(result.get("messages") or [{}])[0].get("id"),
+            )
+            return result
 
     async def send_text(self, to_phone_number: str, body: str) -> dict:
         payload = {
@@ -144,6 +189,37 @@ class WhatsAppService:
                         }
                     )
         return messages
+
+    @staticmethod
+    def parse_status_updates(payload: dict) -> list[dict]:
+        """Delivery-status callbacks (`value.statuses[]`): sent / delivered /
+        read / failed for a message *we* sent, keyed by its wamid. A `failed`
+        one carries Meta's error code -- e.g. 131047 when a free-text message
+        was refused because the recipient's 24h window was closed. That is
+        often where such a failure first appears: the original send call can
+        still have returned HTTP 200."""
+        updates = []
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
+                for st in change.get("value", {}).get("statuses") or []:
+                    updates.append(
+                        {
+                            "message_id": st.get("id"),
+                            "status": st.get("status"),
+                            "recipient": st.get("recipient_id"),
+                            "timestamp": st.get("timestamp"),
+                            "errors": [
+                                {
+                                    "code": e.get("code"),
+                                    "title": e.get("title"),
+                                    "message": e.get("message"),
+                                    "details": (e.get("error_data") or {}).get("details"),
+                                }
+                                for e in (st.get("errors") or [])
+                            ],
+                        }
+                    )
+        return updates
 
     async def is_within_free_window(self, last_inbound_at: datetime | None) -> bool:
         """Free-form text is only allowed within 24h of the customer's last

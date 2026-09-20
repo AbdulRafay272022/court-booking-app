@@ -295,3 +295,115 @@ async def test_download_media_two_step_fetch(monkeypatch):
     assert data == b"fake-image-bytes"
     assert content_type == "image/jpeg"
     assert calls["n"] == 2
+
+
+# --- Observability: what Meta actually said about a send -------------------
+# Added after an OTP that Meta accepted (HTTP 200) never arrived and left no
+# trace: neither the send response nor the later `statuses` callback was logged.
+
+_FAILED_STATUS_PAYLOAD = {
+    "entry": [
+        {
+            "changes": [
+                {
+                    "value": {
+                        "statuses": [
+                            {
+                                "id": "wamid.OTP1",
+                                "status": "failed",
+                                "recipient_id": "923118366981",
+                                "timestamp": "1789000000",
+                                "errors": [
+                                    {
+                                        "code": 131047,
+                                        "title": "Re-engagement message",
+                                        "message": "Re-engagement message",
+                                        "error_data": {"details": "more than 24 hours have passed"},
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}
+
+
+def test_parse_status_updates_extracts_failed_delivery_with_error_code():
+    updates = WhatsAppService.parse_status_updates(_FAILED_STATUS_PAYLOAD)
+    assert len(updates) == 1
+    assert updates[0]["message_id"] == "wamid.OTP1"
+    assert updates[0]["status"] == "failed"
+    assert updates[0]["errors"][0]["code"] == 131047
+    assert updates[0]["errors"][0]["details"] == "more than 24 hours have passed"
+
+
+def test_parse_status_updates_ignores_inbound_message_and_empty_payloads():
+    assert WhatsAppService.parse_status_updates({}) == []
+    inbound = {"entry": [{"changes": [{"value": {"messages": [{"from": "1", "id": "w", "type": "text"}]}}]}]}
+    assert WhatsAppService.parse_status_updates(inbound) == []
+
+
+async def test_send_logs_wamid_on_accept_and_never_the_token(monkeypatch):
+    from structlog.testing import capture_logs
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "WHATSAPP_API_TOKEN", "super-secret-token")
+
+    async def fake_post(self, url, **kwargs):
+        return httpx.Response(200, json={"messages": [{"id": "wamid.ACCEPTED"}]}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    with capture_logs() as logs:
+        await WhatsAppService(settings).send_text("+923118366981", "hello")
+
+    accepted = [e for e in logs if e["event"] == "whatsapp.send.accepted"]
+    assert len(accepted) == 1
+    assert accepted[0]["wamid"] == "wamid.ACCEPTED"
+    assert accepted[0]["to"] == "***6981", "phone must be masked in logs"
+    assert "super-secret-token" not in str(logs)
+
+
+async def test_send_logs_metas_error_object_on_rejection(monkeypatch):
+    from structlog.testing import capture_logs
+    from tenacity import RetryError
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "WHATSAPP_API_TOKEN", "super-secret-token")
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(WhatsAppService._send.retry, "sleep", no_sleep)
+
+    async def fake_post(self, url, **kwargs):
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "(#131047) Re-engagement message",
+                    "type": "OAuthException",
+                    "code": 131047,
+                    "fbtrace_id": "abc123",
+                }
+            },
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    with capture_logs() as logs:
+        try:
+            await WhatsAppService(settings).send_text("+923118366981", "hello")
+        except RetryError:
+            pass
+        else:
+            raise AssertionError("a 400 from Meta must still raise")
+
+    rejected = [e for e in logs if e["event"] == "whatsapp.send.rejected"]
+    assert rejected, "Meta's error body must be logged, not just the status line"
+    assert rejected[0]["http_status"] == 400
+    assert rejected[0]["meta_error"]["code"] == 131047
+    assert rejected[0]["log_level"] == "warning"
+    assert "super-secret-token" not in str(logs)

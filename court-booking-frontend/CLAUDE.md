@@ -678,8 +678,11 @@ directly rather than more frontend code:
   business WhatsApp number first (temporary)**: Meta Business Verification,
   the Authentication template and a payment method on the WhatsApp Business
   account don't exist yet, so the backend sends the code as free-form text
-  (2026-09-20), which needs an open 24h window; anyone else gets
-  `OTP_DELIVERY_FAILED` from `POST /auth/request-otp`. That's a known
+  (2026-09-20), which needs an open 24h window; anyone else gets either
+  `OTP_DELIVERY_FAILED` **or a plain 200 "OTP sent" with no message ever
+  arriving** (Meta accepts the send, then fails it in a status callback the
+  request can't see -- the second one is what really happened in the first
+  live test). So a successful `request-otp` response does not prove delivery. That's a known
   external prerequisite, not a frontend or backend bug -- don't debug the
   login screens over it. **The login screens have no hint telling a user to
   message the number first** (deliberately not built; testers do it by hand),

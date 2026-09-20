@@ -18,7 +18,7 @@ from app.services.ai_chat_service import AIChatService
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
 from app.services.payment_service import PaymentService
-from app.services.whatsapp_service import WhatsAppService
+from app.services.whatsapp_service import WhatsAppService, mask_phone
 
 logger = structlog.get_logger(__name__)
 
@@ -242,6 +242,22 @@ async def receive_whatsapp_webhook(request: Request, db: DbSession, settings: Ap
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
 
     payload = await request.json()
+
+    # Delivery-status callbacks for messages we sent. Logged only (no DB
+    # write, no behavior change): this is where a send that Meta accepted
+    # with HTTP 200 later turns out to have failed (e.g. 131047, window
+    # closed) -- previously these were dropped on the floor, which is why an
+    # OTP that never arrived left no trace.
+    for update in WhatsAppService.parse_status_updates(payload):
+        log = logger.warning if update["status"] == "failed" else logger.info
+        log(
+            "whatsapp.status",
+            wamid=update["message_id"],
+            status=update["status"],
+            to=mask_phone(update["recipient"]),
+            errors=update["errors"] or None,
+        )
+
     messages = WhatsAppService.parse_inbound_messages(payload)
 
     for msg in messages:

@@ -65,7 +65,7 @@ course of a session, one or two sections at a time. Sections delivered so far:
     per-finding writeup.
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 267
+Postgres/PostGIS instance, and documented in README.md. Current state: 272
 tests passing, 76 routes, 19 tables, no Alembic drift. Run the suite with
 `AI_PROVIDER=claude AI_VISION_PROVIDER=claude` if your local `.env`
 overrides either to `gemini` for manual testing — otherwise several
@@ -610,9 +610,12 @@ web image, what's deferred to later parts).
         Authentication message template, and adding a payment method to the
         WhatsApp Business account. **Until then OTP delivery only works
         through the temporary free-form send described in the gotcha at the
-        end of this file -- and fails (`OTP_DELIVERY_FAILED`) for anyone who
-        hasn't messaged the business number in the last 24h. Expected, not
-        a new bug; don't chase it as an error.**
+        end of this file -- and does not work for anyone who hasn't messaged
+        the business number in the last 24h (either `OTP_DELIVERY_FAILED`,
+        or -- more often -- a silent 200 with no message; see that gotcha).
+        Expected, not a new bug; don't chase it as an error.** Verified
+        working 2026-09-20 03:32 UTC for a tester whose window was open
+        (request-otp, delivery callbacks, verify-otp all succeeded).
   14. **Changing a secret after first deploy** (done for real on 2026-09-20):
       put the value in SSM, re-run `bootstrap.sh env`, then **recreate** the
       container -- `docker compose -f docker-compose.prod.yml up -d
@@ -655,17 +658,35 @@ web image, what's deferred to later parts).
     business number. Otherwise Meta answers HTTP 400 / error `131047`. For
     now testers open the window by hand; there is deliberately no app-side
     "message us first" flow. Real users who haven't will not get a code.
-  - **Failure path (confirmed by test, no new handling added):** the 400
-    makes `_send`'s `raise_for_status` raise `HTTPStatusError`; tenacity
-    retries it 3x (~3s of backoff, three calls to Meta -- a 400 like this is
-    deterministic, so the retries are wasted, but that's existing `_send`
-    behavior and was left alone) and re-raises `RetryError`.
-    `request_otp`'s `except Exception` (broader than `httpx.HTTPError`)
-    catches it, deletes the OTP row so it doesn't burn a rate-limit slot, and
-    returns 502 `OTP_DELIVERY_FAILED` -- never a raw 500. See
-    `tests/test_auth.py::test_otp_send_uses_freeform_text_not_template` and
-    `::test_otp_send_with_no_open_window_fails_cleanly` (the latter mocks a
-    131047 response at the httpx layer so the real retry path runs).
+  - **Failure has TWO shapes, and only one of them returns an error.**
+    (1) *Meta rejects the send synchronously* (HTTP 400): `_send`'s
+    `raise_for_status` raises `HTTPStatusError`; tenacity retries it 3x (~3s
+    of backoff, three calls to Meta -- deterministic 400s make the retries
+    wasted, but that's existing `_send` behavior, left alone) and re-raises
+    `RetryError`; `request_otp`'s `except Exception` catches it, deletes the
+    OTP row so it doesn't burn a rate-limit slot, and returns 502
+    `OTP_DELIVERY_FAILED`. Covered by
+    `tests/test_auth.py::test_otp_send_with_no_open_window_fails_cleanly`.
+    (2) *Meta accepts the send (HTTP 200) and fails it afterwards* -- this is
+    what actually happened on 2026-09-19 22:48 UTC (the first live test, the
+    recipient's window was closed): the API returned a clean 200
+    `"OTP sent via WhatsApp"`, the OTP row stayed, and **nothing arrived**.
+    The failure exists only in a later `statuses` webhook. Nothing in the
+    request path can see that, so no `OTP_DELIVERY_FAILED` is possible.
+    An earlier version of this note claimed a closed window always
+    degrades to `OTP_DELIVERY_FAILED`; that was only true for shape (1), and
+    it was verified only against a mocked 400.
+  - **How to diagnose a "200 but nothing arrived" OTP** (logging added
+    2026-09-20, none of it existed on 09-19): `docker logs court-booking-backend`
+    and look for, in order, `whatsapp.send.accepted` (Meta returned 2xx --
+    carries the `wamid`), `whatsapp.send.rejected` (Meta's error object:
+    `meta_error.code`/`message`/`error_data`), and `whatsapp.status` (the
+    delivery callback for that `wamid`: `sent`/`delivered`/`read`, or
+    `failed` at WARNING with `errors[].code` -- 131047 = window closed, 131030
+    = recipient not on the allowed list, 131042 = payment/eligibility). Phones
+    are masked to the last 4 digits; the token is never logged. Status
+    callbacks are **logged only** -- not stored, and nothing reacts to them
+    (no retry, no user-facing error).
   - **To revert:** in `send_otp`, replace the body with
     `return await self.send_registered_template(to_phone_number, "whatsapp_otp", [code])`
     (the `whatsapp_otp` entry is still in `whatsapp_templates.py`, untouched),
