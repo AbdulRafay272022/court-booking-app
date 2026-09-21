@@ -722,7 +722,7 @@ were given to the project owner, not automated).
 
 ## Section 32, Parts 1-2 -- 12-hour Pakistan time, the date-shift bug, own-slot state (2026-09-21)
 
-**Going to production 2026-09-21 (status is recorded in backend CLAUDE.md START HERE).** Backend half and root causes: backend CLAUDE.md item 32. The rules:
+**Deployed to production 2026-09-21, commit `94ac837f372d`, verified there (proof recipe in backend CLAUDE.md START HERE).** Backend half and root causes: backend CLAUDE.md item 32. The rules:
 - **Every time/date a player or owner sees is 12-hour Pakistan time with human dates** ("7:30 PM", "Wed, 23 Sep",
   "Today"/"Tomorrow"). The ONLY implementation is `packages/types/src/datetime.ts`, re-exported by each app's
   `lib/format.ts`. It uses a fixed +5h offset, never the device timezone. **Never** write `toLocaleTimeString`,

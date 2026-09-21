@@ -11,7 +11,7 @@ been worked so far.
 The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in
 Roman Urdu; answer in plain English, keep it short, and **verify before claiming** (they were burned
 by "fixed" things that weren't). Everything below is on `main`, deployed, tests green
-(**363 backend tests**: `AI_PROVIDER=claude AI_VISION_PROVIDER=claude .venv/Scripts/python.exe -m pytest`).
+(**419 backend tests** after merging the teammate's push-notification work: `AI_PROVIDER=claude AI_VISION_PROVIDER=claude .venv/Scripts/python.exe -m pytest`. **Do not run pytest without those two variables**: this machine's `.env` sets `AI_PROVIDER=gemini` with a real key, so 10 tests fail and `test_no_api_key_returns_graceful_fallback` makes a real, billed Gemini call. Also needs `httpx[http2]` in the venv now).
 
 **Deployed today (all through GitHub Actions on push to `main`; none needed a migration):**
 `c87f2fe` per-court cancellation policy in both UIs + stale wizard-draft recovery; `475b296`
@@ -33,8 +33,15 @@ the section list below and in the frontend `CLAUDE.md`'s Section 31.
   The interactive Yes/No buttons follow Meta's documented payload but were **never sent to a real
   phone**; if Meta rejects them the code falls back to text and a typed "yes" still works.
 
-**SECTION 32 IS IN PROGRESS (project owner's spec, 8 parts). Parts 1-2 are done, committed locally, NOT deployed
-(the owner asked to review before/after screenshots before Part 4). Next: Part 4, then 3, 5, 7+8, 6.**
+**SECTION 32 IS IN PROGRESS (project owner's spec, 8 parts). Parts 1-2 are DONE, APPROVED and DEPLOYED to production
+2026-09-21 (commit `94ac837f372d`, GitHub Actions green, both containers on that tag, no migration). Next: Part 4, then
+3, 5, 7+8, 6.** How Parts 1-2 were proven on production (read-only, no login): Playwright on the public venue page with
+the clock frozen at 3:14 AM PKT -- before, the "MON 21" tab asked for `date=2026-09-20` and "WED 23" asked for
+`2026-09-22`, times read `06:00`; after, `2026-09-21` / `2026-09-23`, "Today"/"Tomorrow" tabs, `6:00 AM`. The AI chat
+was exercised with a REAL Gemini call inside one outer transaction that is rolled back (row counts identical before/after;
+script pattern: `AsyncSession(bind=conn, join_transaction_mode="create_savepoint")` under `conn.begin()`, then rollback).
+Also on 2026-09-21 the one production waitlist row for the owner's own booked 23 Sep 6:00 PM slot was deactivated (owner
+approved; proved first with a SELECT that the waitlister is the booking's own player).
 Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 - Decisions accepted: (1) overnight = explicit `schedule_templates.closes_next_day` column (close<=open means next
   day; open==close+flag = 24h; midnight close is `00:00` + flag); (2) multi-slot bookings via a `btree_gist`
@@ -54,9 +61,13 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
   RDS snapshot first (backups are 1 day, restore dry-run never done); test upgrade AND downgrade on a copy of
   production-shaped data; after migrating, read the output and report it. Run migrations from the NEW image BEFORE
   restarting the backend so the code never runs against a missing column. Ask before any production write/deploy.
-Section 32 Parts 1-2 (details: item 32 below and the frontend CLAUDE.md's Section 32).
+(Parts 1-2 details: item 32 below and the frontend CLAUDE.md's Section 32.)
 
 **Open items, roughly by priority (none started unless noted):**
+0. **Found while proving Parts 1-2 on production (for Part 8):** the AI sometimes writes the price as "Rs. 3500.0"
+   (the tool result hands it a raw float; give it a ready-made "PKR 3,500" like the slot `label`), and explained an
+   unavailable slot with an invented reason ("Court 1 has fixed 90-minute blocks" when 6:00 PM was simply booked).
+   Another person (fasih1712) also pushes to `main` (FCM/APNs push, EAS): `git fetch` and rebase before pushing.
 1. **Ask the owner: do venues close after midnight?** Hours like 06:00 -> 02:00 are impossible today
    (DB `CHECK (open_time < close_time)`, per-day availability engine); the UI now says so and suggests
    23:59, which loses the last slot of a 60-min grid. Real overnight support = constraint migration +
