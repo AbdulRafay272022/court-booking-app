@@ -7,18 +7,9 @@ import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime, toDateInputValue } from "@/lib/format";
+import { formatPKR, formatTime, pktDayTabs } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
 import type { Court } from "@court-booking/types";
-
-function nextDays(count: number): Date[] {
-  const today = new Date();
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return d;
-  });
-}
 
 const STATUS_LABEL: Record<string, string> = {
   available: "OPEN",
@@ -32,10 +23,12 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
   const router = useRouter();
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
-  const days = useMemo(() => nextDays(6), []);
+  // Pakistan calendar days. These used to come from `new Date()` + `toISOString().slice(0, 10)` (the UTC
+  // date), so between midnight and 5 AM the tab labelled "Wed 23" queried Tuesday the 22nd.
+  const days = useMemo(() => pktDayTabs(6), []);
   const [dateIdx, setDateIdx] = useState(0);
   const [isFocused, setIsFocused] = useState(true);
-  const date = toDateInputValue(days[dateIdx]);
+  const date = days[dateIdx].date;
 
   // Section 29 Tier 2 Part 4: mobile has had "Notify me" on a taken slot for a while -- web had
   // no waitlist implementation at all (no join affordance, no api.waitlist call anywhere).
@@ -81,9 +74,14 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
+  // Wait until the saved session has been loaded before asking, and re-ask when signing in/out: the answer
+  // depends on WHO is asking (`is_mine`). Without this the first request on a fresh page load went out with no
+  // token, so the player's own booking showed "Notify me" until the next 15-second poll.
+  const authReady = status !== "hydrating";
   const availabilityQuery = useQuery({
-    queryKey: ["venue-availability", venueId, date],
+    queryKey: ["venue-availability", venueId, date, status === "signedIn"],
     queryFn: () => api.availability.forVenueOnDate(venueId, date),
+    enabled: authReady,
     refetchInterval: (query) => (isFocused ? pollInterval(query, 15_000) : false),
   });
 
@@ -119,7 +117,10 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
             style={{ background: dateIdx === i ? "#141A1D" : "#FFFFFF", border: dateIdx === i ? "none" : "1px solid #EBE5E1" }}
           >
             <span className="text-[11px] font-semibold tracking-wider" style={{ color: dateIdx === i ? "rgba(255,255,255,0.75)" : "#7A7068" }}>
-              {d.toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase()} {d.getDate()}
+              {i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.weekday}
+            </span>
+            <span className="text-[13px] font-bold whitespace-nowrap" style={{ color: dateIdx === i ? "#FFFFFF" : "#141A1D" }}>
+              {d.day} {d.month}
             </span>
           </button>
         ))}
@@ -138,7 +139,7 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
             </tr>
           </thead>
           <tbody>
-            {availabilityQuery.isLoading ? (
+            {availabilityQuery.isLoading || !authReady ? (
               <tr>
                 <td colSpan={courts.length + 1} className="text-center py-10 text-player-ink-faint">
                   Loading…
@@ -165,6 +166,26 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
                     if (!s) return <td key={court.court_id} />;
                     const isOpen = s.status === "available";
                     const isBooked = s.status === "booked";
+                    // My own booking / hold: show MY status, never "Notify me" (that is for a slot somebody
+                    // ELSE has). A real production slot showed "On waitlist" for the player who had booked it.
+                    if (s.is_mine && s.booking_id && (isBooked || s.status === "held" || s.status === "payment_submitted")) {
+                      const pending = !isBooked;
+                      return (
+                        <td key={court.court_id} className="px-3.5 py-2">
+                          <button
+                            onClick={() => router.push(`/booking/${s.booking_id}/${pending ? "pay" : "done"}`)}
+                            className="h-10 w-full rounded-lg flex items-center justify-center text-[12px] font-bold px-1"
+                            style={{
+                              background: pending ? "#FFF6E5" : "#EAF5EF",
+                              border: pending ? "1px solid #F3DDAE" : "1px solid #BFE0CE",
+                              color: pending ? "#9A6208" : "#1F7A52",
+                            }}
+                          >
+                            {pending ? "Payment pending" : "Your booking"}
+                          </button>
+                        </td>
+                      );
+                    }
                     const waitlistKey = `${court.court_id}|${s.starts_at}`;
                     const onWaitlist = joinedKeys.has(waitlistKey);
                     const joining = joiningKey === waitlistKey;

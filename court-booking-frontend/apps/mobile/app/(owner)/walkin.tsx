@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime, toDateInputValue } from "@/lib/format";
+import { formatPKR, formatTime, pktDayTabs } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon } from "@/components/icons";
 import { Chip, FieldLabel, PrimaryButton, TextField } from "./venue-setup/_components";
@@ -32,11 +32,11 @@ export default function WalkInScreen() {
   // Section 29 Tier 2 Part 3: a walk-in used to always book against today only -- an owner
   // taking a phone booking for tomorrow (a completely normal case) had no way to do it here.
   const next7Days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; }),
+    () => pktDayTabs(7), // Pakistan calendar days, not the UTC date
     [],
   );
   const [dateIdx, setDateIdx] = useState(0);
-  const date = toDateInputValue(next7Days[dateIdx]);
+  const date = next7Days[dateIdx].date;
   const availabilityQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
     queryFn: () => api.availability.forCourtOnDate(courtId!, date),
@@ -125,7 +125,7 @@ export default function WalkInScreen() {
                 style={{ minHeight: 46, backgroundColor: dateIdx === i ? "#0E6274" : "#FFFFFF", borderWidth: dateIdx === i ? 0 : 1, borderColor: "#DCE3E6" }}
               >
                 <Text className="font-plex-semibold text-[13px]" style={{ color: dateIdx === i ? "#FFFFFF" : "#101C21" }}>
-                  {i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}
+                  {i === 0 ? "Today" : i === 1 ? "Tomorrow" : `${d.weekday} ${d.day}`}
                 </Text>
               </Pressable>
             ))}

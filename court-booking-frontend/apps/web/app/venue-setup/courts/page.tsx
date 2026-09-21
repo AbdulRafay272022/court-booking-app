@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { DAY_LABELS, SLOT_MINUTES_OPTIONS, SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
 import { Chip, Field, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, Stepper } from "@/components/setup/ui";
+import { TimeField12 } from "@/components/setup/time-fields";
 
 /** "HH:MM" from an <input type="time"> -> "HH:MM:SS" for the API. */
 function toTimeString(hhmm: string): string {
@@ -211,8 +212,8 @@ export default function VenueCourtsPage() {
 
         {store.sameHoursEveryDay ? (
           <div className="flex gap-3">
-            <Field label="Opens" type="time" value={store.defaultOpenTime} onChange={(e) => store.setField("defaultOpenTime", e.target.value)} mono />
-            <Field label="Closes" type="time" value={store.defaultCloseTime} onChange={(e) => store.setField("defaultCloseTime", e.target.value)} mono />
+            <TimeField12 label="Opens" value={store.defaultOpenTime} onChange={(v) => store.setField("defaultOpenTime", v)} />
+            <TimeField12 label="Closes" value={store.defaultCloseTime} onChange={(v) => store.setField("defaultCloseTime", v)} />
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -221,8 +222,8 @@ export default function VenueCourtsPage() {
               return (
                 <div key={day} className="flex items-end gap-3">
                   <span className="text-sm font-medium w-10 pb-3">{label}</span>
-                  <Field label="" type="time" value={o.open} onChange={(e) => store.setDayOverride(day, { ...o, open: e.target.value })} mono aria-label={`${label} opens`} />
-                  <Field label="" type="time" value={o.close} onChange={(e) => store.setDayOverride(day, { ...o, close: e.target.value })} mono aria-label={`${label} closes`} />
+                  <TimeField12 label="" ariaLabel={`${label} opens`} value={o.open} onChange={(v) => store.setDayOverride(day, { ...o, open: v })} />
+                  <TimeField12 label="" ariaLabel={`${label} closes`} value={o.close} onChange={(v) => store.setDayOverride(day, { ...o, close: v })} />
                 </div>
               );
             })}
@@ -256,8 +257,8 @@ export default function VenueCourtsPage() {
                 placeholder="2500"
                 mono
               />
-              <Field label="From (optional)" type="time" value={rule.startTime ?? ""} onChange={(e) => store.updatePricingRule(rule.id, { startTime: e.target.value || null })} mono />
-              <Field label="To (optional)" type="time" value={rule.endTime ?? ""} onChange={(e) => store.updatePricingRule(rule.id, { endTime: e.target.value || null })} mono />
+              <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => store.updatePricingRule(rule.id, { startTime: v || null })} />
+              <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => store.updatePricingRule(rule.id, { endTime: v || null })} />
             </div>
           </div>
         ))}

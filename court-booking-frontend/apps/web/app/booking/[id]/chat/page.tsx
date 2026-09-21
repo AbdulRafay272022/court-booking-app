@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR } from "@/lib/format";
+import { formatDate, formatPKR, formatTime } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import type { ChatAction } from "@court-booking/types";
 
@@ -50,7 +50,7 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
       }
       const when = startsAt ? new Date(startsAt) : null;
       const question = when
-        ? `Is ${courtName || "a court"} at ${venueName || "this venue"} available on ${when.toISOString().slice(0, 10)} at ${when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}?`
+        ? `Is ${courtName || "a court"} at ${venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}?`
         : "What's available?";
       setTurns([{ id: "local-0", sender: "player", content: question }]);
       setSending(true);
@@ -132,7 +132,7 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
           <div className="flex flex-col">
             <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">SELECTED SLOT</span>
             <span className="font-mono text-[14.5px] font-semibold">
-              {courtName} · {when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}
+              {courtName} · {formatDate(when)}, {formatTime(when)}
             </span>
           </div>
           {price ? <span className="font-mono text-base font-semibold">{formatPKR(Number(price))}</span> : null}

@@ -6,7 +6,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR } from "@/lib/format";
+import { formatDate, formatPKR, formatTime } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { ChevronLeftIcon } from "@/components/icons";
 import type { ChatAction } from "@court-booking/types";
@@ -60,7 +60,7 @@ export default function BookingChatScreen() {
       // calendar date instead.
       const when = params.startsAt ? new Date(params.startsAt) : null;
       const question = when
-        ? `Is ${params.courtName || "a court"} at ${params.venueName || "this venue"} available on ${when.toISOString().slice(0, 10)} at ${when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}?`
+        ? `Is ${params.courtName || "a court"} at ${params.venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}?`
         : "What's available?";
       setTurns([{ id: "local-0", sender: "player", content: question }]);
       setSending(true);
@@ -151,7 +151,7 @@ export default function BookingChatScreen() {
                 SELECTED SLOT
               </Text>
               <Text className="font-mono-semibold text-player-ink text-[14.5px]">
-                {params.courtName} · {when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })}
+                {params.courtName} · {formatDate(when)}, {formatTime(when)}
               </Text>
             </View>
             {params.price ? <Text className="font-mono-semibold text-player-ink text-base">{formatPKR(Number(params.price))}</Text> : null}

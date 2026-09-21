@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime, toDateInputValue } from "@/lib/format";
+import { formatPKR, formatTime, pktDayTabs } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 
 export default function OwnerWalkinPage() {
@@ -27,12 +27,10 @@ export default function OwnerWalkinPage() {
 
   // Section 29 Tier 2 Part 3: a walk-in used to always book against today only -- an owner
   // taking a phone booking for tomorrow (a completely normal case) had no way to do it here.
-  const next7Days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; }),
-    [],
-  );
+  // Pakistan calendar days (not `new Date()` + the UTC date, which is yesterday until 5 AM in Karachi).
+  const next7Days = useMemo(() => pktDayTabs(7), []);
   const [dateIdx, setDateIdx] = useState(0);
-  const date = toDateInputValue(next7Days[dateIdx]);
+  const date = next7Days[dateIdx].date;
   const availabilityQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
     queryFn: () => api.availability.forCourtOnDate(courtId!, date),
@@ -109,7 +107,7 @@ export default function OwnerWalkinPage() {
               className="px-3.5 py-2.5 rounded-lg text-[13px] font-semibold"
               style={{ background: dateIdx === i ? "#0E6274" : "#FFFFFF", color: dateIdx === i ? "#fff" : "#101C21", border: dateIdx === i ? "none" : "1px solid #DCE3E6" }}
             >
-              {i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}
+              {i === 0 ? "Today" : i === 1 ? "Tomorrow" : `${d.weekday} ${d.day}`}
             </button>
           ))}
         </div>

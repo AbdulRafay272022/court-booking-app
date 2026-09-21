@@ -7,20 +7,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDistance, formatPKR, formatTime, toDateInputValue } from "@/lib/format";
+import { formatDistance, formatPKR, formatTime, pktDayTabs } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
 import { ChevronLeftIcon, StarIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { DayTab, EmptyState, gradientFor } from "../_components";
-
-function nextDays(count: number): Date[] {
-  const today = new Date();
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return d;
-  });
-}
 
 const STATUS_META: Record<string, { label: string; color: string; tappable: boolean }> = {
   available: { label: "OPEN", color: "#1F7A52", tappable: true },
@@ -34,7 +25,9 @@ export default function VenueDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const isFocused = useIsFocused();
   const queryClient = useQueryClient();
-  const days = useMemo(() => nextDays(6), []);
+  // Pakistan calendar days -- NOT `new Date()` + `toISOString().slice(0, 10)` (the UTC date), which made the tab
+  // labelled "23" query the 22nd between midnight and 5 AM in Karachi.
+  const days = useMemo(() => pktDayTabs(6), []);
   const [dateIdx, setDateIdx] = useState(0);
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const [joiningKey, setJoiningKey] = useState<string | null>(null);
@@ -70,7 +63,7 @@ export default function VenueDetailScreen() {
   const venue = venueQuery.data;
   const courts = venue?.courts.filter((c) => c.is_active) ?? [];
   const activeCourtId = courtId ?? courts[0]?.id;
-  const date = toDateInputValue(days[dateIdx]);
+  const date = days[dateIdx].date;
 
   const availabilityQuery = useQuery({
     queryKey: ["venue-availability", venue?.id, date],
@@ -82,7 +75,12 @@ export default function VenueDetailScreen() {
   const courtAvailability = availabilityQuery.data?.courts.find((c) => c.court_id === activeCourtId);
   const slots = courtAvailability?.slots ?? [];
 
-  function handleTapSlot(status: string, slotStartsAt: string, reason: string | null, price: number) {
+  function handleTapSlot(status: string, slotStartsAt: string, reason: string | null, price: number, mineBookingId: string | null) {
+    if (mineBookingId) {
+      // My own booking / hold: go to it. (This used to say "someone's on it ... another player".)
+      router.push({ pathname: status === "booked" ? "/(player)/booking/[id]/done" : "/(player)/booking/[id]/pay", params: { id: mineBookingId } });
+      return;
+    }
     if (status === "blocked") {
       Alert.alert("Not available", reason ?? "This slot is blocked by the venue.");
       return;
@@ -193,8 +191,8 @@ export default function VenueDetailScreen() {
         {days.map((d, i) => (
           <DayTab
             key={i}
-            label={d.toLocaleDateString("en-GB", { weekday: "short" }).toUpperCase()}
-            dayNum={String(d.getDate()).padStart(2, "0")}
+            label={i === 0 ? "TODAY" : d.weekday.toUpperCase()}
+            dayNum={String(d.day).padStart(2, "0")}
             selected={dateIdx === i}
             onPress={() => setDateIdx(i)}
           />
@@ -212,17 +210,26 @@ export default function VenueDetailScreen() {
       ) : (
         <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-6 gap-2.5">
           {slots.map((slot) => {
-            const meta = STATUS_META[slot.status] ?? STATUS_META.blocked;
+            // My own booking or hold gets MY status, never "Notify me" (that is for a slot somebody ELSE has).
+            const mineBookingId =
+              slot.is_mine && slot.booking_id && (slot.status === "booked" || slot.status === "held" || slot.status === "payment_submitted")
+                ? slot.booking_id
+                : null;
+            const meta = mineBookingId
+              ? slot.status === "booked"
+                ? { label: "YOUR BOOKING", color: "#1F7A52", tappable: true }
+                : { label: "PAYMENT PENDING", color: "#B5730B", tappable: true }
+              : STATUS_META[slot.status] ?? STATUS_META.blocked;
             const waitlistKey = `${activeCourtId}|${slot.starts_at}`;
             const isOnWaitlist = joinedKeys.has(waitlistKey);
             const isJoining = joiningKey === waitlistKey;
             return (
               <Pressable
                 key={slot.starts_at}
-                onPress={() => handleTapSlot(slot.status, slot.starts_at, slot.reason, slot.price)}
+                onPress={() => handleTapSlot(slot.status, slot.starts_at, slot.reason, slot.price, mineBookingId)}
                 className="flex-row items-center justify-between px-4 py-3.5 rounded-[14px]"
                 style={{
-                  backgroundColor: slot.status === "available" ? "#FFFFFF" : "#F4EFEC",
+                  backgroundColor: mineBookingId ? "#EAF5EF" : slot.status === "available" ? "#FFFFFF" : "#F4EFEC",
                   borderWidth: 1.5,
                   borderColor: slot.status === "available" ? "#E5DED8" : "transparent",
                   opacity: slot.status === "blocked" ? 0.6 : 1,
@@ -237,7 +244,7 @@ export default function VenueDetailScreen() {
                   </Text>
                 </View>
                 <View className="flex-row items-center gap-2.5">
-                  {slot.status === "booked" ? (
+                  {slot.status === "booked" && !mineBookingId ? (
                     <Pressable
                       disabled={isOnWaitlist || isJoining}
                       onPress={(e) => {

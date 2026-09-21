@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime } from "@/lib/format";
+import { formatDateString, formatPKR, formatTime } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 
@@ -42,7 +42,7 @@ export default function OwnerTodayPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{activeVenue?.name ?? "Today"}</h1>
-          {data ? <p className="text-owner-ink-faint text-sm">{data.date}</p> : null}
+          {data ? <p className="text-owner-ink-faint text-sm">{formatDateString(data.date)}</p> : null}
         </div>
         <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm">
           + Add booking
@@ -108,7 +108,7 @@ export default function OwnerTodayPage() {
               className="flex items-center gap-4 px-5 py-3.5 border-b border-owner-border-light last:border-0"
               style={{ borderLeft: `3px solid ${STATUS_COLOR[slot.status] ?? "#DCE3E6"}` }}
             >
-              <span className="font-mono text-sm font-semibold w-14">{formatTime(slot.starts_at)}</span>
+              <span className="font-mono text-sm font-semibold w-[4.75rem] shrink-0">{formatTime(slot.starts_at)}</span>
               <div className="flex-1">
                 <p className="font-semibold text-sm">{activeCourt === "all" ? `${slot.courtName} · ` : ""}{slot.player_name ?? statusLabel(slot.status)}</p>
                 <p className="text-xs text-owner-ink-faint">{statusSubtitle(slot.status)}</p>
@@ -118,7 +118,14 @@ export default function OwnerTodayPage() {
                   Review
                 </Link>
               ) : slot.amount_paid != null ? (
-                <span className="font-mono text-sm font-semibold">{formatPKR(slot.amount_paid)}</span>
+                <div className="text-right">
+                  <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid)}</span>
+                  {slot.status === "booked" && slot.balance_due != null ? (
+                    <span className="text-[11px] font-semibold" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
+                      {slot.balance_due > 0 ? `PKR ${formatPKR(slot.balance_due)} due at venue` : "Fully paid"}
+                    </span>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ))

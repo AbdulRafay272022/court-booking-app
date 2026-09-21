@@ -13,6 +13,7 @@ import {
   SPORT_OPTIONS,
   useVenueSetupStore,
 } from "@/lib/venue-setup-store";
+import { TimeField12 } from "@/components/time-fields";
 import { Chip, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./_components";
 
 function toTimeString(hhmm: string): string {
@@ -250,20 +251,8 @@ export default function VenueCourtsScreen() {
 
           {store.sameHoursEveryDay ? (
             <View className="flex-row gap-3">
-              <TextField
-                label="Opens"
-                value={store.defaultOpenTime}
-                onChangeText={(v) => store.setField("defaultOpenTime", v)}
-                placeholder="06:00"
-                mono
-              />
-              <TextField
-                label="Closes"
-                value={store.defaultCloseTime}
-                onChangeText={(v) => store.setField("defaultCloseTime", v)}
-                placeholder="23:00"
-                mono
-              />
+              <TimeField12 label="Opens" value={store.defaultOpenTime} onChange={(v) => store.setField("defaultOpenTime", v)} />
+              <TimeField12 label="Closes" value={store.defaultCloseTime} onChange={(v) => store.setField("defaultCloseTime", v)} />
             </View>
           ) : (
             <View className="gap-3">
@@ -276,22 +265,10 @@ export default function VenueCourtsScreen() {
                   <View key={day} className="flex-row items-center gap-3">
                     <Text className="font-plex-medium text-owner-ink text-sm w-10">{label}</Text>
                     <View className="flex-1">
-                      <TextField
-                        label=""
-                        value={override.open}
-                        onChangeText={(v) => store.setDayOverride(day, { ...override, open: v })}
-                        placeholder="06:00"
-                        mono
-                      />
+                      <TimeField12 label="" value={override.open} onChange={(v) => store.setDayOverride(day, { ...override, open: v })} />
                     </View>
                     <View className="flex-1">
-                      <TextField
-                        label=""
-                        value={override.close}
-                        onChangeText={(v) => store.setDayOverride(day, { ...override, close: v })}
-                        placeholder="23:00"
-                        mono
-                      />
+                      <TimeField12 label="" value={override.close} onChange={(v) => store.setDayOverride(day, { ...override, close: v })} />
                     </View>
                   </View>
                 );
@@ -330,20 +307,8 @@ export default function VenueCourtsScreen() {
                   placeholder="2500"
                   mono
                 />
-                <TextField
-                  label="From (optional)"
-                  value={rule.startTime ?? ""}
-                  onChangeText={(v) => store.updatePricingRule(rule.id, { startTime: v || null })}
-                  placeholder="16:00"
-                  mono
-                />
-                <TextField
-                  label="To (optional)"
-                  value={rule.endTime ?? ""}
-                  onChangeText={(v) => store.updatePricingRule(rule.id, { endTime: v || null })}
-                  placeholder="close"
-                  mono
-                />
+                <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => store.updatePricingRule(rule.id, { startTime: v || null })} />
+                <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => store.updatePricingRule(rule.id, { endTime: v || null })} />
               </View>
             </View>
           ))}

@@ -155,7 +155,7 @@ export default function OwnerTodayScreen() {
               >
                 <Text
                   className="font-mono-semibold text-[13.5px]"
-                  style={{ minWidth: 46, color: slot.status === "payment_submitted" ? "#9C5C0A" : slot.status === "available" || slot.status === "blocked" ? "#8399A1" : "#101C21" }}
+                  style={{ minWidth: 66, color: slot.status === "payment_submitted" ? "#9C5C0A" : slot.status === "available" || slot.status === "blocked" ? "#8399A1" : "#101C21" }}
                 >
                   {formatTime(slot.starts_at)}
                 </Text>
@@ -195,7 +195,14 @@ export default function OwnerTodayScreen() {
                     <Text className="font-plex-semibold text-owner-accent text-[12.5px]">Add booking</Text>
                   </Pressable>
                 ) : slot.amount_paid != null ? (
-                  <Text className="font-mono-semibold text-[13.5px] text-owner-ink">{formatPKR(slot.amount_paid)}</Text>
+                  <View className="items-end">
+                    <Text className="font-mono-semibold text-[13.5px] text-owner-ink">PKR {formatPKR(slot.amount_paid)}</Text>
+                    {slot.status === "booked" && slot.balance_due != null ? (
+                      <Text className="font-plex-semibold text-[11px]" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
+                        {slot.balance_due > 0 ? `PKR ${formatPKR(slot.balance_due)} due at venue` : "Fully paid"}
+                      </Text>
+                    ) : null}
+                  </View>
                 ) : null}
               </View>
             );

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTimeRange } from "@/lib/format";
+import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 
 function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   const { id } = use(params);
@@ -63,10 +63,16 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
           </span>
           <span className="text-player-ink-faint text-sm">{venueQuery.data ? venueQuery.data.area ?? venueQuery.data.city : ""}</span>
         </div>
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-2 gap-y-4">
+          <Stat label="DATE" value={formatDate(booking.starts_at)} />
           <Stat label="TIME" value={formatTimeRange(booking.starts_at, booking.ends_at)} />
-          <Stat label="PAID" value={formatPKR(booking.amount_paid)} />
-          <Stat label="AT VENUE" value={formatPKR(booking.balance_due)} accent />
+          <Stat label="PAID" value={`PKR ${formatPKR(booking.amount_paid)}`} />
+          {/* "AT VENUE 0" read like a broken "Venue 0"; say what it means. */}
+          <Stat
+            label="DUE AT VENUE"
+            value={booking.balance_due > 0 ? `PKR ${formatPKR(booking.balance_due)}` : "Nothing due"}
+            accent={booking.balance_due > 0}
+          />
         </div>
       </div>
 

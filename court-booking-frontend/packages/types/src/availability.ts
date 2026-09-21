@@ -8,6 +8,8 @@ export interface Slot {
   advance_amount: number;
   held_until: string | null;
   booking_id: string | null;
+  /** True when the signed-in viewer is the player on this slot's live booking (never for anonymous). */
+  is_mine: boolean;
   reason: string | null;
 }
 

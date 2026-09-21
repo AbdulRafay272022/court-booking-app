@@ -5,19 +5,18 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatShortDate, formatTime, toDateInputValue } from "@/lib/format";
+import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { filterLedgerByCourt, ledgerRowsToCsv } from "@court-booking/api-client";
 
 type RangeKey = "7d" | "30d" | "month";
 
 function rangeFor(key: RangeKey): { start: string; end: string } {
-  const end = new Date();
-  const start = new Date();
-  if (key === "7d") start.setDate(end.getDate() - 6);
-  else if (key === "30d") start.setDate(end.getDate() - 29);
-  else start.setDate(1);
-  return { start: toDateInputValue(start), end: toDateInputValue(end) };
+  // Pakistan calendar dates. `toISOString().slice(0, 10)` is the UTC date, which is yesterday until 5 AM in
+  // Karachi and made the range end a day early (hiding the newest bookings).
+  const end = pktDateString();
+  const start = key === "7d" ? addDays(end, -6) : key === "30d" ? addDays(end, -29) : `${end.slice(0, 8)}01`;
+  return { start, end };
 }
 
 export default function OwnerLedgerPage() {

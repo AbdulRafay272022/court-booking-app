@@ -1,30 +1,37 @@
 /** Shared number/date formatting for owner + player screens. */
+// Time and date formatting is Pakistan time, 12-hour, human dates -- ONE shared implementation
+// (packages/types/src/datetime.ts). Do not build time or date strings by hand in a screen
+// (no toLocaleTimeString / getHours / toISOString().slice / hour12): they depend on the device's
+// timezone or on UTC, and produced 24-hour times and one-day-off dates.
+export {
+  addDays,
+  formatDate,
+  formatDateRelative,
+  formatDateString,
+  formatSlotLabel,
+  formatTime,
+  formatTime24As12,
+  formatTimeRange,
+  formatWhen,
+  formatWhenRange,
+  pktDateString,
+  pktDayTabs,
+  weekdayOf,
+} from "@court-booking/types";
+import { formatDate, formatDateString } from "@court-booking/types";
+
+/** "Wed, 23 Sep" for an instant. */
+export function formatShortDate(iso: string): string {
+  return formatDate(iso);
+}
+
+/** "Tue, 22 Sep" for a "YYYY-MM-DD" calendar date. */
+export function formatDayHeader(dateStr: string): string {
+  return formatDateString(dateStr);
+}
 
 export function formatPKR(amount: number): string {
   return Math.round(amount).toLocaleString("en-US");
-}
-
-export function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-export function formatTimeRange(startIso: string, endIso: string): string {
-  return `${formatTime(startIso)}–${formatTime(endIso)}`;
-}
-
-export function toDateInputValue(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-export function formatDayHeader(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00`);
-  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }).toUpperCase();
-}
-
-export function formatShortDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 }
 
 export function formatDistance(meters: number | null): string | null {

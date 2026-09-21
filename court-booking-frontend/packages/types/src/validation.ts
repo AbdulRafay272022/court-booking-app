@@ -133,9 +133,9 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
  * when the pair is fine. Without this check the API used to answer 500 and the browser showed
  * a misleading "Can't reach the server". */
 export function scheduleHoursError(open: string, close: string): string | null {
-  if (!HHMM.test(open) || !HHMM.test(close)) return "Enter times as HH:MM, for example 06:00 and 23:00.";
+  if (!HHMM.test(open) || !HHMM.test(close)) return "Choose an opening time and a closing time.";
   if (close <= open) {
-    return "Closing time must be later than opening time. Hours past midnight aren't supported yet, so use 23:59 as the latest closing time.";
+    return "Closing time must be later than opening time. Hours past midnight aren't supported yet, so use 11:59 PM as the latest closing time.";
   }
   return null;
 }

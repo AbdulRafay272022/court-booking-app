@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
+import { pktInstant, weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { formatWhen } from "@/lib/format";
 import { DAY_LABELS } from "@/lib/venue-setup-store";
 import { Chip, Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
+import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
 
 function toShortTime(hhmmss: string): string {
   return hhmmss.slice(0, 5);
@@ -76,8 +78,11 @@ export default function VenueSettingsPage() {
   const [saveMessage, setSaveMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const [blackoutTitle, setBlackoutTitle] = useState("");
-  const [blackoutStart, setBlackoutStart] = useState("");
-  const [blackoutEnd, setBlackoutEnd] = useState("");
+  // A date (Pakistan calendar) plus a 12-hour time for each end; sent as real instants via pktInstant().
+  const [blackoutStartDate, setBlackoutStartDate] = useState("");
+  const [blackoutStartTime, setBlackoutStartTime] = useState("06:00");
+  const [blackoutEndDate, setBlackoutEndDate] = useState("");
+  const [blackoutEndTime, setBlackoutEndTime] = useState("23:00");
   const [addingBlackout, setAddingBlackout] = useState(false);
   const [blackoutError, setBlackoutError] = useState<string | null>(null);
 
@@ -173,7 +178,7 @@ export default function VenueSettingsPage() {
   }
 
   async function handleAddBlackout() {
-    if (!activeCourtId || !blackoutStart || !blackoutEnd) {
+    if (!activeCourtId || !blackoutStartDate || !blackoutEndDate) {
       setBlackoutError("Pick a start and end date/time for the blackout.");
       return;
     }
@@ -182,12 +187,12 @@ export default function VenueSettingsPage() {
     try {
       await api.courts.addBlackout(activeCourtId, {
         title: blackoutTitle || undefined,
-        starts_at: new Date(blackoutStart).toISOString(),
-        ends_at: new Date(blackoutEnd).toISOString(),
+        starts_at: pktInstant(blackoutStartDate, blackoutStartTime).toISOString(),
+        ends_at: pktInstant(blackoutEndDate, blackoutEndTime).toISOString(),
       });
       setBlackoutTitle("");
-      setBlackoutStart("");
-      setBlackoutEnd("");
+      setBlackoutStartDate("");
+      setBlackoutEndDate("");
       await queryClient.invalidateQueries({ queryKey: ["court-blackouts", activeCourtId] });
     } catch (e) {
       setBlackoutError(friendlyErrorMessage(e));
@@ -238,8 +243,8 @@ export default function VenueSettingsPage() {
             </div>
             {sameHoursEveryDay ? (
               <div className="flex gap-3">
-                <Field label="Opens" type="time" value={defaultOpenTime} onChange={(e) => setDefaultOpenTime(e.target.value)} mono />
-                <Field label="Closes" type="time" value={defaultCloseTime} onChange={(e) => setDefaultCloseTime(e.target.value)} mono />
+                <TimeField12 label="Opens" value={defaultOpenTime} onChange={setDefaultOpenTime} />
+                <TimeField12 label="Closes" value={defaultCloseTime} onChange={setDefaultCloseTime} />
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -248,22 +253,8 @@ export default function VenueSettingsPage() {
                   return (
                     <div key={day} className="flex items-end gap-3">
                       <span className="text-sm font-medium w-10 pb-3">{label}</span>
-                      <Field
-                        label=""
-                        type="time"
-                        value={o.open}
-                        onChange={(e) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, open: e.target.value } })}
-                        mono
-                        aria-label={`${label} opens`}
-                      />
-                      <Field
-                        label=""
-                        type="time"
-                        value={o.close}
-                        onChange={(e) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, close: e.target.value } })}
-                        mono
-                        aria-label={`${label} closes`}
-                      />
+                      <TimeField12 label="" ariaLabel={`${label} opens`} value={o.open} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, open: v } })} />
+                      <TimeField12 label="" ariaLabel={`${label} closes`} value={o.close} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, close: v } })} />
                     </div>
                   );
                 })}
@@ -301,20 +292,8 @@ export default function VenueSettingsPage() {
                     placeholder="2500"
                     mono
                   />
-                  <Field
-                    label="From (optional)"
-                    type="time"
-                    value={rule.startTime ?? ""}
-                    onChange={(e) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, startTime: e.target.value || null } : r)))}
-                    mono
-                  />
-                  <Field
-                    label="To (optional)"
-                    type="time"
-                    value={rule.endTime ?? ""}
-                    onChange={(e) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, endTime: e.target.value || null } : r)))}
-                    mono
-                  />
+                  <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, startTime: v || null } : r)))} />
+                  <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, endTime: v || null } : r)))} />
                 </div>
               </div>
             ))}
@@ -362,7 +341,7 @@ export default function VenueSettingsPage() {
                 <div key={b.id} className="border border-owner-border rounded-[10px] p-3">
                   <p className="text-sm font-semibold">{b.title ?? "Blocked"}</p>
                   <p className="font-mono text-xs text-owner-ink-faint mt-0.5">
-                    {new Date(b.starts_at).toLocaleString()} → {new Date(b.ends_at).toLocaleString()}
+                    {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
                   </p>
                 </div>
               ))
@@ -371,8 +350,12 @@ export default function VenueSettingsPage() {
             <FieldLabel>Add a blackout</FieldLabel>
             <div className="flex flex-wrap gap-3">
               <Field label="Title (optional)" value={blackoutTitle} onChange={(e) => setBlackoutTitle(e.target.value)} placeholder="Maintenance" />
-              <Field label="Starts at" type="datetime-local" value={blackoutStart} onChange={(e) => setBlackoutStart(e.target.value)} mono />
-              <Field label="Ends at" type="datetime-local" value={blackoutEnd} onChange={(e) => setBlackoutEnd(e.target.value)} mono />
+              <div className="flex flex-col gap-3 w-full">
+                <DayPicker label="Starts on" value={blackoutStartDate} onChange={setBlackoutStartDate} />
+                <TimeField12 label="Starts at" value={blackoutStartTime} onChange={setBlackoutStartTime} />
+                <DayPicker label="Ends on" value={blackoutEndDate} onChange={setBlackoutEndDate} />
+                <TimeField12 label="Ends at" value={blackoutEndTime} onChange={setBlackoutEndTime} />
+              </div>
             </div>
             {blackoutError ? (
               <p role="alert" className="text-[13px] font-semibold text-owner-danger">

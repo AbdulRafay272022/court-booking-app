@@ -5,6 +5,8 @@ export interface TodaySlot {
   booking_id: string | null;
   player_name: string | null;
   amount_paid: number | null;
+  price: number | null;
+  balance_due: number | null;
 }
 
 export interface TodayCourt {

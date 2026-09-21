@@ -7,6 +7,23 @@ tested so far. The backend has its own `CLAUDE.md` at
 `../court-booking-backend/CLAUDE.md` — read that too if you touch anything
 backend-adjacent.
 
+## START HERE
+
+**Read `../court-booking-backend/CLAUDE.md`'s "START HERE -- handoff" section first**: it has the current
+production state, the prioritised open-items list, how to read production logs (`../court-booking-backend/RUNBOOK.md`
+section 4) and the working rules that apply to this side too. Frontend-specific pointers:
+- Latest frontend work: **Section 31** below (per-court cancellation UI, stale-draft recovery, and the
+  "Can't reach the server" follow-up, which was really a server 500 -- see it before assuming a network problem).
+- Frontend items still open: mobile needs a new EAS build for all of it (never device-tested, no `eas.json`);
+  the wizard's `createdCourtIds` duplicate-court hazard; the unexplained early session refresh
+  (`apps/web/app/providers.tsx`); `SUPPORT_WHATSAPP_NUMBER` placeholder in both `lib/support.ts`.
+- The "Next step" section near the end of this file predates Sections 26-31 in places (e.g. it still lists
+  OTP-era caveats); trust the numbered Section entries and the backend handoff over it.
+- Web verification recipe: `next build && next start --port 3100` (never `next dev`), Playwright scripts as
+  throwaway `.cjs` files in `apps/mobile/`, mobile via Expo web on its own port with
+  `EXPO_PUBLIC_API_BASE_URL=http://localhost:8000`. Don't re-write the session token in `addInitScript` on
+  every navigation (the app rotates it).
+
 ## What this is
 
 The frontend for a court-booking platform (padel/futsal, Karachi pilot).
@@ -702,6 +719,37 @@ were given to the project owner, not automated).
 - **Verified:** 18 DB-free tests in `tests/test_fcm.py` (real RS256 signature check, token caching, 401 retry,
   error classification, bad key never raises). **Not run:** the one DB-backed test in that file and the rest of
   the backend suite (no Postgres/Docker here), `tsc` (no `node_modules`), and everything on a real device.
+
+## Section 32, Parts 1-2 -- 12-hour Pakistan time, the date-shift bug, own-slot state (2026-09-21)
+
+**Committed locally, not deployed.** Backend half and root causes: backend CLAUDE.md item 32. The rules:
+- **Every time/date a player or owner sees is 12-hour Pakistan time with human dates** ("7:30 PM", "Wed, 23 Sep",
+  "Today"/"Tomorrow"). The ONLY implementation is `packages/types/src/datetime.ts`, re-exported by each app's
+  `lib/format.ts`. It uses a fixed +5h offset, never the device timezone. **Never** write `toLocaleTimeString`,
+  `getHours`, `hour12`, or `toISOString().slice(0, 10)` in a screen: the last one is the UTC date and made the tab
+  labelled "Wed 23" query the 22nd between midnight and 5 AM in Karachi. `pktDayTabs(n)` builds date tabs,
+  `pktDateString()` is "today" for any `?date=` parameter. Tests: `cd packages/types && npx tsx --test src/datetime.test.ts`
+  (run it under `TZ=UTC`, `TZ=Asia/Karachi`, `TZ=America/Los_Angeles`).
+- **Owner time inputs are 12-hour** (`TimeField12` hour/minute/AM-PM, `DayPicker` chips) on web
+  (`components/setup/time-fields.tsx`) and mobile (`components/time-fields.tsx`), replacing `<input type=time>` and
+  free-text "06:00"/"YYYY-MM-DD HH:MM" boxes (blackouts now use date + time pickers, sent via `pktInstant`).
+  They still STORE "HH:MM". `weeklyHoursError` messages are 12-hour text.
+- **Own slots:** `Slot.is_mine` (the availability call is per-viewer). Mine + booked = "Your booking" (opens the done
+  screen), mine + held/payment pending = "Payment pending" (opens pay); "Notify me" only for somebody else's booked
+  slot. The web availability query waits for auth to settle (`enabled: status !== "hydrating"`, keyed on signed-in) --
+  otherwise the first request has no token and the own slot flashes "Notify me" until the next poll.
+- Chat opening bubble is human ("Is Court 1 at X available on Mon, 21 Sep at 6:00 AM?"); done screen shows
+  DATE/TIME/PAID/"DUE AT VENUE"+"Nothing due" (was "AT VENUE 0" = the "Venue 0" the owner saw); owner Today shows
+  "PKR 400 / PKR 3,100 due at venue" and a human date header.
+- **Verification recipe used** (`scratchpad/shots.cjs`, not committed): Playwright with the clock frozen at 3:14 AM
+  Mon 21 Sep PKT and `timezoneId: "Asia/Karachi"`; a local fixture (approved venue, 90-min court, a booked slot, a
+  held slot, someone else's booked slot, own waitlist row) seeded through the API. Harness traps: the apps rotate
+  session tokens, so log in fresh before every run; the shell strips backslashes (use plain-string selectors);
+  restart Expo with `--clear` or it serves a stale bundle; start Expo with `EXPO_PUBLIC_API_BASE_URL=http://localhost:8000`.
+- **Not done in Parts 1-2:** the web schedule grid still keys rows off the first court's slots (breaks with per-court
+  slot lengths -- Part 4); "Booked"/"Payment pending" labelling for OTHER players' slots and closed hours (Part 4);
+  duration picker (Part 4). Local dev DB test data from these runs (fixture users +923002064788, +923005963856,
+  +923002050429, +923005804435 and their venue "S32 Padel Arena") is still there; cleanup was blocked earlier.
 
 ## How this project gets worked (recipe for the next sprint)
 

@@ -3,14 +3,16 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
+import { pktInstant, weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { formatWhen } from "@/lib/format";
 import { DAY_LABELS } from "@/lib/venue-setup-store";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
+import { DayPicker, TimeField12 } from "@/components/time-fields";
 import { Chip, FieldLabel, PrimaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
 import { Tab } from "./_dashboard-components";
 
@@ -80,8 +82,11 @@ export default function VenueSettingsScreen() {
   const [saving, setSaving] = useState(false);
 
   const [blackoutTitle, setBlackoutTitle] = useState("");
-  const [blackoutStart, setBlackoutStart] = useState("");
-  const [blackoutEnd, setBlackoutEnd] = useState("");
+  // A date (Pakistan calendar) plus a 12-hour time for each end; sent as real instants via pktInstant().
+  const [blackoutStartDate, setBlackoutStartDate] = useState("");
+  const [blackoutStartTime, setBlackoutStartTime] = useState("06:00");
+  const [blackoutEndDate, setBlackoutEndDate] = useState("");
+  const [blackoutEndTime, setBlackoutEndTime] = useState("23:00");
   const [addingBlackout, setAddingBlackout] = useState(false);
 
   // Re-seed local editable state whenever the fetched court changes (initial load or switching
@@ -168,7 +173,7 @@ export default function VenueSettingsScreen() {
   }
 
   async function handleAddBlackout() {
-    if (!activeCourtId || !blackoutStart || !blackoutEnd) {
+    if (!activeCourtId || !blackoutStartDate || !blackoutEndDate) {
       Alert.alert("Missing dates", "Pick a start and end date/time for the blackout.");
       return;
     }
@@ -176,12 +181,12 @@ export default function VenueSettingsScreen() {
     try {
       await api.courts.addBlackout(activeCourtId, {
         title: blackoutTitle || undefined,
-        starts_at: new Date(blackoutStart).toISOString(),
-        ends_at: new Date(blackoutEnd).toISOString(),
+        starts_at: pktInstant(blackoutStartDate, blackoutStartTime).toISOString(),
+        ends_at: pktInstant(blackoutEndDate, blackoutEndTime).toISOString(),
       });
       setBlackoutTitle("");
-      setBlackoutStart("");
-      setBlackoutEnd("");
+      setBlackoutStartDate("");
+      setBlackoutEndDate("");
       await queryClient.invalidateQueries({ queryKey: ["court-blackouts", activeCourtId] });
     } catch (e) {
       Alert.alert("Couldn't add blackout", friendlyErrorMessage(e));
@@ -232,8 +237,8 @@ export default function VenueSettingsScreen() {
             </View>
             {sameHoursEveryDay ? (
               <View className="flex-row gap-3">
-                <TextField label="Opens" value={defaultOpenTime} onChangeText={setDefaultOpenTime} placeholder="06:00" mono />
-                <TextField label="Closes" value={defaultCloseTime} onChangeText={setDefaultCloseTime} placeholder="23:00" mono />
+                <TimeField12 label="Opens" value={defaultOpenTime} onChange={setDefaultOpenTime} />
+                <TimeField12 label="Closes" value={defaultCloseTime} onChange={setDefaultCloseTime} />
               </View>
             ) : (
               <View className="gap-3">
@@ -243,22 +248,10 @@ export default function VenueSettingsScreen() {
                     <View key={day} className="flex-row items-center gap-3">
                       <Text className="font-plex-medium text-owner-ink text-sm w-10">{label}</Text>
                       <View className="flex-1">
-                        <TextField
-                          label=""
-                          value={o.open}
-                          onChangeText={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, open: v } })}
-                          placeholder="06:00"
-                          mono
-                        />
+                        <TimeField12 label="" value={o.open} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, open: v } })} />
                       </View>
                       <View className="flex-1">
-                        <TextField
-                          label=""
-                          value={o.close}
-                          onChangeText={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, close: v } })}
-                          placeholder="23:00"
-                          mono
-                        />
+                        <TimeField12 label="" value={o.close} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, close: v } })} />
                       </View>
                     </View>
                   );
@@ -297,20 +290,8 @@ export default function VenueSettingsScreen() {
                     placeholder="2500"
                     mono
                   />
-                  <TextField
-                    label="From (optional)"
-                    value={rule.startTime ?? ""}
-                    onChangeText={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, startTime: v || null } : r)))}
-                    placeholder="16:00"
-                    mono
-                  />
-                  <TextField
-                    label="To (optional)"
-                    value={rule.endTime ?? ""}
-                    onChangeText={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, endTime: v || null } : r)))}
-                    placeholder="close"
-                    mono
-                  />
+                  <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, startTime: v || null } : r)))} />
+                  <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, endTime: v || null } : r)))} />
                 </View>
               </View>
             ))}
@@ -354,7 +335,7 @@ export default function VenueSettingsScreen() {
                 <View key={b.id} className="border border-owner-border rounded-[10px] p-3">
                   <Text className="font-plex-semibold text-owner-ink text-sm">{b.title ?? "Blocked"}</Text>
                   <Text className="font-mono-medium text-owner-ink-faint text-xs mt-0.5">
-                    {new Date(b.starts_at).toLocaleString()} → {new Date(b.ends_at).toLocaleString()}
+                    {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
                   </Text>
                 </View>
               ))
@@ -362,20 +343,10 @@ export default function VenueSettingsScreen() {
             <View className="h-px bg-owner-border-light" />
             <FieldLabel>Add a blackout</FieldLabel>
             <TextField label="Title (optional)" value={blackoutTitle} onChangeText={setBlackoutTitle} placeholder="Maintenance" />
-            <TextField
-              label="Starts at (e.g. 2026-12-25 06:00)"
-              value={blackoutStart}
-              onChangeText={setBlackoutStart}
-              placeholder="YYYY-MM-DD HH:MM"
-              mono
-            />
-            <TextField
-              label="Ends at"
-              value={blackoutEnd}
-              onChangeText={setBlackoutEnd}
-              placeholder="YYYY-MM-DD HH:MM"
-              mono
-            />
+            <DayPicker label="Starts on" value={blackoutStartDate} onChange={setBlackoutStartDate} />
+            <TimeField12 label="Starts at" value={blackoutStartTime} onChange={setBlackoutStartTime} />
+            <DayPicker label="Ends on" value={blackoutEndDate} onChange={setBlackoutEndDate} />
+            <TimeField12 label="Ends at" value={blackoutEndTime} onChange={setBlackoutEndTime} />
             <PrimaryButton label="Add blackout" onPress={handleAddBlackout} loading={addingBlackout} />
           </SectionCard>
         </ScrollView>
