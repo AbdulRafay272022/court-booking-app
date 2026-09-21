@@ -167,6 +167,60 @@ See `infra/README.md` for the table. Check they're firing with
 Manager — there is no SSH). If cron missed runs, the manual trigger above
 still applies.
 
+## 4. Something fails for a real user: read the production logs first
+
+Added 2026-09-21 after three incidents in one day were each diagnosed from the logs, not from the
+user's description ("Can't reach the server" turned out to be a 500 from a database constraint).
+**A browser "network / server connection error" is often a server 500**: an unhandled 500 carries no
+CORS headers, so the browser can't read it and reports a failed fetch. Check the server before the
+user's connection.
+
+There is no SSH. Read logs with SSM Run Command (always `--region ap-south-1`; on Git Bash also
+`export MSYS_NO_PATHCONV=1`; instance id from `terraform output ec2_instance_id`):
+
+```bash
+# ship the script as base64 and run it with bash (SSM's default shell is dash), then read the result
+SCRIPT='docker logs --since 60m court-booking-backend 2>&1 | grep -E "Traceback| 500 |whatsapp\.send|Error" | tail -50'
+printf '{"commands":["echo %s | base64 -d | bash"]}' "$(printf '%s' "$SCRIPT" | base64 -w0)" > params.json
+CID=$(aws ssm send-command --region ap-south-1 --instance-ids <id> --document-name AWS-RunShellScript \
+      --parameters file://params.json --query Command.CommandId --output text)
+sleep 8; aws ssm get-command-invocation --region ap-south-1 --command-id $CID --instance-id <id> \
+      --query '[Status,StandardOutputContent]' --output text
+```
+
+- **Logs start at the last deploy**: `docker logs` only covers the current container, and every deploy
+  recreates it. Older history is only in the database.
+- **Chat content is in the database, not the logs.** The `messages` table holds every WhatsApp and
+  in-app turn (`channel`, `sender_type` player|ai, `content`, `metadata` with the assistant's proposed
+  `actions`); `ai_usage_log` has one row per model call. Query them from inside the container with
+  `docker exec -i court-booking-backend python -` and the app's own `AsyncSessionLocal` (RDS is not
+  reachable from anywhere else). Mask phone numbers when printing (`'***'||right(phone,4)`).
+- **Failed notifications** are rows in `notification_log` with `status = 'failed'` and an
+  `error_message` (Meta error code inside). Until Meta business verification is done and the message
+  templates exist, most WhatsApp notifications outside the 24h window fail this way, by design.
+- Useful lines: `request.completed ... status=500`, `whatsapp.send.rejected` (Meta's error code),
+  `notification.whatsapp_failed`, `ai_chat.tool_error`.
+- The permission system in some Claude Code sessions blocks bulk production reads/writes; if it does,
+  stop and hand the user the exact command instead of working around it.
+
+## 5. Make someone an admin (or check who can review venues)
+
+A new venue sits in `pending` until an **admin** approves it at `/dashboard/admin/venues` (web only).
+Nobody is notified reliably (push is a stub; WhatsApp needs an open window), so the admin must open
+that page. There is **no way to create an admin in the app**: signup cannot select `admin` and there
+is no admin-management endpoint. The user signs up as a normal player first, then:
+
+```bash
+bash infra/scripts/promote_admin.sh +923XXXXXXXXX
+```
+
+It runs `infra/scripts/promote_admin.py` in the backend container and refuses unless exactly one
+account matches, that account is a `player`, and its phone is verified; it writes an
+`audit_log` entry (`user.role_changed`). **An account has one role**: after this it loses the player
+screens (app routing is role-gated), so use a separate number for the admin. Going back to player is
+the same kind of manual database change. Promoted so far: the project owner's own number (ending 6981),
+on 2026-09-20, as the reviewer of the first venue ("Maidan COurt").
+
 ## Not yet covered here
 
 - **Rotating the WhatsApp/AI vendor credentials themselves** (as opposed

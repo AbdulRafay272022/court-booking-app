@@ -10,7 +10,7 @@ region to the Karachi pilot; AWS has none in Pakistan).
 | `compute.tf` | The `t3.micro` Ubuntu 24.04 instance, its IAM role (SSM + ECR pull + this project's S3/KMS/SSM params only), the Elastic IP, and the `sslip.io` hostnames. |
 | `database.tf` | RDS Postgres 16, `db.t3.micro`, single-AZ, private subnets, not publicly accessible, encrypted, **1-day** automated backups (Free-plan limit; see RUNBOOK.md). |
 | `storage.tf` | KMS key, private payment-proofs bucket (KMS, versioned), venue-photos bucket served **only** via CloudFront (Origin Access Control), and the SSM params the instance reads. |
-| `scripts/` | `user_data.sh.tftpl` (first boot), `bootstrap.sh` (re-runnable setup phases), `court-booking.cron` (background jobs), `remote-deploy.sh` (what a deploy runs on the box). |
+| `scripts/` | `user_data.sh.tftpl` (first boot), `bootstrap.sh` (re-runnable setup phases), `court-booking.cron` (background jobs), `remote-deploy.sh` (what a deploy runs on the box), `promote_admin.sh` + `promote_admin.py` (make an existing verified player an admin over SSM; see `court-booking-backend/RUNBOOK.md` section 5). |
 
 State is local (`terraform.tfstate`, gitignored) — fine for one operator. It contains
 the generated RDS password, so **move it to an encrypted S3 backend before a second
