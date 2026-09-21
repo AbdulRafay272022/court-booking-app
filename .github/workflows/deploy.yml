@@ -4,7 +4,7 @@ name: Build, push, deploy
 # The deploy job's remote script (infra/scripts/remote-deploy.sh) runs `alembic upgrade head` from the new image before
 # the new backend starts. The project owner requires that a migration is NEVER pushed without their explicit "go" and a
 # fresh manual RDS snapshot. The `migration-guard` job below enforces it: it fails the run (nothing deploys) if any
-# migration file changed since the last successful deploy, unless a commit in that range says [migration-go].
+# migration file changed since the last successful deploy, unless a commit in that range has a line that is exactly 'Migration-Go: owner-approved'.
 
 # Runs on every push to main: builds both images, pushes them to ECR, then
 # (once the EC2_INSTANCE_ID Actions variable is set -- see the "deploy"

@@ -7,8 +7,8 @@
 > without the project owner's explicit "go"** (and a fresh manual RDS snapshot; see "Migration rules" in
 > `docs/SECTION_32_PLAN.md`). This is enforced: the `migration-guard` job in `.github/workflows/deploy.yml`
 > (`infra/scripts/check-migration-guard.sh`) FAILS the run, and nothing deploys, if any file in
-> `court-booking-backend/alembic/versions/` changed since the last successful deploy and no commit in that range contains
-> the exact text `[migration-go]`. Add that text to a commit message only AFTER the owner says "go". If you are not sure a
+> `court-booking-backend/alembic/versions/` changed since the last successful deploy and no commit in that range has
+> a line that is exactly `Migration-Go: owner-approved`. Add that line to a commit message only AFTER the owner says "go". If you are not sure a
 > change contains a migration, it does not need one; do not push it.
 
 Project context for future Claude Code sessions working on this repo. Read this

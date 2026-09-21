@@ -8,8 +8,11 @@
 #
 #   - no migration file added/changed in the push  -> passes silently
 #   - a migration file added/changed               -> prints a loud warning, and FAILS the run (nothing is deployed)
-#                                                     unless a commit in the push has the exact marker  [migration-go]
-#                                                     in its message, which is added only after the owner says "go".
+#                                                     unless a commit in the push has a line that is EXACTLY
+#                                                         Migration-Go: owner-approved
+#                                                     in its message (the whole line, nothing else on it), which is
+#                                                     added only after the owner says "go". A commit message that merely
+#                                                     MENTIONS the words does not count.
 #
 # usage: check-migration-guard.sh <commit before the push> <commit after the push>
 set -euo pipefail
@@ -37,13 +40,13 @@ echo "::warning::THIS PUSH CONTAINS A DATABASE MIGRATION. The deploy runs it on 
 echo "Migration file(s) in this push:"
 echo "$changed" | sed 's/^/  - /'
 
-if git log --format=%B "${BEFORE}..${AFTER}" | grep -qF "[migration-go]"; then
-  echo "migration guard: a commit in this push carries [migration-go] (the owner approved it). Continuing."
+if git log --format=%B "${BEFORE}..${AFTER}" | tr -d '\r' | grep -qx "Migration-Go: owner-approved"; then
+  echo "migration guard: a commit in this push carries the line 'Migration-Go: owner-approved' (the owner approved it). Continuing."
   exit 0
 fi
 
 cat <<'MSG'
 ::error::MIGRATION BLOCKED. A migration must never reach production without the project owner's explicit "go" (and a fresh manual RDS snapshot). Nothing was deployed.
-To proceed, the owner says "go"; then add the exact text [migration-go] to a commit message in the push (docs/SECTION_32_PLAN.md, "Migration rules"). Otherwise, remove the migration from this push.
+To proceed, the owner says "go"; then add a line reading exactly 'Migration-Go: owner-approved' to a commit message in the push (docs/SECTION_32_PLAN.md, "Migration rules"). Otherwise, remove the migration from this push.
 MSG
 exit 1

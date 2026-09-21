@@ -7,8 +7,8 @@
 > without the project owner's explicit "go"** (and a fresh manual RDS snapshot; see "Migration rules" in
 > `docs/SECTION_32_PLAN.md`). This is enforced: the `migration-guard` job in `.github/workflows/deploy.yml`
 > (`infra/scripts/check-migration-guard.sh`) FAILS the run, and nothing deploys, if any file in
-> `court-booking-backend/alembic/versions/` changed since the last successful deploy and no commit in that range contains
-> the exact text `[migration-go]`. Add that text to a commit message only AFTER the owner says "go". If you are not sure a
+> `court-booking-backend/alembic/versions/` changed since the last successful deploy and no commit in that range has
+> a line that is exactly `Migration-Go: owner-approved`. Add that line to a commit message only AFTER the owner says "go". If you are not sure a
 > change contains a migration, it does not need one; do not push it.
 
 Owner's spec for the Karachi padel/futsal pilot ("Maidan"). This file holds the working rules, the current order of work,
@@ -46,7 +46,7 @@ progress table after EVERY part.
 2. The owner takes a fresh **manual RDS snapshot** and confirms it (automated backups are 1 day; a restore was never
    rehearsed). Check it is visible with `aws rds describe-db-snapshots --snapshot-type manual`.
 3. Test upgrade AND downgrade (and the migration's refusal cases) on a scratch database with production-shaped data.
-4. **Stop until the owner says "go".** Then push with `[migration-go]` in a commit message (the CI guard requires it).
+4. **Stop until the owner says "go".** Then push with a commit message line that is exactly `Migration-Go: owner-approved` (the CI guard requires it).
 5. The deploy runs the migration from the new image before the new backend starts; read the output back to the owner
    (SSM: `aws ssm list-commands` -> the `deploy <sha>` command -> `get-command-invocation`), then prove it on production.
 
