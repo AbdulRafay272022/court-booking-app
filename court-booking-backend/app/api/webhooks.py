@@ -21,7 +21,7 @@ from app.services.notification_service import NotificationService
 from app.services.payment_service import PaymentService
 from app.services.venue_service import VenueService
 from app.services.whatsapp_service import WhatsAppService, mask_phone
-from app.utils.timezone import format_pkt_slot
+from app.utils.timezone import format_duration, format_pkr, format_pkt_slot
 
 logger = structlog.get_logger(__name__)
 
@@ -143,8 +143,15 @@ def _is_plain_affirmative(text: str) -> bool:
     return any(_AFFIRMATIVE_RE.match(w) for w in words)
 
 
-async def _pending_confirmation(db: DbSession, user: User) -> tuple[str, str] | None:
-    """(court_id, starts_at) if the assistant's immediately preceding message proposed a booking
+def _confirm_button_id(court_id: str, starts_at: str, slot_count: int = 1) -> str:
+    """`confirm:<court_id>:<starts_at>` (one slot) or `confirm:<court_id>:<starts_at>|x<slot_count>`. The
+    suffix is only added for a longer booking so buttons already in players' chats keep working."""
+    base = f"confirm:{court_id}:{starts_at}"
+    return base if slot_count == 1 else f"{base}|x{slot_count}"
+
+
+async def _pending_confirmation(db: DbSession, user: User) -> tuple[str, str, int] | None:
+    """(court_id, starts_at, slot_count) if the assistant's immediately preceding message proposed a booking
     (its `confirm_booking` action is stored in the message's metadata) and the player has said
     nothing since except the message being handled now. WhatsApp never renders the assistant's
     buttons as text, so a typed "yes" is the normal way to answer -- and the model itself cannot
@@ -170,7 +177,7 @@ async def _pending_confirmation(db: DbSession, user: User) -> tuple[str, str] | 
         if action.get("type") == "confirm_booking":
             data = action.get("data") or {}
             if data.get("court_id") and data.get("starts_at"):
-                return data["court_id"], data["starts_at"]
+                return data["court_id"], data["starts_at"], int(data.get("slot_count") or 1)
     return None
 
 
@@ -178,8 +185,8 @@ async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: s
     if _is_plain_affirmative(text):
         pending = await _pending_confirmation(db, user)
         if pending is not None:
-            court_id, starts_at = pending
-            await _handle_button_reply(db, settings, user, f"confirm:{court_id}:{starts_at}")
+            court_id, starts_at, slot_count = pending
+            await _handle_button_reply(db, settings, user, _confirm_button_id(court_id, starts_at, slot_count))
             return
 
     chat_service = AIChatService(db, settings)
@@ -199,7 +206,13 @@ async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: s
             sent = await whatsapp.send_buttons(
                 user.phone,
                 result.reply,
-                [(f"confirm:{confirm.data['court_id']}:{confirm.data['starts_at']}", confirm.label), ("decline", "No, thanks")],
+                [
+                    (
+                        _confirm_button_id(confirm.data["court_id"], confirm.data["starts_at"], int(confirm.data.get("slot_count") or 1)),
+                        confirm.label,
+                    ),
+                    ("decline", "No, thanks"),
+                ],
             )
         except Exception:  # noqa: BLE001 -- fall back to plain text; a typed "yes" still works
             logger.warning("webhooks.whatsapp.buttons_failed", exc_info=True)
@@ -300,16 +313,22 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
     if button_id.startswith("confirm:"):
         try:
             _prefix, court_id_str, starts_at_str = button_id.split(":", 2)
+            slot_count = 1
+            if "|x" in starts_at_str:
+                starts_at_str, count_str = starts_at_str.rsplit("|x", 1)
+                slot_count = int(count_str)
             booking_service = BookingService(db, settings)
             booking = await booking_service.create_hold(
-                user, uuid.UUID(court_id_str), datetime.fromisoformat(starts_at_str)
+                user, uuid.UUID(court_id_str), datetime.fromisoformat(starts_at_str), slot_count
             )
             court = await db.get(Court, booking.court_id)
             venue = await db.get(Venue, court.venue_id) if court else None
             where = f"{court.name} at {venue.name}, " if court and venue else ""
             lines = [
                 f"Held! {where}{format_pkt_slot(booking.starts_at, booking.ends_at)} (Pakistan time).",
-                f"Please pay PKR {float(booking.advance_amount):,.0f} within "
+                f"Total {format_pkr(float(booking.price))} for "
+                f"{format_duration(int((booking.ends_at - booking.starts_at).total_seconds() // 60))}.",
+                f"Please pay {format_pkr(float(booking.advance_amount))} within "
                 f"{settings.BOOKING_HOLD_MINUTES} minutes to confirm:",
             ]
             # Say WHERE to pay: this reply used to stop at "send your payment screenshot" with no bank.

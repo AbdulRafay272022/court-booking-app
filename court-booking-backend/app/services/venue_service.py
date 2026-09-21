@@ -51,6 +51,9 @@ class VenueService:
             bank_details=encrypt_json(payload.bank_details.model_dump(), self.settings)
             if payload.bank_details
             else None,
+            # one policy per venue (Section 32 Part 4); a cutoff means nothing when cancelling is not allowed
+            cancellation_allowed=payload.cancellation_allowed,
+            cancellation_cutoff_hours=payload.cancellation_cutoff_hours if payload.cancellation_allowed else None,
         )
         self.db.add(venue)
         await self.db.commit()
@@ -110,6 +113,8 @@ class VenueService:
         bank_details = data.pop("bank_details", "unset")
         for field, value in data.items():
             setattr(venue, field, value)
+        if data.get("cancellation_allowed") is False:
+            venue.cancellation_cutoff_hours = None  # a cutoff means nothing when cancelling is not allowed
         if bank_details != "unset":
             venue.bank_details = encrypt_json(bank_details, self.settings) if bank_details else None
         if lat is not None and lon is not None:

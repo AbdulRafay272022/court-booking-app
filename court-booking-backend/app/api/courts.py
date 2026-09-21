@@ -61,8 +61,6 @@ async def create_court(
         is_indoor=payload.is_indoor,
         has_floodlights=payload.has_floodlights,
         capacity=payload.capacity,
-        cancellation_allowed=payload.cancellation_allowed,
-        cancellation_cutoff_hours=payload.cancellation_cutoff_hours,
     )
     db.add(court)
 

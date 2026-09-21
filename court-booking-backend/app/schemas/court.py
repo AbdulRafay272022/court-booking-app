@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ScheduleTemplateIn(BaseModel):
@@ -58,33 +58,44 @@ class BlackoutOut(BlackoutIn):
     id: uuid.UUID
 
 
+# Section 32 Part 4: the slot lengths an owner may choose per court. 90 is here for padel.
+ALLOWED_SLOT_MINUTES = (30, 60, 90, 120)
+
+
+def _check_slot_minutes(v: int | None) -> int | None:
+    if v is not None and v not in ALLOWED_SLOT_MINUTES:
+        raise ValueError("slot_minutes must be one of 30, 60, 90 or 120")
+    return v
+
+
 class CourtCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     sport: str = Field(min_length=1, max_length=50)
-    slot_minutes: int = Field(default=60, ge=15, le=240)
+    slot_minutes: int = 60
     surface_type: str | None = None
     is_indoor: bool = False
     has_floodlights: bool = False
     capacity: int | None = None
-    # Section 29 Part C. Defaults match the model's own defaults (unrestricted) so a court
-    # created without opinion on this behaves exactly like before this feature existed.
-    cancellation_allowed: bool = True
-    cancellation_cutoff_hours: int | None = Field(default=None, ge=0)
+    # The cancellation policy is per VENUE now (Section 32 Part 4). A client that still sends
+    # cancellation_allowed / cancellation_cutoff_hours for a court has them ignored: unknown fields are
+    # dropped by this model, and nothing here writes the deprecated court columns.
+
+    _slot_minutes_ok = field_validator("slot_minutes")(_check_slot_minutes)
 
 
 class CourtUpdateIn(BaseModel):
     name: str | None = None
     sport: str | None = None
-    slot_minutes: int | None = Field(default=None, ge=15, le=240)
+    slot_minutes: int | None = None
     surface_type: str | None = None
     is_indoor: bool | None = None
     has_floodlights: bool | None = None
     capacity: int | None = None
-    cancellation_allowed: bool | None = None
-    cancellation_cutoff_hours: int | None = Field(default=None, ge=0)
     photo_url: str | None = None
     sort_order: int | None = None
     is_active: bool | None = None
+
+    _slot_minutes_ok = field_validator("slot_minutes")(_check_slot_minutes)
 
 
 class CourtOut(BaseModel):
@@ -99,6 +110,8 @@ class CourtOut(BaseModel):
     is_indoor: bool
     has_floodlights: bool
     capacity: int | None
+    # DEPRECATED read-only mirror of the venue's policy (see Court.cancellation_allowed): kept so app builds
+    # from before Section 32 Part 4 still work. New clients read venue.cancellation_* instead.
     cancellation_allowed: bool
     cancellation_cutoff_hours: int | None
     photo_url: str | None

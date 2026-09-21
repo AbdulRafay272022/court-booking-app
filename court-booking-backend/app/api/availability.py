@@ -1,12 +1,13 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.dependencies import DbSession, OptionalCurrentUser
 from app.models.court import Court
 from app.schemas.availability import (
+    BookingQuoteOut,
     CourtAvailabilityOut,
     DateSlots,
     DayAvailabilityOut,
@@ -74,3 +75,29 @@ async def get_venue_availability(
         )
 
     return VenueAvailabilityOut(venue_id=str(venue_id), date=date, courts=court_availabilities)
+
+
+@router.get("/courts/{court_id}/quote", response_model=BookingQuoteOut)
+async def quote_booking(
+    court_id: uuid.UUID,
+    db: DbSession,
+    starts_at: datetime,
+    slot_count: int = Query(default=1, ge=1, le=16),
+) -> BookingQuoteOut:
+    """What a booking of `slot_count` consecutive slots from `starts_at` costs, before anything is held."""
+    if starts_at.tzinfo is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="starts_at must include a UTC offset")
+    service = AvailabilityService(db)
+    court = await service.get_court(court_id)
+    quote = await service.quote_range(court, starts_at, slot_count)
+    return BookingQuoteOut(
+        court_id=str(court_id),
+        starts_at=quote.starts_at,
+        ends_at=quote.ends_at,
+        slot_count=quote.slot_count,
+        slot_minutes=court.slot_minutes,
+        duration_minutes=quote.duration_minutes,
+        price=quote.price,
+        advance_amount=quote.advance_amount,
+        balance_due=round(quote.price - quote.advance_amount, 2),
+    )

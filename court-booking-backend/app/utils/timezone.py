@@ -119,6 +119,23 @@ def format_slot_label(starts_at: datetime, ends_at: datetime, now_utc: datetime 
 format_pkt_slot = format_slot_label
 
 
+def format_duration(minutes: int) -> str:
+    """"1 hour", "1.5 hours", "2 hours", "30 minutes" -- how a booking length is said to a player."""
+    if minutes < 60:
+        return f"{minutes} minutes"
+    hours = minutes / 60
+    text = f"{hours:g}"
+    return f"{text} hour" if hours == 1 else f"{text} hours"
+
+
+def format_pkr(amount: float | int) -> str:
+    """"PKR 3,500" (never "Rs. 3500.0"): money is whole rupees unless there is a real fraction."""
+    value = float(amount)
+    if value == int(value):
+        return f"PKR {int(value):,}"
+    return f"PKR {value:,.2f}"
+
+
 def format_pkt_now(now_utc: datetime) -> str:
     """"Sunday, 20 September 2026, 9:15 PM" in Pakistan time, for the assistant's system prompt."""
     local = utc_to_pkt_naive(now_utc)

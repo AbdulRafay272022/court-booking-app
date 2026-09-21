@@ -27,6 +27,9 @@ class VenueCreateIn(BaseModel):
     sports: list[str] = Field(min_length=1)
     amenities: list[str] | None = None
     bank_details: BankDetailsIn | None = None
+    # Section 32 Part 4: one cancellation policy per venue (reverses Section 31's per-court policy).
+    cancellation_allowed: bool = True
+    cancellation_cutoff_hours: int | None = Field(default=None, ge=0, le=720)
 
 
 class VenueUpdateIn(BaseModel):
@@ -44,6 +47,8 @@ class VenueUpdateIn(BaseModel):
     bank_details: BankDetailsIn | None = None
     auto_approve_enabled: bool | None = None
     auto_approve_min_bookings: int | None = Field(default=None, ge=0)
+    cancellation_allowed: bool | None = None
+    cancellation_cutoff_hours: int | None = Field(default=None, ge=0, le=720)
 
 
 class VenueOut(BaseModel):
@@ -66,6 +71,8 @@ class VenueOut(BaseModel):
     rejection_reason: str | None = None
     auto_approve_enabled: bool
     auto_approve_min_bookings: int
+    cancellation_allowed: bool = True
+    cancellation_cutoff_hours: int | None = None
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None

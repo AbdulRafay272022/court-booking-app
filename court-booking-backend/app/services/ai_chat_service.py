@@ -16,11 +16,14 @@ from app.models.venue import Venue
 from app.services.ai.factory import UnconfiguredProviderError, get_chat_provider
 from app.services.ai.tools import BOOKING_TOOLS
 from app.services.ai.usage import log_ai_usage
-from app.services.availability_service import AvailabilityService
+from app.services.availability_service import MAX_BOOKING_MINUTES, AvailabilityService
 from app.services.booking_service import BookingService
 from app.services.venue_service import VenueService
+from app.errors import AppError, ErrorCode
 from app.utils.timezone import (
     enforce_display_format,
+    format_duration,
+    format_pkr,
     format_pkt_now,
     format_slot_label,
     format_time,
@@ -68,6 +71,13 @@ Rules:
    for isn't one of them, say so and offer the nearest available slots -- never invent, round or
    shift a time. Court slots are fixed blocks (often 60 or 90 minutes), so "10 to 11:30" only works
    if such a block exists.
+9. Duration: before you propose a booking you must know HOW LONG the player wants to play. If they did
+   not say, ask "How long do you want to play?" and offer the court's `durations` from get_venue_courts
+   (use each one's label). Then call quote_booking and tell them the total exactly as its
+   `total_price_text` says, and pass the same duration_minutes to propose_booking_confirmation.
+10. Money: write every amount exactly as the tool's `*_text` field gives it (for example "PKR 3,500").
+   Never write "Rs", a decimal like "3500.0", or do price arithmetic yourself. When a slot or time is
+   not available, say only what the tool returned; never invent a reason for it.
 """
 
 
@@ -274,6 +284,8 @@ class AIChatService:
                 return await self._tool_get_venue_courts(tool_input)
             if name == "check_availability":
                 return await self._tool_check_availability(tool_input)
+            if name == "quote_booking":
+                return await self._tool_quote_booking(tool_input)
             if name == "propose_booking_confirmation":
                 return await self._tool_propose_confirmation(tool_input, actions)
             if name == "hold_slot":
@@ -317,7 +329,17 @@ class AIChatService:
         venue = await self.venue_service.get_venue(uuid.UUID(tool_input["venue_id"]))
         return {
             "courts": [
-                {"id": str(c.id), "name": c.name, "sport": c.sport, "slot_minutes": c.slot_minutes}
+                {
+                    "id": str(c.id),
+                    "name": c.name,
+                    "sport": c.sport,
+                    "slot_minutes": c.slot_minutes,
+                    # what a player can choose: one slot, two slots ... up to the platform's longest booking
+                    "durations": [
+                        {"minutes": m, "label": format_duration(m)}
+                        for m in range(c.slot_minutes, max(MAX_BOOKING_MINUTES, c.slot_minutes) + 1, c.slot_minutes)
+                    ],
+                }
                 for c in venue.courts
                 if c.is_active
             ]
@@ -336,49 +358,95 @@ class AIChatService:
                 {
                     "label": format_slot_label(s.starts_at, s.ends_at),
                     "starts_at": s.starts_at.isoformat(),
-                    "price": s.price,
+                    # ready-made, so the model never writes "Rs. 3500.0"
+                    "price_text": format_pkr(s.price),
                 }
                 for s in available
             ][:40],
             **({"note": "No available slots on this date."} if not available else {}),
         }
 
-    async def _tool_propose_confirmation(self, tool_input: dict, actions: list[ChatAction]) -> dict:
-        # Only a REAL, currently-available slot may be proposed. The model used to propose whatever
-        # it reconstructed from the chat text ("10:30 PM - 12:00 AM"), including times that are not
-        # on the court's grid at all, and the player's "yes" then had nothing valid to confirm.
-        not_a_slot = {
-            "error": "That exact time is not an available slot. Call check_availability and choose one "
-            "of the slots it returns (use its starts_at value unchanged)."
-        }
+    @staticmethod
+    def _slot_count_for(court: Court, duration_minutes: int | None) -> int:
+        """The number of consecutive slots a requested duration means on this court (None = one slot)."""
+        if duration_minutes is None:
+            return 1
+        try:
+            minutes = int(duration_minutes)
+        except (TypeError, ValueError):
+            minutes = 0
+        if minutes <= 0 or minutes % court.slot_minutes != 0:
+            raise AppError(
+                400,
+                ErrorCode.INVALID_DURATION,
+                f"This court is booked in blocks of {format_duration(court.slot_minutes)}, so the length must be "
+                f"a multiple of that.",
+            )
+        return minutes // court.slot_minutes
+
+    async def _quote_for_tool(self, tool_input: dict):
+        """(court, quote) for a court_id + starts_at (+ duration), or raises AppError with a plain reason.
+        Only a REAL, currently-available range may be quoted or proposed."""
         try:
             court = await self.availability.get_court(uuid.UUID(tool_input["court_id"]))
             starts_at = datetime.fromisoformat(tool_input["starts_at"])
         except (ValueError, KeyError, HTTPException):
-            return not_a_slot
+            raise AppError(
+                400,
+                ErrorCode.INVALID_SLOT_TIME,
+                "That exact time is not an available slot. Call check_availability and choose one "
+                "of the slots it returns (use its starts_at value unchanged).",
+            ) from None
         if starts_at.tzinfo is None:
-            return not_a_slot
-        slots = await self.availability.get_day_slots(court, utc_to_pkt_naive(starts_at).date())
-        slot = next((s for s in slots if s.starts_at == starts_at and s.status == "available"), None)
-        if slot is None:
-            return not_a_slot
-        data = {"court_id": str(court.id), "starts_at": slot.starts_at.isoformat()}
+            raise AppError(
+                400,
+                ErrorCode.INVALID_SLOT_TIME,
+                "That exact time is not an available slot. Call check_availability and choose one "
+                "of the slots it returns (use its starts_at value unchanged).",
+            )
+        slot_count = self._slot_count_for(court, tool_input.get("duration_minutes"))
+        return court, await self.availability.quote_range(court, starts_at, slot_count)
+
+    @staticmethod
+    def _quote_result(quote) -> dict:
+        return {
+            "label": format_slot_label(quote.starts_at, quote.ends_at),
+            "duration_text": format_duration(quote.duration_minutes),
+            "total_price_text": format_pkr(quote.price),
+            "advance_text": format_pkr(quote.advance_amount),
+        }
+
+    async def _tool_quote_booking(self, tool_input: dict) -> dict:
+        _court, quote = await self._quote_for_tool(tool_input)
+        return {"ok": True, **self._quote_result(quote)}
+
+    async def _tool_propose_confirmation(self, tool_input: dict, actions: list[ChatAction]) -> dict:
+        # Only a REAL, currently-available range may be proposed. The model used to propose whatever
+        # it reconstructed from the chat text ("10:30 PM - 12:00 AM"), including times that are not
+        # on the court's grid at all, and the player's "yes" then had nothing valid to confirm.
+        court, quote = await self._quote_for_tool(tool_input)
+        data = {"court_id": str(court.id), "starts_at": quote.starts_at.isoformat(), "slot_count": quote.slot_count}
         actions.append(ChatAction(type="confirm_booking", label="Yes, book it", data=data))
         actions.append(ChatAction(type="decline", label="No, thanks", data={}))
-        return {"ok": True, "label": format_slot_label(slot.starts_at, slot.ends_at), "price": slot.price}
+        return {"ok": True, **self._quote_result(quote)}
 
     async def _tool_hold_slot(self, user: User, tool_input: dict) -> dict:
+        court = await self.availability.get_court(uuid.UUID(tool_input["court_id"]))
         booking = await self.booking_service.create_hold(
-            user, uuid.UUID(tool_input["court_id"]), datetime.fromisoformat(tool_input["starts_at"])
+            user,
+            court.id,
+            datetime.fromisoformat(tool_input["starts_at"]),
+            self._slot_count_for(court, tool_input.get("duration_minutes")),
         )
         return {
             "booking_id": str(booking.id),
             "status": booking.status.value,
             "label": format_slot_label(booking.starts_at, booking.ends_at),
+            "duration_text": format_duration(int((booking.ends_at - booking.starts_at).total_seconds() // 60)),
             # Ready-made text: the model used to be handed an ISO timestamp here and re-formatted it.
             "held_until_label": format_time(booking.held_until) if booking.held_until else None,
-            "price": float(booking.price),
-            "advance_amount": float(booking.advance_amount),
+            "total_price_text": format_pkr(float(booking.price)),
+            "advance_text": format_pkr(float(booking.advance_amount)),
         }
 
     async def _tool_get_payment_instructions(self, user: User, tool_input: dict) -> dict:
@@ -388,7 +456,7 @@ class AIChatService:
         court = await self.db.get(Court, booking.court_id)
         venue = await self.db.get(Venue, court.venue_id) if court else None
         bank_details = self.venue_service.decrypted_bank_details(venue) if venue else None
-        return {"amount": float(booking.advance_amount), "bank_details": bank_details or {}}
+        return {"amount_text": format_pkr(float(booking.advance_amount)), "bank_details": bank_details or {}}
 
     async def _tool_cancel_booking(self, user: User, tool_input: dict) -> dict:
         booking = await self.booking_service.require_accessible_booking(

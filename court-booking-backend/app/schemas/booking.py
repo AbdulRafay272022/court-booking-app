@@ -26,6 +26,9 @@ AwareDatetime = Annotated[datetime, AfterValidator(_require_tz_aware)]
 class BookingHoldIn(BaseModel):
     court_id: uuid.UUID
     starts_at: AwareDatetime
+    # Section 32 Part 4: how many consecutive slots (the court's slot length each) to book as one booking.
+    # 1 keeps every existing client working unchanged.
+    slot_count: int = Field(default=1, ge=1, le=16)
 
 
 class WalkInBookingIn(BaseModel):

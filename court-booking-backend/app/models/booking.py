@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -51,6 +51,21 @@ class Booking(UUIDPkMixin, TimestampMixin, Base):
             "starts_at",
             unique=True,
             postgresql_where=text("status IN ('held', 'payment_submitted', 'booked')"),
+        ),
+        # Section 32 Part 4 (multi-slot bookings): the index above only stops two live bookings
+        # with the EXACT same starts_at, which is enough while every booking is one slot long. A
+        # 90-minute booking that overlaps a 60-minute one by 30 minutes has a different starts_at,
+        # so it slipped past. This exclusion constraint refuses ANY overlap of two live bookings
+        # on the same court, in the database, with no check-then-write window. The range is
+        # half-open '[)' so 6-7 PM and 7-8 PM do NOT clash. Needs the btree_gist extension (the
+        # migration creates it; the test setup does too). one_live_booking_per_slot is kept until
+        # this one is proven in production, then the owner decides whether it is redundant.
+        ExcludeConstraint(
+            ("court_id", "="),
+            (text("tstzrange(starts_at, ends_at, '[)')"), "&&"),
+            name="no_overlapping_live_bookings",
+            using="gist",
+            where=text("status IN ('held', 'payment_submitted', 'booked')"),
         ),
         Index("idx_bookings_court_time", "court_id", "starts_at"),
         Index("idx_bookings_held_expiry", "held_until", postgresql_where=text("status = 'held'")),

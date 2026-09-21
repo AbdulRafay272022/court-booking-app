@@ -47,3 +47,18 @@ class VenueAvailabilityOut(BaseModel):
     venue_id: str
     date: date
     courts: list[CourtAvailabilityOut]
+
+
+class BookingQuoteOut(BaseModel):
+    """The total for a booking of `slot_count` consecutive slots (Section 32 Part 4), priced slot by slot with
+    the court's own rules. The apps show this before the player confirms; create_hold charges exactly this."""
+
+    court_id: str
+    starts_at: datetime
+    ends_at: datetime
+    slot_count: int
+    slot_minutes: int
+    duration_minutes: int
+    price: float
+    advance_amount: float
+    balance_due: float

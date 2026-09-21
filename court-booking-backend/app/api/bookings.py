@@ -31,7 +31,7 @@ async def hold_booking(
     payload: BookingHoldIn, db: DbSession, settings: AppSettings, user: CurrentUser
 ) -> BookingHoldResponse:
     service = BookingService(db, settings)
-    booking = await service.create_hold(user, payload.court_id, payload.starts_at)
+    booking = await service.create_hold(user, payload.court_id, payload.starts_at, payload.slot_count)
 
     court = await db.get(Court, booking.court_id)
     payment_instructions = None

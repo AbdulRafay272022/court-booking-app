@@ -1,8 +1,8 @@
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, literal_column, text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from app.database import Base
 from app.models.mixins import TimestampMixin, UUIDPkMixin
@@ -27,14 +27,27 @@ class Court(UUIDPkMixin, TimestampMixin, Base):
         Boolean, default=False, server_default=text("false"), nullable=False
     )
     capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Section 29 Part C: a player-cancellable PAID (booked) slot is a per-court policy, not a
-    # single global rule -- some venues (or specific courts) don't allow it at all, others allow
-    # it up to N hours before start. Defaults preserve today's de facto behavior (unrestricted)
-    # for every existing court until an owner actively opts into a stricter policy.
-    cancellation_allowed: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=text("true"), nullable=False
+    # DEPRECATED, drop next release (Section 32 Part 4). The cancellation policy moved to
+    # `venues.cancellation_allowed` / `venues.cancellation_cutoff_hours`. These two mapped columns are
+    # never read or written by the code (the underscore names make any use stand out); they stay in the
+    # table for one release only so the migration is reversible.
+    _deprecated_cancellation_allowed: Mapped[bool] = mapped_column(
+        "cancellation_allowed", Boolean, default=True, server_default=text("true"), nullable=False
     )
-    cancellation_cutoff_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    _deprecated_cancellation_cutoff_hours: Mapped[int | None] = mapped_column(
+        "cancellation_cutoff_hours", Integer, nullable=True
+    )
+    # Read-only mirror of the VENUE's policy under the old attribute names, so API responses keep the
+    # fields that app builds from before Section 32 Part 4 still read (the mobile app needs an EAS build
+    # to update). It is computed by the database from the venue row -- there is only one source of truth.
+    cancellation_allowed: Mapped[bool] = column_property(
+        literal_column("(SELECT v.cancellation_allowed FROM venues v WHERE v.id = courts.venue_id)", Boolean),
+        deferred=False,
+    )
+    cancellation_cutoff_hours: Mapped[int | None] = column_property(
+        literal_column("(SELECT v.cancellation_cutoff_hours FROM venues v WHERE v.id = courts.venue_id)", Integer),
+        deferred=False,
+    )
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     is_active: Mapped[bool] = mapped_column(

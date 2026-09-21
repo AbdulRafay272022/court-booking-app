@@ -90,16 +90,17 @@ class BookingService:
         return True
 
     async def _insert_booking(self, booking: Booking) -> None:
-        """The unique partial index one_live_booking_per_slot (see the Booking
-        model) is what actually prevents double-booking. This commit either
-        succeeds or raises IntegrityError -- there is no separate locking step
-        because none is needed."""
+        """The unique partial index one_live_booking_per_slot and the exclusion constraint
+        no_overlapping_live_bookings (see the Booking model) are what actually prevent
+        double-booking -- the first for the same start time, the second for ANY overlap, which
+        is what multi-slot bookings need. This commit either succeeds or raises IntegrityError
+        -- there is no separate locking step because none is needed."""
         self.db.add(booking)
         try:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            if "one_live_booking_per_slot" in str(exc.orig):
+            if "one_live_booking_per_slot" in str(exc.orig) or "no_overlapping_live_bookings" in str(exc.orig):
                 raise AppError(
                     status.HTTP_409_CONFLICT,
                     ErrorCode.SLOT_ALREADY_TAKEN,
@@ -121,7 +122,11 @@ class BookingService:
             )
             await self.db.commit()
 
-    async def create_hold(self, player: User, court_id: uuid.UUID, starts_at: datetime) -> Booking:
+    async def create_hold(
+        self, player: User, court_id: uuid.UUID, starts_at: datetime, slot_count: int = 1
+    ) -> Booking:
+        """Hold `slot_count` consecutive slots (Section 32 Part 4: the player picks a duration, in
+        multiples of the court's slot length) as ONE booking priced across the whole range."""
         if starts_at.tzinfo is None:
             # The HTTP endpoint's Pydantic schema (BookingHoldIn) already
             # rejects a naive starts_at before it gets here, but this method
@@ -142,24 +147,12 @@ class BookingService:
         court = await self._load_active_court(court_id)
         await self._require_approved_venue_for_court(court)
 
-        if not await self.availability.is_slot_grid_aligned(court, starts_at):
-            raise AppError(
-                status.HTTP_400_BAD_REQUEST,
-                ErrorCode.INVALID_SLOT_TIME,
-                "starts_at must exactly match one of this court's scheduled slot start times",
-            )
-
-        ends_at = starts_at + timedelta(minutes=court.slot_minutes)
-
-        if not await self.availability.is_slot_open(court_id, starts_at, ends_at):
-            raise AppError(
-                status.HTTP_400_BAD_REQUEST, ErrorCode.SLOT_BLOCKED, "This slot is blocked out and not bookable"
-            )
-
-        price, advance_percentage = await self.availability.price_for_range_with_advance(
-            court, starts_at, ends_at
-        )
-        advance_amount = round(price * float(advance_percentage) / 100, 2)
+        # Every slot in the range must be on the court's real grid, free, and priced; the total is the sum
+        # of each slot's own rate. (The pre-check gives a clear message; the database constraints still
+        # decide any race.)
+        quote = await self.availability.quote_range(court, starts_at, slot_count)
+        ends_at = quote.ends_at
+        price, advance_amount = quote.price, quote.advance_amount
 
         booking = Booking(
             court_id=court_id,
@@ -315,32 +308,38 @@ class BookingService:
         return booking
 
     async def _enforce_cancellation_policy(self, booking: Booking) -> None:
-        """A player cancelling an already-PAID (booked) booking is gated by the court's own
-        policy (Section 29 Part C -- a business decision, not a global rule): some
-        courts/venues don't allow it at all, others allow it up to a configured number of
-        hours before start. A plain pre-check, not the atomic-transition pattern -- this is a
-        business-rule gate, not a concurrency-integrity concern (nothing bad happens if the
-        policy changes between this check and the commit; the worst case is a cancel that was
-        allowed a moment ago and no longer is, which is an acceptable, narrow race for a
-        setting an owner rarely touches)."""
+        """A player cancelling an already-PAID (booked) booking is gated by the VENUE's policy
+        (Section 32 Part 4 -- one policy per venue, reversing Section 31's per-court policy):
+        some venues don't allow it at all, others allow it up to a configured number of hours
+        before start. Reads `venues.cancellation_*` only; the old per-court columns are deprecated
+        and never consulted, so there is one source of truth. A plain pre-check, not the
+        atomic-transition pattern -- this is a business-rule gate, not a concurrency-integrity
+        concern (nothing bad happens if the policy changes between this check and the commit; the
+        worst case is a cancel that was allowed a moment ago and no longer is, which is an
+        acceptable, narrow race for a setting an owner rarely touches)."""
+        from app.models.venue import Venue
+
         court = await self.db.get(Court, booking.court_id)
         if court is None:
             return
-        if not court.cancellation_allowed:
+        venue = await self.db.get(Venue, court.venue_id)
+        if venue is None:
+            return
+        if not venue.cancellation_allowed:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,
                 ErrorCode.CANCELLATION_NOT_ALLOWED,
                 "This venue doesn't allow cancelling a booking once it's paid for.",
             )
-        if court.cancellation_cutoff_hours is not None:
-            cutoff_at = booking.starts_at - timedelta(hours=court.cancellation_cutoff_hours)
+        if venue.cancellation_cutoff_hours is not None:
+            cutoff_at = booking.starts_at - timedelta(hours=venue.cancellation_cutoff_hours)
             if datetime.now(timezone.utc) >= cutoff_at:
                 raise AppError(
                     status.HTTP_400_BAD_REQUEST,
                     ErrorCode.CANCELLATION_WINDOW_CLOSED,
                     f"The cancellation window for this booking closed {format_when(cutoff_at)} "
-                    f"({court.cancellation_cutoff_hours}h before the booking).",
-                    details={"cutoff_at": cutoff_at.isoformat(), "cutoff_hours": court.cancellation_cutoff_hours},
+                    f"({venue.cancellation_cutoff_hours}h before the booking).",
+                    details={"cutoff_at": cutoff_at.isoformat(), "cutoff_hours": venue.cancellation_cutoff_hours},
                 )
 
     async def _flag_refund_for_voluntary_cancel(self, booking: Booking) -> None:

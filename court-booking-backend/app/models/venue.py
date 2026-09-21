@@ -61,6 +61,14 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False
     )
+    # Section 32 Part 4: the cancellation policy is ONE per venue (this deliberately reverses
+    # Section 31's per-court policy). Whether a player may cancel a booking they've already paid
+    # for, and if so how many hours before the start it stops being allowed (NULL = any time
+    # before the start). The old per-court columns on `courts` are deprecated and unused.
+    cancellation_allowed: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    cancellation_cutoff_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
     plan_tier: Mapped[PlanTier] = mapped_column(
         pg_enum(PlanTier, "plan_tier"),
         default=PlanTier.FREE,

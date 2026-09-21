@@ -1,10 +1,13 @@
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
+from dataclasses import dataclass
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.errors import AppError, ErrorCode
 from app.models.blackout import Blackout
 from app.models.booking import LIVE_BOOKING_STATUSES, Booking
 from app.models.court import Court
@@ -14,6 +17,22 @@ from app.schemas.availability import SlotOut
 from app.utils.timezone import PKT_OFFSET, pkt_date_of, pkt_time_to_utc, utc_to_pkt_naive
 
 MAX_RANGE_DAYS = 28
+# Longest single booking a player can make, whatever the court's slot length (Section 32 Part 4).
+MAX_BOOKING_MINUTES = 240
+
+
+@dataclass(frozen=True)
+class RangeQuote:
+    """What a booking of `slot_count` consecutive slots starting at `starts_at` costs. The one place the
+    total is computed: the quote endpoint the apps show before confirming, the hold, and the AI all use it."""
+
+    starts_at: datetime
+    ends_at: datetime
+    slot_count: int
+    duration_minutes: int
+    price: float
+    advance_amount: float
+    slots: list[SlotOut]
 
 
 class AvailabilityService:
@@ -134,13 +153,16 @@ class AvailabilityService:
                     )
                 )
             elif booking is not None:
+                # A multi-slot booking covers several grid cells; the total belongs to the booking, so only a
+                # cell that IS the whole booking shows its price (otherwise each cell would claim the total).
+                whole = booking.starts_at == slot_start_dt and booking.ends_at == slot_end_dt
                 slots.append(
                     SlotOut(
                         starts_at=slot_start_dt,
                         ends_at=slot_end_dt,
                         status=booking.status.value,
-                        price=float(booking.price),
-                        advance_amount=float(booking.advance_amount),
+                        price=float(booking.price) if whole else round(price, 2),
+                        advance_amount=float(booking.advance_amount) if whole else advance_amount,
                         held_until=booking.held_until,
                         booking_id=booking.id,
                         is_mine=viewer_id is not None and booking.player_id == viewer_id,
@@ -158,6 +180,71 @@ class AvailabilityService:
                 )
             slot_start_local = slot_end_local
         return slots
+
+    async def quote_range(self, court: Court, starts_at: datetime, slot_count: int = 1) -> RangeQuote:
+        """Price a booking of `slot_count` consecutive slots beginning exactly at `starts_at`.
+
+        Every slot is looked up on the court's real grid (so a range that runs past closing time, or starts
+        off the grid, is refused) and priced by its own matching rule, so a booking that crosses a peak-price
+        boundary (or midnight) is charged slot by slot rather than at the first slot's rate. Raises AppError
+        with a plain-language message when the range cannot be booked as asked. The caller still relies on
+        the database (unique index + overlap constraint) for the actual race, not on this pre-check.
+        """
+        if slot_count < 1:
+            raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_DURATION, "Pick at least one slot")
+        if slot_count * court.slot_minutes > max(MAX_BOOKING_MINUTES, court.slot_minutes):
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.INVALID_DURATION,
+                f"A single booking can be at most {MAX_BOOKING_MINUTES // 60} hours long",
+            )
+        step = timedelta(minutes=court.slot_minutes)
+        by_day: dict[date, list[SlotOut]] = {}
+        picked: list[SlotOut] = []
+        for i in range(slot_count):
+            slot_start = starts_at + step * i
+            day = pkt_date_of(slot_start)
+            if day not in by_day:
+                by_day[day] = await self.get_day_slots(court, day)
+            slot = next((s for s in by_day[day] if s.starts_at == slot_start), None)
+            if slot is None:
+                if i == 0:
+                    raise AppError(
+                        status.HTTP_400_BAD_REQUEST,
+                        ErrorCode.INVALID_SLOT_TIME,
+                        "starts_at must exactly match one of this court's scheduled slot start times",
+                    )
+                raise AppError(
+                    status.HTTP_400_BAD_REQUEST,
+                    ErrorCode.INVALID_DURATION,
+                    "That length runs past the court's closing time. Pick a shorter time.",
+                )
+            if slot.status == "blocked":
+                raise AppError(
+                    status.HTTP_400_BAD_REQUEST, ErrorCode.SLOT_BLOCKED, "This time is unavailable"
+                )
+            if slot.status != "available":
+                raise AppError(
+                    status.HTTP_409_CONFLICT,
+                    ErrorCode.SLOT_ALREADY_TAKEN,
+                    "Part of that time is already booked" if i else "This slot was just booked by someone else",
+                )
+            if slot.price <= 0:
+                raise AppError(
+                    status.HTTP_400_BAD_REQUEST,
+                    ErrorCode.INVALID_SLOT_TIME,
+                    "No pricing rule covers this slot; ask the venue to configure pricing",
+                )
+            picked.append(slot)
+        return RangeQuote(
+            starts_at=picked[0].starts_at,
+            ends_at=picked[-1].ends_at,
+            slot_count=slot_count,
+            duration_minutes=slot_count * court.slot_minutes,
+            price=round(sum(s.price for s in picked), 2),
+            advance_amount=round(sum(s.advance_amount for s in picked), 2),
+            slots=picked,
+        )
 
     async def is_slot_grid_aligned(self, court: Court, starts_at: datetime) -> bool:
         """True iff `starts_at` is exactly one of the slot start times the
