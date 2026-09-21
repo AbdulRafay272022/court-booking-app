@@ -63,6 +63,20 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
   restarting the backend so the code never runs against a missing column. Ask before any production write/deploy.
 (Parts 1-2 details: item 32 below and the frontend CLAUDE.md's Section 32.)
 
+**SECTION 32 PROGRESS TABLE (order set by the owner 2026-09-22: 4, then 3, 5, 9, 10, 7, 8, 6, 11):**
+
+| Part | What | Status |
+|---|---|---|
+| 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). **Mobile needs an EAS build** to reach phones. The docs commit after it is local, **pending push (goes out with the next deploy)**. |
+| 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | In progress (started 2026-09-22) |
+| 3 | Overnight courts (`closes_next_day`) | Not started |
+| 5 | Split payments + `payment_entries` ledger | Not started |
+| 9, 10 | **Spec text not received** -- the spec pasted so far has Parts 1-8 only. Ask the owner for Parts 9 and 10 before starting them. | Blocked on the spec |
+| 7 | OCR improvements | Not started |
+| 8 | WhatsApp/Gemini prompts. Added findings: AI money is always "PKR 3,500" (never "Rs. 3500.0"; hand the model a ready-made string like the slot `label`); the model must NEVER invent a reason for an unavailable slot ("fixed 90-minute blocks" when it was simply booked) -- only say what the tool returned. | Not started |
+| 6 | Photos + reviews | Not started |
+| 11 | Screen audit: the owner dashboard's fixed sidebar overflows below ~600px, owners are on phones, fix it as part of the audit. Also fix the 2 existing eslint errors (`react-hooks/set-state-in-effect`, settings page lines ~98 and ~115) the next time `apps/web/app/dashboard/owner/settings/page.tsx` is touched (Part 4 touches it). | Not started |
+
 **Open items, roughly by priority (none started unless noted):**
 0. **Found while proving Parts 1-2 on production (for Part 8):** the AI sometimes writes the price as "Rs. 3500.0"
    (the tool result hands it a raw float; give it a ready-made "PKR 3,500" like the slot `label`), and explained an
