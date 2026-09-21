@@ -8,6 +8,7 @@ export {
   formatDateRelative,
   formatDateString,
   formatSlotLabel,
+  formatSlotTimes,
   formatTime,
   formatTime24As12,
   formatTimeRange,

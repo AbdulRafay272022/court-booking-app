@@ -3,6 +3,8 @@ export interface ScheduleTemplate {
   day_of_week: number; // 0-6
   open_time: string; // "HH:MM:SS"
   close_time: string;
+  /** The day belongs to the day it OPENS; true when the court is still open past midnight (close_time <= open_time). */
+  closes_next_day: boolean;
   is_active: boolean;
 }
 

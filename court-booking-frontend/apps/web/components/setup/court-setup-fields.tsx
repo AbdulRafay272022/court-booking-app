@@ -8,6 +8,7 @@ import {
   courtSetupProblem,
   formatDuration,
   formatTime24As12,
+  hoursKind,
   makePricingRule,
   slotPreview,
   slotPreviewText,
@@ -84,7 +85,14 @@ export function CourtSetupFields({
               const o = value.perDayOverrides[day] ?? { open: value.openTime, close: value.closeTime };
               return (
                 <div key={day} className="flex flex-wrap items-end gap-3">
-                  <span className="text-sm font-medium w-full sm:w-10 sm:pb-3">{label}</span>
+                  <span className="text-sm font-medium w-full sm:w-10 sm:pb-3">
+                    {label}
+                    {hoursKind(o.open, o.close) !== "same-day" ? (
+                      <span className="ml-2 text-[11.5px] font-semibold text-owner-accent">
+                        {hoursKind(o.open, o.close) === "24-hours" ? "Open 24 hours" : "Closes next day"}
+                      </span>
+                    ) : null}
+                  </span>
                   <TimeField12
                     label=""
                     ariaLabel={`${label} opens`}
@@ -102,6 +110,7 @@ export function CourtSetupFields({
             })}
           </div>
         )}
+        {value.sameHoursEveryDay ? <HoursKindNote open={value.openTime} close={value.closeTime} /> : null}
         {hoursProblem ? (
           <p role="alert" className="text-[13px] font-semibold text-owner-danger">
             {hoursProblem}
@@ -149,6 +158,19 @@ export function CourtSetupFields({
         </button>
       </SectionCard>
     </>
+  );
+}
+
+/** Says what the pair of times means when the court stays open past midnight (Section 32 Part 3). */
+function HoursKindNote({ open, close }: { open: string; close: string }) {
+  const kind = hoursKind(open, close);
+  if (kind === "same-day") return null;
+  return (
+    <p className="text-[13px] font-semibold text-owner-accent" data-testid="hours-kind-note">
+      {kind === "24-hours"
+        ? "Open 24 hours: each day runs from its opening time to the same time the next morning."
+        : `Closes next day: the court stays open past midnight until ${formatTime24As12(close)} the next morning. That night belongs to the day it opens, so a Thursday 3 PM to 3 AM court covers Thursday 3 PM through Friday 3 AM.`}
+    </p>
   );
 }
 

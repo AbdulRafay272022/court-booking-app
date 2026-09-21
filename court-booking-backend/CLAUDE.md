@@ -22,7 +22,7 @@ been worked so far.
 The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in
 Roman Urdu; answer in plain English, keep it short, and **verify before claiming** (they were burned
 by "fixed" things that weren't). Everything below is on `main`, deployed, tests green
-(**449 backend tests** (419 before Part 4) after merging the teammate's push-notification work: `AI_PROVIDER=claude AI_VISION_PROVIDER=claude .venv/Scripts/python.exe -m pytest`. **Do not run pytest without those two variables**: this machine's `.env` sets `AI_PROVIDER=gemini` with a real key, so 10 tests fail and `test_no_api_key_returns_graceful_fallback` makes a real, billed Gemini call. Also needs `httpx[http2]` in the venv now).
+(**464 backend tests** (419 before Part 4; 449 after it) after merging the teammate's push-notification work: `AI_PROVIDER=claude AI_VISION_PROVIDER=claude .venv/Scripts/python.exe -m pytest`. **Do not run pytest without those two variables**: this machine's `.env` sets `AI_PROVIDER=gemini` with a real key, so 10 tests fail and `test_no_api_key_returns_graceful_fallback` makes a real, billed Gemini call. Also needs `httpx[http2]` in the venv now).
 
 **Deployed today (all through GitHub Actions on push to `main`; none needed a migration):**
 `c87f2fe` per-court cancellation policy in both UIs + stale wizard-draft recovery; `475b296`
@@ -80,7 +80,7 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 |---|---|---|
 | 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). **Mobile needs an EAS build** to reach phones. The docs commit after it is local, **pending push (goes out with the next deploy)**. |
 | 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | **DEPLOYED 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` applied on production** (from the new image before the backend restarted; output: backfilled, no disagreeing venues, constraint added, 8 bookings satisfied it, head = `dd23d75cf310`, `alembic check` clean). Verified live on production: schedule, quote (3 h = PKR 7,000), AI reply. Live venue policy stays "not allowed". Mobile needs an EAS build. **Full plan and rules: `docs/SECTION_32_PLAN.md`.** |
-| 3 | Overnight courts (`closes_next_day`) | Not started |
+| 3 | Overnight courts (`closes_next_day`) | **Built and tested locally, NOT deployed; migration `68d7e3464f30` NOT run on production.** Waiting for the owner's fresh snapshot and "go". Design + migration plan: `docs/SECTION_32_PLAN.md` ("Part 3 design"). |
 | 5 | Split payments + `payment_entries` ledger | Not started |
 | 9, 10 | **Spec text not received** -- the spec pasted so far has Parts 1-8 only. Ask the owner for Parts 9 and 10 before starting them. | Blocked on the spec |
 | 7 | OCR improvements | Not started |

@@ -74,7 +74,8 @@ def test_human_dates_never_iso_and_year_only_when_not_this_year():
 def test_slot_label_is_the_exact_string_the_assistant_copies():
     label = format_slot_label(utc(2026, 9, 23, 14, 30), utc(2026, 9, 23, 16, 0), NOW)
     assert label == "7:30 PM to 9:00 PM, Wed 23 Sep"
-    assert format_time_range(utc(2026, 9, 23, 18, 30), utc(2026, 9, 23, 19, 30)) == "11:30 PM to 12:30 AM"
+    # a range that crosses midnight names the next day (Section 32 Part 3); it used to read "11:30 PM to 12:30 AM"
+    assert format_time_range(utc(2026, 9, 23, 18, 30), utc(2026, 9, 23, 19, 30)) == "11:30 PM to Thu 12:30 AM"
     assert format_when(utc(2026, 9, 23, 14, 30), NOW) == "Wed, 23 Sep, 7:30 PM"
     for text in (label, format_when(utc(2026, 9, 23, 14, 30), NOW)):
         assert not contains_24h_time(text)
@@ -134,3 +135,20 @@ async def test_notification_texts_are_human_readable_not_utc_iso(db_session, mak
         assert "+00:00" not in text and "UTC" not in text and not re.search(r"\d{4}-\d{2}-\d{2}", text), text
     assert "7:30 PM to 9:00 PM" in cancelled["body"]
     assert "7:30 PM to 9:00 PM" in deactivated["body"]
+
+
+def test_a_range_that_ends_the_next_day_names_the_day():
+    """Section 32 Part 3: 11 PM Thu to 1 AM Fri must not read "11:00 PM to 1:00 AM" (which day is 1 AM?)."""
+    from datetime import datetime, timezone
+
+    from app.utils.timezone import format_slot_label, format_time_range
+
+    thu_11pm = datetime(2026, 9, 24, 18, 0, tzinfo=timezone.utc)   # 11:00 PM Thu 24 Sep PKT
+    fri_1am = datetime(2026, 9, 24, 20, 0, tzinfo=timezone.utc)    # 1:00 AM Fri 25 Sep PKT
+    fri_2am = datetime(2026, 9, 24, 21, 0, tzinfo=timezone.utc)
+    midnight = datetime(2026, 9, 24, 19, 0, tzinfo=timezone.utc)
+    assert format_time_range(thu_11pm, fri_1am) == "11:00 PM to Fri 1:00 AM"
+    assert format_time_range(thu_11pm, midnight) == "11:00 PM to 12:00 AM"          # ending at midnight is not named
+    assert format_time_range(fri_1am, fri_2am) == "1:00 AM to 2:00 AM"              # both after midnight, same day
+    assert format_slot_label(fri_1am, fri_2am, now_utc=thu_11pm) == "1:00 AM to 2:00 AM, Fri 25 Sep"
+    assert format_time_range(datetime(2026, 9, 23, 14, 30, tzinfo=timezone.utc), datetime(2026, 9, 23, 16, 0, tzinfo=timezone.utc)) == "7:30 PM to 9:00 PM"

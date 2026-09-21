@@ -72,8 +72,14 @@ def format_time(dt: datetime) -> str:
 
 
 def format_time_range(starts_at: datetime, ends_at: datetime) -> str:
-    """"7:30 PM to 9:00 PM"."""
-    return f"{format_time(starts_at)} to {format_time(ends_at)}"
+    """"7:30 PM to 9:00 PM". When the range ends on a LATER Pakistan calendar day (an overnight court, Section 32 Part 3) the
+    end names its day: "11:00 PM to Fri 1:00 AM". Ending exactly at midnight is not named ("11:00 PM to 12:00 AM")."""
+    start_local = utc_to_pkt_naive(starts_at)
+    end_local = utc_to_pkt_naive(ends_at)
+    end_text = format_time(ends_at)
+    if end_local.date() != start_local.date() and (end_local.hour, end_local.minute) != (0, 0):
+        end_text = f"{_WEEKDAYS[end_local.weekday()]} {end_text}"
+    return f"{format_time(starts_at)} to {end_text}"
 
 
 def format_date(dt: datetime, now_utc: datetime | None = None) -> str:

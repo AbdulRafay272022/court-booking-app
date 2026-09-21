@@ -127,17 +127,18 @@ export function validatePhoneChange(f: { newPhone: string; password: string }): 
 /** "HH:MM", 24-hour. */
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** One day's opening hours. The database requires open < close within the SAME calendar day
- * (`schedule_templates.valid_times`) and the availability grid is built per day, so hours that
- * run past midnight (close 02:00) are not supported yet. Returns a user-facing message, or null
- * when the pair is fine. Without this check the API used to answer 500 and the browser showed
- * a misleading "Can't reach the server". */
+/** One day's opening hours. `close` at or before `open` is valid (Section 32 Part 3): the court closes the NEXT morning
+ * (3 PM to 3 AM), and close == open means open 24 hours. A schedule day belongs to the day it opens. Returns a user-facing
+ * message only when a time is missing, or null when the pair is fine. */
 export function scheduleHoursError(open: string, close: string): string | null {
   if (!HHMM.test(open) || !HHMM.test(close)) return "Choose an opening time and a closing time.";
-  if (close <= open) {
-    return "Closing time must be later than opening time. Hours past midnight aren't supported yet, so use 11:59 PM as the latest closing time.";
-  }
   return null;
+}
+
+/** "same day", "next day" (3 PM to 3 AM: closes the next morning) or "24 hours" (close == open). */
+export function hoursKind(open: string, close: string): "same-day" | "next-day" | "24-hours" {
+  if (close === open) return "24-hours";
+  return close < open ? "next-day" : "same-day";
 }
 
 /** The whole week: one shared pair, or a pair per day (a day with no override uses the shared
@@ -150,10 +151,22 @@ export function weeklyHoursError(
   dayLabels: readonly string[],
 ): string | null {
   if (sameEveryDay) return scheduleHoursError(defaultOpen, defaultClose);
+  const week: { open: string; close: string }[] = [];
   for (let day = 0; day < 7; day++) {
     const o = overrides[day] ?? { open: defaultOpen, close: defaultClose };
     const problem = scheduleHoursError(o.open, o.close);
     if (problem) return `${dayLabels[day] ?? `Day ${day}`}: ${problem}`;
+    week.push(o);
+  }
+  // An overnight day must not run into the next day's opening (Thu until 3 AM, Fri opens 2 AM). The week wraps.
+  for (let day = 0; day < 7; day++) {
+    const today = week[day];
+    const next = week[(day + 1) % 7];
+    if (hoursKind(today.open, today.close) !== "same-day" && today.close > next.open) {
+      const name = dayLabels[day] ?? `Day ${day}`;
+      const nextName = dayLabels[(day + 1) % 7] ?? `Day ${(day + 1) % 7}`;
+      return `${name} runs until the next morning, past the time ${nextName} opens. Open ${nextName} later, or close ${name} earlier.`;
+    }
   }
   return null;
 }

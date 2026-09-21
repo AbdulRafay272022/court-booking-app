@@ -11,9 +11,11 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.booking import Booking, BookingStatus
 from app.models.court import Court
+from app.models.schedule import ScheduleTemplate
 from app.models.stats import SlotStats
 from app.services.audit_service import AuditService
 from app.services.growth_service import GrowthService
+from app.utils.schedule import opening_day_of
 from app.utils.timezone import pkt_date_of, pkt_today, utc_to_pkt_naive
 
 logger = structlog.get_logger(__name__)
@@ -97,6 +99,14 @@ async def compute_slot_stats(db: AsyncSession) -> None:
             day_occurrences[d.weekday()] += 1
             d += timedelta(days=1)
 
+        templates = {
+            t.day_of_week: t
+            for t in (
+                await db.execute(
+                    select(ScheduleTemplate).where(ScheduleTemplate.court_id == court_id, ScheduleTemplate.is_active.is_(True))
+                )
+            ).scalars().all()
+        }
         bookings_result = await db.execute(
             select(Booking.starts_at, Booking.price).where(
                 Booking.court_id == court_id,
@@ -107,9 +117,11 @@ async def compute_slot_stats(db: AsyncSession) -> None:
         buckets: dict[tuple[int, int], list[float]] = defaultdict(list)
         for starts_at, price in bookings_result.all():
             # Bucket by the PKT wall-clock day/hour an owner actually thinks
-            # in, not the raw UTC instant the booking is stored as.
+            # in, not the raw UTC instant the booking is stored as. The day is the OPENING day of the schedule the slot
+            # belongs to (Section 32 Part 3): a 1:00 AM Friday slot on a 3 PM to 3 AM court is a THURSDAY slot.
             local_starts_at = utc_to_pkt_naive(starts_at)
-            buckets[(local_starts_at.weekday(), local_starts_at.hour)].append(float(price))
+            opening_day = opening_day_of(local_starts_at, templates)
+            buckets[(opening_day.weekday(), local_starts_at.hour)].append(float(price))
 
         for (day_of_week, hour), prices in buckets.items():
             total_slots = day_occurrences.get(day_of_week, 0)

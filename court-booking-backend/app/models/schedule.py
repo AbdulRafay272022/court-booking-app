@@ -17,7 +17,12 @@ class ScheduleTemplate(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "schedule_templates"
     __table_args__ = (
         CheckConstraint("day_of_week BETWEEN 0 AND 6", name="valid_day"),
-        CheckConstraint("open_time < close_time", name="valid_times"),
+        # Section 32 Part 3 (overnight courts): a day either closes the same day (open < close) or the next morning
+        # (closes_next_day, close <= open: 03:00 vs 15:00, midnight = 00:00, close == open = open 24 hours).
+        CheckConstraint(
+            "(closes_next_day AND close_time <= open_time) OR (NOT closes_next_day AND open_time < close_time)",
+            name="valid_times",
+        ),
         Index(
             "idx_schedule_court_day",
             "court_id",
@@ -33,6 +38,11 @@ class ScheduleTemplate(UUIDPkMixin, TimestampMixin, Base):
     day_of_week: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     open_time: Mapped[time] = mapped_column(Time, nullable=False)
     close_time: Mapped[time] = mapped_column(Time, nullable=False)
+    # The schedule day belongs to the day it OPENS; when this is true the court is still open past midnight, until
+    # close_time the next morning. Derived by the API from the times (close_time <= open_time), stored explicitly.
+    closes_next_day: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False
     )

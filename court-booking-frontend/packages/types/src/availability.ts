@@ -11,6 +11,9 @@ export interface Slot {
   /** True when the signed-in viewer is the player on this slot's live booking (never for anonymous). */
   is_mine: boolean;
   reason: string | null;
+  /** True for a slot that starts after midnight on an overnight court: it is in the OPENING day's list, but its own date is
+   * the next day (show it as "Fri 1:00 AM"). */
+  after_midnight: boolean;
 }
 
 /** GET /courts/:id/quote?starts_at=&slot_count= -- the total for a booking of several consecutive slots, priced

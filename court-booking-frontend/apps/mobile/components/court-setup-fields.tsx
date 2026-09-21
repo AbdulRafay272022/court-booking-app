@@ -7,6 +7,7 @@ import {
   courtSetupProblem,
   formatDuration,
   formatTime24As12,
+  hoursKind,
   makePricingRule,
   slotPreview,
   slotPreviewText,
@@ -82,7 +83,14 @@ export function CourtSetupFields({
               const o = value.perDayOverrides[day] ?? { open: value.openTime, close: value.closeTime };
               return (
                 <View key={day} className="flex-row items-center gap-3">
-                  <Text className="font-plex-medium text-owner-ink text-sm w-10">{label}</Text>
+                  <View className="w-12">
+                    <Text className="font-plex-medium text-owner-ink text-sm">{label}</Text>
+                    {hoursKind(o.open, o.close) !== "same-day" ? (
+                      <Text className="font-plex-semibold text-owner-accent text-[10px]">
+                        {hoursKind(o.open, o.close) === "24-hours" ? "24 hours" : "Next day"}
+                      </Text>
+                    ) : null}
+                  </View>
                   <View className="flex-1">
                     <TimeField12 label="" value={o.open} onChange={(v) => onChange({ perDayOverrides: { ...value.perDayOverrides, [day]: { ...o, open: v } } })} />
                   </View>
@@ -94,6 +102,7 @@ export function CourtSetupFields({
             })}
           </View>
         )}
+        {value.sameHoursEveryDay ? <HoursKindNote open={value.openTime} close={value.closeTime} /> : null}
         {hoursProblem ? <Text className="font-plex-semibold text-owner-danger text-[13px]">{hoursProblem}</Text> : null}
       </SectionCard>
 
@@ -138,6 +147,19 @@ export function CourtSetupFields({
         </Pressable>
       </SectionCard>
     </>
+  );
+}
+
+/** Says what the pair of times means when the court stays open past midnight (Section 32 Part 3). */
+function HoursKindNote({ open, close }: { open: string; close: string }) {
+  const kind = hoursKind(open, close);
+  if (kind === "same-day") return null;
+  return (
+    <Text className="font-plex-semibold text-owner-accent text-[13px]">
+      {kind === "24-hours"
+        ? "Open 24 hours: each day runs from its opening time to the same time the next morning."
+        : `Closes next day: the court stays open past midnight until ${formatTime24As12(close)} the next morning. That night belongs to the day it opens, so a Thursday 3 PM to 3 AM court covers Thursday 3 PM through Friday 3 AM.`}
+    </Text>
   );
 }
 

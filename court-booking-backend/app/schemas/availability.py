@@ -16,6 +16,9 @@ class SlotOut(BaseModel):
     # booked). Lets the client show "Your booking" instead of "Notify me". Always False for anonymous viewers.
     is_mine: bool = False
     reason: str | None = None  # populated when status == "blocked"
+    # True for a slot that starts after midnight on an overnight court. It belongs to the OPENING day's schedule (it is
+    # in that day's list), but its own calendar date is the next day: the apps show it as "Fri 1:00 AM".
+    after_midnight: bool = False
 
 
 class DayAvailabilityOut(BaseModel):

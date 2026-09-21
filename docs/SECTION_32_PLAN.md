@@ -50,6 +50,35 @@ progress table after EVERY part.
 5. The deploy runs the migration from the new image before the new backend starts; read the output back to the owner
    (SSM: `aws ssm list-commands` -> the `deploy <sha>` command -> `get-command-invocation`), then prove it on production.
 
+## Part 3 design (built 2026-09-22) and its migration plan
+
+- **Model:** a schedule day BELONGS TO THE DAY IT OPENS. `schedule_templates.closes_next_day` (explicit boolean) is derived by the
+  API exactly when `close_time <= open_time`: 15:00 to 03:00 = next morning, close == open = open 24 hours, close 00:00 = midnight
+  (the "23:59 loses the last slot" workaround is gone). CHECK `valid_times` is now
+  `(closes_next_day AND close <= open) OR (NOT closes_next_day AND open < close)`. A week whose overnight day runs into the next
+  day's opening (Thu until 3 AM, Fri opens 2 AM; Sunday wraps to Monday) is a 422 with a plain message.
+- **Engine:** `app/utils/schedule.py` (pure, shared): `schedule_window`, `opening_day_of`, `rule_matches_window`, `overlap_error`.
+  `get_day_slots(court, opening_date)` walks the window in naive PKT, converts to UTC only at the storage boundary, flags
+  `after_midnight`. `schedule_day_of(instant)` maps any instant to its opening day (used by holds, grid alignment, quotes, walk-ins,
+  the growth job). `get_slots_starting_on(court, date)` is the calendar-day view (yesterday's tail + today up to midnight) used by
+  the assistant and "available today".
+- **Pricing windows** are matched in minutes from the OPENING day's midnight (>= 1440 after midnight), so 22:00-02:00 works and so does
+  01:00-03:00; a rule's weekdays refer to the opening day; "until 18:00" with no start is not shifted a day.
+- **Other consumers:** owner Today finds bookings through the day's own slots (after-midnight players show; a booking counts for the
+  day it STARTS in; yesterday's tail is not double counted); growth-job buckets use the opening day; expiry/reminders use instants.
+- **Formatting:** a range that ends on a later Pakistan day names it ("11:00 PM to Fri 1:00 AM"; ending at midnight is not named).
+  Slots after midnight read "Fri 1:00 AM to 2:00 AM" under an "AFTER MIDNIGHT" divider. Hours pickers show "Closes next day" /
+  "Open 24 hours"; the slot preview says "12 slots a day, 3:00 PM to 3:00 AM the next morning".
+- **Migration `68d7e3464f30`** (after `dd23d75cf310`): preflight (refuses if any existing row violates the old rule, which cannot
+  happen); ADD COLUMN `closes_next_day boolean NOT NULL DEFAULT false` (instant, nothing rewritten); drop and recreate the CHECK
+  (validated against the handful of rows). Production (read 2026-09-22): 1 venue, 7 rows 06:00-23:00, all satisfy it. Downgrade
+  REFUSES, changing nothing, if any overnight row exists (it never rewrites an owner's hours). Tested on a production-shaped scratch
+  DB: up, an overnight row accepted and contradictions rejected by the CHECK, downgrade refusing with the row present, downgrade
+  after removing it, up again, `alembic check` clean.
+- **Production proof plan (writes nothing):** run `overnight_proof.py`-style script in the backend container that builds a throwaway
+  3 PM-3 AM court inside a transaction that is rolled back and prints the real grid and a midnight-crossing quote with row counts
+  before and after.
+
 ## Order of work (set by the owner 2026-09-22)
 
 Part 4 (deploy) -> **Part 3** (overnight courts) -> **Part 4b** (player venue page redesign) -> **Part 5** (split payments +
@@ -62,7 +91,7 @@ ledger) -> **Part 9** (QR check-in) -> **Part 10** (refunds) -> **Part 7** (OCR,
 |---|---|---|
 | 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). Mobile needs an EAS build to reach phones. |
 | 4 | Per-court slot length and pricing, per-venue cancellation, duration picker, closed/booked labels | **Deployed 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` ran from the new image before the new backend started** (backfilled venue policy, added `no_overlapping_live_bookings`; 8 existing bookings satisfied it; `alembic check` clean). The owner chose to rely on the AUTOMATED RDS snapshot of 1:08 AM PKT (no manual one was visible). Live venue policy stays "not allowed". Mobile changes need an EAS build. Docs commit after it is local, **pending push (goes out with the next deploy)**. |
-| 3 | Overnight courts (`closes_next_day`) | **Next** (waiting for the owner to say "continue") |
+| 3 | Overnight courts (`closes_next_day`) | **Built and tested locally (464 backend tests; live Playwright on web + Expo web). Migration `68d7e3464f30` NOT run on production; NOT pushed.** Waiting for the owner's fresh manual RDS snapshot and "go" (Migration rules). Design and migration plan below. |
 | 4b | Player venue page redesign (below) | Not started. **A mockup screenshot must be approved before any wiring.** |
 | 5 | Split payments + `payment_entries` ledger | Not started |
 | 9 | QR check-in (below) | Not started |

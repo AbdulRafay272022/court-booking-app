@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import status
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -63,21 +63,47 @@ class OwnerDashboardService:
         day_start = pkt_time_to_utc(target_date, time.min)
         day_end = day_start + timedelta(days=1)
 
+        # The day's slots, and the bookings on them. A schedule day belongs to the day it OPENS (Section 32 Part 3), so an
+        # overnight court's after-midnight bookings are Today's even though they start on tomorrow's calendar date, and
+        # yesterday's after-midnight tail (which starts today) belongs to yesterday, not to this day's totals.
+        slots_by_court = {court.id: await self.availability.get_day_slots(court, target_date) for court in courts}
+        slot_booking_ids = {s.booking_id for slots in slots_by_court.values() for s in slots if s.booking_id}
+        yesterdays_tail_ids: set[uuid.UUID] = set()
+        for court in courts:
+            for s in await self.availability.get_day_slots(court, target_date - timedelta(days=1)):
+                if s.after_midnight and s.booking_id:
+                    yesterdays_tail_ids.add(s.booking_id)
+
         bookings_today: list[Booking] = []
         if court_ids:
             result = await self.db.execute(
                 select(Booking).where(
                     Booking.court_id.in_(court_ids),
-                    Booking.starts_at >= day_start,
-                    Booking.starts_at < day_end,
+                    or_(
+                        and_(Booking.starts_at >= day_start, Booking.starts_at < day_end),
+                        Booking.id.in_(slot_booking_ids) if slot_booking_ids else false(),
+                    ),
                 )
             )
-            bookings_today = list(result.scalars().all())
+            # A booking counts for a day only if it STARTS inside that day: in the calendar-day window, or on this schedule
+            # day's own slots at/after the day's first slot. (One that merely overlaps the first cell -- a 30-minute-offset
+            # walk-in that started the evening before -- belongs to the day it started on.)
+            first_slot_start = {
+                court.id: slots_by_court[court.id][0].starts_at for court in courts if slots_by_court[court.id]
+            }
+            bookings_today = []
+            for b in result.scalars().all():
+                if b.id in yesterdays_tail_ids:
+                    continue
+                in_calendar_day = day_start <= b.starts_at < day_end
+                on_todays_slots = b.id in slot_booking_ids and b.starts_at >= first_slot_start.get(b.court_id, b.starts_at)
+                if in_calendar_day or on_todays_slots:
+                    bookings_today.append(b)
         bookings_by_id = {b.id: b for b in bookings_today}
 
         court_outs = []
         for court in courts:
-            slots = await self.availability.get_day_slots(court, target_date)
+            slots = slots_by_court[court.id]
             slot_outs = []
             for slot in slots:
                 booking = bookings_by_id.get(slot.booking_id) if slot.booking_id else None

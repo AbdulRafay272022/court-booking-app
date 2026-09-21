@@ -348,7 +348,8 @@ class AIChatService:
     async def _tool_check_availability(self, tool_input: dict) -> dict:
         court = await self.availability.get_court(uuid.UUID(tool_input["court_id"]))
         target_date = date_cls.fromisoformat(tool_input["date"])
-        slots = await self.availability.get_day_slots(court, target_date)
+        # Slots that START on this Pakistan date, including the after-midnight tail of an overnight court's previous day.
+        slots = await self.availability.get_slots_starting_on(court, target_date)
         available = [s for s in slots if s.status == "available"]
         return {
             # `label` is what to say to the player (Pakistan time); `starts_at` (UTC) is only for

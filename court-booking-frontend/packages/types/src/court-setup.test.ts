@@ -12,6 +12,8 @@ import {
   courtSetupProblem,
   defaultCourtSetup,
 } from "./court-setup";
+import { formatSlotTimes, formatTimeRange } from "./datetime";
+import { hoursKind, scheduleHoursError, weeklyHoursError } from "./validation";
 import {
   cancellationPolicyText,
   durationChoices,
@@ -62,7 +64,9 @@ test("a court needs a price and usable hours before it can be saved", () => {
   assert.match(courtSetupProblem(setup)!, /price/i);
   setup.pricingRules[0].pricePerSlot = "3500";
   assert.equal(courtSetupProblem(setup), null);
-  setup.closeTime = "05:00";
+  setup.closeTime = "05:00"; // 6 AM to 5 AM is overnight hours now (Section 32 Part 3), not a problem
+  assert.equal(courtSetupProblem(setup), null);
+  setup.closeTime = "";
   assert.ok(courtSetupProblem(setup));
 });
 
@@ -81,7 +85,7 @@ test("a copied court setup shares nothing with the original", () => {
 test("a court from the API becomes the editable setup and back without changing", () => {
   const court = {
     slot_minutes: 90,
-    schedule_templates: Array.from({ length: 7 }, (_, d) => ({ id: String(d), day_of_week: d, open_time: "06:00:00", close_time: "23:00:00", is_active: true })),
+    schedule_templates: Array.from({ length: 7 }, (_, d) => ({ id: String(d), day_of_week: d, open_time: "06:00:00", close_time: "23:00:00", closes_next_day: false, is_active: true })),
     pricing_rules: [
       { id: "1", name: "All day", priority: 0, day_of_week: null, start_time: null, end_time: null, price_per_slot: 3500, floodlight_surcharge: 0, advance_percentage: 100, is_active: true },
       { id: "2", name: "Weekend", priority: 1, day_of_week: [5, 6], start_time: "18:00:00", end_time: "23:00:00", price_per_slot: 4500, floodlight_surcharge: 0, advance_percentage: 100, is_active: true },
@@ -108,7 +112,8 @@ test("slot preview matches the backend grid", () => {
   assert.equal(p.lastEnd, "22:30");
   assert.equal(slotPreviewText("06:00", "23:00", 90), "11 slots a day, 6:00 AM to 10:30 PM");
   assert.equal(slotPreview("06:00", "06:30", 60), null);
-  assert.equal(slotPreview("10:00", "09:00", 60), null);
+  assert.equal(slotPreview("10:00", "10:30", 60), null); // too short for one slot
+  assert.equal(slotPreview("10:00", "09:00", 60)!.count, 23); // 10 AM to 9 AM next morning is overnight hours
 });
 
 // ---- duration choices --------------------------------------------------------------------------------------
@@ -125,6 +130,7 @@ function slot(startHour: number, minutes: number, status: Slot["status"] = "avai
     booking_id: null,
     is_mine: false,
     reason: null,
+    after_midnight: false,
   };
 }
 
@@ -158,4 +164,51 @@ test("cancellation policy text is about the venue", () => {
   assert.match(cancellationPolicyText({ cancellation_allowed: false, cancellation_cutoff_hours: null }), /venue does not allow/);
   assert.match(cancellationPolicyText({ cancellation_allowed: true, cancellation_cutoff_hours: 6 }), /up to 6h before/);
   assert.match(cancellationPolicyText({ cancellation_allowed: true, cancellation_cutoff_hours: null }), /any time/);
+});
+
+
+// ---- Section 32 Part 3: overnight courts ---------------------------------------------------------------------
+
+test("hours that close before they open are overnight hours, not an error", () => {
+  assert.equal(scheduleHoursError("15:00", "03:00"), null); // 3 PM to 3 AM
+  assert.equal(scheduleHoursError("18:00", "06:00"), null);
+  assert.equal(scheduleHoursError("06:00", "06:00"), null); // open 24 hours
+  assert.equal(scheduleHoursError("06:00", "00:00"), null); // closes at midnight
+  assert.match(scheduleHoursError("", "03:00")!, /Choose/);
+  assert.deepEqual([hoursKind("06:00", "23:00"), hoursKind("15:00", "03:00"), hoursKind("06:00", "06:00"), hoursKind("06:00", "00:00")], [
+    "same-day", "next-day", "24-hours", "next-day",
+  ]);
+});
+
+test("an overnight day may not run into the next day's opening (the week wraps)", () => {
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const same = { open: "15:00", close: "03:00" };
+  assert.equal(weeklyHoursError(true, "15:00", "03:00", {}, days), null); // 3 PM opens after 3 AM closes: fine
+  const overlap = weeklyHoursError(false, "15:00", "03:00", { 4: { open: "02:00", close: "23:00" } }, days);
+  assert.match(overlap!, /Thu runs until the next morning, past the time Fri opens/);
+  const wrap = weeklyHoursError(false, "15:00", "03:00", { 0: { open: "02:00", close: "10:00" } }, days);
+  assert.match(wrap!, /Sun runs until the next morning, past the time Mon opens/);
+  assert.equal(weeklyHoursError(false, "15:00", "03:00", { 4: { open: "03:00", close: "23:00" } }, days), null); // closes exactly as it opens
+  assert.ok(same);
+});
+
+test("the live preview counts slots across midnight", () => {
+  assert.equal(slotPreview("15:00", "03:00", 60)!.count, 12);
+  assert.equal(slotPreviewText("15:00", "03:00", 60), "12 slots a day, 3:00 PM to 3:00 AM the next morning");
+  assert.equal(slotPreview("06:00", "06:00", 60)!.count, 24); // open 24 hours
+  assert.equal(slotPreview("06:00", "00:00", 60)!.count, 18); // closes at midnight: 6 AM ... 11 PM
+  assert.equal(slotPreviewText("06:00", "00:00", 60), "18 slots a day, 6:00 AM to 12:00 AM the next morning".replace(" the next morning", ""));
+  assert.equal(slotPreviewText("06:00", "23:00", 90), "11 slots a day, 6:00 AM to 10:30 PM"); // an ordinary court is unchanged
+});
+
+test("a range that ends the next day names the day; a slot after midnight says which day it is on", () => {
+  const thu2300 = "2026-09-24T18:00:00Z"; // 11:00 PM Thu 24 Sep PKT
+  const fri0100 = "2026-09-24T20:00:00Z"; // 1:00 AM Fri 25 Sep PKT
+  const fri0200 = "2026-09-24T21:00:00Z";
+  const midnight = "2026-09-24T19:00:00Z"; // 12:00 AM Fri
+  assert.equal(formatTimeRange(thu2300, fri0100), "11:00 PM to Fri 1:00 AM");
+  assert.equal(formatTimeRange(thu2300, midnight), "11:00 PM to 12:00 AM"); // ending at midnight is not named
+  assert.equal(formatTimeRange("2026-09-24T14:30:00Z", "2026-09-24T16:00:00Z"), "7:30 PM to 9:00 PM"); // ordinary ranges unchanged
+  assert.equal(formatSlotTimes({ starts_at: fri0100, ends_at: fri0200, after_midnight: true }), "Fri 1:00 AM to 2:00 AM");
+  assert.equal(formatSlotTimes({ starts_at: thu2300, ends_at: midnight, after_midnight: false }), "11:00 PM to 12:00 AM");
 });

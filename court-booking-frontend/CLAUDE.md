@@ -795,6 +795,15 @@ Backend half and production facts: backend CLAUDE.md (START HERE). Rules that ca
   (not committed) drove web and the Expo web target with a two-court fixture; the eslint errors that used to be in the Venue Settings
   page are gone (the effects that copied server data into state were removed).
 
+## Section 32, Part 3 -- overnight courts (2026-09-22, not deployed)
+
+A schedule day belongs to the day it OPENS (Thu 3 PM to 3 AM covers Fri 1 AM). What the screens do: the day tab is the OPENING day;
+`Slot.after_midnight` slots sit under an "AFTER MIDNIGHT" divider and read "Fri 1:00 AM to 2:00 AM" (`formatSlotTimes`);
+`formatTimeRange` names the end day when a range ends on a later Pakistan day ("11:00 PM to Fri 1:00 AM") but not at midnight;
+owner hours accept close <= open (`hoursKind`: same-day / next-day / 24-hours) with a "Closes next day" / "Open 24 hours" note,
+`weeklyHoursError` refuses an overnight day that runs into the next day's opening, and `slotPreview` counts across midnight.
+Duration choices need no change (contiguity is by `ends_at == next starts_at`). Tests: `court-setup.test.ts`.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

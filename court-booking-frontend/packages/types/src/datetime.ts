@@ -109,9 +109,23 @@ export function formatTime(instant: Instant): string {
   return clock(pktParts(instant));
 }
 
-/** "7:30 PM to 9:00 PM". */
+/** "7:30 PM to 9:00 PM". When the range ends on a LATER Pakistan calendar day (an overnight court, Section 32 Part 3) the
+ * end names its day so nobody has to guess: "11:00 PM to Fri 1:00 AM". Ending exactly at midnight is not named
+ * ("11:00 PM to 12:00 AM"): that reads unambiguously. */
 export function formatTimeRange(start: Instant, end: Instant): string {
-  return `${formatTime(start)} to ${formatTime(end)}`;
+  const s = pktParts(start);
+  const e = pktParts(end);
+  const nextDay = e.day !== s.day || e.month !== s.month || e.year !== s.year;
+  const atMidnight = e.hour === 0 && e.minute === 0;
+  const endText = nextDay && !atMidnight ? `${WEEKDAYS[e.weekday]} ${formatTime(end)}` : formatTime(end);
+  return `${formatTime(start)} to ${endText}`;
+}
+
+/** How a slot's times read in a schedule day's list. A slot AFTER MIDNIGHT (`after_midnight`) belongs to the day it
+ * opened but sits on the next calendar day, so it says so: "Fri 1:00 AM to 2:00 AM". */
+export function formatSlotTimes(slot: { starts_at: Instant; ends_at: Instant; after_midnight?: boolean }): string {
+  const range = formatTimeRange(slot.starts_at, slot.ends_at);
+  return slot.after_midnight ? `${WEEKDAYS[pktParts(slot.starts_at).weekday]} ${range}` : range;
 }
 
 /** "Wed, 23 Sep"; the year is added only when it is not the current (Pakistan) year: "Tue, 5 Jan 2027". */

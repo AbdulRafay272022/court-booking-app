@@ -3,23 +3,29 @@ from datetime import datetime, time
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.utils.schedule import closes_next_day_for
+
 
 class ScheduleTemplateIn(BaseModel):
+    """One weekday's opening hours. The day belongs to the day it OPENS (Section 32 Part 3): 15:00 to 03:00 on Thursday
+    is open Thursday 3 PM until Friday 3 AM. `close_time <= open_time` means the court closes the NEXT morning
+    (close == open is open 24 hours; close 00:00 is midnight). `closes_next_day` is derived from the times; a client that
+    sends it must send the value the times imply."""
+
     day_of_week: int = Field(ge=0, le=6)
     open_time: time
     close_time: time
+    closes_next_day: bool | None = None
 
     @model_validator(mode="after")
-    def _close_after_open(self) -> "ScheduleTemplateIn":
-        # schedule_templates has CHECK (open_time < close_time) and the availability grid is
-        # built within one calendar day, so hours that run past midnight (e.g. 06:00 -> 02:00)
-        # are not representable. Without this the INSERT hit the constraint and the request
-        # answered an unhandled 500 (which the browser then reported as a network error).
-        if self.close_time <= self.open_time:
+    def _derive_closes_next_day(self) -> "ScheduleTemplateIn":
+        implied = closes_next_day_for(self.open_time, self.close_time)
+        if self.closes_next_day is not None and self.closes_next_day != implied:
             raise ValueError(
-                "close_time must be later than open_time; hours past midnight are not supported yet "
-                "(use 23:59 as the latest closing time)"
+                "closes_next_day must be true exactly when close_time is at or before open_time "
+                "(a court that closes at 03:00 after opening at 15:00 closes the next morning)"
             )
+        self.closes_next_day = implied
         return self
 
 
@@ -27,6 +33,7 @@ class ScheduleTemplateOut(ScheduleTemplateIn):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     is_active: bool
+    closes_next_day: bool
 
 
 class PricingRuleIn(BaseModel):

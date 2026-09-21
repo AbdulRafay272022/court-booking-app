@@ -101,7 +101,7 @@ async def get_venue_by_slug(
     for court in venue.courts:
         if not court.is_active:
             continue
-        slots = await availability.get_day_slots(court, today)
+        slots = await availability.get_slots_starting_on(court, today)
         available += sum(1 for s in slots if s.status == "available")
     out.available_slots_today = available
     return out

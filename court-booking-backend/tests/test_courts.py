@@ -86,37 +86,70 @@ async def test_slot_minutes_varies_by_sport(client, make_user, make_venue, make_
     assert futsal.json()["court"]["slot_minutes"] == 60
 
 
-async def test_schedule_closing_before_opening_is_a_clean_422_not_a_500(
+async def test_hours_that_used_to_500_are_now_overnight_hours_and_real_nonsense_is_a_clean_422(
     client, make_user, make_venue, make_court, make_auth_headers
 ):
-    """Production incident 2026-09-20: an owner typed 06:00 -> 02:00 (past midnight). The DB's
-    CHECK (open_time < close_time) rejected the INSERT and the API answered an unhandled 500,
-    which the browser (no CORS headers on a 500) showed as "Can't reach the server". It must be
-    a normal validation error, and nothing may be written."""
+    """Production incident 2026-09-20: an owner typed 06:00 -> 02:00. The DB's old CHECK (open_time < close_time)
+    rejected the INSERT and the API answered an unhandled 500 ("Can't reach the server"). Since Section 32 Part 3 those
+    hours are REAL overnight hours, so they are accepted (closes_next_day derived). What must stay true: input that is
+    genuinely contradictory is a normal 422 VALIDATION_ERROR, never a 500, and nothing is written."""
     owner = await make_user("+923002000040", role=UserRole.OWNER)
     venue = await make_venue(owner)
     court = await make_court(venue)
     headers = await make_auth_headers(owner)
+    url = f"/api/v1/courts/{court.id}/schedule"
 
-    for open_time, close_time in [("06:00:00", "02:00:00"), ("06:00:00", "06:00:00"), ("06:00:00", "00:00:00")]:
-        resp = await client.post(
-            f"/api/v1/courts/{court.id}/schedule",
-            headers=headers,
-            json={"schedules": [{"day_of_week": 0, "open_time": open_time, "close_time": close_time}]},
-        )
-        assert resp.status_code == 422, (open_time, close_time, resp.text)
+    # contradictory: the flag says one thing, the times another
+    for row in (
+        {"day_of_week": 0, "open_time": "06:00:00", "close_time": "02:00:00", "closes_next_day": False},
+        {"day_of_week": 0, "open_time": "06:00:00", "close_time": "23:00:00", "closes_next_day": True},
+    ):
+        resp = await client.post(url, headers=headers, json={"schedules": [row]})
+        assert resp.status_code == 422, resp.text
         assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert (await client.get(f"/api/v1/courts/{court.id}")).json()["schedule_templates"] == []
 
-    court_resp = await client.get(f"/api/v1/courts/{court.id}")
-    assert court_resp.json()["schedule_templates"] == []
+    # the shapes the old rule refused are all valid now, with the flag derived from the times
+    for open_time, close_time, flag in [
+        ("06:00:00", "02:00:00", True),   # closes 2 AM next morning
+        ("06:00:00", "06:00:00", True),   # open 24 hours
+        ("06:00:00", "00:00:00", True),   # closes at midnight (the last slot is no longer lost to "23:59")
+        ("06:00:00", "23:59:00", False),  # an ordinary same-day day
+    ]:
+        resp = await client.post(url, headers=headers, json={"schedules": [{"day_of_week": 0, "open_time": open_time, "close_time": close_time}]})
+        assert resp.status_code == 200, (open_time, close_time, resp.text)
+        assert resp.json()[0]["closes_next_day"] is flag
 
-    # 23:59 is the latest representable closing time and is accepted.
-    ok = await client.post(
-        f"/api/v1/courts/{court.id}/schedule",
-        headers=headers,
-        json={"schedules": [{"day_of_week": 0, "open_time": "06:00:00", "close_time": "23:59:00"}]},
+
+async def test_an_overnight_day_that_runs_into_the_next_days_opening_is_refused(
+    client, make_user, make_venue, make_court, make_auth_headers
+):
+    owner = await make_user("+923002000041", role=UserRole.OWNER)
+    court = await make_court(await make_venue(owner))
+    headers = await make_auth_headers(owner)
+    url = f"/api/v1/courts/{court.id}/schedule"
+
+    # Thursday (3) 3 PM -> 3 AM Friday, Friday (4) opens at 2 AM: 1 hour of overlap
+    resp = await client.post(
+        url, headers=headers,
+        json={"schedules": [
+            {"day_of_week": 3, "open_time": "15:00:00", "close_time": "03:00:00"},
+            {"day_of_week": 4, "open_time": "02:00:00", "close_time": "23:00:00"},
+        ]},
     )
+    assert resp.status_code == 422 and resp.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert "Thursday" in resp.json()["error"]["message"] and "Friday" in resp.json()["error"]["message"]
+    assert (await client.get(f"/api/v1/courts/{court.id}")).json()["schedule_templates"] == []
+
+    # the check also sees days ALREADY stored that this request does not touch, and the week wraps (Sunday -> Monday)
+    ok = await client.post(url, headers=headers, json={"schedules": [{"day_of_week": 0, "open_time": "06:00:00", "close_time": "23:00:00"}]})
     assert ok.status_code == 200
+    resp = await client.post(url, headers=headers, json={"schedules": [{"day_of_week": 6, "open_time": "18:00:00", "close_time": "08:00:00"}]})
+    assert resp.status_code == 422 and "Sunday" in resp.json()["error"]["message"] and "Monday" in resp.json()["error"]["message"]
+
+    # closing exactly when the next day opens is fine
+    fine = await client.post(url, headers=headers, json={"schedules": [{"day_of_week": 6, "open_time": "18:00:00", "close_time": "06:00:00"}]})
+    assert fine.status_code == 200
 
 
 async def test_schedule_upsert_replaces_only_targeted_days(

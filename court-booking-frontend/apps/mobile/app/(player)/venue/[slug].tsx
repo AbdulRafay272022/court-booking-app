@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDistance, formatPKR, formatTimeRange, pktDayTabs } from "@/lib/format";
+import { formatDistance, formatPKR, formatSlotTimes, pktDayTabs } from "@/lib/format";
 import { formatDuration } from "@court-booking/types";
 import { DurationSheet } from "@/components/duration-sheet";
 import { pollInterval } from "@/lib/polling";
@@ -242,9 +242,14 @@ export default function VenueDetailScreen() {
             const waitlistKey = `${activeCourtId}|${slot.starts_at}`;
             const isOnWaitlist = joinedKeys.has(waitlistKey);
             const isJoining = joiningKey === waitlistKey;
+            // The first slot after midnight gets a small divider; those slots read "Fri 1:00 AM to 2:00 AM".
+            const dividerBefore = slot.after_midnight && !slots[slotIndex - 1]?.after_midnight;
             return (
+              <View key={slot.starts_at} className="gap-2.5">
+              {dividerBefore ? (
+                <Text className="font-figtree-bold text-player-ink-fainter text-[10.5px] tracking-[0.14em]">AFTER MIDNIGHT</Text>
+              ) : null}
               <Pressable
-                key={slot.starts_at}
                 onPress={() => handleTapSlot(slotIndex, mineBookingId)}
                 className="flex-row items-center justify-between px-4 py-3.5 rounded-[14px]"
                 style={{
@@ -256,7 +261,7 @@ export default function VenueDetailScreen() {
               >
                 <View className="gap-0.5">
                   <Text className="font-mono-semibold text-player-ink text-[15px] -tracking-[0.1px]">
-                    {formatTimeRange(slot.starts_at, slot.ends_at)}
+                    {formatSlotTimes(slot)}
                   </Text>
                   <Text className="font-figtree-semibold text-[11px] tracking-[0.04em]" style={{ color: meta.color }}>
                     {meta.label}
@@ -286,6 +291,7 @@ export default function VenueDetailScreen() {
                   ) : null}
                 </View>
               </Pressable>
+              </View>
             );
           })}
           {slots.length === 0 ? (

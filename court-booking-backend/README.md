@@ -113,7 +113,7 @@ chat/OCR testing exercise a real key) — just don't mistake this
 environment-specific noise for a real regression when running the suite
 from a `.env` with that override.
 
-449 tests across 32 files, one per resource area (`test_auth.py`,
+464 tests across 33 files, one per resource area (`test_auth.py`,
 `test_venues.py`, `test_courts.py`, `test_availability.py`,
 `test_bookings.py`, `test_concurrency.py`, `test_payments.py`,
 `test_waitlist.py`, `test_owners.py`, `test_marketing.py`, `test_users.py`,

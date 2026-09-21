@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTimeRange, pktDayTabs } from "@/lib/format";
+import { formatPKR, formatSlotTimes, pktDayTabs } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
 import { formatDuration, type Court, type Slot } from "@court-booking/types";
 import { DurationSheet } from "@/components/booking/duration-sheet";
@@ -164,13 +164,20 @@ export function VenueScheduleClient({ venueId, venueName }: { venueId: string; v
                   {court.slots.map((s, index) => {
                     const isOpen = s.status === "available";
                     const isBooked = s.status === "booked";
-                    const timeCell = <span className="font-mono text-[13.5px] font-semibold">{formatTimeRange(s.starts_at, s.ends_at)}</span>;
+                    // A slot after midnight belongs to the day that opened but is on the next calendar day: "Fri 1:00 AM to 2:00 AM",
+                    // under a small divider before the first one.
+                    const dividerBefore = s.after_midnight && !court.slots[index - 1]?.after_midnight;
+                    const divider = dividerBefore ? (
+                      <span className="basis-full -mt-0.5 text-[10.5px] font-bold tracking-[0.14em] text-player-ink-fainter">AFTER MIDNIGHT</span>
+                    ) : null;
+                    const timeCell = <span className="font-mono text-[13.5px] font-semibold">{formatSlotTimes(s)}</span>;
                     // My own booking / hold: show MY status, never "Notify me" (that is for a slot somebody
                     // ELSE has). A real production slot showed "On waitlist" for the player who had booked it.
                     if (s.is_mine && s.booking_id && (isBooked || s.status === "held" || s.status === "payment_submitted")) {
                       const pending = !isBooked;
                       return (
-                        <li key={s.starts_at} className="flex items-center justify-between gap-3 px-4 py-2 border-b border-player-border-light last:border-0">
+                        <li key={s.starts_at} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 border-b border-player-border-light last:border-0">
+                          {divider}
                           {timeCell}
                           <button
                             onClick={() => router.push(`/booking/${s.booking_id}/${pending ? "pay" : "done"}`)}
@@ -190,7 +197,8 @@ export function VenueScheduleClient({ venueId, venueName }: { venueId: string; v
                     const onWaitlist = joinedKeys.has(waitlistKey);
                     const joining = joiningKey === waitlistKey;
                     return (
-                      <li key={s.starts_at} className="flex items-center justify-between gap-3 px-4 py-2 border-b border-player-border-light last:border-0">
+                      <li key={s.starts_at} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 border-b border-player-border-light last:border-0">
+                        {divider}
                         {timeCell}
                         <div className="flex items-center gap-2">
                           {isBooked ? (

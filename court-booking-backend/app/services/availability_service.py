@@ -14,7 +14,13 @@ from app.models.court import Court
 from app.models.pricing import PricingRule
 from app.models.schedule import ScheduleTemplate
 from app.schemas.availability import SlotOut
-from app.utils.timezone import PKT_OFFSET, pkt_date_of, pkt_time_to_utc, utc_to_pkt_naive
+from app.utils.schedule import (
+    minutes_from_midnight,
+    opening_day_of,
+    rule_matches_window,
+    schedule_window,
+)
+from app.utils.timezone import PKT_OFFSET, utc_to_pkt_naive
 
 MAX_RANGE_DAYS = 28
 # Longest single booking a player can make, whatever the court's slot length (Section 32 Part 4).
@@ -46,19 +52,31 @@ class AvailabilityService:
         return court
 
     @staticmethod
-    def match_rule(
-        rules: list[PricingRule], day_of_week: int, slot_start: time, slot_end: time
+    def match_rule_minutes(
+        rules: list[PricingRule], day_of_week: int, slot_start_min: int, slot_end_min: int
     ) -> PricingRule | None:
-        """First matching rule wins, evaluated in descending priority order."""
+        """First matching rule wins, evaluated in descending priority order. `day_of_week` is the OPENING day's weekday
+        (Monday = 0) and the slot minutes count from that day's midnight (>= 1440 after midnight), so a rule window may
+        cross midnight (see utils.schedule.rule_matches_window)."""
         for rule in sorted((r for r in rules if r.is_active), key=lambda r: r.priority, reverse=True):
             if rule.day_of_week and day_of_week not in rule.day_of_week:
                 continue
-            if rule.start_time is not None and slot_start < rule.start_time:
-                continue
-            if rule.end_time is not None and slot_end > rule.end_time:
+            if not rule_matches_window(rule.start_time, rule.end_time, slot_start_min, slot_end_min):
                 continue
             return rule
         return None
+
+    @staticmethod
+    def match_rule(
+        rules: list[PricingRule], day_of_week: int, slot_start: time, slot_end: time
+    ) -> PricingRule | None:
+        """Wall-clock convenience over match_rule_minutes for a slot on a single day (end at or before start = crosses
+        midnight)."""
+        start = minutes_from_midnight(slot_start)
+        end = minutes_from_midnight(slot_end)
+        if end <= start:
+            end += 24 * 60
+        return AvailabilityService.match_rule_minutes(rules, day_of_week, start, end)
 
     @staticmethod
     def price_for_rule(rule: PricingRule | None, court: Court) -> float | None:
@@ -73,32 +91,42 @@ class AvailabilityService:
         result = await self.db.execute(select(PricingRule).where(PricingRule.court_id == court_id))
         return list(result.scalars().all())
 
+    async def _templates(self, court_id: uuid.UUID) -> dict[int, ScheduleTemplate]:
+        result = await self.db.execute(
+            select(ScheduleTemplate).where(ScheduleTemplate.court_id == court_id, ScheduleTemplate.is_active.is_(True))
+        )
+        return {t.day_of_week: t for t in result.scalars().all()}
+
+    async def schedule_day_of(self, court: Court, instant: datetime) -> date:
+        """The opening day whose schedule `instant` belongs to (an overnight court's 1:00 AM Friday is a Thursday slot)."""
+        return opening_day_of(utc_to_pkt_naive(instant), await self._templates(court.id))
+
     async def get_day_slots(
         self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None
     ) -> list[SlotOut]:
-        # Bounds are anchored to PKT midnight (not UTC midnight) so they stay
-        # aligned with the PKT-shifted slot times computed below, even for a
-        # court whose hours straddle the UTC day boundary.
-        day_start = pkt_time_to_utc(target_date, datetime.min.time())
-        day_end = day_start + timedelta(days=1)
-
-        blackouts_result = await self.db.execute(
-            select(Blackout).where(
-                Blackout.court_id == court.id, Blackout.starts_at < day_end, Blackout.ends_at > day_start
-            )
-        )
-        blackouts = blackouts_result.scalars().all()
-
-        day_of_week = target_date.weekday()
+        """The slots of the schedule day that OPENS on `target_date`, including any after midnight on an overnight court
+        (flagged `after_midnight`). The grid is walked in naive Pakistan wall-clock time -- the domain schedule_templates
+        and pricing_rules are defined in -- and converted to UTC only at the storage boundary."""
         template = await self.db.scalar(
             select(ScheduleTemplate).where(
                 ScheduleTemplate.court_id == court.id,
-                ScheduleTemplate.day_of_week == day_of_week,
+                ScheduleTemplate.day_of_week == target_date.weekday(),
                 ScheduleTemplate.is_active.is_(True),
             )
         )
         if template is None:
             return []
+
+        opens_local, closes_local = schedule_window(target_date, template)
+        window_start = (opens_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
+        window_end = (closes_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
+
+        blackouts_result = await self.db.execute(
+            select(Blackout).where(
+                Blackout.court_id == court.id, Blackout.starts_at < window_end, Blackout.ends_at > window_start
+            )
+        )
+        blackouts = blackouts_result.scalars().all()
 
         rules = await self._load_rules(court.id)
 
@@ -106,28 +134,27 @@ class AvailabilityService:
             select(Booking).where(
                 Booking.court_id == court.id,
                 Booking.status.in_(LIVE_BOOKING_STATUSES),
-                Booking.starts_at < day_end,
-                Booking.ends_at > day_start,
+                Booking.starts_at < window_end,
+                Booking.ends_at > window_start,
             )
         )
         existing_bookings = bookings_result.scalars().all()
 
         slots: list[SlotOut] = []
         duration = timedelta(minutes=court.slot_minutes)
-        # The loop walks in naive Pakistan-local wall-clock time -- the same
-        # domain schedule_templates/pricing_rules' start_time/end_time columns
-        # are defined in -- and only converts to a UTC-aware instant at the
-        # point of comparing against/returning real stored timestamps below.
-        slot_start_local = datetime.combine(target_date, template.open_time)
-        day_close_local = datetime.combine(target_date, template.close_time)
+        day_midnight = datetime.combine(target_date, time.min)
+        day_of_week = target_date.weekday()
+        slot_start_local = opens_local
 
-        while slot_start_local + duration <= day_close_local:
+        while slot_start_local + duration <= closes_local:
             slot_end_local = slot_start_local + duration
-            rule = self.match_rule(rules, day_of_week, slot_start_local.time(), slot_end_local.time())
+            start_min = int((slot_start_local - day_midnight).total_seconds() // 60)
+            rule = self.match_rule_minutes(rules, day_of_week, start_min, start_min + court.slot_minutes)
             price = self.price_for_rule(rule, court) or 0.0
             slot_start_dt = (slot_start_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
             slot_end_dt = (slot_end_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
             advance_amount = round(price * float(rule.advance_percentage) / 100, 2) if rule else 0.0
+            after_midnight = slot_start_local.date() > target_date
 
             blackout = next(
                 (bl for bl in blackouts if bl.starts_at < slot_end_dt and bl.ends_at > slot_start_dt), None
@@ -150,6 +177,7 @@ class AvailabilityService:
                         price=round(price, 2),
                         advance_amount=advance_amount,
                         reason=blackout.reason,
+                        after_midnight=after_midnight,
                     )
                 )
             elif booking is not None:
@@ -166,6 +194,7 @@ class AvailabilityService:
                         held_until=booking.held_until,
                         booking_id=booking.id,
                         is_mine=viewer_id is not None and booking.player_id == viewer_id,
+                        after_midnight=after_midnight,
                     )
                 )
             else:
@@ -176,10 +205,21 @@ class AvailabilityService:
                         status="available",
                         price=round(price, 2),
                         advance_amount=advance_amount,
+                        after_midnight=after_midnight,
                     )
                 )
             slot_start_local = slot_end_local
         return slots
+
+    async def get_slots_starting_on(
+        self, court: Court, calendar_date: date, viewer_id: uuid.UUID | None = None
+    ) -> list[SlotOut]:
+        """Every slot whose START falls on this Pakistan calendar date: yesterday's after-midnight tail plus today's own
+        slots up to midnight. This is the calendar-day view ("what is free on Friday?") used by the assistant and the
+        'available today' count; the apps' day tabs use the schedule-day view (get_day_slots) instead."""
+        previous = await self.get_day_slots(court, calendar_date - timedelta(days=1), viewer_id=viewer_id)
+        today = await self.get_day_slots(court, calendar_date, viewer_id=viewer_id)
+        return [s for s in previous if s.after_midnight] + [s for s in today if not s.after_midnight]
 
     async def quote_range(self, court: Court, starts_at: datetime, slot_count: int = 1) -> RangeQuote:
         """Price a booking of `slot_count` consecutive slots beginning exactly at `starts_at`.
@@ -203,7 +243,7 @@ class AvailabilityService:
         picked: list[SlotOut] = []
         for i in range(slot_count):
             slot_start = starts_at + step * i
-            day = pkt_date_of(slot_start)
+            day = await self.schedule_day_of(court, slot_start)
             if day not in by_day:
                 by_day[day] = await self.get_day_slots(court, day)
             slot = next((s for s in by_day[day] if s.starts_at == slot_start), None)
@@ -262,8 +302,9 @@ class AvailabilityService:
         time) so this check can never drift from what the availability
         endpoint actually shows a player as bookable.
         """
-        # The schedule day is the PAKISTAN calendar date of the slot, not its UTC date.
-        slots = await self.get_day_slots(court, pkt_date_of(starts_at))
+        # The schedule day is the OPENING day of the slot's schedule (Pakistan time), not its UTC date and not always its
+        # calendar date: 1:00 AM Friday on an overnight court is a Thursday slot.
+        slots = await self.get_day_slots(court, await self.schedule_day_of(court, starts_at))
         return any(s.starts_at == starts_at for s in slots)
 
     async def is_slot_open(self, court_id: uuid.UUID, starts_at: datetime, ends_at: datetime) -> bool:
@@ -309,8 +350,10 @@ class AvailabilityService:
         converted back before matching."""
         rules = await self._load_rules(court.id)
         local_starts_at = utc_to_pkt_naive(starts_at)
-        local_ends_at = utc_to_pkt_naive(ends_at)
-        rule = self.match_rule(rules, local_starts_at.weekday(), local_starts_at.time(), local_ends_at.time())
+        opening_day = await self.schedule_day_of(court, starts_at)
+        start_min = int((local_starts_at - datetime.combine(opening_day, time.min)).total_seconds() // 60)
+        length_min = int((ends_at - starts_at).total_seconds() // 60)
+        rule = self.match_rule_minutes(rules, opening_day.weekday(), start_min, start_min + length_min)
         price = self.price_for_rule(rule, court)
         if price is None or rule is None:
             raise HTTPException(

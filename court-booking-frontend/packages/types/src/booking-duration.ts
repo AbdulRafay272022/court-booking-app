@@ -21,7 +21,11 @@ export interface SlotPreview {
   firstStart: string;
   lastStart: string;
   lastEnd: string;
+  /** True when the last slot ends after midnight (an overnight court): lastEnd is the NEXT morning. */
+  crossesMidnight: boolean;
 }
+
+const DAY = 24 * 60;
 
 function minutesOf(time24: string): number | null {
   const t = parseTime24(time24);
@@ -44,18 +48,27 @@ function hhmm(totalMinutes: number): string {
 export function slotPreview(open24: string, close24: string, slotMinutes: number): SlotPreview | null {
   const open = minutesOf(open24);
   const close = minutesOf(close24);
-  if (open === null || close === null || slotMinutes <= 0 || close <= open) return null;
-  const count = Math.floor((close - open) / slotMinutes);
+  if (open === null || close === null || slotMinutes <= 0) return null;
+  // close at or before open = the court closes the NEXT morning (3 PM to 3 AM); close == open = open 24 hours
+  const end = close <= open ? close + DAY : close;
+  const count = Math.floor((end - open) / slotMinutes);
   if (count < 1) return null;
   const lastStart = open + (count - 1) * slotMinutes;
-  return { count, firstStart: hhmm(open), lastStart: hhmm(lastStart), lastEnd: hhmm(lastStart + slotMinutes) };
+  return {
+    count,
+    firstStart: hhmm(open),
+    lastStart: hhmm(lastStart),
+    lastEnd: hhmm(lastStart + slotMinutes),
+    crossesMidnight: lastStart + slotMinutes > DAY,
+  };
 }
 
 /** "11 slots a day, 6:00 AM to 10:30 PM" -- the one-line preview text. */
 export function slotPreviewText(open24: string, close24: string, slotMinutes: number): string {
   const p = slotPreview(open24, close24, slotMinutes);
   if (!p) return "These hours are too short for even one slot.";
-  return `${p.count} ${p.count === 1 ? "slot" : "slots"} a day, ${formatTime24As12(p.firstStart)} to ${formatTime24As12(p.lastEnd)}`;
+  const to = `${formatTime24As12(p.lastEnd)}${p.crossesMidnight ? " the next morning" : ""}`;
+  return `${p.count} ${p.count === 1 ? "slot" : "slots"} a day, ${formatTime24As12(p.firstStart)} to ${to}`;
 }
 
 export interface DurationChoice {

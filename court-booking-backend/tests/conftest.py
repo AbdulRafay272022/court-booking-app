@@ -175,7 +175,12 @@ def make_schedule(db_session_factory) -> Callable:
     async def _make(court: Court, day_of_week: int, open_time: time, close_time: time):
         async with db_session_factory() as session:
             template = ScheduleTemplate(
-                court_id=court.id, day_of_week=day_of_week, open_time=open_time, close_time=close_time
+                court_id=court.id,
+                day_of_week=day_of_week,
+                open_time=open_time,
+                close_time=close_time,
+                # close at or before open = the court closes the next morning (Section 32 Part 3); the API derives it the same way
+                closes_next_day=close_time <= open_time,
             )
             session.add(template)
             await session.commit()

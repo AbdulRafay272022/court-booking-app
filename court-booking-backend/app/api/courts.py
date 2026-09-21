@@ -5,6 +5,8 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import AppSettings, DbSession, RequireOwner
+from app.errors import AppError, ErrorCode
+from app.utils.schedule import overlap_error
 from app.models.blackout import Blackout
 from app.models.court import Court
 from app.models.pricing import PricingRule
@@ -28,6 +30,9 @@ from app.services.notification_service import NotificationService
 from app.services.venue_service import VenueService
 
 router = APIRouter(tags=["courts"])
+
+# Weekday names for messages, in the backend's numbering (Monday = 0).
+_DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 async def _get_court(db: DbSession, court_id: uuid.UUID) -> Court:
@@ -156,6 +161,18 @@ async def set_schedule(
     await venue_service.require_owned_venue(court.venue_id, owner)
 
     days = {s.day_of_week for s in payload.schedules}
+
+    # An overnight day must not run into the next day's opening (Thursday until 3 AM, Friday opens 2 AM). Check the
+    # WHOLE resulting week: the days in this request plus the days already stored that the request does not touch.
+    existing = await db.execute(
+        select(ScheduleTemplate).where(ScheduleTemplate.court_id == court_id, ScheduleTemplate.is_active.is_(True))
+    )
+    week = {t.day_of_week: t for t in existing.scalars().all() if t.day_of_week not in days}
+    week.update({s.day_of_week: s for s in payload.schedules})
+    problem = overlap_error(week, _DAY_NAMES)
+    if problem:
+        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR, problem)
+
     if days:
         await db.execute(
             update(ScheduleTemplate)
