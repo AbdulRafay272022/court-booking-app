@@ -1,5 +1,16 @@
 # Section 32 plan: the single source of truth (read this first in any new session)
 
+> ## WARNING: a push to `main` that contains a database migration RUNS IT ON PRODUCTION
+>
+> Every push to `main` deploys, and the deploy script (`infra/scripts/remote-deploy.sh`) runs `alembic upgrade head` on
+> the **production** database from the new image before the new backend starts. So **a migration must never be pushed
+> without the project owner's explicit "go"** (and a fresh manual RDS snapshot; see "Migration rules" in
+> `docs/SECTION_32_PLAN.md`). This is enforced: the `migration-guard` job in `.github/workflows/deploy.yml`
+> (`infra/scripts/check-migration-guard.sh`) FAILS the run, and nothing deploys, if any file in
+> `court-booking-backend/alembic/versions/` changed since the last successful deploy and no commit in that range contains
+> the exact text `[migration-go]`. Add that text to a commit message only AFTER the owner says "go". If you are not sure a
+> change contains a migration, it does not need one; do not push it.
+
 Owner's spec for the Karachi padel/futsal pilot ("Maidan"). This file holds the working rules, the current order of work,
 the progress table, the owner's later additions **verbatim**, and (at the bottom) the original spec **verbatim**. Read
 `court-booking-backend/CLAUDE.md` (START HERE) and `court-booking-frontend/CLAUDE.md` too. Update this file and the
@@ -28,6 +39,16 @@ progress table after EVERY part.
     the output back to the owner; **stop before production until the owner says "go"**.
 - The deploy script (`infra/scripts/remote-deploy.sh`) now runs `alembic upgrade head`, `current` and `check` from the new
   image before `up -d` on EVERY deploy, so a push with a migration in it IS the migration: never push one without the go.
+
+## Migration rules (owner, 2026-09-21/22)
+
+1. Show the migration plan and the exact commands FIRST; the owner reads it.
+2. The owner takes a fresh **manual RDS snapshot** and confirms it (automated backups are 1 day; a restore was never
+   rehearsed). Check it is visible with `aws rds describe-db-snapshots --snapshot-type manual`.
+3. Test upgrade AND downgrade (and the migration's refusal cases) on a scratch database with production-shaped data.
+4. **Stop until the owner says "go".** Then push with `[migration-go]` in a commit message (the CI guard requires it).
+5. The deploy runs the migration from the new image before the new backend starts; read the output back to the owner
+   (SSM: `aws ssm list-commands` -> the `deploy <sha>` command -> `get-command-invocation`), then prove it on production.
 
 ## Order of work (set by the owner 2026-09-22)
 

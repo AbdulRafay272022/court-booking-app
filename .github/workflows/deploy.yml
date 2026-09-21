@@ -1,5 +1,11 @@
 name: Build, push, deploy
 
+# !!! A PUSH TO MAIN THAT CONTAINS A DATABASE MIGRATION RUNS IT ON PRODUCTION !!!
+# The deploy job's remote script (infra/scripts/remote-deploy.sh) runs `alembic upgrade head` from the new image before
+# the new backend starts. The project owner requires that a migration is NEVER pushed without their explicit "go" and a
+# fresh manual RDS snapshot. The `migration-guard` job below enforces it: it fails the run (nothing deploys) if any
+# migration file changed since the last successful deploy, unless a commit in that range says [migration-go].
+
 # Runs on every push to main: builds both images, pushes them to ECR, then
 # (once the EC2_INSTANCE_ID Actions variable is set -- see the "deploy"
 # job's guard) pulls and restarts them on the EC2 instance via SSM Run
@@ -24,6 +30,32 @@ env:
   AWS_REGION: ap-south-1
 
 jobs:
+  # Blocks a deploy that would run a migration nobody approved. It compares against the last SUCCESSFUL deploy (not just
+  # this push's parent) so that a blocked migration keeps blocking later pushes until it is approved or removed.
+  migration-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse an unapproved migration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          BASE="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/$REPO/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1"             | python3 -c "import json,sys; r=json.load(sys.stdin)['workflow_runs']; print(r[0]['head_sha'] if r else '')" || true)"
+          if [ -z "$BASE" ]; then BASE="$EVENT_BEFORE"; fi
+          echo "checking migrations since the last successful deploy: ${BASE:-none} -> $SHA"
+          bash infra/scripts/check-migration-guard.sh "$BASE" "$SHA"
+
   build-and-push:
     runs-on: ubuntu-latest
     outputs:
@@ -83,7 +115,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=web
 
   deploy:
-    needs: build-and-push
+    needs: [build-and-push, migration-guard]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
