@@ -132,7 +132,7 @@ async def deactivate_court(court_id: uuid.UUID, db: DbSession, settings: AppSett
                 player = await db.get(User, booking.player_id)
                 if player is not None:
                     await notifications.notify_court_deactivated(
-                        user=player, court_name=court.name, starts_at=booking.starts_at.isoformat()
+                        user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
                     )
             await audit.log(
                 actor_user_id=owner.id,

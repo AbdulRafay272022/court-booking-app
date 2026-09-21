@@ -87,8 +87,14 @@ async def submit_payment_proof(
         court = await db.get(Court, booking.court_id)
         player = await db.get(User, booking.player_id)
         if court is not None and player is not None:
+            venue = await db.get(Venue, court.venue_id)
             await NotificationService(db, settings).notify_booking_confirmed(
-                user=player, court_name=court.name, starts_at=booking.starts_at.isoformat()
+                user=player,
+                court_name=court.name,
+                venue_name=venue.name if venue else "",
+                starts_at=booking.starts_at,
+                ends_at=booking.ends_at,
+                amount_paid=float(booking.amount_paid),
             )
 
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
@@ -109,8 +115,14 @@ async def approve_payment(
     court = await db.get(Court, booking.court_id)
     player = await db.get(User, booking.player_id) if booking.player_id else None
     if court is not None and player is not None:
+        venue = await db.get(Venue, court.venue_id)
         await NotificationService(db, settings).notify_booking_confirmed(
-            user=player, court_name=court.name, starts_at=booking.starts_at.isoformat()
+            user=player,
+            court_name=court.name,
+            venue_name=venue.name if venue else "",
+            starts_at=booking.starts_at,
+            ends_at=booking.ends_at,
+            amount_paid=float(booking.amount_paid),
         )
 
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))

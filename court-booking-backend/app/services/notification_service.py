@@ -15,9 +15,22 @@ from app.services.apns import send_apns
 from app.services.fcm import PushOutcome, send_push
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
+from app.utils.timezone import format_date_relative, format_time_range, format_when, format_when_range
 from app.services.whatsapp_templates import TEMPLATES
 
 logger = structlog.get_logger(__name__)
+
+def _when(starts_at: "datetime | str", ends_at: "datetime | None" = None) -> str:
+    """The display text for a booking time inside a notification: "Wed, 23 Sep, 7:30 PM to 9:00 PM".
+
+    Callers pass the booking's real datetimes and this is the only place they become text. They used to be
+    interpolated straight into the message with `.isoformat()`, so players were sent things like
+    "Your booking for Court 1 on 2026-09-23T14:30:00+00:00 is confirmed" -- a UTC ISO string. A plain str is
+    treated as already-formatted display text (kept so older callers/tests don't break)."""
+    if isinstance(starts_at, datetime):
+        return format_when_range(starts_at, ends_at) if ends_at else format_when(starts_at)
+    return starts_at
+
 
 MARKETING_CAP_BY_TIER = {
     PlanTier.FREE: "MARKETING_CAP_FREE",
@@ -206,7 +219,9 @@ class NotificationService:
 
     # -- Tier 1 --------------------------------------------------------
 
-    async def notify_waitlist_slot_available(self, *, user: User, court_name: str, starts_at: str) -> None:
+    async def notify_waitlist_slot_available(
+        self, *, user: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+    ) -> None:
         # Deliberately makes the race explicit rather than implying an
         # exclusive hold or a protected place in line -- every matching
         # waitlist entry is notified at once (see
@@ -217,44 +232,65 @@ class NotificationService:
             user,
             "slot_reopened",
             "Slot available",
-            f"A slot just opened up at {court_name} on {starts_at} -- book fast, other "
+            f"A slot just opened up at {court_name} on {_when(starts_at, ends_at)} -- book fast, other "
             "waitlisted players were notified too.",
         )
 
-    async def notify_booking_reminder(self, *, user: User, court_name: str, starts_at: str, booking_id: uuid.UUID) -> None:
+    async def notify_booking_reminder(
+        self, *, user: User, court_name: str, starts_at: "datetime | str", booking_id: uuid.UUID, ends_at: "datetime | None" = None
+    ) -> None:
         if await self.has_sent(user.id, "booking_reminder", booking_id):
             return
         await self._send_push_tier(
             user,
             "booking_reminder",
             "Upcoming booking",
-            f"Reminder: your booking at {court_name} is at {starts_at}.",
+            f"Reminder: your booking at {court_name} is {_when(starts_at, ends_at)}.",
             reference_id=booking_id,
         )
 
     # -- Tier 2 ----------------------------------------------------------
 
     async def notify_booking_confirmed(
-        self, *, user: User, court_name: str, starts_at: str, amount_paid: float | None = None
+        self,
+        *,
+        user: User,
+        court_name: str,
+        starts_at: "datetime | str",
+        amount_paid: float | None = None,
+        ends_at: "datetime | None" = None,
+        venue_name: str = "",
     ) -> None:
+        # The WhatsApp template lays out venue / date / time as separate lines. They used to be sent
+        # as ["court", "", <iso>, "", paid], i.e. a blank venue, a UTC ISO string as the date and a
+        # blank time -- the player got an empty "⏰" line.
+        if isinstance(starts_at, datetime):
+            date_text = format_date_relative(starts_at)
+            time_text = format_time_range(starts_at, ends_at) if ends_at else format_when(starts_at).split(", ", 1)[-1]
+        else:
+            date_text, time_text = starts_at, ""
         await self._send_push_and_whatsapp(
             user,
             "booking_confirmed",
             "Booking confirmed",
-            f"Your booking for {court_name} on {starts_at} is confirmed. See you on court!",
-            template_params=[court_name, "", starts_at, "", f"{amount_paid:,.0f}" if amount_paid else ""],
+            f"Your booking for {court_name} on {_when(starts_at, ends_at)} is confirmed. See you on court!",
+            template_params=[court_name, venue_name, date_text, time_text, f"{amount_paid:,.0f}" if amount_paid else ""],
         )
 
-    async def notify_booking_cancelled(self, *, user: User, court_name: str, starts_at: str) -> None:
+    async def notify_booking_cancelled(
+        self, *, user: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+    ) -> None:
         await self._send_push_and_whatsapp(
             user,
             "booking_cancelled",
             "Booking cancelled",
-            f"Your booking for {court_name} on {starts_at} was cancelled.",
-            template_params=[court_name, starts_at],
+            f"Your booking for {court_name} on {_when(starts_at, ends_at)} was cancelled.",
+            template_params=[court_name, _when(starts_at, ends_at)],
         )
 
-    async def notify_court_deactivated(self, *, user: User, court_name: str, starts_at: str) -> None:
+    async def notify_court_deactivated(
+        self, *, user: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+    ) -> None:
         """A court with a live future booking on it was deactivated -- the
         booking itself is deliberately NOT auto-cancelled (see
         AUDIT_FINDINGS.md finding #27: a court going inactive might be
@@ -267,8 +303,8 @@ class NotificationService:
             "court_deactivated",
             "Court unavailable",
             f"Heads up: {court_name} was marked unavailable by the venue. Your booking on "
-            f"{starts_at} is still on file -- the venue will follow up with you directly.",
-            template_params=[court_name, starts_at],
+            f"{_when(starts_at, ends_at)} is still on file -- the venue will follow up with you directly.",
+            template_params=[court_name, _when(starts_at, ends_at)],
         )
 
     async def notify_payment_rejected(self, *, user: User, court_name: str, reason: str) -> None:
@@ -280,9 +316,11 @@ class NotificationService:
             template_params=[court_name, reason],
         )
 
-    async def notify_owner_new_booking(self, *, owner: User, court_name: str, starts_at: str) -> None:
+    async def notify_owner_new_booking(
+        self, *, owner: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+    ) -> None:
         await self._send_push_and_whatsapp(
-            owner, "owner_new_booking", "New booking", f"New booking on {court_name} for {starts_at}."
+            owner, "owner_new_booking", "New booking", f"New booking on {court_name} for {_when(starts_at, ends_at)}."
         )
 
     async def notify_owner_daily_digest(self, *, owner: User, body: str) -> None:

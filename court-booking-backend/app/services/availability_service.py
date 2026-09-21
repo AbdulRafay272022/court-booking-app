@@ -11,7 +11,7 @@ from app.models.court import Court
 from app.models.pricing import PricingRule
 from app.models.schedule import ScheduleTemplate
 from app.schemas.availability import SlotOut
-from app.utils.timezone import PKT_OFFSET, pkt_time_to_utc, utc_to_pkt_naive
+from app.utils.timezone import PKT_OFFSET, pkt_date_of, pkt_time_to_utc, utc_to_pkt_naive
 
 MAX_RANGE_DAYS = 28
 
@@ -54,7 +54,9 @@ class AvailabilityService:
         result = await self.db.execute(select(PricingRule).where(PricingRule.court_id == court_id))
         return list(result.scalars().all())
 
-    async def get_day_slots(self, court: Court, target_date: date) -> list[SlotOut]:
+    async def get_day_slots(
+        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None
+    ) -> list[SlotOut]:
         # Bounds are anchored to PKT midnight (not UTC midnight) so they stay
         # aligned with the PKT-shifted slot times computed below, even for a
         # court whose hours straddle the UTC day boundary.
@@ -141,6 +143,7 @@ class AvailabilityService:
                         advance_amount=float(booking.advance_amount),
                         held_until=booking.held_until,
                         booking_id=booking.id,
+                        is_mine=viewer_id is not None and booking.player_id == viewer_id,
                     )
                 )
             else:
@@ -172,7 +175,8 @@ class AvailabilityService:
         time) so this check can never drift from what the availability
         endpoint actually shows a player as bookable.
         """
-        slots = await self.get_day_slots(court, starts_at.date())
+        # The schedule day is the PAKISTAN calendar date of the slot, not its UTC date.
+        slots = await self.get_day_slots(court, pkt_date_of(starts_at))
         return any(s.starts_at == starts_at for s in slots)
 
     async def is_slot_open(self, court_id: uuid.UUID, starts_at: datetime, ends_at: datetime) -> bool:

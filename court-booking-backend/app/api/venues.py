@@ -1,5 +1,4 @@
 import uuid
-from datetime import date
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
@@ -21,6 +20,7 @@ from app.schemas.venue import (
 from app.services.availability_service import AvailabilityService
 from app.services.notification_service import MarketingSendLimitExceeded, NotificationService
 from app.services.venue_service import VenueService
+from app.utils.timezone import pkt_today
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
@@ -96,7 +96,7 @@ async def get_venue_by_slug(
     out = await service.to_out(venue, requesting_user=user)
 
     availability = AvailabilityService(db)
-    today = date.today()
+    today = pkt_today()
     available = 0
     for court in venue.courts:
         if not court.is_active:

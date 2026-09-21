@@ -11,6 +11,9 @@ class TodaySlotOut(BaseModel):
     booking_id: uuid.UUID | None = None
     player_name: str | None = None
     amount_paid: float | None = None
+    # Section 32 Part 2: the owner's Today row shows what is still owed at the venue, not just what was paid.
+    price: float | None = None
+    balance_due: float | None = None
 
 
 class TodayCourtOut(BaseModel):

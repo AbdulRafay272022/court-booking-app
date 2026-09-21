@@ -46,7 +46,8 @@ async def send_booking_reminders(session_factory: async_sessionmaker = AsyncSess
             await notifications.notify_booking_reminder(
                 user=player,
                 court_name=court.name,
-                starts_at=booking.starts_at.isoformat(),
+                starts_at=booking.starts_at,
+                ends_at=booking.ends_at,
                 booking_id=booking.id,
             )
             sent += 1

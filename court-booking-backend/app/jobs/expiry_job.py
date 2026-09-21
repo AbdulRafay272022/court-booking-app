@@ -33,7 +33,7 @@ async def expire_stale_bookings(session_factory: async_sessionmaker = AsyncSessi
             player = await db.get(User, booking.player_id) if booking.player_id else None
             if court and player:
                 await notifications.notify_booking_cancelled(
-                    user=player, court_name=court.name, starts_at=booking.starts_at.isoformat()
+                    user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
                 )
             # A payment-review timeout means the owner sat on it -- flag them too.
             if court and booking.cancellation_reason == "payment_review_expired":
@@ -41,7 +41,7 @@ async def expire_stale_bookings(session_factory: async_sessionmaker = AsyncSessi
                 owner = await db.get(User, venue.owner_id) if venue else None
                 if owner:
                     await notifications.notify_booking_cancelled(
-                        user=owner, court_name=court.name, starts_at=booking.starts_at.isoformat()
+                        user=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
                     )
             if court:
                 await waitlist_service.notify_matching_entries(court, booking.starts_at)

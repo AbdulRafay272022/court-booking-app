@@ -197,7 +197,7 @@ async def test_propose_confirmation_rejects_a_time_that_is_not_an_available_slot
         actions,
     )
     assert good["ok"] is True
-    assert good["label"].endswith("9:00 PM - 10:30 PM")
+    assert good["label"].startswith("9:00 PM to 10:30 PM, ")
     assert [a.type for a in actions] == ["confirm_booking", "decline"]
 
 
@@ -220,8 +220,8 @@ async def test_check_availability_speaks_pakistan_time_and_shows_late_slots(
     )
     labels = [s["label"] for s in result["slots"]]
     assert len(labels) == 17  # 06:00 ... 22:00 -- all of them, not the first 15
-    assert labels[0].endswith("6:00 AM - 7:00 AM")
-    assert labels[-1].endswith("10:00 PM - 11:00 PM")
+    assert labels[0].startswith("6:00 AM to 7:00 AM, ")
+    assert labels[-1].startswith("10:00 PM to 11:00 PM, ")
     assert all("UTC" not in label and "+00:00" not in label for label in labels)
     assert all(s["starts_at"].endswith("+00:00") for s in result["slots"])  # still UTC for tool round-trips
 
@@ -236,6 +236,62 @@ def test_system_prompt_knows_today_and_forbids_mentioning_utc():
     assert "Sunday, 20 September 2026, 9:15 PM" in prompt
     assert "NEVER" in prompt and "UTC" in prompt  # the rule forbidding it
     assert "label" in prompt
+
+
+async def test_ai_reply_never_shows_a_24_hour_time_or_an_iso_timestamp(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    """Regression (real replies 2026-09-20): "slots only run up to 17:30", "from 07:00 to 08:30", mixed with
+    "9:00 PM" in the same message. Whatever the model writes, the player must never SEE a clock time without
+    AM/PM or a raw ISO timestamp."""
+    from app.utils.timezone import contains_24h_time
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    owner = await make_user("+923014000050", role=UserRole.OWNER)
+    player = await make_user("+923014000051", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, slot_minutes=60)
+    target = date.today() + timedelta(days=1)
+    await make_schedule(court, day_of_week=target.weekday(), open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court, price_per_slot=2500)
+    _mock_anthropic_sequence(
+        monkeypatch,
+        [
+            _tool_use_response("check_availability", {"court_id": str(court.id), "date": target.isoformat()}),
+            _text_response(
+                "Slots only run up to 17:30 (07:00 to 08:30 is free), and 9:00 PM is open. "
+                "Booked at 2026-09-23T14:30:00+00:00."
+            ),
+        ],
+    )
+    result = await AIChatService(db_session, settings).process_message(user=player, message="9 pm?", history=[])
+    assert not contains_24h_time(result.reply), result.reply
+    assert "T14:30" not in result.reply and "+00:00" not in result.reply, result.reply
+    assert "5:30 PM" in result.reply and "9:00 PM" in result.reply
+
+
+async def test_hold_slot_tool_result_carries_labels_not_iso_timestamps(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """The hold result used to hand the model `held_until` as an ISO string, which it then re-formatted."""
+    import re
+
+    owner = await make_user("+923014000052", role=UserRole.OWNER)
+    player = await make_user("+923014000053", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue, slot_minutes=60)
+    target = date.today() + timedelta(days=1)
+    await make_schedule(court, day_of_week=target.weekday(), open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court, price_per_slot=2500)
+
+    result = await AIChatService(db_session, get_settings())._execute_tool(
+        player, "hold_slot", {"court_id": str(court.id), "starts_at": target.isoformat() + "T14:00:00+00:00"}, []
+    )
+    assert "error" not in result, result
+    assert "held_until" not in result
+    assert re.fullmatch(r"\d{1,2}:\d{2} [AP]M", result["held_until_label"]), result
+    assert result["label"].startswith("7:00 PM to 8:00 PM, ")
 
 
 async def _availability_then_reply(db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch, phones, reply_text):
@@ -268,7 +324,7 @@ async def test_reply_naming_one_offered_slot_gets_a_yes_no_proposal_even_if_the_
     a booking question that names exactly one slot from THIS turn's availability to that slot."""
     court, target, result = await _availability_then_reply(
         db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch,
-        ("+923014000040", "+923014000041"), "5:00 PM - 6:00 PM available hai, PKR 3,000. Kya main book kar doon?",
+        ("+923014000040", "+923014000041"), "5:00 PM to 6:00 PM available hai, PKR 3,000. Kya main book kar doon?",
     )
     assert [a.type for a in result.actions] == ["confirm_booking", "decline"]
     assert result.actions[0].data == {"court_id": str(court.id), "starts_at": target.isoformat() + "T12:00:00+00:00"}
@@ -279,13 +335,13 @@ async def test_no_proposal_is_attached_when_the_reply_is_ambiguous_or_not_about_
 ):
     _court, _target, both = await _availability_then_reply(
         db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch,
-        ("+923014000042", "+923014000043"), "5:00 PM - 6:00 PM aur 6:00 PM - 7:00 PM dono khaali hain. Kaunsa book karun?",
+        ("+923014000042", "+923014000043"), "5:00 PM to 6:00 PM aur 6:00 PM to 7:00 PM dono khaali hain. Kaunsa book karun?",
     )
     assert both.actions == []  # two slots named: which one would "yes" mean?
 
     _court, _target, info = await _availability_then_reply(
         db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch,
-        ("+923014000044", "+923014000045"), "5:00 PM - 6:00 PM ka slot khaali hai, Rs. 3,000.",
+        ("+923014000044", "+923014000045"), "5:00 PM to 6:00 PM ka slot khaali hai, Rs. 3,000.",
     )
     assert info.actions == []  # informational only: no booking intent, no buttons
 

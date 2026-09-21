@@ -6,6 +6,110 @@ This file is different: it's the build history and the working conventions —
 read it to pick up where things left off and to work the way this project has
 been worked so far.
 
+## START HERE -- handoff as of 2026-09-21 (read this first)
+
+The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in
+Roman Urdu; answer in plain English, keep it short, and **verify before claiming** (they were burned
+by "fixed" things that weren't). Everything below is on `main`, deployed, tests green
+(**363 backend tests**: `AI_PROVIDER=claude AI_VISION_PROVIDER=claude .venv/Scripts/python.exe -m pytest`).
+
+**Deployed today (all through GitHub Actions on push to `main`; none needed a migration):**
+`c87f2fe` per-court cancellation policy in both UIs + stale wizard-draft recovery; `475b296`
+schedule hours the DB can't store (close <= open) rejected with a 422 + inline UI message;
+`3fdb175` WhatsApp notifications made best-effort (a Meta failure no longer 500s venue/payment
+approval); `cb58693` WhatsApp booking chat (real Yes/No buttons, typed "yes" books the proposed slot,
+Pakistan time only, today's date in the prompt). Details are the numbered follow-ups under item 31 of
+the section list below and in the frontend `CLAUDE.md`'s Section 31.
+
+**Production right now (verified 2026-09-20/21, read-only):**
+- Venue **"Maidan COurt"** (`edf835c9-...`, owner phone ends 3809) is **approved** and bookable, 1 court.
+  Hours 06:00-23:59 PKT (closing after midnight is not supported, see open items).
+- One **admin** exists: the project owner's own number (ends 6981), promoted by hand. An account has
+  one role, so that number no longer sees the player screens. See `RUNBOOK.md` section 5.
+- Users: 2 owners, 1 player, 1 admin (that admin was a player until promoted). AI runs on **Gemini** (`gemini-3.5-flash-lite`).
+- **Meta/WhatsApp is not finished**: no business verification, so the approved message templates
+  (`venue_approved` etc.) don't exist in Meta; anything sent outside the recipient's 24h window fails
+  (`notification_log.status='failed'`, harmless to the request now). OTP is temporary free-form text.
+  The interactive Yes/No buttons follow Meta's documented payload but were **never sent to a real
+  phone**; if Meta rejects them the code falls back to text and a typed "yes" still works.
+
+**SECTION 32 IS IN PROGRESS (project owner's spec, 8 parts). Parts 1-2 are done, committed locally, NOT deployed
+(the owner asked to review before/after screenshots before Part 4). Next: Part 4, then 3, 5, 7+8, 6.**
+Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
+- Decisions accepted: (1) overnight = explicit `schedule_templates.closes_next_day` column (close<=open means next
+  day; open==close+flag = 24h; midnight close is `00:00` + flag); (2) multi-slot bookings via a `btree_gist`
+  EXCLUDE constraint on `tstzrange(starts_at, ends_at, '[)')` for the live statuses (held, payment_submitted,
+  booked); (3) advance rule lives on the COURT (fixed or percent + minimum), `pricing_rules.advance_percentage` stays
+  as fallback; (4) slot lengths offered 30/60/90/120; (5) keep the old per-court `courts.cancellation_*` columns
+  one release.
+- **A.** The moment `venues.cancellation_allowed`/`cancellation_cutoff_hours` exist, the code must neither READ nor
+  WRITE the court columns (only the venue's); mark them "deprecated, drop next release" -- never two sources of truth.
+  (Section 32 Part 4 deliberately REVERSES Section 31's per-court policy to per-venue.)
+- **B.** Keep `one_live_booking_per_slot` until the new constraint is proven, then TELL the owner whether it is
+  redundant; never drop it without asking. Same live statuses. `[)` so 6-7 PM and 7-8 PM do not clash. Verify every
+  existing booking has a valid `ends_at` BEFORE the migration. Put `CREATE EXTENSION btree_gist` in the migration or in
+  `bootstrap.sh db-init` and say which and why (RDS rules). Tests: re-run the 50-concurrent-request test; add a
+  90-minute vs 60-minute booking overlapping by 30 minutes, and two back-to-back bookings across midnight.
+- **C.** Before ANY migration touches production: show the plan and the exact commands; tell the owner to take a manual
+  RDS snapshot first (backups are 1 day, restore dry-run never done); test upgrade AND downgrade on a copy of
+  production-shaped data; after migrating, read the output and report it. Run migrations from the NEW image BEFORE
+  restarting the backend so the code never runs against a missing column. Ask before any production write/deploy.
+Section 32 Parts 1-2 (details: item 32 below and the frontend CLAUDE.md's Section 32).
+
+**Open items, roughly by priority (none started unless noted):**
+1. **Ask the owner: do venues close after midnight?** Hours like 06:00 -> 02:00 are impossible today
+   (DB `CHECK (open_time < close_time)`, per-day availability engine); the UI now says so and suggests
+   23:59, which loses the last slot of a 60-min grid. Real overnight support = constraint migration +
+   availability engine + pricing windows + PKT conversion. Do not build without asking.
+2. **Unhandled 500s reach the browser without CORS headers**, so they look like "Can't reach the server"
+   and mislead everyone. Fix: an inner catch-all in `RequestContextMiddleware` (inside CORS) returning the
+   JSON error envelope. Not done; it caused two of today's three incidents to be misread.
+3. **Venue review gaps** (traced, not changed): no resubmit path after `changes_requested`/`rejected`
+   (editing a venue doesn't change its status and the UI has no edit screen); the admin queue only lists
+   `pending`, so a changes-requested venue never comes back; no automatic screening (duplicate/spam);
+   admin gets no reliable notification (push stub, WhatsApp needs an open window).
+4. **Wizard duplicate-court hazard**: `updateCourt/addCourt/removeCourt` clear `createdCourtIds`, so editing
+   a court after a partial submit failure re-POSTs every court. Fix = PATCH already-created courts.
+5. **Unexplained session rotation**: in a scripted run the web app refreshed a fresh 8h session after ~8s
+   (`shouldRefreshSoon` should be false). A second tab holding the old token would be logged out. Look at
+   what `expiresAt` the store holds after `restoreSession` (`apps/web/app/providers.tsx`).
+6. **Mobile** needs a new EAS build for any of today's fixes (no `eas.json`, no `android.package`, never
+   device-tested); `SUPPORT_WHATSAPP_NUMBER` is still the placeholder `+923000000000` in both `lib/support.ts`.
+7. Ops leftovers: Sentry DSN unset (errors are invisible), RDS backups 1 day (Free-plan limit) and the
+   dry-run restore was never done, sslip.io hostnames, Meta business verification + templates.
+8. Small: the assistant sometimes writes `**bold**` (WhatsApp shows it literally); `WhatsAppService._send`
+   retries deterministic 4xx (404 template missing) three times, ~4s of latency on every affected request.
+
+**Local dev DB has leftover throwaway test data** (users with email `92300#######@example.com`
+created after 2026-09-20 19:40 UTC, ~30+ of them, and the venues they own: "S31 Live Venue",
+"S31 Mobile Venue", "S31 Other Venue", "S31 Mobile Other Venue", "Hours Test Venue"; the older
+`Mob ...`/`... Arena` fixtures belong to earlier sessions and are not covered by this filter). A bulk delete was blocked by the permission system, so it was left. To
+remove it (dev DB only, container `court-booking-backend-db-1`, db `court_booking`, one transaction):
+delete `payment_disputes`, `payments`, `reviews`, `waitlist`, `bookings` for their courts/players, then
+`notification_log`, `messages`, their `venues`, `otp_requests`/`login_attempts` by phone, `audit_log` by
+user, then the `users`. Filter strictly on `email ~ '^92300[0-9]{7}@example\.com$'`; nothing older matches.
+
+**How to work here (hard-won this session):**
+- **Diagnose from production before theorising.** Logs and chat history: `RUNBOOK.md` section 4.
+  Three "network error" reports were a DB constraint 500, an uncaught WhatsApp error after a commit, and
+  a chat design gap; none was a connection problem.
+- **A side effect after a commit must never fail the request** (notifications, WhatsApp, push). Route
+  WhatsApp through `NotificationService._whatsapp_smart_best_effort`; keep OTP the exception.
+- **Reproduce the bug in a test first**, confirm it fails on the old code, then fix (done for all three).
+- Live-test with real Postgres, Playwright on the web build (`next build && next start`, not `next dev`)
+  and Expo's web target started with `EXPO_PUBLIC_API_BASE_URL=http://localhost:8000` (app.json points at
+  PRODUCTION). Real Gemini smoke tests are fine locally (key in `.env`).
+- **Shell traps on this machine:** the Bash wrapper mangles backslashes and long heredocs. Use the
+  Edit/Write tools for code, put scratch files in the session scratchpad, and never rely on `\n` inside
+  `python - <<EOF` patches. AWS CLI: always `--region ap-south-1`, prefix `MSYS_NO_PATHCONV=1`, use
+  Windows paths (`pwd -W`); `gh` isn't installed.
+- **Ask before** production writes, deploys' side effects on data, or anything outward-facing; the
+  permission system also blocks some production reads/bulk deletes, so hand the user the exact command
+  instead of working around it.
+- Commits end with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`. The repo root is the
+  monorepo (`../`); pushing to `main` deploys (~2 min; backend restart shows as `uptime_seconds` resetting
+  in `https://api.3.6.48.6.sslip.io/health`, web as new strings in the `/_next/static` chunks).
+
 ## What this is
 
 A FastAPI backend for a court-booking platform (padel/futsal/etc.), built
@@ -196,9 +300,32 @@ course of a session, one or two sections at a time. Sections delivered so far:
     Verified against the real Gemini model (`gemini-3.5-flash-lite`) locally, not just mocks. Known
     leftover: the model sometimes writes `**bold**`, which WhatsApp shows literally (it uses `*bold*`).
     The in-app (web/mobile) chat path is unchanged: its client renders the buttons itself.
+32. Time/date display and the date-shift bugs (Parts 1-2, 2026-09-21; **committed locally, not deployed**).
+    Root causes, each proven against production data/logs before fixing: (a) **every date the UI sent to the API was
+    the UTC date** (`toISOString().slice(0,10)`), so between midnight and 5 AM in Karachi the tab labelled "Wed 23"
+    queried the 22nd (all the owner's night-time test bookings landed in that window) -- the "booked 23rd, shows
+    24th" bug; (b) the same UTC/`date.today()` "today" in owner Today (showed yesterday and covered 5 AM-5 AM),
+    the ledger range, venue "slots today", the growth job and slot alignment (`starts_at.date()` made a 12-4 AM
+    court unbookable); (c) times reached players as 24-hour and as raw UTC ISO strings (notification texts were
+    `starts_at.isoformat()`, the `booking_confirmed` WhatsApp template went out with a blank venue and time), and
+    the AI was handed UTC in tool results and quoted "17:30" (= 10:30 PM) as the last slot, so it told a player 9 PM
+    was unavailable; (d) "Notify me" showed on the player's OWN booking (slots had no "mine" flag; the API even
+    accepted the join) and "Venue 0" was the done screen's `AT VENUE` label over `balance_due = 0`.
+    Fix: ONE formatter per platform -- backend `app/utils/timezone.py` (`pkt_today`, `pkt_date_of`, `format_time`,
+    `format_when`, `format_slot_label` = "7:30 PM to 9:00 PM, Wed 23 Sep", `enforce_display_format` safety net
+    for model text) and frontend `packages/types/src/datetime.ts` (fixed +5h offset, independent of the device's
+    timezone; tested under 4 zones). Never `date.today()`/UTC date for "today", never `.isoformat()` in text.
+    `SlotOut.is_mine` (optional-auth availability), `ALREADY_YOUR_SLOT` on waitlist join, a hold retires the
+    player's own waitlist entry, owner Today rows carry `price`/`balance_due`. The AI prompt says "copy the label
+    exactly, never 24-hour, never UTC". Tests: `test_time_formatting.py`, `test_my_slot_and_dates.py` (proved RED
+    on the old code, GREEN now), extended `test_ai_chat.py`/`test_payments.py`. Existing tests that used the UTC date
+    for "today" (`test_owners.py`) were themselves the bug and now use `pkt_today()`.
+    **Production data note (not changed, needs a go-ahead):** the owner's real account has an active waitlist row
+    for its own booked 23 Sep 6:00 PM slot; the UI now hides it, but the row should be deactivated.
+    Not done yet: CSV export still writes ISO dates (Part 5 rewrites the ledger).
 
 All delivered sections are implemented, tested against a real
-Postgres/PostGIS instance, and documented in README.md. Current state: 363
+Postgres/PostGIS instance, and documented in README.md. Current state: 379
 tests passing (2026-09-20, run with `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`), 83 API
 operations, 20 tables, no Alembic drift (`alembic check` clean; the newest migration
 round-trips upgrade -> downgrade -> upgrade). Run the suite with

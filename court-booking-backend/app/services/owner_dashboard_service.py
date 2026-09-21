@@ -2,7 +2,7 @@ import csv
 import io
 import uuid
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import status
 from sqlalchemy import func, select
@@ -18,6 +18,7 @@ from app.models.user import User
 from app.models.venue import PlanTier, Venue
 from app.services.availability_service import AvailabilityService
 from app.services.payment_service import PaymentService
+from app.utils.timezone import pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
     GrowthOut,
     GrowthSuggestionOut,
@@ -54,11 +55,12 @@ class OwnerDashboardService:
         return list(result.scalars().all())
 
     async def today(self, owner: User, target_date: date | None = None, venue_id: uuid.UUID | None = None) -> TodayOut:
-        target_date = target_date or datetime.now(timezone.utc).date()
+        target_date = target_date or pkt_today()
         courts = await self._owner_courts(owner, venue_id)
         court_ids = [c.id for c in courts]
 
-        day_start = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
+        # A Pakistan calendar day, not a UTC one: [00:00 PKT, 24:00 PKT) = [19:00Z the day before, 19:00Z).
+        day_start = pkt_time_to_utc(target_date, time.min)
         day_end = day_start + timedelta(days=1)
 
         bookings_today: list[Booking] = []
@@ -87,6 +89,8 @@ class OwnerDashboardService:
                         booking_id=slot.booking_id,
                         player_name=booking.player_name if booking else None,
                         amount_paid=float(booking.amount_paid) if booking else None,
+                        price=float(booking.price) if booking else None,
+                        balance_due=float(booking.balance_due) if booking else None,
                     )
                 )
             court_outs.append(TodayCourtOut(court_id=court.id, name=court.name, slots=slot_outs))
@@ -158,8 +162,9 @@ class OwnerDashboardService:
         if not court_ids:
             return [], court_names
 
-        range_start = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-        range_end = datetime.combine(end_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=1)
+        # Pakistan days: the range the owner picked is in THEIR calendar, so the boundaries are PKT midnights.
+        range_start = pkt_time_to_utc(start_date, time.min)
+        range_end = pkt_time_to_utc(end_date, time.min) + timedelta(days=1)
         result = await self.db.execute(
             select(Booking)
             .where(Booking.court_id.in_(court_ids), Booking.starts_at >= range_start, Booking.starts_at < range_end)
@@ -254,7 +259,7 @@ class OwnerDashboardService:
             )
             venues = list(result.scalars().all())
 
-        today = datetime.now(timezone.utc).date()
+        today = pkt_today()
         suggestions: list[GrowthSuggestionOut] = []
 
         for venue in venues:

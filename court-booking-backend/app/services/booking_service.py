@@ -13,9 +13,11 @@ from app.models.booking import LIVE_BOOKING_STATUSES, Booking, BookingSource, Bo
 from app.models.court import Court
 from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
+from app.models.waitlist import WaitlistEntry
 from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 from app.services.availability_service import AvailabilityService
+from app.utils.timezone import format_when
 
 logger = structlog.get_logger(__name__)
 
@@ -105,6 +107,19 @@ class BookingService:
                 ) from exc
             raise
         await self.db.refresh(booking)
+        if booking.player_id is not None:
+            # A player who now holds the slot no longer needs to be told when it opens up.
+            await self.db.execute(
+                update(WaitlistEntry)
+                .where(
+                    WaitlistEntry.court_id == booking.court_id,
+                    WaitlistEntry.slot_starts_at == booking.starts_at,
+                    WaitlistEntry.player_id == booking.player_id,
+                    WaitlistEntry.is_active.is_(True),
+                )
+                .values(is_active=False)
+            )
+            await self.db.commit()
 
     async def create_hold(self, player: User, court_id: uuid.UUID, starts_at: datetime) -> Booking:
         if starts_at.tzinfo is None:
@@ -323,7 +338,7 @@ class BookingService:
                 raise AppError(
                     status.HTTP_400_BAD_REQUEST,
                     ErrorCode.CANCELLATION_WINDOW_CLOSED,
-                    f"The cancellation window for this booking closed {cutoff_at.isoformat()} "
+                    f"The cancellation window for this booking closed {format_when(cutoff_at)} "
                     f"({court.cancellation_cutoff_hours}h before the booking).",
                     details={"cutoff_at": cutoff_at.isoformat(), "cutoff_hours": court.cancellation_cutoff_hours},
                 )

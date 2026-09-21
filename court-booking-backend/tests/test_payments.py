@@ -772,6 +772,9 @@ async def test_cancel_blocked_within_cutoff_window(
     assert cancel.status_code == 400
     assert cancel.json()["error"]["code"] == "CANCELLATION_WINDOW_CLOSED"
     assert cancel.json()["error"]["details"]["cutoff_hours"] == 48
+    # the message a player reads must be human time, not an ISO/UTC string
+    message = cancel.json()["error"]["message"]
+    assert "+00:00" not in message and not __import__("re").search(r"\d{4}-\d{2}-\d{2}", message), message
 
     get = await client.get(f"/api/v1/bookings/{booking['id']}", headers=customer_headers)
     assert get.json()["status"] == "booked"

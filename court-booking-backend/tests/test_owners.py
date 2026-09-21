@@ -7,10 +7,14 @@ from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.payment import Payment
 from app.models.user import UserRole
 from app.models.venue import PlanTier
+from app.utils.timezone import pkt_time_to_utc, pkt_today
 
 
 def _today_utc() -> date:
-    return datetime.now(timezone.utc).date()
+    """Kept under its old name so the tests below read the same, but it is PAKISTAN's today: the owner's
+    Today screen is a Pakistan calendar day. These tests used the UTC date and so failed every night
+    between midnight and 5 AM in Karachi -- the very bug (the UTC date is still yesterday) they now guard."""
+    return pkt_today()
 
 
 async def test_today_view_accuracy(
@@ -27,7 +31,7 @@ async def test_today_view_accuracy(
     await make_schedule(court_a, day_of_week=weekday, open_time=time(8, 0), close_time=time(20, 0))
     await make_schedule(court_b, day_of_week=weekday, open_time=time(8, 0), close_time=time(20, 0))
 
-    booked_start = datetime.combine(today, time(10, 0), tzinfo=timezone.utc)
+    booked_start = pkt_time_to_utc(today, time(10, 0))
     async with db_session_factory() as session:
         booking = Booking(
             court_id=court_a.id,
@@ -59,7 +63,7 @@ async def test_today_view_accuracy(
     assert body["summary"]["total_revenue"] == 3000.0
 
     # A walk-in appears immediately.
-    walkin_start = datetime.combine(today, time(14, 0), tzinfo=timezone.utc)
+    walkin_start = pkt_time_to_utc(today, time(14, 0))
     async with db_session_factory() as session:
         walkin = Booking(
             court_id=court_b.id,
@@ -357,8 +361,8 @@ async def test_multi_venue_owner_today_and_ledger_filter_by_venue(
     await make_schedule(court_b, day_of_week=weekday, open_time=time(8, 0), close_time=time(20, 0))
 
     async with db_session_factory() as session:
-        starts_a = datetime.combine(today, time(9, 0), tzinfo=timezone.utc)
-        starts_b = datetime.combine(today, time(11, 0), tzinfo=timezone.utc)
+        starts_a = pkt_time_to_utc(today, time(9, 0))
+        starts_b = pkt_time_to_utc(today, time(11, 0))
         session.add(
             Booking(
                 court_id=court_a.id,

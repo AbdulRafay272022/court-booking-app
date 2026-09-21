@@ -32,6 +32,8 @@ class ErrorCode:
     NOT_YOUR_BOOKING = "NOT_YOUR_BOOKING"
     SLOT_IN_PAST = "SLOT_IN_PAST"
     SLOT_BLOCKED = "SLOT_BLOCKED"
+    # Section 32 Part 2 -- e.g. joining the waitlist for a slot you already hold or have booked
+    ALREADY_YOUR_SLOT = "ALREADY_YOUR_SLOT"
     # Section 29 Part C -- player cancelling an already-paid (booked) booking
     CANCELLATION_NOT_ALLOWED = "CANCELLATION_NOT_ALLOWED"
     CANCELLATION_WINDOW_CLOSED = "CANCELLATION_WINDOW_CLOSED"

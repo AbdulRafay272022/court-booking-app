@@ -12,6 +12,9 @@ class SlotOut(BaseModel):
     advance_amount: float
     held_until: datetime | None = None
     booking_id: uuid.UUID | None = None
+    # True when the signed-in viewer is the player on this slot's live booking (held / payment pending /
+    # booked). Lets the client show "Your booking" instead of "Notify me". Always False for anonymous viewers.
+    is_mine: bool = False
     reason: str | None = None  # populated when status == "blocked"
 
 

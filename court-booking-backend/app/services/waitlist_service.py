@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.errors import AppError, ErrorCode
 from app.models.booking import LIVE_BOOKING_STATUSES, Booking
 from app.models.court import Court
 from app.models.user import User
@@ -38,6 +39,20 @@ class WaitlistService:
         court = await self.db.get(Court, court_id)
         if court is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Court not found")
+
+        # "Notify me" is for a slot somebody ELSE has. Joining the list for a slot you already hold, are
+        # paying for or have booked is meaningless (and used to show up on the player's own booking): the
+        # UI hides it, and the API refuses it too.
+        own_live = await self.db.scalar(
+            select(Booking.id).where(
+                Booking.court_id == court_id,
+                Booking.starts_at == slot_starts_at,
+                Booking.player_id == user.id,
+                Booking.status.in_(LIVE_BOOKING_STATUSES),
+            )
+        )
+        if own_live is not None:
+            raise AppError(status.HTTP_409_CONFLICT, ErrorCode.ALREADY_YOUR_SLOT, "This slot is already yours")
 
         entry = WaitlistEntry(court_id=court_id, player_id=user.id, slot_starts_at=slot_starts_at)
         self.db.add(entry)
@@ -132,7 +147,7 @@ class WaitlistService:
             player = await self.db.get(User, entry.player_id)
             if player is not None:
                 await self.notifications.notify_waitlist_slot_available(
-                    user=player, court_name=court.name, starts_at=freed_slot_starts_at.isoformat()
+                    user=player, court_name=court.name, starts_at=freed_slot_starts_at
                 )
                 notified += 1
         await self.db.commit()

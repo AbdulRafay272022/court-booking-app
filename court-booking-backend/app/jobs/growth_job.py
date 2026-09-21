@@ -14,7 +14,7 @@ from app.models.court import Court
 from app.models.stats import SlotStats
 from app.services.audit_service import AuditService
 from app.services.growth_service import GrowthService
-from app.utils.timezone import utc_to_pkt_naive
+from app.utils.timezone import pkt_date_of, pkt_today, utc_to_pkt_naive
 
 logger = structlog.get_logger(__name__)
 
@@ -78,13 +78,13 @@ async def compute_slot_stats(db: AsyncSession) -> None:
     while still being materially more than the 6-week minimum.
     """
     settings = get_settings()
-    today = date.today()
+    today = pkt_today()
     courts_result = await db.execute(select(Court.id, Court.created_at))
     courts = courts_result.all()
 
     for court_id, court_created_at in courts:
         window_start_date = max(
-            court_created_at.date(), today - timedelta(days=settings.GROWTH_LOOKBACK_DAYS)
+            pkt_date_of(court_created_at), today - timedelta(days=settings.GROWTH_LOOKBACK_DAYS)
         )
         weeks_of_data = (today - window_start_date).days // 7
         if weeks_of_data < settings.GROWTH_MIN_WEEKS:

@@ -50,7 +50,7 @@ async def hold_booking(
             owner = await db.get(User, venue.owner_id)
             if owner is not None:
                 await NotificationService(db, settings).notify_owner_new_booking(
-                    owner=owner, court_name=court.name, starts_at=booking.starts_at.isoformat()
+                    owner=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
                 )
 
     return BookingHoldResponse(booking=BookingOut.model_validate(booking), payment_instructions=payment_instructions)
@@ -128,7 +128,7 @@ async def cancel_booking(
             player = await db.get(User, booking.player_id)
             if player is not None:
                 await notifications.notify_booking_cancelled(
-                    user=player, court_name=court.name, starts_at=booking.starts_at.isoformat()
+                    user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
                 )
         waitlist_service = WaitlistService(db, settings)
         await waitlist_service.notify_matching_entries(court, booking.starts_at)

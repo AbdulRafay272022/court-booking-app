@@ -464,7 +464,7 @@ async def test_typed_yes_books_the_slot_that_was_proposed_without_asking_the_ai_
     assert booking.court_id == court.id
     body = sent[-1]["body"]
     assert body.startswith("Held!")
-    assert "9:00 PM - 10:30 PM" in body and "UTC" not in body  # Pakistan time, never UTC
+    assert "9:00 PM to 10:30 PM" in body and "UTC" not in body  # Pakistan time, never UTC
     assert "HBL" in body and "1234567890" in body  # says WHERE to pay
 
 
