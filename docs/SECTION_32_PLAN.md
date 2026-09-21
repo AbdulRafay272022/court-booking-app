@@ -40,8 +40,8 @@ ledger) -> **Part 9** (QR check-in) -> **Part 10** (refunds) -> **Part 7** (OCR,
 | Part | What | Status |
 |---|---|---|
 | 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). Mobile needs an EAS build to reach phones. |
-| 4 | Per-court slot length and pricing, per-venue cancellation, duration picker, closed/booked labels | Built and tested locally (449 backend tests, live Playwright on web and Expo web). **Deploy + migration `dd23d75cf310` awaiting the RDS snapshot confirmation.** Cancellation stays "not allowed" (the live court already has it). |
-| 3 | Overnight courts (`closes_next_day`) | Next |
+| 4 | Per-court slot length and pricing, per-venue cancellation, duration picker, closed/booked labels | **Deployed 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` ran from the new image before the new backend started** (backfilled venue policy, added `no_overlapping_live_bookings`; 8 existing bookings satisfied it; `alembic check` clean). The owner chose to rely on the AUTOMATED RDS snapshot of 1:08 AM PKT (no manual one was visible). Live venue policy stays "not allowed". Mobile changes need an EAS build. Docs commit after it is local, **pending push (goes out with the next deploy)**. |
+| 3 | Overnight courts (`closes_next_day`) | **Next** (waiting for the owner to say "continue") |
 | 4b | Player venue page redesign (below) | Not started. **A mockup screenshot must be approved before any wiring.** |
 | 5 | Split payments + `payment_entries` ledger | Not started |
 | 9 | QR check-in (below) | Not started |

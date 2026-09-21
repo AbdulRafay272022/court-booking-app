@@ -68,7 +68,7 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 | Part | What | Status |
 |---|---|---|
 | 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). **Mobile needs an EAS build** to reach phones. The docs commit after it is local, **pending push (goes out with the next deploy)**. |
-| 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | **Built and tested locally (449 backend tests, live Playwright on web + Expo web), NOT deployed, migration NOT run on production.** Waiting for the owner's go on the migration plan (rules B and C). Details below. |
+| 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | **DEPLOYED 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` applied on production** (from the new image before the backend restarted; output: backfilled, no disagreeing venues, constraint added, 8 bookings satisfied it, head = `dd23d75cf310`, `alembic check` clean). Verified live on production: schedule, quote (3 h = PKR 7,000), AI reply. Live venue policy stays "not allowed". Mobile needs an EAS build. **Full plan and rules: `docs/SECTION_32_PLAN.md`.** |
 | 3 | Overnight courts (`closes_next_day`) | Not started |
 | 5 | Split payments + `payment_entries` ledger | Not started |
 | 9, 10 | **Spec text not received** -- the spec pasted so far has Parts 1-8 only. Ask the owner for Parts 9 and 10 before starting them. | Blocked on the spec |
@@ -77,7 +77,7 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 | 6 | Photos + reviews | Not started |
 | 11 | Screen audit: the owner dashboard's fixed sidebar overflows below ~600px, owners are on phones, fix it as part of the audit. Also fix the 2 existing eslint errors (`react-hooks/set-state-in-effect`, settings page lines ~98 and ~115) the next time `apps/web/app/dashboard/owner/settings/page.tsx` is touched (Part 4 touches it). | Not started |
 
-**SECTION 32 PART 4 (built 2026-09-22, not deployed).** What exists: migration `dd23d75cf310` (venue cancellation columns +
+**SECTION 32 PART 4 (built and DEPLOYED 2026-09-22).** `infra/scripts/remote-deploy.sh` now runs `alembic upgrade head`/`current`/`check` from the NEW image before `up -d` on every deploy (a refusing migration aborts the deploy with the old containers still up), so pushing a migration IS running it: never push one without the owner's go. Old `one_live_booking_per_slot` is still there; once the overlap constraint has run in production for a while, TELL the owner whether it is redundant (do not drop it unasked). What exists: migration `dd23d75cf310` (venue cancellation columns +
 backfill, `btree_gist` `EXCLUDE` constraint `no_overlapping_live_bookings` on `tstzrange(starts_at, ends_at, '[)')` for
 held/payment_submitted/booked, with a preflight that refuses and changes nothing on a bad `ends_at` or an existing overlap);
 `one_live_booking_per_slot` is KEPT (owner decides later whether it is redundant). `CREATE EXTENSION btree_gist` is in the
