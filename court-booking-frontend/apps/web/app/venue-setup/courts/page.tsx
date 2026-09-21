@@ -11,7 +11,7 @@ import { DAY_LABELS, SLOT_MINUTES_OPTIONS, SPORT_OPTIONS, useVenueSetupStore } f
 import { Chip, Field, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, Stepper } from "@/components/setup/ui";
 import { TimeField12 } from "@/components/setup/time-fields";
 
-/** "HH:MM" from an <input type="time"> -> "HH:MM:SS" for the API. */
+/** "HH:MM" from the 12-hour time picker -> "HH:MM:SS" for the API. */
 function toTimeString(hhmm: string): string {
   return /^\d{2}:\d{2}$/.test(hhmm) ? `${hhmm}:00` : "06:00:00";
 }
@@ -211,7 +211,7 @@ export default function VenueCourtsPage() {
         <p className="text-[12.5px] font-medium text-owner-ink-faint">Times are Pakistan time (PKT).</p>
 
         {store.sameHoursEveryDay ? (
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <TimeField12 label="Opens" value={store.defaultOpenTime} onChange={(v) => store.setField("defaultOpenTime", v)} />
             <TimeField12 label="Closes" value={store.defaultCloseTime} onChange={(v) => store.setField("defaultCloseTime", v)} />
           </div>
@@ -220,8 +220,8 @@ export default function VenueCourtsPage() {
             {DAY_LABELS.map((label, day) => {
               const o = store.perDayOverrides[day] ?? { open: store.defaultOpenTime, close: store.defaultCloseTime };
               return (
-                <div key={day} className="flex items-end gap-3">
-                  <span className="text-sm font-medium w-10 pb-3">{label}</span>
+                <div key={day} className="flex flex-wrap items-end gap-3">
+                  <span className="text-sm font-medium w-full sm:w-10 sm:pb-3">{label}</span>
                   <TimeField12 label="" ariaLabel={`${label} opens`} value={o.open} onChange={(v) => store.setDayOverride(day, { ...o, open: v })} />
                   <TimeField12 label="" ariaLabel={`${label} closes`} value={o.close} onChange={(v) => store.setDayOverride(day, { ...o, close: v })} />
                 </div>

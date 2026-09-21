@@ -242,7 +242,7 @@ export default function VenueSettingsPage() {
               </button>
             </div>
             {sameHoursEveryDay ? (
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <TimeField12 label="Opens" value={defaultOpenTime} onChange={setDefaultOpenTime} />
                 <TimeField12 label="Closes" value={defaultCloseTime} onChange={setDefaultCloseTime} />
               </div>
@@ -251,8 +251,8 @@ export default function VenueSettingsPage() {
                 {DAY_LABELS.map((label, day) => {
                   const o = perDayOverrides[day] ?? { open: defaultOpenTime, close: defaultCloseTime };
                   return (
-                    <div key={day} className="flex items-end gap-3">
-                      <span className="text-sm font-medium w-10 pb-3">{label}</span>
+                    <div key={day} className="flex flex-wrap items-end gap-3">
+                      <span className="text-sm font-medium w-full sm:w-10 sm:pb-3">{label}</span>
                       <TimeField12 label="" ariaLabel={`${label} opens`} value={o.open} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, open: v } })} />
                       <TimeField12 label="" ariaLabel={`${label} closes`} value={o.close} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, close: v } })} />
                     </div>

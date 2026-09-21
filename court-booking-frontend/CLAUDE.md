@@ -722,7 +722,7 @@ were given to the project owner, not automated).
 
 ## Section 32, Parts 1-2 -- 12-hour Pakistan time, the date-shift bug, own-slot state (2026-09-21)
 
-**Committed locally, not deployed.** Backend half and root causes: backend CLAUDE.md item 32. The rules:
+**Going to production 2026-09-21 (status is recorded in backend CLAUDE.md START HERE).** Backend half and root causes: backend CLAUDE.md item 32. The rules:
 - **Every time/date a player or owner sees is 12-hour Pakistan time with human dates** ("7:30 PM", "Wed, 23 Sep",
   "Today"/"Tomorrow"). The ONLY implementation is `packages/types/src/datetime.ts`, re-exported by each app's
   `lib/format.ts`. It uses a fixed +5h offset, never the device timezone. **Never** write `toLocaleTimeString`,
@@ -734,6 +734,13 @@ were given to the project owner, not automated).
   (`components/setup/time-fields.tsx`) and mobile (`components/time-fields.tsx`), replacing `<input type=time>` and
   free-text "06:00"/"YYYY-MM-DD HH:MM" boxes (blackouts now use date + time pickers, sent via `pktInstant`).
   They still STORE "HH:MM". `weeklyHoursError` messages are 12-hour text.
+  **No native time/date control anywhere** (a browser `<input type=time>` prints whatever the machine's locale
+  says, 24-hour on many): `npm run check:time-inputs` (root, `scripts/check-no-native-time-inputs.mjs`) fails on
+  `type="time|date|datetime-local"`, `toLocale*String`, `hour12:` and `toISOString().slice`. Layout rule for the
+  web `TimeField12`: each box has a floor width for its widest text ("Any", "00", "AM") and the field a floor of
+  11.5rem, so **every container holding them must be `flex-wrap`** -- otherwise on a phone the minute/AM-PM boxes
+  squeeze to blank (this shipped once in the first cut; found with a 390px check). The owner dashboard shell
+  (fixed sidebar) was never phone-sized, so Venue settings still overflows sideways below ~600px; the wizard is fine.
 - **Own slots:** `Slot.is_mine` (the availability call is per-viewer). Mine + booked = "Your booking" (opens the done
   screen), mine + held/payment pending = "Payment pending" (opens pay); "Notify me" only for somebody else's booked
   slot. The web availability query waits for auth to settle (`enabled: status !== "hydrating"`, keyed on signed-in) --

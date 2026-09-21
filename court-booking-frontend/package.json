@@ -8,7 +8,8 @@
   "scripts": {
     "mobile": "npm run start --workspace=@court-booking/mobile",
     "web": "npm run dev --workspace=@court-booking/web",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:time-inputs": "node scripts/check-no-native-time-inputs.mjs"
   },
   "engines": {
     "node": ">=20"
