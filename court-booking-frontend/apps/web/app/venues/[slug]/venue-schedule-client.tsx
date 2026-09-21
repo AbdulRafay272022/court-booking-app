@@ -7,19 +7,21 @@ import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime, pktDayTabs } from "@/lib/format";
+import { formatPKR, formatTimeRange, pktDayTabs } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
-import type { Court } from "@court-booking/types";
+import { formatDuration, type Court, type Slot } from "@court-booking/types";
+import { DurationSheet } from "@/components/booking/duration-sheet";
 
-const STATUS_LABEL: Record<string, string> = {
-  available: "OPEN",
-  held: "Held",
-  payment_submitted: "Review",
-  booked: "Taken",
-  blocked: "Closed",
+// What a slot somebody ELSE holds says (never tappable for booking). Times outside a court's opening hours are simply
+// not in the list, so "closed" is never shown as bookable.
+const OTHER_STATUS_LABEL: Record<string, string> = {
+  held: "Payment pending",
+  payment_submitted: "Payment pending",
+  booked: "Booked",
+  blocked: "Unavailable",
 };
 
-export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: string; venueName: string; courts: Court[] }) {
+export function VenueScheduleClient({ venueId, venueName }: { venueId: string; venueName: string; courts: Court[] }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
@@ -87,19 +89,29 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
 
   const courtAvailability = availabilityQuery.data?.courts ?? [];
 
-  function handleTapSlot(courtId: string, courtName: string, slotStatus: string, startsAt: string, price: number) {
-    if (slotStatus !== "available") return;
+  // The open slot the player tapped: the duration sheet asks how long, shows the total, then hands off to the chat.
+  const [picking, setPicking] = useState<{ courtId: string; courtName: string; slotMinutes: number; slots: Slot[]; index: number } | null>(null);
+
+  function handleTapSlot(courtId: string, courtName: string, slotMinutes: number, slots: Slot[], index: number) {
+    if (slots[index].status !== "available") return;
     if (status !== "signedIn") {
       router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
+    setPicking({ courtId, courtName, slotMinutes, slots, index });
+  }
+
+  function handleContinue(choice: { slotCount: number; minutes: number; price: number }) {
+    if (!picking) return;
     const params = new URLSearchParams({
       venueId,
       venueName,
-      courtId,
-      courtName,
-      startsAt,
-      price: String(price),
+      courtId: picking.courtId,
+      courtName: picking.courtName,
+      startsAt: picking.slots[picking.index].starts_at,
+      price: String(choice.price),
+      slotCount: String(choice.slotCount),
+      minutes: String(choice.minutes),
     });
     router.push(`/booking/new/chat?${params.toString()}`);
   }
@@ -126,55 +138,43 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
         ))}
       </div>
 
-      <div className="bg-player-surface border border-player-border-light rounded-2xl overflow-hidden overflow-x-auto">
-        <table className="w-full border-collapse min-w-[480px]">
-          <thead>
-            <tr className="bg-player-bg border-b border-player-border-light">
-              <th className="text-left px-4 py-3 text-[11.5px] font-bold tracking-wider text-player-ink-fainter">TIME</th>
-              {courts.map((c) => (
-                <th key={c.id} className="text-left px-4 py-3 text-[11.5px] font-bold tracking-wider text-player-ink-fainter">
-                  {c.name.toUpperCase()}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {availabilityQuery.isLoading || !authReady ? (
-              <tr>
-                <td colSpan={courts.length + 1} className="text-center py-10 text-player-ink-faint">
-                  Loading…
-                </td>
-              </tr>
-            ) : availabilityQuery.isError && !availabilityQuery.data ? (
-              <tr>
-                <td colSpan={courts.length + 1} className="text-center py-10">
-                  <p className="text-player-ink-faint text-sm mb-3">{friendlyErrorMessage(availabilityQuery.error)}</p>
-                  <button
-                    onClick={() => availabilityQuery.refetch()}
-                    className="px-4 py-2 rounded-lg bg-player-accent text-white font-semibold text-[13px]"
-                  >
-                    Try again
-                  </button>
-                </td>
-              </tr>
-            ) : (
-              (courtAvailability[0]?.slots ?? []).map((slot, rowIdx) => (
-                <tr key={slot.starts_at} className="border-b border-player-border-light last:border-0">
-                  <td className="px-4 py-2.5 font-mono text-sm font-semibold">{formatTime(slot.starts_at)}</td>
-                  {courtAvailability.map((court) => {
-                    const s = court.slots[rowIdx];
-                    if (!s) return <td key={court.court_id} />;
+      {availabilityQuery.isLoading || !authReady ? (
+        <p className="text-center py-10 text-player-ink-faint">Loading…</p>
+      ) : availabilityQuery.isError && !availabilityQuery.data ? (
+        <div className="text-center py-10">
+          <p className="text-player-ink-faint text-sm mb-3">{friendlyErrorMessage(availabilityQuery.error)}</p>
+          <button onClick={() => availabilityQuery.refetch()} className="px-4 py-2 rounded-lg bg-player-accent text-white font-semibold text-[13px]">
+            Try again
+          </button>
+        </div>
+      ) : (
+        // One list per court, because each court has its own slot length (a 90-minute padel court and a 60-minute
+        // futsal court do not share rows). Only the court's open hours are listed.
+        <div className={`grid gap-4 ${courtAvailability.length > 1 ? "md:grid-cols-2" : ""}`}>
+          {courtAvailability.map((court) => (
+            <section key={court.court_id} className="bg-player-surface border border-player-border-light rounded-2xl overflow-hidden" data-testid={`court-list-${court.court_name}`}>
+              <header className="flex items-baseline justify-between gap-3 px-4 py-3 bg-player-bg border-b border-player-border-light">
+                <h3 className="text-[12px] font-bold tracking-wider text-player-ink-fainter">{court.court_name.toUpperCase()}</h3>
+                <span className="text-[12px] font-medium text-player-ink-faint">{formatDuration(court.slot_minutes)} slots</span>
+              </header>
+              {court.slots.length === 0 ? (
+                <p className="px-4 py-8 text-center text-[13.5px] text-player-ink-faint">Closed this day.</p>
+              ) : (
+                <ul>
+                  {court.slots.map((s, index) => {
                     const isOpen = s.status === "available";
                     const isBooked = s.status === "booked";
+                    const timeCell = <span className="font-mono text-[13.5px] font-semibold">{formatTimeRange(s.starts_at, s.ends_at)}</span>;
                     // My own booking / hold: show MY status, never "Notify me" (that is for a slot somebody
                     // ELSE has). A real production slot showed "On waitlist" for the player who had booked it.
                     if (s.is_mine && s.booking_id && (isBooked || s.status === "held" || s.status === "payment_submitted")) {
                       const pending = !isBooked;
                       return (
-                        <td key={court.court_id} className="px-3.5 py-2">
+                        <li key={s.starts_at} className="flex items-center justify-between gap-3 px-4 py-2 border-b border-player-border-light last:border-0">
+                          {timeCell}
                           <button
                             onClick={() => router.push(`/booking/${s.booking_id}/${pending ? "pay" : "done"}`)}
-                            className="h-10 w-full rounded-lg flex items-center justify-center text-[12px] font-bold px-1"
+                            className="h-10 min-w-[128px] rounded-lg flex items-center justify-center text-[12px] font-bold px-2"
                             style={{
                               background: pending ? "#FFF6E5" : "#EAF5EF",
                               border: pending ? "1px solid #F3DDAE" : "1px solid #BFE0CE",
@@ -183,55 +183,66 @@ export function VenueScheduleClient({ venueId, venueName, courts }: { venueId: s
                           >
                             {pending ? "Payment pending" : "Your booking"}
                           </button>
-                        </td>
+                        </li>
                       );
                     }
                     const waitlistKey = `${court.court_id}|${s.starts_at}`;
                     const onWaitlist = joinedKeys.has(waitlistKey);
                     const joining = joiningKey === waitlistKey;
-                    if (isBooked) {
-                      return (
-                        <td key={court.court_id} className="px-3.5 py-2">
+                    return (
+                      <li key={s.starts_at} className="flex items-center justify-between gap-3 px-4 py-2 border-b border-player-border-light last:border-0">
+                        {timeCell}
+                        <div className="flex items-center gap-2">
+                          {isBooked ? (
+                            <button
+                              onClick={() => !onWaitlist && handleJoinWaitlist(court.court_id, s.starts_at)}
+                              disabled={onWaitlist || joining}
+                              className="h-9 px-3 rounded-lg text-[12px] font-semibold"
+                              style={{
+                                background: onWaitlist ? "#EEF4F2" : "#FFF3EE",
+                                color: onWaitlist ? "#1F7A52" : "#C8431C",
+                                cursor: onWaitlist ? "default" : "pointer",
+                              }}
+                            >
+                              {joining ? "…" : onWaitlist ? "On waitlist" : "Notify me"}
+                            </button>
+                          ) : null}
                           <button
-                            onClick={() => !onWaitlist && handleJoinWaitlist(court.court_id, s.starts_at)}
-                            disabled={onWaitlist || joining}
-                            className="h-10 w-full rounded-lg flex items-center justify-center font-mono text-[12px] font-semibold px-1"
+                            onClick={() => handleTapSlot(court.court_id, court.court_name, court.slot_minutes, court.slots, index)}
+                            disabled={!isOpen}
+                            title={s.status === "blocked" && s.reason ? s.reason : undefined}
+                            className="h-10 min-w-[104px] rounded-lg flex items-center justify-center font-mono text-[13px] font-semibold px-2"
                             style={{
-                              background: onWaitlist ? "#EEF4F2" : "#F4F1EE",
-                              border: onWaitlist ? "1px solid #C9E0D8" : "none",
-                              color: onWaitlist ? "#1F7A52" : "#A8A099",
-                              cursor: onWaitlist ? "default" : "pointer",
+                              background: isOpen ? "#FFF3EE" : "#F4F1EE",
+                              border: isOpen ? "1px solid #F6DCD1" : "none",
+                              color: isOpen ? "#C8431C" : "#8A8279",
+                              cursor: isOpen ? "pointer" : "default",
                             }}
                           >
-                            {joining ? "…" : onWaitlist ? "On waitlist" : "Notify me"}
+                            {isOpen ? formatPKR(s.price) : OTHER_STATUS_LABEL[s.status] ?? s.status}
                           </button>
-                        </td>
-                      );
-                    }
-                    return (
-                      <td key={court.court_id} className="px-3.5 py-2">
-                        <button
-                          onClick={() => handleTapSlot(court.court_id, court.court_name, s.status, s.starts_at, s.price)}
-                          disabled={!isOpen}
-                          className="h-10 w-full rounded-lg flex items-center justify-center font-mono text-[13px] font-semibold"
-                          style={{
-                            background: isOpen ? "#FFF3EE" : "#F4F1EE",
-                            border: isOpen ? "1px solid #F6DCD1" : "none",
-                            color: isOpen ? "#C8431C" : "#A8A099",
-                            cursor: isOpen ? "pointer" : "default",
-                          }}
-                        >
-                          {isOpen ? formatPKR(s.price) : STATUS_LABEL[s.status] ?? s.status}
-                        </button>
-                      </td>
+                        </div>
+                      </li>
                     );
                   })}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                </ul>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
+
+      {picking ? (
+        <DurationSheet
+          courtId={picking.courtId}
+          courtName={picking.courtName}
+          slotMinutes={picking.slotMinutes}
+          slots={picking.slots}
+          index={picking.index}
+          onClose={() => setPicking(null)}
+          onContinue={handleContinue}
+        />
+      ) : null}
     </div>
   );
 }

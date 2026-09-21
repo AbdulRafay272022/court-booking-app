@@ -758,6 +758,32 @@ were given to the project owner, not automated).
   duration picker (Part 4). Local dev DB test data from these runs (fixture users +923002064788, +923005963856,
   +923002050429, +923005804435 and their venue "S32 Padel Arena") is still there; cleanup was blocked earlier.
 
+## Section 32, Part 4 -- per-court setup, per-venue cancellation, duration (2026-09-22, not deployed)
+
+Backend half and production facts: backend CLAUDE.md (START HERE). Rules that came out of building it:
+- **One `CourtSetup` per court** (`packages/types/src/court-setup.ts`: slot length, hours, price rules) edited by ONE component per
+  platform (`components/setup/court-setup-fields.tsx` web, `components/court-setup-fields.tsx` mobile) in both the wizard and Venue
+  Settings. The wizard store (v3, migrated from v2 -- an owner mid-wizard keeps what they typed) holds `courts[]` each with its own
+  hours and prices; a new court starts as a copy of the previous one. Cancellation is ONE venue-level control (venue step + Venue
+  Settings), never per court. The live slot preview (`slotPreview`, mirrors the backend grid) says "11 slots a day, 6:00 AM to 10:30 PM".
+- **Weekdays are Monday-first (Mon = 0)** everywhere an owner picks or a request sends a day: `DAY_LABELS` / `backendWeekdayOf` /
+  `WEEKDAY_NUMBERS` / `WEEKEND_NUMBERS`. The old screens were Sunday-first against a Monday = 0 API (a real one-day-off bug).
+- **`placeholderData: prev => prev` is on in both query clients**, so right after a query key changes `data` is still the PREVIOUS
+  key's data (and `isLoading` is false). Never seed form state from `useQuery` data on mount without checking the data belongs to
+  the key (`data.id === selectedId`); Venue Settings does, and a live test found the bug (Save would have overwritten one court with
+  another's hours and prices).
+- **Duration:** tapping an open slot opens the duration sheet (`components/booking/duration-sheet.tsx`, `components/duration-sheet.tsx`):
+  chips from `durationChoices` (only lengths whose slots are all free and back to back, max 4 h), the TOTAL from
+  `GET /courts/:id/quote` (server pricing, so peak boundaries are right), then the chat opens with `slotCount`/`minutes`; the Yes
+  button carries `slot_count` into `api.bookings.hold`.
+- **Schedule display:** one list per court (courts have different slot lengths; the old shared-row table broke), only open hours are
+  listed (closed time is never shown as bookable), other players' slots read "Payment pending" / "Booked" (+ Notify me) /
+  "Unavailable" and are not tappable; mine read "Your booking" / "Payment pending".
+- The chat's opening effect is guarded with a ref (dev mode ran it twice and asked the paid AI twice).
+- Tests: `cd packages/types && npx tsx --test src/datetime.test.ts src/court-setup.test.ts` (in 3 time zones). Live verification scripts
+  (not committed) drove web and the Expo web target with a two-court fixture; the eslint errors that used to be in the Venue Settings
+  page are gone (the effects that copied server data into state were removed).
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

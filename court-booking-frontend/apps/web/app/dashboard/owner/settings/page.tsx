@@ -1,56 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { pktInstant, weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
+import {
+  buildPricingRules,
+  buildSchedules,
+  courtSetupFromCourt,
+  courtSetupProblem,
+  pktInstant,
+  type Court,
+  type CourtSetup,
+} from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { formatWhen } from "@/lib/format";
-import { DAY_LABELS } from "@/lib/venue-setup-store";
-import { Chip, Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
+import { Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
 import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
+import { CourtSetupFields } from "@/components/setup/court-setup-fields";
+import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
 
-function toShortTime(hhmmss: string): string {
-  return hhmmss.slice(0, 5);
-}
-function toApiTime(hhmm: string): string {
-  return /^\d{2}:\d{2}$/.test(hhmm) ? `${hhmm}:00` : "06:00:00";
-}
+type Message = { kind: "ok" | "error"; text: string } | null;
 
-interface DayOverride {
-  open: string;
-  close: string;
-}
-
-interface PricingRuleDraft {
-  id: string;
-  name: string;
-  pricePerSlot: string;
-  dayOfWeek: number[] | null;
-  startTime: string | null;
-  endTime: string | null;
-}
-
-function ruleToDraft(r: { name: string; price_per_slot: number; day_of_week: number[] | null; start_time: string | null; end_time: string | null }, i: number): PricingRuleDraft {
-  return {
-    id: `existing-${i}`,
-    name: r.name,
-    pricePerSlot: String(r.price_per_slot),
-    dayOfWeek: r.day_of_week,
-    startTime: r.start_time ? toShortTime(r.start_time) : null,
-    endTime: r.end_time ? toShortTime(r.end_time) : null,
-  };
-}
-
-function makeRule(): PricingRuleDraft {
-  return { id: Math.random().toString(36).slice(2), name: "New rate", pricePerSlot: "", dayOfWeek: null, startTime: null, endTime: null };
+function SaveMessage({ message }: { message: Message }) {
+  if (!message) return null;
+  return (
+    <p role="alert" className={`text-[13.5px] font-semibold ${message.kind === "ok" ? "text-owner-accent" : "text-owner-danger"}`}>
+      {message.text}
+    </p>
+  );
 }
 
 export default function VenueSettingsPage() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
-  const queryClient = useQueryClient();
   const courts = activeVenue?.courts ?? [];
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const activeCourtId = courtId ?? courts[0]?.id;
@@ -60,165 +43,42 @@ export default function VenueSettingsPage() {
     queryFn: () => api.courts.get(activeCourtId!),
     enabled: !!activeCourtId,
   });
-  const blackoutsQuery = useQuery({
-    queryKey: ["court-blackouts", activeCourtId],
-    queryFn: () => api.courts.listBlackouts(activeCourtId!),
-    enabled: !!activeCourtId,
-  });
 
-  const [sameHoursEveryDay, setSameHoursEveryDay] = useState(true);
-  const [defaultOpenTime, setDefaultOpenTime] = useState("06:00");
-  const [defaultCloseTime, setDefaultCloseTime] = useState("23:00");
-  const [perDayOverrides, setPerDayOverrides] = useState<Partial<Record<number, DayOverride>>>({});
-  const [pricingRules, setPricingRules] = useState<PricingRuleDraft[]>([]);
-  // Section 31: per-court cancellation policy, seeded from the selected court like hours/prices.
-  const [cancellationAllowed, setCancellationAllowed] = useState(true);
-  const [cancellationCutoffHours, setCancellationCutoffHours] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-
-  const [blackoutTitle, setBlackoutTitle] = useState("");
-  // A date (Pakistan calendar) plus a 12-hour time for each end; sent as real instants via pktInstant().
-  const [blackoutStartDate, setBlackoutStartDate] = useState("");
-  const [blackoutStartTime, setBlackoutStartTime] = useState("06:00");
-  const [blackoutEndDate, setBlackoutEndDate] = useState("");
-  const [blackoutEndTime, setBlackoutEndTime] = useState("23:00");
-  const [addingBlackout, setAddingBlackout] = useState(false);
-  const [blackoutError, setBlackoutError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const court = courtQuery.data as Court | undefined;
-    if (!court) return;
-    const byDay: Partial<Record<number, DayOverride>> = {};
-    for (const t of court.schedule_templates) {
-      byDay[t.day_of_week] = { open: toShortTime(t.open_time), close: toShortTime(t.close_time) };
-    }
-    const first = byDay[0];
-    const allSame = first && [0, 1, 2, 3, 4, 5, 6].every((d) => byDay[d]?.open === first.open && byDay[d]?.close === first.close);
-    setSameHoursEveryDay(!!allSame || Object.keys(byDay).length === 0);
-    if (first) {
-      setDefaultOpenTime(first.open);
-      setDefaultCloseTime(first.close);
-    }
-    setPerDayOverrides(byDay);
-    setPricingRules(court.pricing_rules.length > 0 ? court.pricing_rules.map(ruleToDraft) : [makeRule()]);
-    setCancellationAllowed(court.cancellation_allowed);
-    setCancellationCutoffHours(court.cancellation_cutoff_hours != null ? String(court.cancellation_cutoff_hours) : "");
-    // Deliberately NOT clearing saveMessage here: handleSave's own invalidateQueries() triggers
-    // a refetch that re-runs this effect moments after a successful save, which cleared the
-    // "Hours and pricing updated" confirmation almost as soon as it appeared (caught live while
-    // verifying this screen). Cleared instead on court switch specifically, below.
-  }, [courtQuery.data]);
-
-  // Clear any stale confirmation/error when switching to a different court.
-  useEffect(() => {
-    setSaveMessage(null);
-  }, [activeCourtId]);
-
-  function buildSchedules(): ScheduleTemplateInput[] {
-    if (sameHoursEveryDay) {
-      return Array.from({ length: 7 }, (_, day) => ({
-        day_of_week: day,
-        open_time: toApiTime(defaultOpenTime),
-        close_time: toApiTime(defaultCloseTime),
-      }));
-    }
-    return Array.from({ length: 7 }, (_, day) => {
-      const o = perDayOverrides[day] ?? { open: defaultOpenTime, close: defaultCloseTime };
-      return { day_of_week: day, open_time: toApiTime(o.open), close_time: toApiTime(o.close) };
-    });
-  }
-
-  function buildPricingRules(): PricingRuleInput[] {
-    return pricingRules
-      .filter((r) => Number(r.pricePerSlot) > 0)
-      .map((r, i) => ({
-        name: r.name || `Rule ${i + 1}`,
-        priority: i,
-        day_of_week: r.dayOfWeek,
-        start_time: r.startTime ? toApiTime(r.startTime) : undefined,
-        end_time: r.endTime ? toApiTime(r.endTime) : undefined,
-        price_per_slot: Number(r.pricePerSlot),
-        advance_percentage: 100,
-      }));
-  }
-
-  const hoursProblem = weeklyHoursError(sameHoursEveryDay, defaultOpenTime, defaultCloseTime, perDayOverrides, DAY_LABELS);
-
-  async function handleSave() {
-    if (!activeCourtId) return;
-    if (hoursProblem) {
-      setSaveMessage({ kind: "error", text: hoursProblem });
-      return;
-    }
-    const rules = buildPricingRules();
-    if (rules.length === 0) {
-      setSaveMessage({ kind: "error", text: "Add at least one priced rate before saving." });
-      return;
-    }
-    setSaving(true);
-    setSaveMessage(null);
-    try {
-      await api.courts.update(activeCourtId, {
-        cancellation_allowed: cancellationAllowed,
-        cancellation_cutoff_hours: cancellationAllowed && cancellationCutoffHours.trim() ? Number(cancellationCutoffHours) : null,
-      });
-      await api.courts.setSchedule(activeCourtId, buildSchedules());
-      await api.courts.setPricing(activeCourtId, rules);
-      await queryClient.invalidateQueries({ queryKey: ["court-settings", activeCourtId] });
-      await queryClient.invalidateQueries({ queryKey: ["court", activeCourtId] });
-      // The owner dashboard's court lists and the player-facing pay screen read the policy too.
-      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setSaveMessage({ kind: "ok", text: "Hours, pricing and cancellation policy updated." });
-    } catch (e) {
-      setSaveMessage({ kind: "error", text: friendlyErrorMessage(e) });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleAddBlackout() {
-    if (!activeCourtId || !blackoutStartDate || !blackoutEndDate) {
-      setBlackoutError("Pick a start and end date/time for the blackout.");
-      return;
-    }
-    setAddingBlackout(true);
-    setBlackoutError(null);
-    try {
-      await api.courts.addBlackout(activeCourtId, {
-        title: blackoutTitle || undefined,
-        starts_at: pktInstant(blackoutStartDate, blackoutStartTime).toISOString(),
-        ends_at: pktInstant(blackoutEndDate, blackoutEndTime).toISOString(),
-      });
-      setBlackoutTitle("");
-      setBlackoutStartDate("");
-      setBlackoutEndDate("");
-      await queryClient.invalidateQueries({ queryKey: ["court-blackouts", activeCourtId] });
-    } catch (e) {
-      setBlackoutError(friendlyErrorMessage(e));
-    } finally {
-      setAddingBlackout(false);
-    }
-  }
-
-  const loading = venuesLoading || courtQuery.isLoading;
+  // The app's query client keeps the PREVIOUS query's data while a new one loads (placeholderData), so right after
+  // switching court `courtQuery.data` is still the OLD court. A form seeded from it would hold the wrong court's hours
+  // and prices, and saving would overwrite this court with them. Only treat the data as ready once it is this court's.
+  const court = courtQuery.data && courtQuery.data.id === activeCourtId ? (courtQuery.data as Court) : undefined;
+  const loading = venuesLoading || courtQuery.isLoading || (!!activeCourtId && !court && !courtQuery.isError);
 
   return (
     <div className="p-8 max-w-3xl flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Venue settings</h1>
 
+      {/* ONE cancellation policy for the whole venue (Section 32 Part 4), so it sits above the per-court settings. */}
+      {activeVenue ? (
+        <VenueCancellationCard
+          key={activeVenue.id}
+          venueId={activeVenue.id}
+          initialAllowed={activeVenue.cancellation_allowed}
+          initialCutoff={activeVenue.cancellation_cutoff_hours}
+        />
+      ) : null}
+
       {courts.length > 1 ? (
-        <div className="flex gap-2">
-          {courts.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setCourtId(c.id)}
-              className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
-              style={{ background: activeCourtId === c.id ? "#0E6274" : "#F4F6F7", color: activeCourtId === c.id ? "#fff" : "#5B7079" }}
-            >
-              {c.name}
-            </button>
-          ))}
+        <div className="flex flex-col gap-2">
+          <FieldLabel>Each court has its own slot length, opening hours and prices. Pick a court to edit:</FieldLabel>
+          <div className="flex flex-wrap gap-2">
+            {courts.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCourtId(c.id)}
+                className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
+                style={{ background: activeCourtId === c.id ? "#0E6274" : "#F4F6F7", color: activeCourtId === c.id ? "#fff" : "#5B7079" }}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -226,146 +86,174 @@ export default function VenueSettingsPage() {
         <p className="text-owner-ink-faint">Loading…</p>
       ) : courtQuery.isError ? (
         <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
-      ) : !activeCourtId ? (
+      ) : !activeCourtId || !court ? (
         <p className="text-owner-ink-faint">No courts yet — add one from venue setup first.</p>
       ) : (
         <>
-          <SectionCard>
-            <div className="flex items-center justify-between gap-3">
-              <SectionLabel>Opening hours</SectionLabel>
-              <button
-                type="button"
-                onClick={() => setSameHoursEveryDay(!sameHoursEveryDay)}
-                className="text-[13px] font-semibold text-owner-accent"
-              >
-                {sameHoursEveryDay ? "Set different hours per day" : "Use same hours every day"}
-              </button>
-            </div>
-            {sameHoursEveryDay ? (
-              <div className="flex flex-wrap gap-3">
-                <TimeField12 label="Opens" value={defaultOpenTime} onChange={setDefaultOpenTime} />
-                <TimeField12 label="Closes" value={defaultCloseTime} onChange={setDefaultCloseTime} />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {DAY_LABELS.map((label, day) => {
-                  const o = perDayOverrides[day] ?? { open: defaultOpenTime, close: defaultCloseTime };
-                  return (
-                    <div key={day} className="flex flex-wrap items-end gap-3">
-                      <span className="text-sm font-medium w-full sm:w-10 sm:pb-3">{label}</span>
-                      <TimeField12 label="" ariaLabel={`${label} opens`} value={o.open} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, open: v } })} />
-                      <TimeField12 label="" ariaLabel={`${label} closes`} value={o.close} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, close: v } })} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {hoursProblem ? (
-              <p role="alert" className="text-[13px] font-semibold text-owner-danger">
-                {hoursProblem}
-              </p>
-            ) : null}
-          </SectionCard>
-
-          <SectionCard>
-            <SectionLabel>Prices</SectionLabel>
-            {pricingRules.map((rule) => (
-              <div key={rule.id} className="border border-owner-border rounded-[10px] p-4 flex flex-col gap-3">
-                <div className="flex items-end gap-3">
-                  <Field label="Name" value={rule.name} onChange={(e) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, name: e.target.value } : r)))} />
-                  {pricingRules.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => setPricingRules(pricingRules.filter((r) => r.id !== rule.id))}
-                      className="pb-3 text-[12.5px] font-medium text-owner-danger"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Field
-                    label="Per slot (PKR)"
-                    value={rule.pricePerSlot}
-                    onChange={(e) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, pricePerSlot: e.target.value.replace(/\D/g, "") } : r)))}
-                    inputMode="numeric"
-                    placeholder="2500"
-                    mono
-                  />
-                  <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, startTime: v || null } : r)))} />
-                  <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, endTime: v || null } : r)))} />
-                </div>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setPricingRules([...pricingRules, makeRule()])}
-              className="self-start min-h-10 px-3 rounded-lg border border-owner-border text-[13px] font-semibold text-owner-accent"
-            >
-              + Add a rate
-            </button>
-          </SectionCard>
-
-          <SectionCard>
-            <SectionLabel>Cancellations</SectionLabel>
-            <p className="text-[13px] font-medium text-owner-ink-faint">Can a player cancel a booking on this court after they&apos;ve already paid?</p>
-            <div className="flex gap-2">
-              <Chip label="Allowed" selected={cancellationAllowed} onClick={() => setCancellationAllowed(true)} />
-              <Chip label="Not allowed" selected={!cancellationAllowed} onClick={() => setCancellationAllowed(false)} />
-            </div>
-            {cancellationAllowed ? (
-              <Field
-                label="Require cancelling at least this many hours before (optional)"
-                value={cancellationCutoffHours}
-                onChange={(e) => setCancellationCutoffHours(e.target.value.replace(/\D/g, ""))}
-                inputMode="numeric"
-                placeholder="Leave blank for no limit"
-                mono
-              />
-            ) : null}
-          </SectionCard>
-
-          {saveMessage ? (
-            <p role="alert" className={`text-[13.5px] font-semibold ${saveMessage.kind === "ok" ? "text-owner-accent" : "text-owner-danger"}`}>
-              {saveMessage.text}
-            </p>
-          ) : null}
-          <PrimaryButton label="Save changes" onClick={handleSave} busy={saving} />
-
-          <SectionCard>
-            <SectionLabel>Blackout dates</SectionLabel>
-            {(blackoutsQuery.data ?? []).length === 0 ? (
-              <p className="text-owner-ink-faint text-[13px]">No blackout dates yet.</p>
-            ) : (
-              (blackoutsQuery.data ?? []).map((b) => (
-                <div key={b.id} className="border border-owner-border rounded-[10px] p-3">
-                  <p className="text-sm font-semibold">{b.title ?? "Blocked"}</p>
-                  <p className="font-mono text-xs text-owner-ink-faint mt-0.5">
-                    {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
-                  </p>
-                </div>
-              ))
-            )}
-            <div className="h-px bg-owner-border-light" />
-            <FieldLabel>Add a blackout</FieldLabel>
-            <div className="flex flex-wrap gap-3">
-              <Field label="Title (optional)" value={blackoutTitle} onChange={(e) => setBlackoutTitle(e.target.value)} placeholder="Maintenance" />
-              <div className="flex flex-col gap-3 w-full">
-                <DayPicker label="Starts on" value={blackoutStartDate} onChange={setBlackoutStartDate} />
-                <TimeField12 label="Starts at" value={blackoutStartTime} onChange={setBlackoutStartTime} />
-                <DayPicker label="Ends on" value={blackoutEndDate} onChange={setBlackoutEndDate} />
-                <TimeField12 label="Ends at" value={blackoutEndTime} onChange={setBlackoutEndTime} />
-              </div>
-            </div>
-            {blackoutError ? (
-              <p role="alert" className="text-[13px] font-semibold text-owner-danger">
-                {blackoutError}
-              </p>
-            ) : null}
-            <PrimaryButton label="Add blackout" onClick={handleAddBlackout} busy={addingBlackout} />
-          </SectionCard>
+          {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
+          <CourtSettingsForm key={court.id} court={court} />
+          <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
         </>
       )}
     </div>
+  );
+}
+
+function VenueCancellationCard({
+  venueId,
+  initialAllowed,
+  initialCutoff,
+}: {
+  venueId: string;
+  initialAllowed: boolean;
+  initialCutoff: number | null;
+}) {
+  const queryClient = useQueryClient();
+  const [allowed, setAllowed] = useState(initialAllowed);
+  const [cutoff, setCutoff] = useState(initialCutoff != null ? String(initialCutoff) : "");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+
+  async function save() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api.venues.update(venueId, {
+        cancellation_allowed: allowed,
+        cancellation_cutoff_hours: allowed && cutoff.trim() ? Number(cutoff) : null,
+      });
+      // players see this policy before they pay, and the owner lists read it too
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ kind: "ok", text: "Cancellation policy updated for every court." });
+    } catch (e) {
+      setMessage({ kind: "error", text: friendlyErrorMessage(e) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="venue-cancellation">
+      <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
+      <SaveMessage message={message} />
+      <PrimaryButton label="Save cancellation policy" onClick={save} busy={saving} />
+    </div>
+  );
+}
+
+/** Slot length, hours and prices for ONE court. Seeded once from the court it is mounted for (the parent keys it by
+ * court id), so it holds its own edits and never needs an effect to copy server data into state. */
+function CourtSettingsForm({ court }: { court: Court }) {
+  const queryClient = useQueryClient();
+  const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+  const problem = courtSetupProblem(setup);
+
+  async function save() {
+    if (problem) {
+      setMessage({ kind: "error", text: problem });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      if (setup.slotMinutes !== court.slot_minutes) await api.courts.update(court.id, { slot_minutes: setup.slotMinutes });
+      await api.courts.setSchedule(court.id, buildSchedules(setup));
+      await api.courts.setPricing(court.id, buildPricingRules(setup));
+      await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
+      await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ kind: "ok", text: `${court.name}: slot length, hours and prices updated.` });
+    } catch (e) {
+      setMessage({ kind: "error", text: friendlyErrorMessage(e) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <h2 className="text-lg font-bold -mb-2">{court.name}</h2>
+      <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
+      <SaveMessage message={message} />
+      <PrimaryButton label="Save changes" onClick={save} busy={saving} />
+    </>
+  );
+}
+
+function BlackoutsCard({ courtId }: { courtId: string }) {
+  const queryClient = useQueryClient();
+  const blackoutsQuery = useQuery({
+    queryKey: ["court-blackouts", courtId],
+    queryFn: () => api.courts.listBlackouts(courtId),
+  });
+
+  const [title, setTitle] = useState("");
+  // A date (Pakistan calendar) plus a 12-hour time for each end; sent as real instants via pktInstant().
+  const [startDate, setStartDate] = useState("");
+  const [startTime, setStartTime] = useState("06:00");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("23:00");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function add() {
+    if (!startDate || !endDate) {
+      setError("Pick a start and end date/time for the blackout.");
+      return;
+    }
+    setAdding(true);
+    setError(null);
+    try {
+      await api.courts.addBlackout(courtId, {
+        title: title || undefined,
+        starts_at: pktInstant(startDate, startTime).toISOString(),
+        ends_at: pktInstant(endDate, endTime).toISOString(),
+      });
+      setTitle("");
+      setStartDate("");
+      setEndDate("");
+      await queryClient.invalidateQueries({ queryKey: ["court-blackouts", courtId] });
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>Blackout dates</SectionLabel>
+      {(blackoutsQuery.data ?? []).length === 0 ? (
+        <p className="text-owner-ink-faint text-[13px]">No blackout dates yet.</p>
+      ) : (
+        (blackoutsQuery.data ?? []).map((b) => (
+          <div key={b.id} className="border border-owner-border rounded-[10px] p-3">
+            <p className="text-sm font-semibold">{b.title ?? "Blocked"}</p>
+            <p className="font-mono text-xs text-owner-ink-faint mt-0.5">
+              {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
+            </p>
+          </div>
+        ))
+      )}
+      <div className="h-px bg-owner-border-light" />
+      <FieldLabel>Add a blackout</FieldLabel>
+      <div className="flex flex-wrap gap-3">
+        <Field label="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Maintenance" />
+        <div className="flex flex-col gap-3 w-full">
+          <DayPicker label="Starts on" value={startDate} onChange={setStartDate} />
+          <TimeField12 label="Starts at" value={startTime} onChange={setStartTime} />
+          <DayPicker label="Ends on" value={endDate} onChange={setEndDate} />
+          <TimeField12 label="Ends at" value={endTime} onChange={setEndTime} />
+        </div>
+      </div>
+      {error ? (
+        <p role="alert" className="text-[13px] font-semibold text-owner-danger">
+          {error}
+        </p>
+      ) : null}
+      <PrimaryButton label="Add blackout" onClick={add} busy={adding} />
+    </SectionCard>
   );
 }

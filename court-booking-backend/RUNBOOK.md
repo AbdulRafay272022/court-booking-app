@@ -221,6 +221,20 @@ screens (app routing is role-gated), so use a separate number for the admin. Goi
 the same kind of manual database change. Promoted so far: the project owner's own number (ending 6981),
 on 2026-09-20, as the reviewer of the first venue ("Maidan COurt").
 
+## 6. Running a database migration on production (the rules the owner set on 2026-09-22)
+
+Never run a migration on production without the owner's explicit go. Before it:
+1. **Read-only preflight** from the instance (SSM Run Command, `docker exec ... python -` with SELECTs only): current revision,
+   and whatever the migration will assert (Part 4: no booking with a bad `ends_at`, no overlapping live bookings).
+2. **The owner takes a manual RDS snapshot** (automated backups are only 1 day and a restore has never been rehearsed). Wait for
+   it to show `available`.
+3. The migration was tested **up, down and up again** on a scratch database seeded with production-shaped data, and its refusal
+   cases were exercised. `alembic check` is clean.
+Order on deploy: build and push the images, run the migration **from the NEW image before the new backend serves traffic** (the code
+must never run against a missing column), then restart. Read the migration output and report it; `alembic current` must show the new
+head. To undo: `alembic downgrade <previous revision>` from the same image (the Part 4 downgrade copies each venue's current
+cancellation policy back onto its courts), then redeploy the previous image. A snapshot restore is the last resort.
+
 ## Not yet covered here
 
 - **Rotating the WhatsApp/AI vendor credentials themselves** (as opposed

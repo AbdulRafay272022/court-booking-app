@@ -46,6 +46,11 @@ export interface Venue {
   rejection_reason: string | null;
   auto_approve_enabled: boolean;
   auto_approve_min_bookings: number;
+  /** Section 32 Part 4: ONE cancellation policy per venue (reverses Section 31's per-court policy). Can a player
+   * cancel a booking they've already paid for, and if so how many hours before the start it stops being allowed
+   * (null = any time before the start). */
+  cancellation_allowed: boolean;
+  cancellation_cutoff_hours: number | null;
   created_at: string;
   courts: Court[];
   average_rating: number | null;
@@ -75,4 +80,6 @@ export interface CreateVenueInput {
   sports: string[];
   amenities?: string[];
   bank_details?: BankDetails;
+  cancellation_allowed?: boolean;
+  cancellation_cutoff_hours?: number | null;
 }

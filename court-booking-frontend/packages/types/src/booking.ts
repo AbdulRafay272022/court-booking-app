@@ -42,6 +42,8 @@ export interface PaymentInstructions {
 export interface HoldBookingInput {
   court_id: string;
   starts_at: string;
+  /** How many consecutive slots (the court's slot length each) to book as one booking. Default 1. */
+  slot_count?: number;
 }
 
 export interface HoldBookingOut {

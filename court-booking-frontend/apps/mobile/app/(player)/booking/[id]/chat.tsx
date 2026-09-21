@@ -6,7 +6,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTime } from "@/lib/format";
+import { formatDate, formatPKR, formatTime, formatTimeRange } from "@/lib/format";
+import { formatDuration } from "@court-booking/types";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { ChevronLeftIcon } from "@/components/icons";
 import type { ChatAction } from "@court-booking/types";
@@ -27,7 +28,12 @@ export default function BookingChatScreen() {
     courtName?: string;
     startsAt?: string;
     price?: string;
+    // How long the player chose in the duration sheet (Section 32 Part 4); absent means one slot.
+    slotCount?: string;
+    minutes?: string;
   }>();
+  const slotCount = Math.max(1, Number(params.slotCount ?? 1) || 1);
+  const minutes = Number(params.minutes ?? 0) || undefined;
   const isNew = params.id === "new";
   const setPaymentInstructions = useBookingFlowStore((s) => s.setPaymentInstructions);
 
@@ -37,8 +43,13 @@ export default function BookingChatScreen() {
   const [holdingActionKey, setHoldingActionKey] = useState<string | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  // The opening question must be sent ONCE (React's dev mode runs an effect twice on mount, which asked the paid AI
+  // twice and showed the answer twice); the ref survives that simulated remount.
+  const startedRef = useRef(false);
 
   useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
     (async () => {
       if (!isNew) {
         try {
@@ -60,7 +71,9 @@ export default function BookingChatScreen() {
       // calendar date instead.
       const when = params.startsAt ? new Date(params.startsAt) : null;
       const question = when
-        ? `Is ${params.courtName || "a court"} at ${params.venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}?`
+        ? `Is ${params.courtName || "a court"} at ${params.venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}${
+            minutes ? ` for ${formatDuration(minutes)}` : ""
+          }?`
         : "What's available?";
       setTurns([{ id: "local-0", sender: "player", content: question }]);
       setSending(true);
@@ -112,7 +125,9 @@ export default function BookingChatScreen() {
     try {
       const courtId = String(action.data.court_id ?? params.courtId);
       const startsAt = String(action.data.starts_at ?? params.startsAt);
-      const { booking, payment_instructions } = await api.bookings.hold({ court_id: courtId, starts_at: startsAt });
+      // The Yes button the assistant showed carries the length it quoted; fall back to what was picked before the chat.
+      const holdSlotCount = Number(action.data.slot_count ?? slotCount) || 1;
+      const { booking, payment_instructions } = await api.bookings.hold({ court_id: courtId, starts_at: startsAt, slot_count: holdSlotCount });
       if (payment_instructions) setPaymentInstructions(booking.id, payment_instructions);
       router.replace({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } });
     } catch (e) {
@@ -151,7 +166,8 @@ export default function BookingChatScreen() {
                 SELECTED SLOT
               </Text>
               <Text className="font-mono-semibold text-player-ink text-[14.5px]">
-                {params.courtName} · {formatDate(when)}, {formatTime(when)}
+                {params.courtName} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
+                {minutes ? ` · ${formatDuration(minutes)}` : ""}
               </Text>
             </View>
             {params.price ? <Text className="font-mono-semibold text-player-ink text-base">{formatPKR(Number(params.price))}</Text> : null}

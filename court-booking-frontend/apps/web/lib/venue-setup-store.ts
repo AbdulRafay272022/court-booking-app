@@ -2,49 +2,32 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import {
+  DAY_LABELS,
+  SLOT_MINUTES_OPTIONS,
+  cloneCourtSetup,
+  defaultCourtSetup,
+  makePricingRule,
+  type CourtSetup,
+} from "@court-booking/types";
 
-export interface CourtDraft {
+// Re-exported so existing imports keep working. The week is Monday-first, matching the backend (see court-setup.ts).
+export { DAY_LABELS, SLOT_MINUTES_OPTIONS };
+
+/** One court in the wizard: its name and sport plus ITS OWN slot length, hours and prices (Section 32 Part 4: these
+ * used to be one shared set for every court the wizard created). */
+export interface CourtDraft extends CourtSetup {
   name: string;
   sport: string;
-  slotMinutes: number;
-  // Section 31: cancellation policy is per court (the backend has always stored it per court;
-  // the wizard used to apply one shared setting to every court it created).
-  cancellationAllowed: boolean;
-  /** Empty string = no cutoff (cancellable any time before start). */
-  cancellationCutoffHours: string;
-}
-
-export interface PricingRuleDraft {
-  id: string;
-  name: string;
-  pricePerSlot: string;
-  dayOfWeek: number[] | null;
-  startTime: string | null;
-  endTime: string | null;
-}
-
-export interface DayOverride {
-  open: string;
-  close: string;
 }
 
 export const SPORT_OPTIONS = ["Padel", "Futsal", "Tennis", "Cricket", "Badminton"];
-export const SLOT_MINUTES_OPTIONS = [60, 90, 120];
-export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function makeCourt(index: number): CourtDraft {
-  return { name: `Court ${index}`, sport: "Padel", slotMinutes: 90, cancellationAllowed: true, cancellationCutoffHours: "" };
-}
-
-function makeRule(name: string): PricingRuleDraft {
-  return {
-    id: Math.random().toString(36).slice(2),
-    name,
-    pricePerSlot: "",
-    dayOfWeek: null,
-    startTime: null,
-    endTime: null,
-  };
+function makeCourt(index: number, from?: CourtDraft): CourtDraft {
+  // A new court starts as a copy of the previous one (same sport, slot length, hours and prices) because most venues'
+  // courts are alike; it is a starting point the owner edits, and every court's card shows its own values.
+  const base: CourtSetup = from ? cloneCourtSetup(from) : defaultCourtSetup();
+  return { ...base, name: `Court ${index}`, sport: from?.sport ?? "Padel" };
 }
 
 interface VenueSetupState {
@@ -61,13 +44,11 @@ interface VenueSetupState {
   bankName: string;
   accountTitle: string;
   accountNumber: string;
-  // Step 2 — courts, hours, pricing
+  /** Section 32 Part 4: ONE cancellation policy per venue. Empty cutoff string = no cutoff. */
+  cancellationAllowed: boolean;
+  cancellationCutoffHours: string;
+  // Step 2 — courts (each with its own slot length, hours and prices)
   courts: CourtDraft[];
-  sameHoursEveryDay: boolean;
-  defaultOpenTime: string;
-  defaultCloseTime: string;
-  perDayOverrides: Partial<Record<number, DayOverride>>;
-  pricingRules: PricingRuleDraft[];
   /** Set once POST /venues succeeds, so a retry after a partial submit failure
    * (e.g. court creation failing) doesn't create a second duplicate venue. */
   createdVenueId: string | null;
@@ -86,10 +67,6 @@ interface VenueSetupState {
   updateCourt: (index: number, patch: Partial<CourtDraft>) => void;
   removeCourt: (index: number) => void;
   setCreatedCourtId: (index: number, courtId: string) => void;
-  setDayOverride: (day: number, override: DayOverride) => void;
-  addPricingRule: () => void;
-  updatePricingRule: (id: string, patch: Partial<PricingRuleDraft>) => void;
-  removePricingRule: (id: string) => void;
   reset: () => void;
 }
 
@@ -106,12 +83,9 @@ const initialState = {
   bankName: "",
   accountTitle: "",
   accountNumber: "",
+  cancellationAllowed: true,
+  cancellationCutoffHours: "",
   courts: [makeCourt(1)],
-  sameHoursEveryDay: true,
-  defaultOpenTime: "06:00",
-  defaultCloseTime: "23:00",
-  perDayOverrides: {} as Partial<Record<number, DayOverride>>,
-  pricingRules: [makeRule("All day")],
   createdVenueId: null as string | null,
   createdCourtIds: {} as Record<number, string>,
 };
@@ -136,7 +110,10 @@ export const useVenueSetupStore = create<VenueSetupState>()(
       // index -> created-court-id correlation below, so each of these clears it -- safer
       // to redo a cheap idempotent step than to risk a stale index pointing at the wrong
       // court after a reorder/removal.
-      addCourt: () => set({ courts: [...get().courts, makeCourt(get().courts.length + 1)], createdCourtIds: {} }),
+      addCourt: () => {
+        const courts = get().courts;
+        set({ courts: [...courts, makeCourt(courts.length + 1, courts[courts.length - 1])], createdCourtIds: {} });
+      },
 
       updateCourt: (index, patch) => {
         const courts = [...get().courts];
@@ -153,38 +130,21 @@ export const useVenueSetupStore = create<VenueSetupState>()(
         set({ createdCourtIds: { ...get().createdCourtIds, [index]: courtId } });
       },
 
-      setDayOverride: (day, override) => {
-        set({ perDayOverrides: { ...get().perDayOverrides, [day]: override } });
-      },
-
-      addPricingRule: () =>
-        set({ pricingRules: [...get().pricingRules, makeRule("Peak hours")] }),
-
-      updatePricingRule: (id, patch) => {
-        set({
-          pricingRules: get().pricingRules.map((r) => (r.id === id ? { ...r, ...patch } : r)),
-        });
-      },
-
-      removePricingRule: (id) => {
-        const rules = get().pricingRules.filter((r) => r.id !== id);
-        set({ pricingRules: rules.length > 0 ? rules : [makeRule("All day")] });
-      },
-
       reset: () => set(initialState),
     }),
     {
       name: "maidan.venue-setup-draft",
-      version: 2,
-      // v1 drafts kept ONE shared cancellation setting on the draft itself; carry it onto every
-      // court so an owner mid-wizard keeps what they'd already chosen (and no court is left
-      // without the per-court fields, which would render as an undefined chip state).
+      version: 3,
+      // v1 kept ONE shared cancellation setting on the draft; v2 moved it onto each court (Section 31). v3 (Section 32
+      // Part 4) makes it ONE per venue again and gives every court its OWN hours and prices instead of one shared set.
+      // An owner who is mid-wizard keeps everything they had typed: the shared hours/prices are copied onto each
+      // court, and the venue takes the most player-friendly cancellation policy across their courts.
       migrate: (persisted, version) => {
         const state = (persisted ?? {}) as Record<string, unknown>;
         if (version < 2) {
           const allowed = typeof state.cancellationAllowed === "boolean" ? state.cancellationAllowed : true;
           const cutoff = typeof state.cancellationCutoffHours === "string" ? state.cancellationCutoffHours : "";
-          const courts = Array.isArray(state.courts) ? (state.courts as Partial<CourtDraft>[]) : [];
+          const courts = Array.isArray(state.courts) ? (state.courts as Record<string, unknown>[]) : [];
           state.courts = courts.map((c) => ({
             ...c,
             cancellationAllowed: c.cancellationAllowed ?? allowed,
@@ -192,6 +152,34 @@ export const useVenueSetupStore = create<VenueSetupState>()(
           }));
           delete state.cancellationAllowed;
           delete state.cancellationCutoffHours;
+        }
+        if (version < 3) {
+          const oldCourts = Array.isArray(state.courts) ? (state.courts as Record<string, unknown>[]) : [];
+          const fallback = defaultCourtSetup();
+          // The old screens numbered the week Sunday-first (Sun = 0); the API and the new screens use Monday = 0.
+          const oldOverrides = (state.perDayOverrides ?? {}) as Record<string, { open: string; close: string }>;
+          const overrides: CourtSetup["perDayOverrides"] = {};
+          for (const [day, o] of Object.entries(oldOverrides)) overrides[(Number(day) + 6) % 7] = o;
+          const shared: Omit<CourtSetup, "slotMinutes"> = {
+            sameHoursEveryDay: typeof state.sameHoursEveryDay === "boolean" ? state.sameHoursEveryDay : true,
+            openTime: typeof state.defaultOpenTime === "string" ? state.defaultOpenTime : fallback.openTime,
+            closeTime: typeof state.defaultCloseTime === "string" ? state.defaultCloseTime : fallback.closeTime,
+            perDayOverrides: overrides,
+            pricingRules: Array.isArray(state.pricingRules) && state.pricingRules.length > 0
+              ? (state.pricingRules as CourtSetup["pricingRules"])
+              : [makePricingRule("All day")],
+          };
+          const allowing = oldCourts.filter((c) => c.cancellationAllowed !== false);
+          state.cancellationAllowed = oldCourts.length === 0 || allowing.length > 0;
+          const cutoffs = allowing.map((c) => String(c.cancellationCutoffHours ?? "")).filter((h) => h !== "");
+          state.cancellationCutoffHours = allowing.some((c) => !String(c.cancellationCutoffHours ?? "")) || cutoffs.length === 0
+            ? ""
+            : String(Math.min(...cutoffs.map(Number)));
+          state.courts = oldCourts.map((c) => {
+            const own = cloneCourtSetup({ ...shared, slotMinutes: Number(c.slotMinutes) || fallback.slotMinutes });
+            return { ...own, name: String(c.name ?? ""), sport: String(c.sport ?? "Padel") };
+          });
+          for (const key of ["sameHoursEveryDay", "defaultOpenTime", "defaultCloseTime", "perDayOverrides", "pricingRules"]) delete state[key];
         }
         return state as unknown as VenueSetupState;
       },

@@ -11,7 +11,7 @@ been worked so far.
 The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in
 Roman Urdu; answer in plain English, keep it short, and **verify before claiming** (they were burned
 by "fixed" things that weren't). Everything below is on `main`, deployed, tests green
-(**419 backend tests** after merging the teammate's push-notification work: `AI_PROVIDER=claude AI_VISION_PROVIDER=claude .venv/Scripts/python.exe -m pytest`. **Do not run pytest without those two variables**: this machine's `.env` sets `AI_PROVIDER=gemini` with a real key, so 10 tests fail and `test_no_api_key_returns_graceful_fallback` makes a real, billed Gemini call. Also needs `httpx[http2]` in the venv now).
+(**449 backend tests** (419 before Part 4) after merging the teammate's push-notification work: `AI_PROVIDER=claude AI_VISION_PROVIDER=claude .venv/Scripts/python.exe -m pytest`. **Do not run pytest without those two variables**: this machine's `.env` sets `AI_PROVIDER=gemini` with a real key, so 10 tests fail and `test_no_api_key_returns_graceful_fallback` makes a real, billed Gemini call. Also needs `httpx[http2]` in the venv now).
 
 **Deployed today (all through GitHub Actions on push to `main`; none needed a migration):**
 `c87f2fe` per-court cancellation policy in both UIs + stale wizard-draft recovery; `475b296`
@@ -68,7 +68,7 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 | Part | What | Status |
 |---|---|---|
 | 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). **Mobile needs an EAS build** to reach phones. The docs commit after it is local, **pending push (goes out with the next deploy)**. |
-| 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | In progress (started 2026-09-22) |
+| 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | **Built and tested locally (449 backend tests, live Playwright on web + Expo web), NOT deployed, migration NOT run on production.** Waiting for the owner's go on the migration plan (rules B and C). Details below. |
 | 3 | Overnight courts (`closes_next_day`) | Not started |
 | 5 | Split payments + `payment_entries` ledger | Not started |
 | 9, 10 | **Spec text not received** -- the spec pasted so far has Parts 1-8 only. Ask the owner for Parts 9 and 10 before starting them. | Blocked on the spec |
@@ -76,6 +76,29 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 | 8 | WhatsApp/Gemini prompts. Added findings: AI money is always "PKR 3,500" (never "Rs. 3500.0"; hand the model a ready-made string like the slot `label`); the model must NEVER invent a reason for an unavailable slot ("fixed 90-minute blocks" when it was simply booked) -- only say what the tool returned. | Not started |
 | 6 | Photos + reviews | Not started |
 | 11 | Screen audit: the owner dashboard's fixed sidebar overflows below ~600px, owners are on phones, fix it as part of the audit. Also fix the 2 existing eslint errors (`react-hooks/set-state-in-effect`, settings page lines ~98 and ~115) the next time `apps/web/app/dashboard/owner/settings/page.tsx` is touched (Part 4 touches it). | Not started |
+
+**SECTION 32 PART 4 (built 2026-09-22, not deployed).** What exists: migration `dd23d75cf310` (venue cancellation columns +
+backfill, `btree_gist` `EXCLUDE` constraint `no_overlapping_live_bookings` on `tstzrange(starts_at, ends_at, '[)')` for
+held/payment_submitted/booked, with a preflight that refuses and changes nothing on a bad `ends_at` or an existing overlap);
+`one_live_booking_per_slot` is KEPT (owner decides later whether it is redundant). `CREATE EXTENSION btree_gist` is in the
+migration, not `bootstrap.sh db-init`, because it is a trusted extension (PG13+) that `court_admin` may create and it keeps the
+migration self-contained. The cancellation policy is read ONLY from `venues.cancellation_*`; `courts.cancellation_*` are mapped as
+`_deprecated_*`, unused, **drop next release**; `CourtOut.cancellation_*` is a read-only mirror computed by the database from the
+venue (`column_property`) so app builds from before this change keep working. Slot length is 30/60/90/120 per court.
+`create_hold(..., slot_count)` books several consecutive slots as one booking; `AvailabilityService.quote_range` is the ONLY place a
+multi-slot total is computed (slot by slot with each slot's own rule: peak boundaries, closing time, blackouts) and backs
+`GET /courts/{id}/quote`, the hold, and the AI. AI/WhatsApp: `quote_booking` tool, `duration_minutes` on propose/hold, money as
+`format_pkr()` text, WhatsApp Yes button id `confirm:<court>:<starts_at>|x<slot_count>`. Facts read from production 2026-09-22
+(read-only): DB at `19cf7e553535`; 8 bookings, none with a bad `ends_at`, no overlapping live pairs; 1 venue/1 court; that court has
+`cancellation_allowed = false` (so the venue will inherit "not allowed" -- tell the owner); no venue's courts disagree; schedule is
+uniform 6 AM-11 PM; no day-specific price rules; `court_admin` is `rds_superuser` and `btree_gist` 1.7 is available and trusted.
+Found and fixed during Part 4 (not in the spec): (1) **the owner screens numbered weekdays Sunday-first while the API is Monday = 0**,
+so per-day hours set for "Sun" landed on Monday (no live venue was affected: production hours are uniform); the screens now use
+`DAY_LABELS` Monday-first from `packages/types/src/court-setup.ts`. (2) A refactor of Venue Settings would have saved one court
+with ANOTHER court's hours and prices because the app's query client keeps the previous query's data as a placeholder -- caught by
+the live test, fixed (the form mounts only when `data.id === selected court`); see the frontend CLAUDE.md rule. (3) The chat's
+opening question was sent twice in dev (effect ran twice); guarded with a ref. Known flaky test: `test_typed_yes_books_the_slot_...`
+compares a host-clock timestamp with a DB-clock one and failed once under load (passes alone and on rerun).
 
 **Open items, roughly by priority (none started unless noted):**
 0. **Found while proving Parts 1-2 on production (for Part 8):** the AI sometimes writes the price as "Rs. 3500.0"

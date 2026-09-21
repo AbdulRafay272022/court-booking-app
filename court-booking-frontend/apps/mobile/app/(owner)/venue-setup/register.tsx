@@ -8,6 +8,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
 import { CheckIcon } from "@/components/icons";
 import { Chip, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./_components";
+import { CancellationPolicyFields } from "@/components/court-setup-fields";
 
 function Stepper({ current }: { current: 1 | 2 | 3 }) {
   const steps = ["Your venue", "Courts & pricing", "We review it"];
@@ -220,6 +221,13 @@ export default function VenueRegisterScreen() {
             mono
           />
         </SectionCard>
+
+        <CancellationPolicyFields
+          allowed={store.cancellationAllowed}
+          cutoffHours={store.cancellationCutoffHours}
+          onAllowedChange={(v) => store.setField("cancellationAllowed", v)}
+          onCutoffChange={(v) => store.setField("cancellationCutoffHours", v)}
+        />
 
         <View className="bg-owner-warn-soft border border-owner-warn-soft-border rounded-2xl p-5 gap-1.5">
           <Text className="font-plex-bold text-owner-warn-dark text-[14.5px]">

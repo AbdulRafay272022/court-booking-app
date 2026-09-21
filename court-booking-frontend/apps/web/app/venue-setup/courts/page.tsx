@@ -4,17 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { isStaleVenueDraftError } from "@court-booking/api-client";
-import { weeklyHoursError, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
+import { buildPricingRules, buildSchedules, courtSetupProblem } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { DAY_LABELS, SLOT_MINUTES_OPTIONS, SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
+import { SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
 import { Chip, Field, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, Stepper } from "@/components/setup/ui";
-import { TimeField12 } from "@/components/setup/time-fields";
-
-/** "HH:MM" from the 12-hour time picker -> "HH:MM:SS" for the API. */
-function toTimeString(hhmm: string): string {
-  return /^\d{2}:\d{2}$/.test(hhmm) ? `${hhmm}:00` : "06:00:00";
-}
+import { CourtSetupFields } from "@/components/setup/court-setup-fields";
 
 export default function VenueCourtsPage() {
   const router = useRouter();
@@ -26,37 +21,10 @@ export default function VenueCourtsPage() {
   // ours). Shown as a recovery panel with a next step, not as a bare error.
   const [staleDraft, setStaleDraft] = useState(false);
 
-  const pricedRules = store.pricingRules.filter((r) => Number(r.pricePerSlot) > 0);
-  // Hours the database can't store (closing at/before opening, e.g. 06:00 -> 02:00) used to reach the API,
-  // 500, and surface as "Can't reach the server". Caught here so the owner sees what to fix.
-  const hoursProblem = weeklyHoursError(
-    store.sameHoursEveryDay, store.defaultOpenTime, store.defaultCloseTime, store.perDayOverrides, DAY_LABELS,
-  );
-  const isValid =
-    store.courts.length > 0 && store.courts.every((c) => c.name.trim()) && pricedRules.length > 0 && !hoursProblem;
-
-  function buildSchedules(): ScheduleTemplateInput[] {
-    return Array.from({ length: 7 }, (_, day) => {
-      const o = store.sameHoursEveryDay ? undefined : store.perDayOverrides[day];
-      return {
-        day_of_week: day,
-        open_time: toTimeString(o?.open ?? store.defaultOpenTime),
-        close_time: toTimeString(o?.close ?? store.defaultCloseTime),
-      };
-    });
-  }
-
-  function buildPricingRules(): PricingRuleInput[] {
-    return pricedRules.map((r, i) => ({
-      name: r.name || `Rule ${i + 1}`,
-      priority: i,
-      day_of_week: r.dayOfWeek,
-      start_time: r.startTime ? toTimeString(r.startTime) : undefined,
-      end_time: r.endTime ? toTimeString(r.endTime) : undefined,
-      price_per_slot: Number(r.pricePerSlot),
-      advance_percentage: 100,
-    }));
-  }
+  // Each court is valid on its own: a name, usable hours (closing at/before opening, e.g. 06:00 -> 02:00, used to reach the
+  // API, 500, and surface as "Can't reach the server"), and a price.
+  const courtProblems = store.courts.map((c) => (c.name.trim() ? courtSetupProblem(c) : "Give this court a name."));
+  const isValid = store.courts.length > 0 && courtProblems.every((p) => p === null);
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -80,6 +48,10 @@ export default function VenueCourtsPage() {
           longitude: store.longitude!,
           whatsapp: store.whatsapp || undefined,
           sports: store.sports,
+          // one cancellation policy for the whole venue (Section 32 Part 4)
+          cancellation_allowed: store.cancellationAllowed,
+          cancellation_cutoff_hours:
+            store.cancellationAllowed && store.cancellationCutoffHours.trim() ? Number(store.cancellationCutoffHours) : null,
           bank_details:
             store.bankName && store.accountTitle && store.accountNumber
               ? { bank: store.bankName, account_title: store.accountTitle, account_number: store.accountNumber }
@@ -89,8 +61,6 @@ export default function VenueCourtsPage() {
         store.setField("createdVenueId", venueId);
       }
 
-      const schedules = buildSchedules();
-      const pricingRules = buildPricingRules();
       // Resumable: courtId is reused from a prior attempt when we have one (POST /courts
       // always inserts, so re-running it for an already-created court would duplicate the
       // row) -- setSchedule/setPricing are safe to re-run unconditionally either way (the
@@ -100,20 +70,17 @@ export default function VenueCourtsPage() {
         const court = store.courts[i];
         let courtId = store.createdCourtIds[i];
         if (!courtId) {
-          // Section 31: each court carries its own cancellation policy.
-          const cutoffHours = court.cancellationCutoffHours.trim() ? Number(court.cancellationCutoffHours) : null;
           const { court: created } = await api.courts.create(venueId, {
             name: court.name,
             sport: court.sport,
             slot_minutes: court.slotMinutes,
-            cancellation_allowed: court.cancellationAllowed,
-            cancellation_cutoff_hours: court.cancellationAllowed ? cutoffHours : null,
           });
           courtId = created.id;
           store.setCreatedCourtId(i, courtId);
         }
-        await api.courts.setSchedule(courtId, schedules);
-        await api.courts.setPricing(courtId, pricingRules);
+        // each court gets ITS OWN hours and prices
+        await api.courts.setSchedule(courtId, buildSchedules(court));
+        await api.courts.setPricing(courtId, buildPricingRules(court));
       }
 
       store.reset();
@@ -138,20 +105,21 @@ export default function VenueCourtsPage() {
       <Stepper current={2} />
       <div className="flex flex-col gap-1.5">
         <h1 className="text-[26px] font-bold tracking-tight">Your courts and prices</h1>
-        <p className="text-owner-ink-muted text-[15px]">Set your hours once and we build the whole schedule for you.</p>
+        <p className="text-owner-ink-muted text-[15px]">Each court has its own slot length, opening hours and prices. We build its schedule from them.</p>
       </div>
 
-      <SectionCard>
-        <div className="flex items-center justify-between">
-          <SectionLabel>Courts</SectionLabel>
-          <button type="button" onClick={store.addCourt} className="min-h-9 px-3 rounded-lg border border-owner-border text-[13px] font-semibold text-owner-accent">
-            + Add a court
-          </button>
-        </div>
-        {store.courts.map((court, index) => (
-          <div key={index} className="border border-owner-border rounded-[10px] p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <SectionLabel>Courts</SectionLabel>
+        <button type="button" onClick={store.addCourt} className="min-h-9 px-3 rounded-lg border border-owner-border text-[13px] font-semibold text-owner-accent">
+          + Add a court
+        </button>
+      </div>
+
+      {store.courts.map((court, index) => (
+        <div key={index} className="flex flex-col gap-4" data-testid={`court-${index + 1}`}>
+          <SectionCard>
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Court {index + 1}</p>
+              <p className="text-base font-bold">Court {index + 1}</p>
               {store.courts.length > 1 ? (
                 <button type="button" onClick={() => store.removeCourt(index)} className="text-[12.5px] font-medium text-owner-danger">
                   Remove
@@ -167,105 +135,15 @@ export default function VenueCourtsPage() {
                 ))}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <FieldLabel>Slot length</FieldLabel>
-              <div className="flex gap-2">
-                {SLOT_MINUTES_OPTIONS.map((m) => (
-                  <Chip key={m} label={`${m} min`} selected={court.slotMinutes === m} onClick={() => store.updateCourt(index, { slotMinutes: m })} />
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <FieldLabel>Cancellations</FieldLabel>
-              <p className="text-[13px] font-medium text-owner-ink-faint">Can a player cancel a booking on this court after they&apos;ve already paid?</p>
-              <div className="flex gap-2">
-                <Chip label="Allowed" selected={court.cancellationAllowed} onClick={() => store.updateCourt(index, { cancellationAllowed: true })} />
-                <Chip label="Not allowed" selected={!court.cancellationAllowed} onClick={() => store.updateCourt(index, { cancellationAllowed: false })} />
-              </div>
-              {court.cancellationAllowed ? (
-                <Field
-                  label="Require cancelling at least this many hours before (optional)"
-                  value={court.cancellationCutoffHours}
-                  onChange={(e) => store.updateCourt(index, { cancellationCutoffHours: e.target.value.replace(/\D/g, "") })}
-                  inputMode="numeric"
-                  placeholder="Leave blank for no limit"
-                  mono
-                />
-              ) : null}
-            </div>
-          </div>
-        ))}
-      </SectionCard>
-
-      <SectionCard>
-        <div className="flex items-center justify-between gap-3">
-          <SectionLabel>Opening hours</SectionLabel>
-          <button
-            type="button"
-            onClick={() => store.setField("sameHoursEveryDay", !store.sameHoursEveryDay)}
-            className="text-[13px] font-semibold text-owner-accent"
-          >
-            {store.sameHoursEveryDay ? "Set different hours per day" : "Use same hours every day"}
-          </button>
+            {index > 0 ? (
+              <p className="text-[12.5px] font-medium text-owner-ink-faint">
+                This court started as a copy of the one before it. Change anything below that is different for this court.
+              </p>
+            ) : null}
+          </SectionCard>
+          <CourtSetupFields value={court} onChange={(patch) => store.updateCourt(index, patch)} />
         </div>
-        <p className="text-[12.5px] font-medium text-owner-ink-faint">Times are Pakistan time (PKT).</p>
-
-        {store.sameHoursEveryDay ? (
-          <div className="flex flex-wrap gap-3">
-            <TimeField12 label="Opens" value={store.defaultOpenTime} onChange={(v) => store.setField("defaultOpenTime", v)} />
-            <TimeField12 label="Closes" value={store.defaultCloseTime} onChange={(v) => store.setField("defaultCloseTime", v)} />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {DAY_LABELS.map((label, day) => {
-              const o = store.perDayOverrides[day] ?? { open: store.defaultOpenTime, close: store.defaultCloseTime };
-              return (
-                <div key={day} className="flex flex-wrap items-end gap-3">
-                  <span className="text-sm font-medium w-full sm:w-10 sm:pb-3">{label}</span>
-                  <TimeField12 label="" ariaLabel={`${label} opens`} value={o.open} onChange={(v) => store.setDayOverride(day, { ...o, open: v })} />
-                  <TimeField12 label="" ariaLabel={`${label} closes`} value={o.close} onChange={(v) => store.setDayOverride(day, { ...o, close: v })} />
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {hoursProblem ? (
-          <p role="alert" className="text-[13px] font-semibold text-owner-danger">
-            {hoursProblem}
-          </p>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard>
-        <SectionLabel>Prices</SectionLabel>
-        {store.pricingRules.map((rule) => (
-          <div key={rule.id} className="border border-owner-border rounded-[10px] p-4 flex flex-col gap-3">
-            <div className="flex items-end gap-3">
-              <Field label="Name" value={rule.name} onChange={(e) => store.updatePricingRule(rule.id, { name: e.target.value })} />
-              {store.pricingRules.length > 1 ? (
-                <button type="button" onClick={() => store.removePricingRule(rule.id)} className="pb-3 text-[12.5px] font-medium text-owner-danger">
-                  Remove
-                </button>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Field
-                label="Per slot (PKR)"
-                value={rule.pricePerSlot}
-                onChange={(e) => store.updatePricingRule(rule.id, { pricePerSlot: e.target.value.replace(/\D/g, "") })}
-                inputMode="numeric"
-                placeholder="2500"
-                mono
-              />
-              <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => store.updatePricingRule(rule.id, { startTime: v || null })} />
-              <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => store.updatePricingRule(rule.id, { endTime: v || null })} />
-            </div>
-          </div>
-        ))}
-        <button type="button" onClick={store.addPricingRule} className="self-start min-h-10 px-3 rounded-lg border border-owner-border text-[13px] font-semibold text-owner-accent">
-          + Add a peak-hours rule
-        </button>
-      </SectionCard>
+      ))}
 
       {staleDraft ? (
         <div role="alert" className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border px-4 py-3 flex flex-col gap-3">

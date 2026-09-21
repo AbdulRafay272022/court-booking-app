@@ -6,7 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTime } from "@/lib/format";
+import { formatDate, formatPKR, formatTime, formatTimeRange } from "@/lib/format";
+import { formatDuration } from "@court-booking/types";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import type { ChatAction } from "@court-booking/types";
 
@@ -28,6 +29,9 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
   const courtName = search.get("courtName") ?? undefined;
   const startsAt = search.get("startsAt") ?? undefined;
   const price = search.get("price") ?? undefined;
+  // How long the player chose in the duration sheet (Section 32 Part 4); a link without them means one slot.
+  const slotCount = Math.max(1, Number(search.get("slotCount") ?? 1) || 1);
+  const minutes = Number(search.get("minutes") ?? 0) || undefined;
   const setPaymentInstructions = useBookingFlowStore((s) => s.setPaymentInstructions);
 
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -36,8 +40,13 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
   const [holdingKey, setHoldingKey] = useState<string | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // The opening question must be sent ONCE. React's dev mode runs an effect twice on mount, which sent it (and asked
+  // the paid AI) twice and showed the answer twice; the ref survives that simulated remount.
+  const startedRef = useRef(false);
 
   useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
     (async () => {
       if (!isNew) {
         try {
@@ -50,7 +59,9 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
       }
       const when = startsAt ? new Date(startsAt) : null;
       const question = when
-        ? `Is ${courtName || "a court"} at ${venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}?`
+        ? `Is ${courtName || "a court"} at ${venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}${
+            minutes ? ` for ${formatDuration(minutes)}` : ""
+          }?`
         : "What's available?";
       setTurns([{ id: "local-0", sender: "player", content: question }]);
       setSending(true);
@@ -97,7 +108,13 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
     try {
       const holdCourtId = String(action.data.court_id ?? courtId);
       const holdStartsAt = String(action.data.starts_at ?? startsAt);
-      const { booking, payment_instructions } = await api.bookings.hold({ court_id: holdCourtId, starts_at: holdStartsAt });
+      // The Yes button the assistant showed carries the length it quoted; fall back to what was picked before the chat.
+      const holdSlotCount = Number(action.data.slot_count ?? slotCount) || 1;
+      const { booking, payment_instructions } = await api.bookings.hold({
+        court_id: holdCourtId,
+        starts_at: holdStartsAt,
+        slot_count: holdSlotCount,
+      });
       if (payment_instructions) setPaymentInstructions(booking.id, payment_instructions);
       router.replace(`/booking/${booking.id}/pay`);
     } catch (e) {
@@ -132,7 +149,8 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
           <div className="flex flex-col">
             <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">SELECTED SLOT</span>
             <span className="font-mono text-[14.5px] font-semibold">
-              {courtName} · {formatDate(when)}, {formatTime(when)}
+              {courtName} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
+              {minutes ? ` · ${formatDuration(minutes)}` : ""}
             </span>
           </div>
           {price ? <span className="font-mono text-base font-semibold">{formatPKR(Number(price))}</span> : null}

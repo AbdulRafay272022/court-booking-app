@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
 import { useAuthStore } from "@/lib/auth-store";
 import { Chip, Field, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, Stepper } from "@/components/setup/ui";
+import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
 
 export default function VenueRegisterPage() {
   const router = useRouter();
@@ -108,6 +109,13 @@ export default function VenueRegisterPage() {
         <Field label="Account title" value={store.accountTitle} onChange={(e) => store.setField("accountTitle", e.target.value)} placeholder="Padel Republic" />
         <Field label="Account number" value={store.accountNumber} onChange={(e) => store.setField("accountNumber", e.target.value)} placeholder="PK00 MEZN 0000 0000 0000" mono />
       </SectionCard>
+
+      <CancellationPolicyFields
+        allowed={store.cancellationAllowed}
+        cutoffHours={store.cancellationCutoffHours}
+        onAllowedChange={(v) => store.setField("cancellationAllowed", v)}
+        onCutoffChange={(v) => store.setField("cancellationCutoffHours", v)}
+      />
 
       <div className="bg-owner-warn-soft border border-owner-warn-soft-border rounded-2xl p-5 flex flex-col gap-1.5">
         <p className="font-bold text-owner-warn-dark text-[14.5px]">Free while we&apos;re building</p>

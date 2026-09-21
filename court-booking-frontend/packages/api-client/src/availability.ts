@@ -1,4 +1,4 @@
-import type { CourtAvailability, RangeAvailability, VenueAvailability } from "@court-booking/types";
+import type { BookingQuote, CourtAvailability, RangeAvailability, VenueAvailability } from "@court-booking/types";
 import type { ApiClient } from "./client";
 
 export function createAvailabilityApi(client: ApiClient) {
@@ -13,5 +13,11 @@ export function createAvailabilityApi(client: ApiClient) {
 
     forVenueOnDate: (venueId: string, date: string) =>
       client.request<VenueAvailability>(`/venues/${venueId}/availability?date=${date}`),
+
+    /** What a booking of `slotCount` consecutive slots from `startsAt` costs (Section 32 Part 4). */
+    quote: (courtId: string, startsAt: string, slotCount: number) =>
+      client.request<BookingQuote>(
+        `/courts/${courtId}/quote?starts_at=${encodeURIComponent(startsAt)}&slot_count=${slotCount}`,
+      ),
   };
 }

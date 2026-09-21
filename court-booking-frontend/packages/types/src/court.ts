@@ -32,14 +32,13 @@ export interface Court {
   venue_id: string;
   name: string;
   sport: string;
-  slot_minutes: number; // 15-240, default 60
+  slot_minutes: number; // 30, 60, 90 or 120 (SLOT_MINUTES_OPTIONS); default 60
   surface_type: string | null;
   is_indoor: boolean;
   has_floodlights: boolean;
   capacity: number | null;
-  // Section 29 Part C: per-court, not global -- some courts don't allow a player to cancel an
-  // already-paid (booked) booking at all; others allow it up to cancellation_cutoff_hours
-  // before start (null = no cutoff, cancellable any time before start).
+  /** DEPRECATED read-only mirror of the VENUE's cancellation policy, kept for app builds from before Section 32
+   * Part 4. New code reads `venue.cancellation_allowed` / `venue.cancellation_cutoff_hours` instead. */
   cancellation_allowed: boolean;
   cancellation_cutoff_hours: number | null;
   photo_url: string | null;
@@ -57,8 +56,6 @@ export interface CreateCourtInput {
   is_indoor?: boolean;
   has_floodlights?: boolean;
   capacity?: number;
-  cancellation_allowed?: boolean;
-  cancellation_cutoff_hours?: number | null;
 }
 
 export interface ScheduleTemplateInput {

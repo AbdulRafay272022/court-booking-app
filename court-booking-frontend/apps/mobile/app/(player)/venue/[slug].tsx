@@ -7,18 +7,23 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDistance, formatPKR, formatTime, pktDayTabs } from "@/lib/format";
+import { formatDistance, formatPKR, formatTimeRange, pktDayTabs } from "@/lib/format";
+import { formatDuration } from "@court-booking/types";
+import { DurationSheet } from "@/components/duration-sheet";
 import { pollInterval } from "@/lib/polling";
 import { ChevronLeftIcon, StarIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { DayTab, EmptyState, gradientFor } from "../_components";
 
+// What each slot says. A slot somebody else holds is "Payment pending" (held, or proof under review) or "Booked" and is
+// never tappable for booking; an owner blackout is "Unavailable". Times outside the court's opening hours are not in the
+// list at all, so closed time is never shown as bookable.
 const STATUS_META: Record<string, { label: string; color: string; tappable: boolean }> = {
   available: { label: "OPEN", color: "#1F7A52", tappable: true },
-  held: { label: "IN PROGRESS", color: "#9A9791", tappable: false },
-  payment_submitted: { label: "AWAITING REVIEW", color: "#C8431C", tappable: false },
-  booked: { label: "BOOKED", color: "#9A9791", tappable: false },
-  blocked: { label: "UNAVAILABLE", color: "#9A9791", tappable: false },
+  held: { label: "PAYMENT PENDING", color: "#B5730B", tappable: false },
+  payment_submitted: { label: "PAYMENT PENDING", color: "#B5730B", tappable: false },
+  booked: { label: "BOOKED", color: "#7A7068", tappable: false },
+  blocked: { label: "UNAVAILABLE", color: "#7A7068", tappable: false },
 };
 
 export default function VenueDetailScreen() {
@@ -31,6 +36,8 @@ export default function VenueDetailScreen() {
   const [dateIdx, setDateIdx] = useState(0);
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const [joiningKey, setJoiningKey] = useState<string | null>(null);
+  // The open slot the player tapped: the duration sheet asks how long, shows the total, then hands off to the chat.
+  const [pickingIndex, setPickingIndex] = useState<number | null>(null);
 
   const waitlistQuery = useQuery({ queryKey: ["waitlist-mine"], queryFn: () => api.waitlist.mine() });
   const joinedKeys = new Set(
@@ -75,21 +82,28 @@ export default function VenueDetailScreen() {
   const courtAvailability = availabilityQuery.data?.courts.find((c) => c.court_id === activeCourtId);
   const slots = courtAvailability?.slots ?? [];
 
-  function handleTapSlot(status: string, slotStartsAt: string, reason: string | null, price: number, mineBookingId: string | null) {
+  function handleTapSlot(index: number, mineBookingId: string | null) {
+    const slot = slots[index];
     if (mineBookingId) {
       // My own booking / hold: go to it. (This used to say "someone's on it ... another player".)
-      router.push({ pathname: status === "booked" ? "/(player)/booking/[id]/done" : "/(player)/booking/[id]/pay", params: { id: mineBookingId } });
+      router.push({ pathname: slot.status === "booked" ? "/(player)/booking/[id]/done" : "/(player)/booking/[id]/pay", params: { id: mineBookingId } });
       return;
     }
-    if (status === "blocked") {
-      Alert.alert("Not available", reason ?? "This slot is blocked by the venue.");
+    if (slot.status === "blocked") {
+      Alert.alert("Unavailable", slot.reason ?? "The venue has blocked this time.");
       return;
     }
-    if (status !== "available") {
-      Alert.alert("Someone's on it", "This slot is currently being booked or paid for by another player.");
+    if (slot.status !== "available") {
+      Alert.alert(slot.status === "booked" ? "Booked" : "Payment pending", slot.status === "booked" ? "This time is already booked. Tap Notify me to hear if it opens up." : "Another player is paying for this time. If they don't finish, it opens up again.");
       return;
     }
+    setPickingIndex(index);
+  }
+
+  function handleContinue(choice: { slotCount: number; minutes: number; price: number }) {
+    if (pickingIndex === null) return;
     const court = courts.find((c) => c.id === activeCourtId);
+    setPickingIndex(null);
     router.push({
       pathname: "/(player)/booking/[id]/chat",
       params: {
@@ -98,8 +112,10 @@ export default function VenueDetailScreen() {
         venueName: venue!.name,
         courtId: activeCourtId!,
         courtName: court?.name ?? "",
-        startsAt: slotStartsAt,
-        price: String(price),
+        startsAt: slots[pickingIndex].starts_at,
+        price: String(choice.price),
+        slotCount: String(choice.slotCount),
+        minutes: String(choice.minutes),
       },
     });
   }
@@ -209,7 +225,10 @@ export default function VenueDetailScreen() {
         <ErrorState message={friendlyErrorMessage(availabilityQuery.error)} onRetry={() => availabilityQuery.refetch()} tone="player" />
       ) : (
         <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-6 gap-2.5">
-          {slots.map((slot) => {
+          {courtAvailability ? (
+            <Text className="font-figtree-medium text-player-ink-faint text-[12.5px]">{formatDuration(courtAvailability.slot_minutes)} slots</Text>
+          ) : null}
+          {slots.map((slot, slotIndex) => {
             // My own booking or hold gets MY status, never "Notify me" (that is for a slot somebody ELSE has).
             const mineBookingId =
               slot.is_mine && slot.booking_id && (slot.status === "booked" || slot.status === "held" || slot.status === "payment_submitted")
@@ -226,7 +245,7 @@ export default function VenueDetailScreen() {
             return (
               <Pressable
                 key={slot.starts_at}
-                onPress={() => handleTapSlot(slot.status, slot.starts_at, slot.reason, slot.price, mineBookingId)}
+                onPress={() => handleTapSlot(slotIndex, mineBookingId)}
                 className="flex-row items-center justify-between px-4 py-3.5 rounded-[14px]"
                 style={{
                   backgroundColor: mineBookingId ? "#EAF5EF" : slot.status === "available" ? "#FFFFFF" : "#F4EFEC",
@@ -237,10 +256,10 @@ export default function VenueDetailScreen() {
               >
                 <View className="gap-0.5">
                   <Text className="font-mono-semibold text-player-ink text-[15px] -tracking-[0.1px]">
-                    {formatTime(slot.starts_at)}
+                    {formatTimeRange(slot.starts_at, slot.ends_at)}
                   </Text>
                   <Text className="font-figtree-semibold text-[11px] tracking-[0.04em]" style={{ color: meta.color }}>
-                    {slot.status === "blocked" && slot.reason ? slot.reason.toUpperCase() : meta.label}
+                    {meta.label}
                   </Text>
                 </View>
                 <View className="flex-row items-center gap-2.5">
@@ -262,23 +281,30 @@ export default function VenueDetailScreen() {
                       </Text>
                     </Pressable>
                   ) : null}
-                  <Text
-                    className="font-mono-semibold text-[15px]"
-                    style={{ color: slot.status === "available" ? "#141A1D" : "#9A9791" }}
-                  >
-                    {formatPKR(slot.price)}
-                  </Text>
+                  {slot.status === "available" ? (
+                    <Text className="font-mono-semibold text-player-ink text-[15px]">PKR {formatPKR(slot.price)}</Text>
+                  ) : null}
                 </View>
               </Pressable>
             );
           })}
           {slots.length === 0 ? (
-            <Text className="font-figtree-medium text-player-ink-faint text-sm text-center pt-8">
-              No schedule published for this court on this day.
-            </Text>
+            <Text className="font-figtree-medium text-player-ink-faint text-sm text-center pt-8">Closed this day.</Text>
           ) : null}
         </ScrollView>
       )}
+
+      {pickingIndex !== null && activeCourtId ? (
+        <DurationSheet
+          courtId={activeCourtId}
+          courtName={courts.find((c) => c.id === activeCourtId)?.name ?? ""}
+          slotMinutes={courtAvailability?.slot_minutes ?? 60}
+          slots={slots}
+          index={pickingIndex}
+          onClose={() => setPickingIndex(null)}
+          onContinue={handleContinue}
+        />
+      ) : null}
 
       <View className="px-5 pt-3.5 pb-6 bg-player-surface border-t border-player-border-light">
         <Text className="font-figtree-medium text-player-ink-faint text-[12.5px] text-center">

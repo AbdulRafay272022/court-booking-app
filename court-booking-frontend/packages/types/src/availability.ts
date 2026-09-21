@@ -13,6 +13,20 @@ export interface Slot {
   reason: string | null;
 }
 
+/** GET /courts/:id/quote?starts_at=&slot_count= -- the total for a booking of several consecutive slots, priced
+ * slot by slot with the court's own rules. The hold charges exactly this. */
+export interface BookingQuote {
+  court_id: string;
+  starts_at: string;
+  ends_at: string;
+  slot_count: number;
+  slot_minutes: number;
+  duration_minutes: number;
+  price: number;
+  advance_amount: number;
+  balance_due: number;
+}
+
 /** GET /courts/:id/availability?date= */
 export interface CourtAvailability {
   court_id: string;

@@ -1,61 +1,31 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { pktInstant, weeklyHoursError, type Court, type PricingRuleInput, type ScheduleTemplateInput } from "@court-booking/types";
+import {
+  buildPricingRules,
+  buildSchedules,
+  courtSetupFromCourt,
+  courtSetupProblem,
+  pktInstant,
+  type Court,
+  type CourtSetup,
+} from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { formatWhen } from "@/lib/format";
-import { DAY_LABELS } from "@/lib/venue-setup-store";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
-import { Chip, FieldLabel, PrimaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
+import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
+import { FieldLabel, PrimaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
 import { Tab } from "./_dashboard-components";
-
-/** "HH:MM:SS" (API) <-> "HH:MM" (editable text input). */
-function toShortTime(hhmmss: string): string {
-  return hhmmss.slice(0, 5);
-}
-function toApiTime(hhmm: string): string {
-  return /^\d{2}:\d{2}$/.test(hhmm) ? `${hhmm}:00` : "06:00:00";
-}
-
-interface DayOverride {
-  open: string;
-  close: string;
-}
-
-interface PricingRuleDraft {
-  id: string;
-  name: string;
-  pricePerSlot: string;
-  dayOfWeek: number[] | null;
-  startTime: string | null;
-  endTime: string | null;
-}
-
-function ruleToDraft(r: { name: string; price_per_slot: number; day_of_week: number[] | null; start_time: string | null; end_time: string | null }, i: number): PricingRuleDraft {
-  return {
-    id: `existing-${i}`,
-    name: r.name,
-    pricePerSlot: String(r.price_per_slot),
-    dayOfWeek: r.day_of_week,
-    startTime: r.start_time ? toShortTime(r.start_time) : null,
-    endTime: r.end_time ? toShortTime(r.end_time) : null,
-  };
-}
-
-function makeRule(): PricingRuleDraft {
-  return { id: Math.random().toString(36).slice(2), name: "New rate", pricePerSlot: "", dayOfWeek: null, startTime: null, endTime: null };
-}
 
 export default function VenueSettingsScreen() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
-  const queryClient = useQueryClient();
   const courts = activeVenue?.courts ?? [];
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const activeCourtId = courtId ?? courts[0]?.id;
@@ -65,137 +35,11 @@ export default function VenueSettingsScreen() {
     queryFn: () => api.courts.get(activeCourtId!),
     enabled: !!activeCourtId,
   });
-  const blackoutsQuery = useQuery({
-    queryKey: ["court-blackouts", activeCourtId],
-    queryFn: () => api.courts.listBlackouts(activeCourtId!),
-    enabled: !!activeCourtId,
-  });
-
-  const [sameHoursEveryDay, setSameHoursEveryDay] = useState(true);
-  const [defaultOpenTime, setDefaultOpenTime] = useState("06:00");
-  const [defaultCloseTime, setDefaultCloseTime] = useState("23:00");
-  const [perDayOverrides, setPerDayOverrides] = useState<Partial<Record<number, DayOverride>>>({});
-  const [pricingRules, setPricingRules] = useState<PricingRuleDraft[]>([]);
-  // Section 31: per-court cancellation policy, seeded from the selected court like hours/prices.
-  const [cancellationAllowed, setCancellationAllowed] = useState(true);
-  const [cancellationCutoffHours, setCancellationCutoffHours] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const [blackoutTitle, setBlackoutTitle] = useState("");
-  // A date (Pakistan calendar) plus a 12-hour time for each end; sent as real instants via pktInstant().
-  const [blackoutStartDate, setBlackoutStartDate] = useState("");
-  const [blackoutStartTime, setBlackoutStartTime] = useState("06:00");
-  const [blackoutEndDate, setBlackoutEndDate] = useState("");
-  const [blackoutEndTime, setBlackoutEndTime] = useState("23:00");
-  const [addingBlackout, setAddingBlackout] = useState(false);
-
-  // Re-seed local editable state whenever the fetched court changes (initial load or switching
-  // courts) -- this screen edits a copy, not the query cache directly.
-  useEffect(() => {
-    const court = courtQuery.data as Court | undefined;
-    if (!court) return;
-    const byDay: Partial<Record<number, DayOverride>> = {};
-    for (const t of court.schedule_templates) {
-      byDay[t.day_of_week] = { open: toShortTime(t.open_time), close: toShortTime(t.close_time) };
-    }
-    const first = byDay[0];
-    const allSame = first && [0, 1, 2, 3, 4, 5, 6].every((d) => byDay[d]?.open === first.open && byDay[d]?.close === first.close);
-    setSameHoursEveryDay(!!allSame || Object.keys(byDay).length === 0);
-    if (first) {
-      setDefaultOpenTime(first.open);
-      setDefaultCloseTime(first.close);
-    }
-    setPerDayOverrides(byDay);
-    setPricingRules(court.pricing_rules.length > 0 ? court.pricing_rules.map(ruleToDraft) : [makeRule()]);
-    setCancellationAllowed(court.cancellation_allowed);
-    setCancellationCutoffHours(court.cancellation_cutoff_hours != null ? String(court.cancellation_cutoff_hours) : "");
-  }, [courtQuery.data]);
-
-  function buildSchedules(): ScheduleTemplateInput[] {
-    if (sameHoursEveryDay) {
-      return Array.from({ length: 7 }, (_, day) => ({
-        day_of_week: day,
-        open_time: toApiTime(defaultOpenTime),
-        close_time: toApiTime(defaultCloseTime),
-      }));
-    }
-    return Array.from({ length: 7 }, (_, day) => {
-      const o = perDayOverrides[day] ?? { open: defaultOpenTime, close: defaultCloseTime };
-      return { day_of_week: day, open_time: toApiTime(o.open), close_time: toApiTime(o.close) };
-    });
-  }
-
-  function buildPricingRules(): PricingRuleInput[] {
-    return pricingRules
-      .filter((r) => Number(r.pricePerSlot) > 0)
-      .map((r, i) => ({
-        name: r.name || `Rule ${i + 1}`,
-        priority: i,
-        day_of_week: r.dayOfWeek,
-        start_time: r.startTime ? toApiTime(r.startTime) : undefined,
-        end_time: r.endTime ? toApiTime(r.endTime) : undefined,
-        price_per_slot: Number(r.pricePerSlot),
-        advance_percentage: 100,
-      }));
-  }
-
-  const hoursProblem = weeklyHoursError(sameHoursEveryDay, defaultOpenTime, defaultCloseTime, perDayOverrides, DAY_LABELS);
-
-  async function handleSave() {
-    if (!activeCourtId) return;
-    if (hoursProblem) {
-      Alert.alert("Check your hours", hoursProblem);
-      return;
-    }
-    const rules = buildPricingRules();
-    if (rules.length === 0) {
-      Alert.alert("Add a price", "At least one priced rate is needed before saving.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.courts.update(activeCourtId, {
-        cancellation_allowed: cancellationAllowed,
-        cancellation_cutoff_hours: cancellationAllowed && cancellationCutoffHours.trim() ? Number(cancellationCutoffHours) : null,
-      });
-      await api.courts.setSchedule(activeCourtId, buildSchedules());
-      await api.courts.setPricing(activeCourtId, rules);
-      await queryClient.invalidateQueries({ queryKey: ["court-settings", activeCourtId] });
-      await queryClient.invalidateQueries({ queryKey: ["court", activeCourtId] });
-      // The owner dashboard's court lists and the player-facing pay screen read the policy too.
-      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      Alert.alert("Saved", "Hours, pricing and cancellation policy updated.");
-    } catch (e) {
-      Alert.alert("Couldn't save", friendlyErrorMessage(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleAddBlackout() {
-    if (!activeCourtId || !blackoutStartDate || !blackoutEndDate) {
-      Alert.alert("Missing dates", "Pick a start and end date/time for the blackout.");
-      return;
-    }
-    setAddingBlackout(true);
-    try {
-      await api.courts.addBlackout(activeCourtId, {
-        title: blackoutTitle || undefined,
-        starts_at: pktInstant(blackoutStartDate, blackoutStartTime).toISOString(),
-        ends_at: pktInstant(blackoutEndDate, blackoutEndTime).toISOString(),
-      });
-      setBlackoutTitle("");
-      setBlackoutStartDate("");
-      setBlackoutEndDate("");
-      await queryClient.invalidateQueries({ queryKey: ["court-blackouts", activeCourtId] });
-    } catch (e) {
-      Alert.alert("Couldn't add blackout", friendlyErrorMessage(e));
-    } finally {
-      setAddingBlackout(false);
-    }
-  }
-
-  const loading = venuesLoading || courtQuery.isLoading;
+  // The app's query client keeps the PREVIOUS query's data while a new one loads (placeholderData), so right after
+  // switching court `courtQuery.data` is still the OLD court. A form seeded from it would hold the wrong court's hours
+  // and prices, and saving would overwrite this court with them. Only treat the data as ready once it is this court's.
+  const court = courtQuery.data && courtQuery.data.id === activeCourtId ? (courtQuery.data as Court) : undefined;
+  const loading = venuesLoading || courtQuery.isLoading || (!!activeCourtId && !court && !courtQuery.isError);
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
@@ -214,143 +58,166 @@ export default function VenueSettingsScreen() {
         </View>
       ) : null}
 
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#0E6274" />
-        </View>
-      ) : courtQuery.isError ? (
-        <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
-      ) : !activeCourtId ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="font-plex-medium text-owner-ink-faint text-center">No courts yet — add one from venue setup first.</Text>
-        </View>
-      ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-4">
-          <SectionCard>
-            <View className="flex-row items-center justify-between">
-              <SectionLabel>Opening hours</SectionLabel>
-              <Pressable onPress={() => setSameHoursEveryDay(!sameHoursEveryDay)}>
-                <Text className="font-plex-semibold text-owner-accent text-[13px]">
-                  {sameHoursEveryDay ? "Set different hours per day" : "Use same hours every day"}
-                </Text>
-              </Pressable>
-            </View>
-            {sameHoursEveryDay ? (
-              <View className="flex-row gap-3">
-                <TimeField12 label="Opens" value={defaultOpenTime} onChange={setDefaultOpenTime} />
-                <TimeField12 label="Closes" value={defaultCloseTime} onChange={setDefaultCloseTime} />
-              </View>
-            ) : (
-              <View className="gap-3">
-                {DAY_LABELS.map((label, day) => {
-                  const o = perDayOverrides[day] ?? { open: defaultOpenTime, close: defaultCloseTime };
-                  return (
-                    <View key={day} className="flex-row items-center gap-3">
-                      <Text className="font-plex-medium text-owner-ink text-sm w-10">{label}</Text>
-                      <View className="flex-1">
-                        <TimeField12 label="" value={o.open} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, open: v } })} />
-                      </View>
-                      <View className="flex-1">
-                        <TimeField12 label="" value={o.close} onChange={(v) => setPerDayOverrides({ ...perDayOverrides, [day]: { ...o, close: v } })} />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-            {hoursProblem ? (
-              <Text className="font-plex-semibold text-owner-danger text-[13px]">{hoursProblem}</Text>
-            ) : null}
-          </SectionCard>
+      <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-4">
+        {/* ONE cancellation policy for the whole venue (Section 32 Part 4), so it sits above the per-court settings. */}
+        {activeVenue ? (
+          <VenueCancellationCard
+            key={activeVenue.id}
+            venueId={activeVenue.id}
+            initialAllowed={activeVenue.cancellation_allowed}
+            initialCutoff={activeVenue.cancellation_cutoff_hours}
+          />
+        ) : null}
 
-          <SectionCard>
-            <SectionLabel>Prices</SectionLabel>
-            {pricingRules.map((rule) => (
-              <View key={rule.id} className="border border-owner-border rounded-[10px] p-3.5 gap-3">
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-1 mr-3">
-                    <TextField
-                      label="Name"
-                      value={rule.name}
-                      onChangeText={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, name: v } : r)))}
-                    />
-                  </View>
-                  {pricingRules.length > 1 ? (
-                    <Pressable onPress={() => setPricingRules(pricingRules.filter((r) => r.id !== rule.id))} className="mt-6">
-                      <Text className="font-plex-medium text-owner-danger text-[12.5px]">Remove</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-                <View className="flex-row gap-3">
-                  <TextField
-                    label="Per slot (PKR)"
-                    value={rule.pricePerSlot}
-                    onChangeText={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, pricePerSlot: v.replace(/\D/g, "") } : r)))}
-                    keyboardType="number-pad"
-                    placeholder="2500"
-                    mono
-                  />
-                  <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, startTime: v || null } : r)))} />
-                  <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => setPricingRules(pricingRules.map((r) => (r.id === rule.id ? { ...r, endTime: v || null } : r)))} />
-                </View>
-              </View>
-            ))}
-            <Pressable
-              onPress={() => setPricingRules([...pricingRules, makeRule()])}
-              className="min-h-10 px-3 rounded-lg border border-owner-border items-start justify-center self-start"
-            >
-              <Text className="font-plex-semibold text-owner-accent text-[13px]">+ Add a rate</Text>
-            </Pressable>
-          </SectionCard>
-
-          <SectionCard>
-            <SectionLabel>Cancellations</SectionLabel>
-            <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
-              Can a player cancel a booking on this court after they've already paid?
-            </Text>
-            <View className="flex-row gap-2">
-              <Chip label="Allowed" selected={cancellationAllowed} onPress={() => setCancellationAllowed(true)} />
-              <Chip label="Not allowed" selected={!cancellationAllowed} onPress={() => setCancellationAllowed(false)} />
-            </View>
-            {cancellationAllowed ? (
-              <TextField
-                label="Require cancelling at least this many hours before (optional)"
-                value={cancellationCutoffHours}
-                onChangeText={(v) => setCancellationCutoffHours(v.replace(/\D/g, ""))}
-                keyboardType="number-pad"
-                placeholder="Leave blank for no limit"
-                mono
-              />
-            ) : null}
-          </SectionCard>
-
-          <PrimaryButton label="Save changes" onPress={handleSave} loading={saving} />
-
-          <SectionCard>
-            <SectionLabel>Blackout dates</SectionLabel>
-            {(blackoutsQuery.data ?? []).length === 0 ? (
-              <Text className="font-plex-medium text-owner-ink-faint text-[13px]">No blackout dates yet.</Text>
-            ) : (
-              (blackoutsQuery.data ?? []).map((b) => (
-                <View key={b.id} className="border border-owner-border rounded-[10px] p-3">
-                  <Text className="font-plex-semibold text-owner-ink text-sm">{b.title ?? "Blocked"}</Text>
-                  <Text className="font-mono-medium text-owner-ink-faint text-xs mt-0.5">
-                    {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
-                  </Text>
-                </View>
-              ))
-            )}
-            <View className="h-px bg-owner-border-light" />
-            <FieldLabel>Add a blackout</FieldLabel>
-            <TextField label="Title (optional)" value={blackoutTitle} onChangeText={setBlackoutTitle} placeholder="Maintenance" />
-            <DayPicker label="Starts on" value={blackoutStartDate} onChange={setBlackoutStartDate} />
-            <TimeField12 label="Starts at" value={blackoutStartTime} onChange={setBlackoutStartTime} />
-            <DayPicker label="Ends on" value={blackoutEndDate} onChange={setBlackoutEndDate} />
-            <TimeField12 label="Ends at" value={blackoutEndTime} onChange={setBlackoutEndTime} />
-            <PrimaryButton label="Add blackout" onPress={handleAddBlackout} loading={addingBlackout} />
-          </SectionCard>
-        </ScrollView>
-      )}
+        {loading ? (
+          <View className="py-10 items-center justify-center">
+            <ActivityIndicator color="#0E6274" />
+          </View>
+        ) : courtQuery.isError ? (
+          <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
+        ) : !activeCourtId || !court ? (
+          <Text className="font-plex-medium text-owner-ink-faint text-center py-10">No courts yet — add one from venue setup first.</Text>
+        ) : (
+          <>
+            {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
+            <CourtSettingsForm key={court.id} court={court} />
+            <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { venueId: string; initialAllowed: boolean; initialCutoff: number | null }) {
+  const queryClient = useQueryClient();
+  const [allowed, setAllowed] = useState(initialAllowed);
+  const [cutoff, setCutoff] = useState(initialCutoff != null ? String(initialCutoff) : "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.venues.update(venueId, {
+        cancellation_allowed: allowed,
+        cancellation_cutoff_hours: allowed && cutoff.trim() ? Number(cutoff) : null,
+      });
+      // players see this policy before they pay, and the owner lists read it too
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      Alert.alert("Saved", "Cancellation policy updated for every court.");
+    } catch (e) {
+      Alert.alert("Couldn't save", friendlyErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View className="gap-3">
+      <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
+      <PrimaryButton label="Save cancellation policy" onPress={save} loading={saving} />
+    </View>
+  );
+}
+
+/** Slot length, hours and prices for ONE court. Seeded once from the court it is mounted for (the parent keys it by
+ * court id), so it holds its own edits and never needs an effect to copy server data into state. */
+function CourtSettingsForm({ court }: { court: Court }) {
+  const queryClient = useQueryClient();
+  const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
+  const [saving, setSaving] = useState(false);
+  const problem = courtSetupProblem(setup);
+
+  async function save() {
+    if (problem) {
+      Alert.alert("Check this court", problem);
+      return;
+    }
+    setSaving(true);
+    try {
+      if (setup.slotMinutes !== court.slot_minutes) await api.courts.update(court.id, { slot_minutes: setup.slotMinutes });
+      await api.courts.setSchedule(court.id, buildSchedules(setup));
+      await api.courts.setPricing(court.id, buildPricingRules(setup));
+      await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
+      await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      Alert.alert("Saved", `${court.name}: slot length, hours and prices updated.`);
+    } catch (e) {
+      Alert.alert("Couldn't save", friendlyErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Text className="font-plex-bold text-owner-ink text-[17px]">{court.name}</Text>
+      <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
+      <PrimaryButton label="Save changes" onPress={save} loading={saving} />
+    </>
+  );
+}
+
+function BlackoutsCard({ courtId }: { courtId: string }) {
+  const queryClient = useQueryClient();
+  const blackoutsQuery = useQuery({
+    queryKey: ["court-blackouts", courtId],
+    queryFn: () => api.courts.listBlackouts(courtId),
+  });
+  const [title, setTitle] = useState("");
+  // A date (Pakistan calendar) plus a 12-hour time for each end; sent as real instants via pktInstant().
+  const [startDate, setStartDate] = useState("");
+  const [startTime, setStartTime] = useState("06:00");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("23:00");
+  const [adding, setAdding] = useState(false);
+
+  async function add() {
+    if (!startDate || !endDate) {
+      Alert.alert("Missing dates", "Pick a start and end date/time for the blackout.");
+      return;
+    }
+    setAdding(true);
+    try {
+      await api.courts.addBlackout(courtId, {
+        title: title || undefined,
+        starts_at: pktInstant(startDate, startTime).toISOString(),
+        ends_at: pktInstant(endDate, endTime).toISOString(),
+      });
+      setTitle("");
+      setStartDate("");
+      setEndDate("");
+      await queryClient.invalidateQueries({ queryKey: ["court-blackouts", courtId] });
+    } catch (e) {
+      Alert.alert("Couldn't add blackout", friendlyErrorMessage(e));
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>Blackout dates</SectionLabel>
+      {(blackoutsQuery.data ?? []).length === 0 ? (
+        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">No blackout dates yet.</Text>
+      ) : (
+        (blackoutsQuery.data ?? []).map((b) => (
+          <View key={b.id} className="border border-owner-border rounded-[10px] p-3">
+            <Text className="font-plex-semibold text-owner-ink text-sm">{b.title ?? "Blocked"}</Text>
+            <Text className="font-mono-medium text-owner-ink-faint text-xs mt-0.5">
+              {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
+            </Text>
+          </View>
+        ))
+      )}
+      <View className="h-px bg-owner-border-light" />
+      <FieldLabel>Add a blackout</FieldLabel>
+      <TextField label="Title (optional)" value={title} onChangeText={setTitle} placeholder="Maintenance" />
+      <DayPicker label="Starts on" value={startDate} onChange={setStartDate} />
+      <TimeField12 label="Starts at" value={startTime} onChange={setStartTime} />
+      <DayPicker label="Ends on" value={endDate} onChange={setEndDate} />
+      <TimeField12 label="Ends at" value={endTime} onChange={setEndTime} />
+      <PrimaryButton label="Add blackout" onPress={add} loading={adding} />
+    </SectionCard>
   );
 }
