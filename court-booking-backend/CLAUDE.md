@@ -80,7 +80,7 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 |---|---|---|
 | 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). **Mobile needs an EAS build** to reach phones. The docs commit after it is local, **pending push (goes out with the next deploy)**. |
 | 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | **DEPLOYED 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` applied on production** (from the new image before the backend restarted; output: backfilled, no disagreeing venues, constraint added, 8 bookings satisfied it, head = `dd23d75cf310`, `alembic check` clean). Verified live on production: schedule, quote (3 h = PKR 7,000), AI reply. Live venue policy stays "not allowed". Mobile needs an EAS build. **Full plan and rules: `docs/SECTION_32_PLAN.md`.** |
-| 3 | Overnight courts (`closes_next_day`) | **Built and tested locally, NOT deployed; migration `68d7e3464f30` NOT run on production.** Waiting for the owner's fresh snapshot and "go". Design + migration plan: `docs/SECTION_32_PLAN.md` ("Part 3 design"). |
+| 3 | Overnight courts (`closes_next_day`) | **DEPLOYED 2026-09-22 as `87de0ef4b234`; migration `68d7e3464f30` applied on production** (head, `alembic check` clean, live hours unchanged). Design: `docs/SECTION_32_PLAN.md` ("Part 3 design"). Mobile needs an EAS build. |
 | 5 | Split payments + `payment_entries` ledger | Not started |
 | 9, 10 | **Spec text not received** -- the spec pasted so far has Parts 1-8 only. Ask the owner for Parts 9 and 10 before starting them. | Blocked on the spec |
 | 7 | OCR improvements | Not started |
