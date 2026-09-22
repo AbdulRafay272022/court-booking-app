@@ -804,6 +804,65 @@ owner hours accept close <= open (`hoursKind`: same-day / next-day / 24-hours) w
 `weeklyHoursError` refuses an overnight day that runs into the next day's opening, and `slotPreview` counts across midnight.
 Duration choices need no change (contiguity is by `ends_at == next starts_at`). Tests: `court-setup.test.ts`.
 
+## Section 32, Part 4b -- calendar-first venue page (2026-09-23, branch `section-32-part-4b`, not merged)
+
+Replaces the old page-level week strip + side-by-side court slot lists with the owner's "Part 4b UPDATE"
+design in `../docs/SECTION_32_PLAN.md`: per-sport tabs, each court's own always-visible month calendar, a
+popup on date tap. Built on both `apps/mobile` and `apps/web`, live-verified with Playwright against the
+real local backend (production web build at 1200px/390px; Expo web signed in as a real player) -- not
+just typechecked. Backend confirmed first: a clean `pytest` (478/478) and the migration applied to the
+local dev DB with `alembic check` clean (see the backend CLAUDE.md's START HERE).
+
+- **New shared package code**: `packages/types/src/availability.ts` gained `DaySummaryState`/`DaySummary`/
+  `CourtMonthSummary` (mirrors the backend's `CourtMonthSummaryOut`); `packages/types/src/venue.ts`'s
+  `Venue` gained `booking_horizon_days`; `packages/api-client/src/availability.ts` gained
+  `monthSummary(courtId, month)`; `packages/types/src/datetime.ts` gained month-grid arithmetic
+  (`monthOf`, `addMonths`, `formatMonth`, `daysOfMonth`, `mondayFirstWeekdayOf`, `weekOf`) with new tests
+  in `datetime.test.ts`, run clean under two device timezones (UTC-independent, like the rest of that
+  file).
+- **New components, one pair per platform** (`CourtMonthCalendar`, `CourtDayPopup`): `apps/mobile/
+  components/court-month-calendar.tsx` + `court-day-popup.tsx`, `apps/web/components/booking/
+  court-month-calendar.tsx` + `court-day-popup.tsx`. `CourtMonthCalendar` owns its own month/navigation
+  state per instance (courts do not share a calendar) and calls an `onSummary` callback so the parent card
+  can show "From PKR X" without a second fetch (same query key, same react-query cache). `CourtDayPopup`
+  holds two internal views, `"day"` (the default, for the tapped date) and `"month"` (reached via the back
+  arrow, embeds `CourtMonthCalendar` again) -- this mirrors the pre-UPDATE popup's own month/day toggle,
+  just entered from a different place now that the month calendar is the page's default view, not hidden
+  behind a "View calendar" button.
+- **Rewritten venue pages**: `apps/mobile/app/(player)/venue/[slug].tsx` and `apps/web/app/venues/[slug]/
+  venue-schedule-client.tsx` (kept the same exported name/file to avoid an unrelated rename; the content is
+  a full rewrite). `page.tsx` (web) now passes `sports={venue.sports}` alongside `courts`, since the sport
+  tabs need the venue's full sport list, not just the sports its currently-active courts happen to cover.
+- **`?sport=` now actually flows through**: both search pages (`apps/mobile/app/(player)/search.tsx`,
+  `apps/web/app/search/page.tsx`) pass the selected sport filter onto the venue link, closing the dead-code
+  gap the backend handoff flagged -- "arrived from a sport" now really can default the venue page's sport
+  tab.
+- **A default-sport bug avoided, not just fixed**: the first draft computed the default sport (`?sport=` if
+  offered, else the venue's first sport) inside a `useEffect` that called `setSport`, which
+  `react-hooks/set-state-in-effect` correctly flagged on the web build (`npx eslint` on the changed files)
+  as an unnecessary render cascade. Fixed on both platforms by computing `activeSport` directly at render
+  time (`sport ?? (sportParam && ... ? sportParam : sports[0])`) instead of storing the computed default in
+  its own state -- no effect needed, and an explicit tab click still always wins since `sport` only gets set
+  by the click handler.
+- **A real accessibility gap caught by the Playwright script, not by eye**: the web calendar's day-cell
+  `<button>` had no `aria-label`, unlike the mobile version's `accessibilityLabel`. The first verification
+  run couldn't find a tappable day (nothing to select on), which surfaced the gap; fixed by adding
+  `aria-label={date}` to the web day button.
+- **Verified live, not just typechecked**: seeded a throwaway approved venue "Twin Court Club" already
+  existed locally (2 sports, 60-min and 90-min courts) from an earlier session, reused it rather than
+  creating another one. `next build && next start --port 3100` + Playwright: sport tabs render and switch
+  cards, month grid shows 7 weekday headers, calendar day tap opens the popup with a real slot list, back
+  arrow reveals the month view without closing the popup, popup closes, no console errors -- checked again
+  at 390px width to confirm the dialog becomes a full-width bottom sheet. Mobile: a throwaway verified
+  player account was created directly via the DB (argon2 hash through `hash_password`, not a raw insert of
+  a plaintext password) since OTP delivery needs a real WhatsApp send this environment can't do; signed in
+  through the real Expo web login screen, same checks. **Both the throwaway account and the throwaway
+  Playwright `.cjs` scripts/screenshots were deleted after verification** -- nothing test-only was
+  committed.
+- **Not done**: mobile needs a new EAS build to reach real phones (standing item, unrelated to this part);
+  the migration's downgrade path was not re-tested this session; this is all on a feature branch, not
+  merged to `main`, and nothing was pushed.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before
