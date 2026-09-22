@@ -63,3 +63,28 @@ export interface VenueAvailability {
   date: string;
   courts: VenueCourtAvailability[];
 }
+
+/** One day on a court's month calendar (Section 32 Part 4b): `past` (before today) | `beyond` (past the venue's
+ * booking horizon) | `closed` (no schedule that day, or every slot blocked) | `full` (nothing open) | `few`
+ * (almost full: <=20% of the day's slots open, at least 1) | `open`. */
+export type DaySummaryState = "past" | "beyond" | "closed" | "full" | "few" | "open";
+
+export interface DaySummary {
+  date: string;
+  state: DaySummaryState;
+  open_slots: number;
+  total_slots: number;
+}
+
+/** GET /courts/:id/availability/summary?month=YYYY-MM -- one row per day of the month, computed from one
+ * in-memory read (not one query per day). Powers the calendar-first venue page's month dots. */
+export interface CourtMonthSummary {
+  court_id: string;
+  month: string; // "2026-09"
+  slot_minutes: number;
+  /** The lowest active price on this court (floodlight surcharge included); null if it has no price yet. */
+  starts_from_price: number | null;
+  booking_horizon_days: number;
+  last_bookable_date: string;
+  days: DaySummary[];
+}

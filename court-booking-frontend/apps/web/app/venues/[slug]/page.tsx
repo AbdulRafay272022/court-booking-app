@@ -104,7 +104,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
             ) : null}
           </div>
 
-          <VenueScheduleClient venueId={venue.id} venueName={venue.name} courts={venue.courts.filter((c) => c.is_active)} />
+          <VenueScheduleClient venueId={venue.id} venueName={venue.name} sports={venue.sports} courts={venue.courts.filter((c) => c.is_active)} />
         </div>
 
         <aside className="flex flex-col gap-4">

@@ -73,7 +73,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           {venues.map((v) => (
             <Link
               key={v.id}
-              href={`/venues/${v.slug}`}
+              href={sport ? `/venues/${v.slug}?sport=${sport}` : `/venues/${v.slug}`}
               className="bg-player-surface border border-player-border-light rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
             >
               {v.photo_urls?.[0] ? (

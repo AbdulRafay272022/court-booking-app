@@ -51,6 +51,9 @@ export interface Venue {
    * (null = any time before the start). */
   cancellation_allowed: boolean;
   cancellation_cutoff_hours: number | null;
+  /** Section 32 Part 4b: how many days ahead a player may book at this venue (1-365, default 90). An owner's
+   * walk-in is not limited by it. */
+  booking_horizon_days: number;
   created_at: string;
   courts: Court[];
   average_rating: number | null;

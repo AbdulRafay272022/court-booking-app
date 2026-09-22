@@ -17,22 +17,16 @@ This file is different: it's the build history and the working conventions —
 read it to pick up where things left off and to work the way this project has
 been worked so far.
 
-## START HERE -- handoff as of 2026-09-21 (read this first)
+## START HERE -- handoff as of 2026-09-23 (read this first)
 
-**BLOCKED as of 2026-09-22, read this before doing anything:** local Docker Desktop / WSL2 is wedged and
-needs the project owner to restart their Windows machine before any local backend/DB work (including
-`pytest`) can run. What happened: two `pytest` runs against the shared local `court_booking_test`
-database were started concurrently (one backgrounded, a retry launched before checking on it), which
-wedged Postgres inside the dev container (see the concurrency warning under "How this project gets
-worked" step 4 -- added because of this). `docker restart`, `docker kill`, `wsl --status` and
-`wsl --shutdown` all then hung/failed (`Docker Desktop is unable to start`); `wsl`/`wslhost`/`vmmem`
-processes going back 2 days were still running. This is a Windows/WSL2-level wedge, not a code problem --
-nothing in the repo caused it. **Once the owner confirms the machine is restarted and Docker Desktop is
-up:** run one clean `pytest` (no other run in flight) to confirm the local DB is healthy, then pick up
-exactly where this was interrupted (below).
+**Section 32 Part 4b is backend-tested and frontend-built, on branch `section-32-part-4b`, not merged to
+`main`.** The Docker Desktop/WSL2 wedge from 2026-09-22 (see git history of this file if the story is
+needed) resolved itself after the owner restarted the machine -- `docker ps` came back healthy on
+2026-09-23 and one clean `pytest` run (no concurrent run) passed 478/478, including all 14
+`tests/test_month_summary.py` tests. Migration `de11b783f108` was applied to the local dev DB (not
+production) with `alembic check` clean afterwards.
 
-**In-progress work interrupted by the above (Section 32 Part 4b, backend half -- code written, NEVER
-YET RUN against a live test):**
+**What backend Part 4b shipped (all confirmed working, not just written):**
 - Migration `de11b783f108` (after `68d7e3464f30`): `venues.booking_horizon_days` (int, 1-365, default 90;
   CHECK `valid_booking_horizon`) -- how many days ahead a player may book at that venue; an owner's
   walk-in is not limited by it.
@@ -43,20 +37,23 @@ YET RUN against a live test):**
   `starts_from_price` and `last_bookable_date`; `require_within_horizon` (raises `BOOKING_TOO_FAR`) is
   called from `quote_range` (so the quote endpoint, the hold, and the AI all obey the horizon) but NOT
   from `price_for_range_with_advance` (the walk-in path -- deliberately unlimited).
-- New endpoint `GET /courts/{id}/availability/summary?month=YYYY-MM` (`CourtMonthSummaryOut`), cached
-  `public, max-age=30`.
-- Tests written (not yet run clean): `tests/test_month_summary.py` -- summary agrees with the day view for
-  every day, a month costs a handful of queries (checked via a `before_cursor_execute` listener on
-  `test_engine.sync_engine`), the 5 states, today's already-started slots excluded from `open_slots`, an
-  overnight court's day includes its after-midnight slots, `starts_from_price` picks the lowest ACTIVE
-  rule including floodlights, and the horizon end-to-end (calendar marks `beyond`, hold refused past it,
-  quote refused past it, owner can change the setting, walk-in unaffected, bounds 1-365).
-- **Next once tests pass:** the frontend calendar-first rebuild per the owner's Part 4b update in
-  `docs/SECTION_32_PLAN.md` (replaces the slot-list-first design the earlier mockup showed and the owner
-  had NOT yet approved when this update arrived -- build the NEW calendar-first version, not the old
-  mockup). Also add `?sport=` to the venue links from both search pages (web `app/search/page.tsx`,
-  mobile `app/(player)/search.tsx`) -- neither currently passes it, so the "arrived from a sport" default
-  described in the update is otherwise dead code.
+- Endpoint `GET /courts/{id}/availability/summary?month=YYYY-MM` (`CourtMonthSummaryOut`), cached
+  `public, max-age=30` -- confirmed live against real local data (`twin-court-club`, seeded before this
+  session), not just by the test suite.
+- Not yet done: the migration's downgrade path was not re-tested this session (only a clean upgrade +
+  `alembic check`); re-test up/down/up on a scratch DB before this ever touches production, per the
+  standing migration rules above.
+
+**Frontend Part 4b (calendar-first, both web and mobile) is built and live-verified**, not just
+typechecked: per-sport tabs (hidden for a single-sport venue, defaulting from `?sport=` or the venue's
+first sport -- both search pages now pass `?sport=` to the venue link), each active court renders its own
+always-visible month calendar (green/amber/red/hollow dots, today filled, past/beyond-horizon days greyed
+and not tappable, prev/next capped at the venue's horizon), tapping a date opens a popup scoped to that
+one court (centered dialog on web >=768px, bottom sheet below it and on mobile) with a Monday-first week
+strip, that day's slot list, and a back arrow to a month view inside the popup without closing it. See
+the frontend CLAUDE.md's own Part 4b entry for the full file list and how it was verified (Playwright
+against the real backend, not mocks). Screenshots were shown to the owner directly, not committed to the
+repo. Nothing pushed; no `Migration-Go` line added; production untouched.
 
 The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in
 Roman Urdu; answer in plain English, keep it short, and **verify before claiming** (they were burned
