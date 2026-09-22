@@ -13,7 +13,7 @@ from app.models.booking import LIVE_BOOKING_STATUSES, Booking
 from app.models.court import Court
 from app.models.pricing import PricingRule
 from app.models.schedule import ScheduleTemplate
-from app.schemas.availability import SlotOut
+from app.schemas.availability import CourtMonthSummaryOut, DaySummaryOut, SlotOut
 from app.utils.schedule import (
     minutes_from_midnight,
     opening_day_of,
@@ -101,44 +101,27 @@ class AvailabilityService:
         """The opening day whose schedule `instant` belongs to (an overnight court's 1:00 AM Friday is a Thursday slot)."""
         return opening_day_of(utc_to_pkt_naive(instant), await self._templates(court.id))
 
-    async def get_day_slots(
-        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None
+    @staticmethod
+    def build_day_slots(
+        court: Court,
+        target_date: date,
+        template: ScheduleTemplate | None,
+        rules: list[PricingRule],
+        blackouts: list[Blackout],
+        bookings: list[Booking],
+        viewer_id: uuid.UUID | None = None,
     ) -> list[SlotOut]:
-        """The slots of the schedule day that OPENS on `target_date`, including any after midnight on an overnight court
+        """The slots of the schedule day that OPENS on `target_date`, from data that is ALREADY LOADED (no queries), so the day
+        view and the month summary run the identical grid code. Includes any slots after midnight on an overnight court
         (flagged `after_midnight`). The grid is walked in naive Pakistan wall-clock time -- the domain schedule_templates
         and pricing_rules are defined in -- and converted to UTC only at the storage boundary."""
-        template = await self.db.scalar(
-            select(ScheduleTemplate).where(
-                ScheduleTemplate.court_id == court.id,
-                ScheduleTemplate.day_of_week == target_date.weekday(),
-                ScheduleTemplate.is_active.is_(True),
-            )
-        )
         if template is None:
             return []
-
         opens_local, closes_local = schedule_window(target_date, template)
         window_start = (opens_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
         window_end = (closes_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
-
-        blackouts_result = await self.db.execute(
-            select(Blackout).where(
-                Blackout.court_id == court.id, Blackout.starts_at < window_end, Blackout.ends_at > window_start
-            )
-        )
-        blackouts = blackouts_result.scalars().all()
-
-        rules = await self._load_rules(court.id)
-
-        bookings_result = await self.db.execute(
-            select(Booking).where(
-                Booking.court_id == court.id,
-                Booking.status.in_(LIVE_BOOKING_STATUSES),
-                Booking.starts_at < window_end,
-                Booking.ends_at > window_start,
-            )
-        )
-        existing_bookings = bookings_result.scalars().all()
+        blackouts = [bl for bl in blackouts if bl.starts_at < window_end and bl.ends_at > window_start]
+        existing_bookings = [b for b in bookings if b.starts_at < window_end and b.ends_at > window_start]
 
         slots: list[SlotOut] = []
         duration = timedelta(minutes=court.slot_minutes)
@@ -149,8 +132,8 @@ class AvailabilityService:
         while slot_start_local + duration <= closes_local:
             slot_end_local = slot_start_local + duration
             start_min = int((slot_start_local - day_midnight).total_seconds() // 60)
-            rule = self.match_rule_minutes(rules, day_of_week, start_min, start_min + court.slot_minutes)
-            price = self.price_for_rule(rule, court) or 0.0
+            rule = AvailabilityService.match_rule_minutes(rules, day_of_week, start_min, start_min + court.slot_minutes)
+            price = AvailabilityService.price_for_rule(rule, court) or 0.0
             slot_start_dt = (slot_start_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
             slot_end_dt = (slot_end_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
             advance_amount = round(price * float(rule.advance_percentage) / 100, 2) if rule else 0.0
@@ -211,6 +194,104 @@ class AvailabilityService:
             slot_start_local = slot_end_local
         return slots
 
+    async def get_day_slots(
+        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None
+    ) -> list[SlotOut]:
+        """The slots of the schedule day that OPENS on `target_date` (see build_day_slots)."""
+        template = await self.db.scalar(
+            select(ScheduleTemplate).where(
+                ScheduleTemplate.court_id == court.id,
+                ScheduleTemplate.day_of_week == target_date.weekday(),
+                ScheduleTemplate.is_active.is_(True),
+            )
+        )
+        if template is None:
+            return []
+        opens_local, closes_local = schedule_window(target_date, template)
+        window_start = (opens_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
+        window_end = (closes_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
+        blackouts, bookings = await self._blackouts_and_bookings(court.id, window_start, window_end)
+        rules = await self._load_rules(court.id)
+        return self.build_day_slots(court, target_date, template, rules, blackouts, bookings, viewer_id)
+
+    async def _blackouts_and_bookings(
+        self, court_id: uuid.UUID, window_start: datetime, window_end: datetime
+    ) -> tuple[list[Blackout], list[Booking]]:
+        blackouts_result = await self.db.execute(
+            select(Blackout).where(
+                Blackout.court_id == court_id, Blackout.starts_at < window_end, Blackout.ends_at > window_start
+            )
+        )
+        bookings_result = await self.db.execute(
+            select(Booking).where(
+                Booking.court_id == court_id,
+                Booking.status.in_(LIVE_BOOKING_STATUSES),
+                Booking.starts_at < window_end,
+                Booking.ends_at > window_start,
+            )
+        )
+        return list(blackouts_result.scalars().all()), list(bookings_result.scalars().all())
+
+    async def month_summary(
+        self, court: Court, month_first: date, booking_horizon_days: int, now_utc: datetime | None = None
+    ) -> "CourtMonthSummaryOut":
+        """The dots on a court's month calendar (Section 32 Part 4b), computed from ONE read of the schedule, prices,
+        blackouts and bookings for the whole month (4 queries, not a set per day) by the same grid code as the day
+        view, so a dot can never disagree with the slots behind it.
+
+        A day is: past (before today) | beyond (after the venue's booking horizon) | closed (no schedule, or every slot
+        blocked) | full (nothing open) | few (20% or fewer of the day's slots open, at least 1) | open. "Open" counts
+        slots a player could book right now: available and not already started."""
+        now = now_utc or datetime.now(timezone.utc)
+        today = utc_to_pkt_naive(now).date()
+        last_bookable = today + timedelta(days=booking_horizon_days)
+        next_month = (month_first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        last_day = next_month - timedelta(days=1)
+
+        templates = await self._templates(court.id)
+        rules = await self._load_rules(court.id)
+        # a schedule day can run into the next morning, so load one day past the month at each end
+        window_start = (datetime.combine(month_first - timedelta(days=1), time.min) - PKT_OFFSET).replace(tzinfo=timezone.utc)
+        window_end = (datetime.combine(next_month + timedelta(days=1), time.min) - PKT_OFFSET).replace(tzinfo=timezone.utc)
+        blackouts, bookings = await self._blackouts_and_bookings(court.id, window_start, window_end)
+
+        days: list[DaySummaryOut] = []
+        d = month_first
+        while d <= last_day:
+            if d < today:
+                days.append(DaySummaryOut(date=d, state="past", open_slots=0, total_slots=0))
+            elif d > last_bookable:
+                days.append(DaySummaryOut(date=d, state="beyond", open_slots=0, total_slots=0))
+            else:
+                slots = self.build_day_slots(court, d, templates.get(d.weekday()), rules, blackouts, bookings)
+                total = len(slots)
+                open_slots = sum(1 for s in slots if s.status == "available" and s.starts_at > now)
+                if total == 0 or all(s.status == "blocked" for s in slots):
+                    state = "closed"
+                elif open_slots == 0:
+                    state = "full"
+                elif open_slots / total <= 0.2:
+                    state = "few"
+                else:
+                    state = "open"
+                days.append(DaySummaryOut(date=d, state=state, open_slots=open_slots, total_slots=total))
+            d += timedelta(days=1)
+
+        prices = [
+            float(r.price_per_slot) + (float(r.floodlight_surcharge) if court.has_floodlights else 0.0)
+            for r in rules
+            if r.is_active
+        ]
+        return CourtMonthSummaryOut(
+            court_id=str(court.id),
+            month=month_first.strftime("%Y-%m"),
+            slot_minutes=court.slot_minutes,
+            starts_from_price=round(min(prices), 2) if prices else None,
+            booking_horizon_days=booking_horizon_days,
+            last_bookable_date=last_bookable,
+            days=days,
+        )
+
     async def get_slots_starting_on(
         self, court: Court, calendar_date: date, viewer_id: uuid.UUID | None = None
     ) -> list[SlotOut]:
@@ -220,6 +301,21 @@ class AvailabilityService:
         previous = await self.get_day_slots(court, calendar_date - timedelta(days=1), viewer_id=viewer_id)
         today = await self.get_day_slots(court, calendar_date, viewer_id=viewer_id)
         return [s for s in previous if s.after_midnight] + [s for s in today if not s.after_midnight]
+
+    async def require_within_horizon(self, court: Court, starts_at: datetime) -> None:
+        """A player can only book up to the venue's `booking_horizon_days` ahead (Section 32 Part 4b, default 90)."""
+        from app.models.venue import Venue
+
+        venue = await self.db.get(Venue, court.venue_id)
+        horizon = venue.booking_horizon_days if venue is not None else 90
+        today = utc_to_pkt_naive(datetime.now(timezone.utc)).date()
+        if utc_to_pkt_naive(starts_at).date() > today + timedelta(days=horizon):
+            last = today + timedelta(days=horizon)
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.BOOKING_TOO_FAR,
+                f"You can book up to {horizon} days ahead at this venue (until {last.strftime('%a')}, {last.day} {last.strftime('%b')}).",
+            )
 
     async def quote_range(self, court: Court, starts_at: datetime, slot_count: int = 1) -> RangeQuote:
         """Price a booking of `slot_count` consecutive slots beginning exactly at `starts_at`.
@@ -232,6 +328,7 @@ class AvailabilityService:
         """
         if slot_count < 1:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_DURATION, "Pick at least one slot")
+        await self.require_within_horizon(court, starts_at)
         if slot_count * court.slot_minutes > max(MAX_BOOKING_MINUTES, court.slot_minutes):
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,

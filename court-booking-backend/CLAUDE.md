@@ -19,6 +19,45 @@ been worked so far.
 
 ## START HERE -- handoff as of 2026-09-21 (read this first)
 
+**BLOCKED as of 2026-09-22, read this before doing anything:** local Docker Desktop / WSL2 is wedged and
+needs the project owner to restart their Windows machine before any local backend/DB work (including
+`pytest`) can run. What happened: two `pytest` runs against the shared local `court_booking_test`
+database were started concurrently (one backgrounded, a retry launched before checking on it), which
+wedged Postgres inside the dev container (see the concurrency warning under "How this project gets
+worked" step 4 -- added because of this). `docker restart`, `docker kill`, `wsl --status` and
+`wsl --shutdown` all then hung/failed (`Docker Desktop is unable to start`); `wsl`/`wslhost`/`vmmem`
+processes going back 2 days were still running. This is a Windows/WSL2-level wedge, not a code problem --
+nothing in the repo caused it. **Once the owner confirms the machine is restarted and Docker Desktop is
+up:** run one clean `pytest` (no other run in flight) to confirm the local DB is healthy, then pick up
+exactly where this was interrupted (below).
+
+**In-progress work interrupted by the above (Section 32 Part 4b, backend half -- code written, NEVER
+YET RUN against a live test):**
+- Migration `de11b783f108` (after `68d7e3464f30`): `venues.booking_horizon_days` (int, 1-365, default 90;
+  CHECK `valid_booking_horizon`) -- how many days ahead a player may book at that venue; an owner's
+  walk-in is not limited by it.
+- `AvailabilityService`: `build_day_slots` (pure, takes already-loaded data) split out of `get_day_slots`
+  so the day view and the new month summary share identical grid code; `month_summary(court,
+  month_first, booking_horizon_days)` (4 queries for the whole month, not one set per day) returns a
+  `DaySummaryOut` per day with `state` past/beyond/closed/full/few/open, `open_slots`, `total_slots`, plus
+  `starts_from_price` and `last_bookable_date`; `require_within_horizon` (raises `BOOKING_TOO_FAR`) is
+  called from `quote_range` (so the quote endpoint, the hold, and the AI all obey the horizon) but NOT
+  from `price_for_range_with_advance` (the walk-in path -- deliberately unlimited).
+- New endpoint `GET /courts/{id}/availability/summary?month=YYYY-MM` (`CourtMonthSummaryOut`), cached
+  `public, max-age=30`.
+- Tests written (not yet run clean): `tests/test_month_summary.py` -- summary agrees with the day view for
+  every day, a month costs a handful of queries (checked via a `before_cursor_execute` listener on
+  `test_engine.sync_engine`), the 5 states, today's already-started slots excluded from `open_slots`, an
+  overnight court's day includes its after-midnight slots, `starts_from_price` picks the lowest ACTIVE
+  rule including floodlights, and the horizon end-to-end (calendar marks `beyond`, hold refused past it,
+  quote refused past it, owner can change the setting, walk-in unaffected, bounds 1-365).
+- **Next once tests pass:** the frontend calendar-first rebuild per the owner's Part 4b update in
+  `docs/SECTION_32_PLAN.md` (replaces the slot-list-first design the earlier mockup showed and the owner
+  had NOT yet approved when this update arrived -- build the NEW calendar-first version, not the old
+  mockup). Also add `?sport=` to the venue links from both search pages (web `app/search/page.tsx`,
+  mobile `app/(player)/search.tsx`) -- neither currently passes it, so the "arrived from a sport" default
+  described in the update is otherwise dead code.
+
 The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in
 Roman Urdu; answer in plain English, keep it short, and **verify before claiming** (they were burned
 by "fixed" things that weren't). Everything below is on `main`, deployed, tests green
@@ -417,6 +456,21 @@ way for any new section:
    this codebase (double-booking prevention, waitlist dedup, message dedup)
    are enforced by real Postgres partial-unique-index behavior that an
    in-process fake cannot reproduce.
+   **Never run two `pytest` invocations against `court_booking_test`
+   concurrently** (e.g. a backgrounded run plus a retry started before
+   checking on it). The session-scoped `test_engine` fixture does
+   `DROP ALL` / `CREATE ALL` against that one shared database on every
+   process's startup; two at once produces catalog-lock contention that
+   can wedge Postgres hard enough that even `docker restart`/`docker kill`
+   on the container hang (seen 2026-09-22 — required restarting Docker
+   Desktop itself to clear). If a run looks stuck, first check
+   `docker exec court-booking-backend-db-1 psql -U postgres -d
+   court_booking_test -c "select pid, state, wait_event_type, query_start,
+   query from pg_stat_activity where datname='court_booking_test'"` for a
+   long-running `CREATE TABLE`/`CREATE TYPE` before assuming the test code
+   itself is at fault, and kill only the stray OS `pytest` processes (not
+   the container) first — `pg_terminate_backend` doesn't always land if
+   the underlying connection is already half-dead.
 5. **Generate and apply the Alembic migration**, then run `alembic check` to
    confirm no drift before calling a section done.
 6. **Run the full test suite**, not just the new section's file — changes

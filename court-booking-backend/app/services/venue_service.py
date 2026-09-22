@@ -54,6 +54,7 @@ class VenueService:
             # one policy per venue (Section 32 Part 4); a cutoff means nothing when cancelling is not allowed
             cancellation_allowed=payload.cancellation_allowed,
             cancellation_cutoff_hours=payload.cancellation_cutoff_hours if payload.cancellation_allowed else None,
+            booking_horizon_days=payload.booking_horizon_days,
         )
         self.db.add(venue)
         await self.db.commit()

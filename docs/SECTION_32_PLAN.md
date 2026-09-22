@@ -92,7 +92,7 @@ ledger) -> **Part 9** (QR check-in) -> **Part 10** (refunds) -> **Part 7** (OCR,
 | 1-2 | 12-hour Pakistan time, date-shift bug, own-slot state | **Deployed** as `94ac837f372d` (2026-09-21). Mobile needs an EAS build to reach phones. |
 | 4 | Per-court slot length and pricing, per-venue cancellation, duration picker, closed/booked labels | **Deployed 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` ran from the new image before the new backend started** (backfilled venue policy, added `no_overlapping_live_bookings`; 8 existing bookings satisfied it; `alembic check` clean). The owner chose to rely on the AUTOMATED RDS snapshot of 1:08 AM PKT (no manual one was visible). Live venue policy stays "not allowed". Mobile changes need an EAS build. Docs commit after it is local, **pending push (goes out with the next deploy)**. |
 | 3 | Overnight courts (`closes_next_day`) | **DEPLOYED 2026-09-22 as `87de0ef4b234`; migration `68d7e3464f30` ran from the new image before the backend restarted** (14 schedule rows, 7 live + 7 old inactive, unchanged and valid; head `68d7e3464f30`; `alembic check` clean). The owner said GO and again chose the AUTOMATED RDS snapshot (2026-09-21 20:08 UTC; no manual one was visible). Verified on production with a rollback-only overnight proof (12-slot 3 PM-3 AM grid, 11 PM-1 AM quote PKR 6,000, row counts unchanged). Mobile needs an EAS build. Design and migration notes below. |
-| 4b | Player venue page redesign (below) | **Mockup shown 2026-09-22 (web 1200 + phone 390, calendar popup open); WAITING FOR THE OWNER'S APPROVAL before any wiring.** Proposed endpoint `GET /courts/{court_id}/availability/summary?month=YYYY-MM` (one request per court and month, in-memory, states past/open/few/full/closed). Open questions: booking horizon (assumed this month + next two) and where "Notify me" lives. Mockup file: Desktop folder "Section 32 screenshots (Part 4b mockup)". |
+| 4b | Player venue page redesign | **SUPERSEDED DESIGN (owner update 2026-09-22, see "Part 4b UPDATE" below): calendar-first, no page-level week strip.** The first mockup (slot-list-first + "View calendar" button, "Section 32 screenshots (Part 4b mockup)") is OBSOLETE -- do not build it. Backend for the new design is WRITTEN but **UNTESTED**: migration `de11b783f108` (`venues.booking_horizon_days`), `AvailabilityService.month_summary` / `build_day_slots` / `require_within_horizon`, endpoint `GET /courts/{id}/availability/summary?month=`, tests in `tests/test_month_summary.py`. **BLOCKED as of 2026-09-22: local Docker Desktop/WSL2 is wedged (see backend CLAUDE.md START HERE) -- the owner is restarting their machine. Once confirmed back up: run pytest once cleanly (no concurrent run), then build the frontend (calendar-first cards, popup with week-strip + day-slots, no page-level strip) on web and mobile, then show before/after screenshots.** Not migrated or deployed; nothing pushed. |
 | 5 | Split payments + `payment_entries` ledger | Not started |
 | 9 | QR check-in (below) | Not started |
 | 10 | Refunds, manual (below) | Not started |
@@ -104,6 +104,11 @@ ledger) -> **Part 9** (QR check-in) -> **Part 10** (refunds) -> **Part 7** (OCR,
 ## Owner's additions (verbatim, 2026-09-22)
 
 ### Part 4b: Player venue page redesign (web and mobile)
+
+**SUPERSEDED by the "Part 4b UPDATE" block immediately below (owner, 2026-09-22) -- kept here only for
+history. Build the UPDATE's design, not this one.** The mockup already shown to the owner
+("Section 32 screenshots (Part 4b mockup)" on the Desktop) matches THIS original text (slot-list-first
+with a "View calendar" button) and was never approved -- do not build it.
 
 Today the page shows one row of day tabs, then every court side by side. Change it like this:
 
@@ -137,6 +142,56 @@ Today the page shows one row of day tabs, then every court side by side. Change 
 5. Before wiring it up, show me ONE screenshot mockup of the new page (web at 1200px and mobile at 390px) with two courts,
    the calendar popup open on one of them, and wait for my approval. Then build it and show me before and after
    screenshots.
+
+### Part 4b UPDATE (owner, 2026-09-22): calendar-first, not slot-list-first
+
+This REPLACES the venue page / schedule grid design in the original Part 4b block above (and in Section
+7.2 of `frontend-build-prompt.md`, which should be updated to match once this is built). The old design
+showed each court's slot list first, with "View calendar" opening a month popup as a secondary view, plus
+one page-level week strip controlling every court at once. That is now REVERSED.
+
+**What each court card shows now (the default, always-visible view).** Per sport tab (hidden if the venue
+has one sport), each court renders as: name, slot length, "From PKR X" (lowest active price, floodlight
+surcharge included). Then a MONTH CALENDAR, not a slot list -- every day of the current month (plus the
+next two, via prev/next arrows) shows a dot: green = open, amber = almost full (<=20% of that day's slots
+still open, at least 1), red = fully booked, grey/hollow = closed (no schedule that day, or every slot
+blocked). Today is filled. Past days are greyed and not tappable. **There is no page-level week strip
+anymore** -- remove the old shared Today/Tomorrow/... strip that drove every court at once; each court's
+calendar is independent.
+
+**Tapping a date on a court's calendar** opens a popup scoped to that ONE court (centered dialog on web
+>=768px, bottom sheet on mobile): a week strip (Today, Tomorrow, then the rest of that week, Mon-first)
+for quick day switching WITHIN the popup only (does not close it or affect other courts); below it, that
+day's slot list (same states as before: price, Payment pending, Booked + Notify me -- stays exactly where
+it already was, on the slot card in the popup's day view, not moved -- Unavailable, Your booking); tapping
+an open slot asks "How long do you want to play?" exactly as today, unchanged; a back arrow returns from
+the day view to the month view without closing the popup; slots after midnight still show under their
+opening day ("Fri 1:00 AM", unchanged from Part 3).
+
+**Backend endpoint** `GET /courts/{court_id}/availability/summary?month=2026-09` -- confirm with the
+backend session before wiring the UI to it if it isn't already built. One row per day: date, state
+(open/few/full/closed), open_slots, total_slots, plus court_id, slot_minutes, starts_from_price. Computed
+from ONE in-memory read of schedule + pricing + blackouts + bookings (not one query per day), safe to
+cache ~30s. This powers the calendar dots -- do not compute few/full/closed client-side from the existing
+day-level `/courts/:id/availability` endpoint; that endpoint stays for the in-popup day view once a date
+is tapped.
+
+**Two decisions locked in:**
+1. Booking horizon: up to 90 days out by default, but a PER-VENUE setting (`booking_horizon_days`), not a
+   hardcoded constant. The calendar's prev/next month arrows stop advancing past the venue's horizon.
+2. "Notify me" stays exactly where it already was (Section 7.6) -- on the slot card in the popup's day
+   view, not moved into the month view.
+
+**To do:** (1) update `frontend-build-prompt.md` Section 7.2 to match this. (2) flag the summary endpoint
+to the backend session if not built. (3) rebuild the venue page on both mobile and the SSR web page
+(Section 9.1) -- same state machine (month -> tap date -> day view inside popup -> tap slot -> duration
+question) on both, popup presentation differs (dialog vs. sheet).
+
+**Status (backend, 2026-09-22): written, untested** -- migration `de11b783f108`
+(`venues.booking_horizon_days`), `AvailabilityService.month_summary`/`build_day_slots`/
+`require_within_horizon`, the endpoint above, and `tests/test_month_summary.py` all exist but have never
+completed a clean test run because of the local Docker/WSL outage (see backend `CLAUDE.md` START HERE).
+Frontend not started.
 
 ### Part 9: QR check-in (booking start)
 

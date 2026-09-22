@@ -30,6 +30,8 @@ class VenueCreateIn(BaseModel):
     # Section 32 Part 4: one cancellation policy per venue (reverses Section 31's per-court policy).
     cancellation_allowed: bool = True
     cancellation_cutoff_hours: int | None = Field(default=None, ge=0, le=720)
+    # Section 32 Part 4b: how many days ahead players can book (1-365, default 90)
+    booking_horizon_days: int = Field(default=90, ge=1, le=365)
 
 
 class VenueUpdateIn(BaseModel):
@@ -49,6 +51,7 @@ class VenueUpdateIn(BaseModel):
     auto_approve_min_bookings: int | None = Field(default=None, ge=0)
     cancellation_allowed: bool | None = None
     cancellation_cutoff_hours: int | None = Field(default=None, ge=0, le=720)
+    booking_horizon_days: int | None = Field(default=None, ge=1, le=365)
 
 
 class VenueOut(BaseModel):
@@ -73,6 +76,7 @@ class VenueOut(BaseModel):
     auto_approve_min_bookings: int
     cancellation_allowed: bool = True
     cancellation_cutoff_hours: int | None = None
+    booking_horizon_days: int = 90
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None

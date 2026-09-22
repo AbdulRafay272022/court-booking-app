@@ -2,7 +2,7 @@ import enum
 import uuid
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,6 +69,11 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
         Boolean, default=True, server_default=text("true"), nullable=False
     )
     cancellation_cutoff_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Section 32 Part 4b: how many days ahead a player can book at this venue (a per-venue setting, default 90). The
+    # calendar stops there and holds beyond it are refused; an owner's walk-in is not limited by it.
+    booking_horizon_days: Mapped[int] = mapped_column(
+        Integer, default=90, server_default=text("90"), nullable=False
+    )
     plan_tier: Mapped[PlanTier] = mapped_column(
         pg_enum(PlanTier, "plan_tier"),
         default=PlanTier.FREE,
@@ -88,7 +93,10 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
     # NOTE: the GIST index on `location` is created automatically by GeoAlchemy2's
     # DDL event listener (named idx_venues_location, matching the spec) as part of
     # table creation -- an explicit Index() here would collide with it.
-    __table_args__ = (Index("idx_venues_sports", "sports", postgresql_using="gin"),)
+    __table_args__ = (
+        Index("idx_venues_sports", "sports", postgresql_using="gin"),
+        CheckConstraint("booking_horizon_days BETWEEN 1 AND 365", name="valid_booking_horizon"),
+    )
 
     owner: Mapped["User"] = relationship(back_populates="venues")  # noqa: F821
     courts: Mapped[list["Court"]] = relationship(  # noqa: F821

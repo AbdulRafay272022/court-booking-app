@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 
 from app.dependencies import DbSession, OptionalCurrentUser
@@ -9,6 +9,7 @@ from app.models.court import Court
 from app.schemas.availability import (
     BookingQuoteOut,
     CourtAvailabilityOut,
+    CourtMonthSummaryOut,
     DateSlots,
     DayAvailabilityOut,
     RangeAvailabilityOut,
@@ -101,3 +102,25 @@ async def quote_booking(
         advance_amount=quote.advance_amount,
         balance_due=round(quote.price - quote.advance_amount, 2),
     )
+
+
+@router.get("/courts/{court_id}/availability/summary", response_model=CourtMonthSummaryOut)
+async def get_court_month_summary(
+    court_id: uuid.UUID,
+    response: Response,
+    db: DbSession,
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM"),
+) -> CourtMonthSummaryOut:
+    """One row per day of the month with a state (open/few/full/closed, plus past/beyond) for the calendar dots
+    (Section 32 Part 4b). Not viewer-specific, so it is safe for a shared cache for a short time."""
+    from app.models.venue import Venue
+
+    service = AvailabilityService(db)
+    court = await service.get_court(court_id)
+    venue = await db.get(Venue, court.venue_id)
+    year, mon = (int(x) for x in month.split("-"))
+    summary = await service.month_summary(
+        court, date(year, mon, 1), venue.booking_horizon_days if venue is not None else 90
+    )
+    response.headers["Cache-Control"] = "public, max-age=30"
+    return summary
