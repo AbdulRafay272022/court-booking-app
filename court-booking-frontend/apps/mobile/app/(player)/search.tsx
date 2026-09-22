@@ -107,7 +107,7 @@ export default function SearchScreen() {
             <VenueCard
               key={v.id}
               venue={v}
-              onPress={() => router.push({ pathname: "/(player)/venue/[slug]", params: { slug: v.slug } })}
+              onPress={() => router.push({ pathname: "/(player)/venue/[slug]", params: sport ? { slug: v.slug, sport } : { slug: v.slug } })}
             />
           ))}
         </ScrollView>

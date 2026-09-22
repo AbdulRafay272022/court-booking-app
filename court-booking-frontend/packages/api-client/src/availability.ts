@@ -1,4 +1,4 @@
-import type { BookingQuote, CourtAvailability, RangeAvailability, VenueAvailability } from "@court-booking/types";
+import type { BookingQuote, CourtAvailability, CourtMonthSummary, RangeAvailability, VenueAvailability } from "@court-booking/types";
 import type { ApiClient } from "./client";
 
 export function createAvailabilityApi(client: ApiClient) {
@@ -19,5 +19,10 @@ export function createAvailabilityApi(client: ApiClient) {
       client.request<BookingQuote>(
         `/courts/${courtId}/quote?starts_at=${encodeURIComponent(startsAt)}&slot_count=${slotCount}`,
       ),
+
+    /** One row per day of `month` ("YYYY-MM") for the venue page's month calendar (Section 32 Part 4b). Public,
+     * cacheable ~30s. */
+    monthSummary: (courtId: string, month: string) =>
+      client.request<CourtMonthSummary>(`/courts/${courtId}/availability/summary?month=${month}`),
   };
 }

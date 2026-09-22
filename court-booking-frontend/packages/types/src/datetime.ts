@@ -97,6 +97,42 @@ export function pktDayTabs(count: number, now: Instant = new Date()): DayTab[] {
   });
 }
 
+/** "2026-09" from a "YYYY-MM-DD" calendar date. */
+export function monthOf(dateStr: string): string {
+  return dateStr.slice(0, 7);
+}
+
+/** "2026-09" + 1 = "2026-10"; "2026-12" + 1 = "2027-01". Pure calendar-month arithmetic, no Date timezone risk. */
+export function addMonths(monthStr: string, n: number): string {
+  const [y, m] = monthStr.split("-").map(Number);
+  const total = y * 12 + (m - 1) + n;
+  return `${Math.floor(total / 12)}-${pad2((total % 12) + 1)}`;
+}
+
+/** "2026-09" -> "Sep 2026". */
+export function formatMonth(monthStr: string): string {
+  const [, m] = monthStr.split("-").map(Number);
+  return `${MONTHS[m - 1]} ${monthStr.slice(0, 4)}`;
+}
+
+/** Every "YYYY-MM-DD" calendar date in a "YYYY-MM" month, in order. */
+export function daysOfMonth(monthStr: string): string[] {
+  const [y, m] = monthStr.split("-").map(Number);
+  const count = new Date(Date.UTC(y, m, 0)).getUTCDate(); // day 0 of next month = last day of this month
+  return Array.from({ length: count }, (_, i) => `${monthStr}-${pad2(i + 1)}`);
+}
+
+/** Monday-first weekday index (0 = Monday .. 6 = Sunday) of a "YYYY-MM-DD" calendar date. */
+export function mondayFirstWeekdayOf(dateStr: string): number {
+  return (weekdayOf(dateStr) + 6) % 7;
+}
+
+/** The 7 "YYYY-MM-DD" dates of the Monday-first week containing `dateStr`. */
+export function weekOf(dateStr: string): string[] {
+  const start = addDays(dateStr, -mondayFirstWeekdayOf(dateStr));
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+}
+
 // ---- formatting -------------------------------------------------------------------------------------
 
 function clock(p: Pick<PktParts, "hour" | "minute">): string {

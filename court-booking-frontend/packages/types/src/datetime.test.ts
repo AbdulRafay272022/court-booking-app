@@ -6,18 +6,23 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addDays,
+  addMonths,
+  daysOfMonth,
   formatDate,
   formatDateRelative,
   formatDateString,
+  formatMonth,
   formatSlotLabel,
   formatTime,
   formatTime24As12,
   formatTimeRange,
   formatWhen,
+  monthOf,
   parseTime24,
   pktDateString,
   pktDayTabs,
   toTime24,
+  weekOf,
 } from "./datetime";
 
 const NOW = new Date("2026-09-21T10:00:00+05:00"); // Monday 21 Sep, 10:00 AM in Karachi
@@ -71,6 +76,31 @@ test("calendar arithmetic", () => {
   assert.equal(addDays("2026-09-30", 1), "2026-10-01");
   assert.equal(addDays("2026-12-31", 1), "2027-01-01");
   assert.equal(addDays("2026-03-01", -1), "2026-02-28");
+});
+
+test("month-calendar arithmetic (Section 32 Part 4b)", () => {
+  assert.equal(monthOf("2026-09-23"), "2026-09");
+  assert.equal(addMonths("2026-09", 1), "2026-10");
+  assert.equal(addMonths("2026-12", 1), "2027-01");
+  assert.equal(addMonths("2026-09", -1), "2026-08");
+  assert.equal(formatMonth("2026-09"), "Sep 2026");
+  assert.equal(formatMonth("2027-01"), "Jan 2027");
+  assert.equal(daysOfMonth("2026-09").length, 30);
+  assert.equal(daysOfMonth("2026-09")[0], "2026-09-01");
+  assert.equal(daysOfMonth("2026-09")[29], "2026-09-30");
+  assert.equal(daysOfMonth("2026-02").length, 28); // 2026 is not a leap year
+  // Wed 23 Sep 2026's Monday-first week is Mon 21 -> Sun 27.
+  assert.deepEqual(weekOf("2026-09-23"), [
+    "2026-09-21",
+    "2026-09-22",
+    "2026-09-23",
+    "2026-09-24",
+    "2026-09-25",
+    "2026-09-26",
+    "2026-09-27",
+  ]);
+  // Sunday's own week starts the Monday before it, not the same day.
+  assert.equal(weekOf("2026-09-27")[0], "2026-09-21");
 });
 
 test("12-hour owner inputs round-trip to the stored 24-hour value", () => {
