@@ -149,4 +149,8 @@ class OpenAIProvider(AIProvider):
                 "input_tokens": usage.get("prompt_tokens", 0),
                 "output_tokens": usage.get("completion_tokens", 0),
             },
+            payer_name=extracted.payer_name,
+            bank_name=extracted.bank_name,
+            receiver_name=extracted.receiver_name,
+            flags=extracted.flags,
         )

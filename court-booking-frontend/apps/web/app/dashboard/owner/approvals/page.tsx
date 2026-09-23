@@ -128,6 +128,18 @@ export default function OwnerApprovalsPage() {
             <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
           </div>
 
+          {current.checks ? (
+            <div className="bg-owner-surface border border-owner-border rounded-xl p-5 flex flex-col gap-2.5">
+              <p className="font-bold text-owner-ink text-[13.5px]">Checks</p>
+              <CheckRow check={current.checks.name} />
+              <CheckRow check={current.checks.amount} />
+              <p className="font-mono text-owner-ink-muted text-[12.5px] -mt-1">{current.checks.balance_text}</p>
+              <CheckRow check={current.checks.time} />
+              <CheckRow check={current.checks.bank} />
+              <CheckRow check={current.checks.duplicate} />
+            </div>
+          ) : null}
+
           {current.proof_url ? (
             <div className="bg-owner-surface border border-owner-border rounded-xl p-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}

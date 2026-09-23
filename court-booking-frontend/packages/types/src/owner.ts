@@ -1,3 +1,5 @@
+import type { PaymentChecks } from "./payment";
+
 export interface TodaySlot {
   starts_at: string;
   ends_at: string;
@@ -44,6 +46,8 @@ export interface PendingApproval {
   proof_url: string | null;
   submitted_at: string;
   minutes_since_submission: number;
+  /** Section 32 Part 7 -- the five plain-language checks for this payment. */
+  checks: PaymentChecks;
 }
 
 export interface LedgerRow {

@@ -3,6 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
+from app.schemas.payment import PaymentChecksOut
+
 
 class TodaySlotOut(BaseModel):
     starts_at: datetime
@@ -49,6 +51,7 @@ class PendingApprovalOut(BaseModel):
     proof_url: str | None
     submitted_at: datetime
     minutes_since_submission: float
+    checks: PaymentChecksOut  # Section 32 Part 7 -- the five plain-language checks
 
 
 class LedgerRowOut(BaseModel):

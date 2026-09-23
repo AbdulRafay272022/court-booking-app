@@ -235,4 +235,8 @@ class GeminiProvider(AIProvider):
                 "input_tokens": usage.get("promptTokenCount", 0),
                 "output_tokens": usage.get("candidatesTokenCount", 0),
             },
+            payer_name=extracted.payer_name,
+            bank_name=extracted.bank_name,
+            receiver_name=extracted.receiver_name,
+            flags=extracted.flags,
         )

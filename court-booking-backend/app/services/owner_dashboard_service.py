@@ -17,7 +17,7 @@ from app.models.stats import SlotStats
 from app.models.user import User
 from app.models.venue import PlanTier, Venue
 from app.services.availability_service import AvailabilityService
-from app.services.payment_service import PaymentService
+from app.services.payment_service import PaymentService, build_payment_checks
 from app.utils.timezone import pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
     GrowthOut,
@@ -157,9 +157,29 @@ class OwnerDashboardService:
             .where(Booking.court_id.in_(court_ids), Payment.review_verdict.is_(None))
             .order_by(Payment.created_at.asc())
         )
+        rows = result.all()
+
+        # Section 32 Part 7: batch-resolve each booking's real account name
+        # (not booking.player_name, which is only ever set for walk-ins) so
+        # build_payment_checks can render "App account: X" without an N+1
+        # query per approval card.
+        player_ids = {booking.player_id for _, booking in rows if booking.player_id is not None}
+        account_names: dict[uuid.UUID, str] = {}
+        if player_ids:
+            users_result = await self.db.execute(select(User.id, User.name).where(User.id.in_(player_ids)))
+            account_names = {uid: name for uid, name in users_result.all() if name}
+
+        court_venues: dict[uuid.UUID, Venue] = {}
+        venue_ids = {c.venue_id for c in courts}
+        if venue_ids:
+            venues_result = await self.db.execute(select(Venue).where(Venue.id.in_(venue_ids)))
+            venues_by_id = {v.id: v for v in venues_result.scalars().all()}
+            court_venues = {c.id: venues_by_id[c.venue_id] for c in courts if c.venue_id in venues_by_id}
+
         now = datetime.now(timezone.utc)
         out = []
-        for payment, booking in result.all():
+        for payment, booking in rows:
+            account_name = account_names.get(booking.player_id) or booking.player_name
             out.append(
                 PendingApprovalOut(
                     payment_id=payment.id,
@@ -175,6 +195,7 @@ class OwnerDashboardService:
                     proof_url=PaymentService.proof_url(payment),
                     submitted_at=payment.created_at,
                     minutes_since_submission=round((now - payment.created_at).total_seconds() / 60, 1),
+                    checks=build_payment_checks(payment, booking, account_name),
                 )
             )
         return out

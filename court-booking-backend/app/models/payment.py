@@ -42,6 +42,26 @@ class Payment(UUIDPkMixin, CreatedAtMixin, Base):
     ocr_verdict: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ocr_confidence: Mapped[float | None] = mapped_column(Numeric(3, 2), nullable=True)
     ocr_raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Section 32 Part 7: payer/bank/receiver, extracted alongside amount/
+    # reference/timestamp above -- null for anything not clearly visible,
+    # never guessed. `ocr_flags` is a JSON list of informational tags
+    # (not_a_receipt, cropped, edited_or_rescreenshotted,
+    # failed_or_pending_transaction) shown as extra warnings on the owner's
+    # approval card, never used to auto-reject.
+    ocr_payer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ocr_bank: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ocr_receiver: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ocr_flags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Computed once at submission time (same convention as ocr_verdict
+    # above, not recomputed on every read): "match" / "mismatch" /
+    # "unavailable" for name_match_verdict; "within_timer" / "before_hold" /
+    # "after_timer" / "not_visible" for time_check_verdict; "match" /
+    # "mismatch" / "not_configured" / "unavailable" for
+    # receiver_match_verdict ("not_configured" when the venue has no saved
+    # bank details to compare against).
+    name_match_verdict: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    time_check_verdict: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    receiver_match_verdict: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_duplicate: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
