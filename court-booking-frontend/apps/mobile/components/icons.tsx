@@ -254,6 +254,20 @@ export function StarBadgeIcon({ size = 17, color = "#9C5C0A", strokeWidth = 2 }:
   );
 }
 
+export function QrIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x="3" y="3" width="7" height="7" rx="1" stroke={color} strokeWidth={strokeWidth} />
+      <Rect x="14" y="3" width="7" height="7" rx="1" stroke={color} strokeWidth={strokeWidth} />
+      <Rect x="3" y="14" width="7" height="7" rx="1" stroke={color} strokeWidth={strokeWidth} />
+      <Path
+        d="M14 14h3v3h-3zM20 14h1v1h-1zM14 20h1v1h-1zM17.5 17.5h1v1h-1zM20 20h1v1h-1z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
 export function SettingsIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

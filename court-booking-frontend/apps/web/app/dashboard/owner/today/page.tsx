@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -16,11 +16,15 @@ const STATUS_COLOR: Record<string, string> = {
   held: "#5B7079",
   available: "#C6D2D7",
   blocked: "#DCE3E6",
+  completed: "#5B7079",
+  no_show: "#8C3823",
 };
 
 export default function OwnerTodayPage() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
+  const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const todayQuery = useQuery({
     queryKey: ["owner-today", activeVenueId],
@@ -28,6 +32,31 @@ export default function OwnerTodayPage() {
     enabled: !!activeVenueId,
     refetchInterval: (query) => pollInterval(query, 15_000),
   });
+
+  async function handleCheckIn(bookingId: string) {
+    setBusyBookingId(bookingId);
+    try {
+      await api.bookings.checkin(bookingId);
+      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+    } catch (e) {
+      alert(friendlyErrorMessage(e));
+    } finally {
+      setBusyBookingId(null);
+    }
+  }
+
+  async function handleNoShow(bookingId: string) {
+    if (!confirm("Mark this booking as a no-show? This records that the player never showed up.")) return;
+    setBusyBookingId(bookingId);
+    try {
+      await api.bookings.noShow(bookingId);
+      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+    } catch (e) {
+      alert(friendlyErrorMessage(e));
+    } finally {
+      setBusyBookingId(null);
+    }
+  }
 
   const data = todayQuery.data;
   const courts = data?.courts ?? [];
@@ -44,9 +73,14 @@ export default function OwnerTodayPage() {
           <h1 className="text-2xl font-bold">{activeVenue?.name ?? "Today"}</h1>
           {data ? <p className="text-owner-ink-faint text-sm">{formatDateString(data.date)}</p> : null}
         </div>
-        <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm">
-          + Add booking
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/dashboard/owner/checkin" className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm">
+            Check-in tools
+          </Link>
+          <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm">
+            + Add booking
+          </Link>
+        </div>
       </div>
 
       {showSwitcher ? (
@@ -121,9 +155,35 @@ export default function OwnerTodayPage() {
                 <div className="text-right">
                   <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid)}</span>
                   {slot.status === "booked" && slot.balance_due != null ? (
-                    <span className="text-[11px] font-semibold" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
+                    <span className="text-[11px] font-semibold block" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
                       {slot.balance_due > 0 ? `PKR ${formatPKR(slot.balance_due)} due at venue` : "Fully paid"}
                     </span>
+                  ) : null}
+                  {slot.status === "booked" && slot.booking_id ? (
+                    <div className="flex gap-1.5 mt-1 justify-end">
+                      <button
+                        disabled={busyBookingId === slot.booking_id}
+                        onClick={() => handleCheckIn(slot.booking_id as string)}
+                        className="px-2.5 py-1 rounded text-white text-[11px] font-semibold disabled:opacity-50"
+                        style={{ background: "#0E6274" }}
+                      >
+                        Check in
+                      </button>
+                      <button
+                        disabled={busyBookingId === slot.booking_id}
+                        onClick={() => handleNoShow(slot.booking_id as string)}
+                        className="px-2.5 py-1 rounded border text-[11px] font-semibold disabled:opacity-50"
+                        style={{ borderColor: "#8C3823", color: "#8C3823" }}
+                      >
+                        No-show
+                      </button>
+                    </div>
+                  ) : slot.status === "completed" && slot.checked_in_at ? (
+                    <span className="text-[11px] font-semibold block" style={{ color: "#1F7A52" }}>
+                      Checked in {formatTime(slot.checked_in_at)}{slot.checked_in_by ? ` · ${slot.checked_in_by}` : ""}
+                    </span>
+                  ) : slot.status === "no_show" ? (
+                    <span className="text-[11px] font-semibold block" style={{ color: "#8C3823" }}>No-show</span>
                   ) : null}
                 </div>
               ) : null}
@@ -149,6 +209,8 @@ function statusLabel(status: string): string {
     case "held": return "Held";
     case "available": return "Open";
     case "blocked": return "Closed";
+    case "completed": return "Checked in";
+    case "no_show": return "No-show";
     default: return "Booking";
   }
 }
@@ -160,6 +222,8 @@ function statusSubtitle(status: string): string {
     case "held": return "Player is paying now";
     case "available": return "No booking yet";
     case "blocked": return "Blocked by venue";
+    case "completed": return "Player checked in";
+    case "no_show": return "Player never checked in";
     default: return "";
   }
 }

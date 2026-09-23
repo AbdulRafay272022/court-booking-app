@@ -100,6 +100,15 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
           </div>
         ) : null}
       </div>
+      {booking.status === "booked" ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); router.push(`/booking/${booking.id}/checkin`); }}
+          className="self-start text-[13px] font-semibold"
+          style={{ color: isDark ? "#5FBF95" : "#0E6274" }}
+        >
+          Check in
+        </button>
+      ) : null}
       {canCancel ? (
         <button
           onClick={(e) => { e.stopPropagation(); handleCancel(); }}
