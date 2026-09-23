@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { LedgerEntry } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -11,6 +12,7 @@ import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon, DownloadIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
+import { CorrectPaymentSheet } from "@/components/correct-payment-sheet";
 import { EmptyState, Tab } from "./_dashboard-components";
 
 type RangeKey = "7d" | "30d" | "month";
@@ -42,7 +44,9 @@ export default function LedgerScreen() {
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
+  const [correcting, setCorrecting] = useState<LedgerEntry | null>(null);
   const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
+  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ["owner-ledger", activeVenueId, courtId, start, end],
@@ -173,12 +177,31 @@ export default function LedgerScreen() {
                       {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
                     </Text>
                     <Text className="font-mono-medium text-owner-ink-faint text-[11px]">{entry.court}</Text>
+                    {!isCorrection ? (
+                      <Pressable onPress={() => setCorrecting(entry)} hitSlop={8}>
+                        <Text className="font-plex-semibold text-[11px]" style={{ color: "#8C3823" }}>
+                          Correct
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
               );
             })}
         </ScrollView>
       )}
+
+      {correcting ? (
+        <CorrectPaymentSheet
+          entry={correcting}
+          onClose={() => setCorrecting(null)}
+          onReversed={() => {
+            setCorrecting(null);
+            queryClient.invalidateQueries({ queryKey: ["owner-ledger"] });
+            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

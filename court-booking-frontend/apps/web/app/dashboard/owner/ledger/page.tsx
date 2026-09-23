@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { LedgerEntry } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
+import { CorrectPaymentSheet } from "@/components/owner/correct-payment-sheet";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
@@ -29,7 +31,9 @@ export default function OwnerLedgerPage() {
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
+  const [correcting, setCorrecting] = useState<LedgerEntry | null>(null);
   const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
+  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ["owner-ledger", activeVenueId, courtId, start, end],
@@ -136,7 +140,7 @@ export default function OwnerLedgerPage() {
         <table className="w-full border-collapse min-w-[720px]">
           <thead>
             <tr className="bg-owner-bg border-b border-owner-border-light text-left">
-              {["Date", "Time", "Player", "Court", "Method", "Booking status", "Amount", "Running total"].map((h) => (
+              {["Date", "Time", "Player", "Court", "Method", "Booking status", "Amount", "Running total", ""].map((h) => (
                 <th key={h} className="px-4 py-3 text-[11px] font-bold tracking-wider text-owner-ink-faint">{h.toUpperCase()}</th>
               ))}
             </tr>
@@ -144,17 +148,17 @@ export default function OwnerLedgerPage() {
           <tbody>
             {venuesLoading || query.isLoading ? (
               <tr>
-                <td colSpan={8} className="text-center py-10 text-owner-ink-faint">Loading…</td>
+                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">Loading…</td>
               </tr>
             ) : query.isError && !ledger ? (
               <tr>
-                <td colSpan={8} className="py-4">
+                <td colSpan={9} className="py-4">
                   <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
                 </td>
               </tr>
             ) : !ledger || ledger.entries.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-10 text-owner-ink-faint">No payments in this range.</td>
+                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">No payments in this range.</td>
               </tr>
             ) : (
               ledger.entries.slice().reverse().map((entry) => {
@@ -174,6 +178,17 @@ export default function OwnerLedgerPage() {
                       {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
                     </td>
                     <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">PKR {formatPKR(entry.running_total)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {!isCorrection ? (
+                        <button
+                          onClick={() => setCorrecting(entry)}
+                          className="text-[12px] font-semibold"
+                          style={{ color: "#8C3823" }}
+                        >
+                          Correct
+                        </button>
+                      ) : null}
+                    </td>
                   </tr>
                 );
               })
@@ -181,6 +196,18 @@ export default function OwnerLedgerPage() {
           </tbody>
         </table>
       </div>
+
+      {correcting ? (
+        <CorrectPaymentSheet
+          entry={correcting}
+          onClose={() => setCorrecting(null)}
+          onReversed={() => {
+            setCorrecting(null);
+            queryClient.invalidateQueries({ queryKey: ["owner-ledger"] });
+            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

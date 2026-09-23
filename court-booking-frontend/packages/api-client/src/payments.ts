@@ -34,8 +34,9 @@ export function createPaymentsApi(client: ApiClient) {
     listEntriesForBooking: (bookingId: string) =>
       client.request<PaymentEntry[]>(`/bookings/${bookingId}/payment-entries`),
 
+    /** A venue owner can correct entries on their own bookings; an admin can correct any. */
     reverseEntry: (entryId: string, reason: string) =>
-      client.request<PaymentEntry>(`/admin/payment-entries/${entryId}/reverse`, {
+      client.request<PaymentEntry>(`/payment-entries/${entryId}/reverse`, {
         method: "POST",
         body: JSON.stringify({ reason }),
       }),
