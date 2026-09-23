@@ -12,6 +12,7 @@ from app.config import Settings
 from app.errors import AppError, ErrorCode
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.court import Court
+from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
 from app.models.stats import SlotStats
 from app.models.user import User
@@ -19,6 +20,7 @@ from app.models.venue import PlanTier, Venue
 from app.services.availability_service import AvailabilityService
 from app.services.payment_service import PaymentService
 from app.utils.timezone import pkt_time_to_utc, pkt_today
+from app.schemas.admin import OwnerRefundOut
 from app.schemas.owner_dashboard import (
     GrowthOut,
     GrowthSuggestionOut,
@@ -179,6 +181,59 @@ class OwnerDashboardService:
             )
         return out
 
+    async def refunds_owed(self, owner: User, venue_id: uuid.UUID | None = None) -> list[OwnerRefundOut]:
+        """Section 32 Part 10's owner-facing "Refunds to pay" screen -- the
+        owner's own venue(s) only, filtered to `refund_status == "owed"`.
+        Deliberately does NOT go through `_owner_courts` (which filters to
+        `is_active` courts): a refund already owed on a booking shouldn't
+        disappear from this list just because the court was later
+        deactivated -- the money is still owed regardless."""
+        query = select(Court).join(Venue, Venue.id == Court.venue_id).where(Venue.owner_id == owner.id)
+        if venue_id is not None:
+            venue = await self.db.get(Venue, venue_id)
+            if venue is None or venue.owner_id != owner.id:
+                raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.VENUE_NOT_FOUND, "Venue not found")
+            query = query.where(Court.venue_id == venue_id)
+        courts = (await self.db.execute(query)).scalars().all()
+        court_ids = [c.id for c in courts]
+        if not court_ids:
+            return []
+        court_names = {c.id: c.name for c in courts}
+
+        result = await self.db.execute(
+            select(PaymentDispute, Booking, Venue, User)
+            .join(Booking, Booking.id == PaymentDispute.booking_id)
+            .join(Court, Court.id == Booking.court_id)
+            .join(Venue, Venue.id == Court.venue_id)
+            .outerjoin(User, User.id == PaymentDispute.player_id)
+            .where(Court.id.in_(court_ids), PaymentDispute.refund_status == "owed")
+            .order_by(PaymentDispute.created_at.asc())
+        )
+        now = datetime.now(timezone.utc)
+        overdue_cutoff = timedelta(days=self.settings.REFUND_OVERDUE_DAYS)
+        out = []
+        for dispute, booking, venue, player in result.all():
+            out.append(
+                OwnerRefundOut(
+                    id=dispute.id,
+                    booking_id=booking.id,
+                    court_name=court_names.get(booking.court_id, ""),
+                    venue_name=venue.name,
+                    player_name=player.name if player else booking.player_name,
+                    player_phone=player.phone if player else booking.player_phone,
+                    starts_at=booking.starts_at,
+                    reason=dispute.reason,
+                    refund_amount=float(dispute.refund_amount or 0),
+                    refund_status=dispute.refund_status,
+                    refunded_amount=None,
+                    refund_reference=None,
+                    refunded_at=None,
+                    created_at=dispute.created_at,
+                    is_overdue=(dispute.refund_amount or 0) > 0 and now - dispute.created_at >= overdue_cutoff,
+                )
+            )
+        return out
+
     async def _ledger_bookings(
         self, owner: User, start_date: date, end_date: date, venue_id: uuid.UUID | None
     ) -> tuple[list[Booking], dict[uuid.UUID, str]]:
@@ -205,6 +260,18 @@ class OwnerDashboardService:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "end_date must be >= start_date")
         bookings, court_names = await self._ledger_bookings(owner, start_date, end_date, venue_id)
 
+        refunded_amounts: dict[uuid.UUID, float] = {}
+        if bookings:
+            booking_ids = [b.id for b in bookings]
+            result = await self.db.execute(
+                select(PaymentDispute.booking_id, PaymentDispute.refunded_amount).where(
+                    PaymentDispute.booking_id.in_(booking_ids), PaymentDispute.refund_status == "refunded"
+                )
+            )
+            for booking_id, refunded_amount in result.all():
+                if refunded_amount is not None:
+                    refunded_amounts[booking_id] = refunded_amounts.get(booking_id, 0.0) + float(refunded_amount)
+
         rows = [
             LedgerRowOut(
                 booking_id=b.id,
@@ -215,11 +282,12 @@ class OwnerDashboardService:
                 amount_paid=float(b.amount_paid),
                 balance_due=float(b.balance_due),
                 status=b.status.value,
+                refund_amount=-refunded_amounts[b.id] if b.id in refunded_amounts else None,
             )
             for b in bookings
         ]
 
-        total_revenue = sum(r.amount_paid for r in rows)
+        total_revenue = sum(r.amount_paid for r in rows) + sum(r.refund_amount or 0 for r in rows)
         by_source: Counter[str] = Counter(r.source for r in rows)
         by_court: dict[str, float] = defaultdict(float)
         for r in rows:
@@ -243,7 +311,9 @@ class OwnerDashboardService:
         ledger = await self.ledger(owner, start_date, end_date, venue_id)
         buf = io.StringIO()
         writer = csv.writer(buf)
-        writer.writerow(["date", "court", "player", "source", "amount_paid", "balance_due", "status"])
+        writer.writerow(
+            ["date", "court", "player", "source", "amount_paid", "balance_due", "status", "refund_amount"]
+        )
         for row in ledger.bookings:
             writer.writerow(
                 [
@@ -254,6 +324,7 @@ class OwnerDashboardService:
                     row.amount_paid,
                     row.balance_due,
                     row.status,
+                    row.refund_amount if row.refund_amount is not None else "",
                 ]
             )
         return buf.getvalue()

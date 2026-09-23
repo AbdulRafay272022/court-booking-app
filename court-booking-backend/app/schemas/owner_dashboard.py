@@ -60,6 +60,12 @@ class LedgerRowOut(BaseModel):
     amount_paid: float
     balance_due: float
     status: str
+    # Section 32 Part 10: a negative amount, present only once a refund on this
+    # booking has actually been paid out -- shown as its own signed row so the
+    # ledger's own totals reflect money that left again, not just what came in.
+    # A proper `payment_entries`-style ledger (Part 5, unmerged as of this
+    # writing) should carry this as a real negative entry instead once merged.
+    refund_amount: float | None = None
 
 
 class LedgerSummaryOut(BaseModel):

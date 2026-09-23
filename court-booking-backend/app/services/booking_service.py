@@ -363,6 +363,12 @@ class BookingService:
                 payment_id=payment.id,
                 player_id=booking.player_id,
                 reason="player_cancelled_paid_booking",
+                # Section 32 Part 10: a voluntary cancel that reaches this point already
+                # passed _enforce_cancellation_policy, so it's always fully refundable --
+                # there's no code path where a cancel succeeds "inside the cutoff" for a
+                # partial/non-refundable amount to apply to (the cutoff blocks the cancel
+                # outright instead). Refund owed = whatever was actually paid.
+                refund_amount=booking.amount_paid,
             )
         )
 
@@ -630,6 +636,12 @@ class BookingService:
                     payment_id=payment.id,
                     player_id=booking.player_id,
                     reason="payment_review_expired",
+                    # Section 32 Part 10: the payment was never approved (that's exactly
+                    # why this queue exists), so `booking.amount_paid` is still 0 -- the
+                    # player may well have transferred real money, but nothing in this
+                    # app ever recorded it as paid. Refund owed is 0 by definition here;
+                    # this is this codebase's real instance of a "non-refundable advance."
+                    refund_amount=0,
                 )
             )
 

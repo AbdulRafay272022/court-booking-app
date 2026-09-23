@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -273,6 +273,8 @@ class AdminService:
         if not include_resolved:
             query = query.where(PaymentDispute.resolved.is_(False))
         result = await self.db.execute(query)
+        now = datetime.now(timezone.utc)
+        overdue_cutoff = timedelta(days=self.settings.REFUND_OVERDUE_DAYS)
         return [
             RefundQueueEntryOut(
                 id=dispute.id,
@@ -287,9 +289,86 @@ class AdminService:
                 reason=dispute.reason,
                 resolved=dispute.resolved,
                 created_at=dispute.created_at,
+                refund_amount=float(dispute.refund_amount) if dispute.refund_amount is not None else None,
+                refund_status=dispute.refund_status,
+                refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
+                refund_reference=dispute.refund_reference,
+                refunded_at=dispute.refunded_at,
+                refunded_by_user_id=dispute.refunded_by_user_id,
+                # Derived at read time, not stored (this codebase's usual pattern for
+                # anything computable from "now" -- see the availability engine): a
+                # refund that's still owed and was flagged more than REFUND_OVERDUE_DAYS
+                # ago needs an admin's attention regardless of what venue it's at.
+                is_overdue=(
+                    dispute.refund_status == "owed"
+                    and (dispute.refund_amount or 0) > 0
+                    and now - dispute.created_at >= overdue_cutoff
+                ),
             )
             for dispute, payment, booking, court, venue, player in result.all()
         ]
+
+    async def mark_refund_paid(
+        self,
+        dispute: PaymentDispute,
+        *,
+        actor: User,
+        amount: float | None,
+        reference: str,
+        screenshot_key: str | None,
+    ) -> PaymentDispute:
+        """Section 32 Part 10. The one place a manual (no payment gateway)
+        refund is actually recorded as paid. Uses the same atomic
+        conditional-UPDATE guard as payment approve/reject and booking
+        cancel/confirm (WHERE refund_status = 'owed') so a double-click on
+        "Refunded" -- or two staff devices doing it at once -- can never
+        double-process or double-notify: the loser gets a clean
+        REFUND_ALREADY_MARKED, not silent corruption."""
+        owed = float(dispute.refund_amount) if dispute.refund_amount is not None else 0.0
+        target_amount = amount if amount is not None else owed
+        if target_amount < 0:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "Refund amount cannot be negative"
+            )
+        if target_amount > owed + 0.01:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.REFUND_EXCEEDS_OWED_AMOUNT,
+                f"Cannot mark PKR {target_amount:,.2f} as refunded -- only PKR {owed:,.2f} is owed on this booking.",
+                details={"owed": owed, "attempted": target_amount},
+            )
+        result = await self.db.execute(
+            update(PaymentDispute)
+            .where(PaymentDispute.id == dispute.id, PaymentDispute.refund_status == "owed")
+            .values(
+                refund_status="refunded",
+                refunded_amount=target_amount,
+                refund_reference=reference,
+                refund_screenshot_key=screenshot_key,
+                refunded_by_user_id=actor.id,
+                refunded_at=func.now(),
+                resolved=True,
+            )
+            .returning(PaymentDispute.id)
+        )
+        if result.first() is None:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.REFUND_ALREADY_MARKED,
+                "This refund has already been marked as paid",
+            )
+        await self.audit.log(
+            actor_user_id=actor.id,
+            actor_type=actor.role.value,
+            action="refund.marked_paid",
+            entity_type="payment_dispute",
+            entity_id=dispute.id,
+            old_value={"refund_status": "owed"},
+            new_value={"refund_status": "refunded", "refunded_amount": target_amount, "reference": reference},
+        )
+        await self.db.commit()
+        await self.db.refresh(dispute)
+        return dispute
 
     async def suspend_user(self, user: User, reason: str, admin: User) -> User:
         # Best-effort idempotency check (finding #29): setting is_active=False
