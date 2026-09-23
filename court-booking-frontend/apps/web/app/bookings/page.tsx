@@ -47,14 +47,20 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
 
   async function handleCancel() {
     const isPaid = booking.status === "booked";
+    // Section 32 Part 10: show the refundable amount BEFORE the player confirms, in plain words.
+    // The cutoff decision (2026-09-24) means a cancel that's actually allowed to go through is
+    // always fully refundable -- there's no partial/non-refundable-inside-the-cutoff case, since
+    // the cutoff blocks the cancel outright instead (see canCancelBooked above).
     const confirmMessage = isPaid
-      ? "Cancel this booking? A refund request will be sent to the venue. Refunds are handled manually by the venue, not automatically."
+      ? `Cancel this booking? You paid PKR ${formatPKR(booking.amount_paid)} -- the venue owes you that amount back. Refunds are sent manually by the venue (JazzCash/bank), not automatically through the app.`
       : "Cancel this booking? This can't be undone.";
     if (!confirm(confirmMessage)) return;
     try {
       await api.bookings.cancel(booking.id);
       if (isPaid) {
-        alert("Booking cancelled. A refund request has been sent to the venue — refunds are handled manually and aren't automatic.");
+        alert(
+          `Booking cancelled. A refund of PKR ${formatPKR(booking.amount_paid)} has been recorded for this venue to send you -- refunds are handled manually and aren't automatic.`,
+        );
       }
       onChanged();
     } catch (e) {

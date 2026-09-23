@@ -30,6 +30,8 @@ const MESSAGES: Record<string, string> = {
   DUPLICATE_PROOF: "This screenshot looks like it's already been used.",
   PROOF_TOO_LARGE: "That image is too large — please use one under 10MB.",
   INVALID_IMAGE_FORMAT: "Please upload a JPEG, PNG, or WebP image.",
+  REFUND_ALREADY_MARKED: "This refund has already been marked as paid.",
+  REFUND_EXCEEDS_OWED_AMOUNT: "That's more than what's owed on this booking.",
   RATE_LIMITED: "You're doing that too much — please slow down a little.",
   FORBIDDEN: "You don't have permission to do that.",
   VALIDATION_ERROR: "Some of the details entered aren't valid.",
