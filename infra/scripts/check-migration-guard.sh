@@ -40,7 +40,8 @@ echo "::warning::THIS PUSH CONTAINS A DATABASE MIGRATION. The deploy runs it on 
 echo "Migration file(s) in this push:"
 echo "$changed" | sed 's/^/  - /'
 
-if git log --format=%B "${BEFORE}..${AFTER}" | tr -d '\r' | grep -qx "Migration-Go: owner-approved"; then
+COMMIT_MSGS="$(git log --format=%B "${BEFORE}..${AFTER}" | tr -d '\r')"
+if grep -qx "Migration-Go: owner-approved" <<< "$COMMIT_MSGS"; then
   echo "migration guard: a commit in this push carries the line 'Migration-Go: owner-approved' (the owner approved it). Continuing."
   exit 0
 fi
