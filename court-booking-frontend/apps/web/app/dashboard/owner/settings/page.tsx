@@ -20,6 +20,7 @@ import { Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/c
 import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
 import { CourtSetupFields } from "@/components/setup/court-setup-fields";
 import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
+import { AdvanceRuleFields } from "@/components/setup/advance-rule-fields";
 
 type Message = { kind: "ok" | "error"; text: string } | null;
 
@@ -146,25 +147,39 @@ function VenueCancellationCard({
 function CourtSettingsForm({ court }: { court: Court }) {
   const queryClient = useQueryClient();
   const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
+  const [advanceType, setAdvanceType] = useState<"" | "fixed" | "percent">(court.advance_type ?? "");
+  const [advanceValue, setAdvanceValue] = useState(court.advance_value != null ? String(court.advance_value) : "");
+  const [advanceMinimum, setAdvanceMinimum] = useState(court.advance_minimum != null ? String(court.advance_minimum) : "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const problem = courtSetupProblem(setup);
+  const advanceProblem =
+    advanceType !== "" && !advanceValue.trim() ? "Enter an advance amount or percentage, or switch back to Default." : null;
 
   async function save() {
     if (problem) {
       setMessage({ kind: "error", text: problem });
       return;
     }
+    if (advanceProblem) {
+      setMessage({ kind: "error", text: advanceProblem });
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
       if (setup.slotMinutes !== court.slot_minutes) await api.courts.update(court.id, { slot_minutes: setup.slotMinutes });
+      await api.courts.update(court.id, {
+        advance_type: advanceType || null,
+        advance_value: advanceType ? Number(advanceValue) : null,
+        advance_minimum: advanceMinimum.trim() ? Number(advanceMinimum) : null,
+      });
       await api.courts.setSchedule(court.id, buildSchedules(setup));
       await api.courts.setPricing(court.id, buildPricingRules(setup));
       await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setMessage({ kind: "ok", text: `${court.name}: slot length, hours and prices updated.` });
+      setMessage({ kind: "ok", text: `${court.name}: slot length, hours, prices and advance rule updated.` });
     } catch (e) {
       setMessage({ kind: "error", text: friendlyErrorMessage(e) });
     } finally {
@@ -176,6 +191,16 @@ function CourtSettingsForm({ court }: { court: Court }) {
     <>
       <h2 className="text-lg font-bold -mb-2">{court.name}</h2>
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
+      <AdvanceRuleFields
+        advanceType={advanceType}
+        advanceValue={advanceValue}
+        advanceMinimum={advanceMinimum}
+        onChange={(patch) => {
+          if (patch.advanceType !== undefined) setAdvanceType(patch.advanceType);
+          if (patch.advanceValue !== undefined) setAdvanceValue(patch.advanceValue);
+          if (patch.advanceMinimum !== undefined) setAdvanceMinimum(patch.advanceMinimum);
+        }}
+      />
       <SaveMessage message={message} />
       <PrimaryButton label="Save changes" onClick={save} busy={saving} />
     </>

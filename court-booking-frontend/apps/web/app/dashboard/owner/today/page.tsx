@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
+import { RecordPaymentSheet } from "@/components/owner/record-payment-sheet";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDateString, formatPKR, formatTime } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
@@ -21,6 +22,8 @@ const STATUS_COLOR: Record<string, string> = {
 export default function OwnerTodayPage() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
+  const [recording, setRecording] = useState<{ bookingId: string; playerLabel: string; balanceDue: number } | null>(null);
+  const queryClient = useQueryClient();
 
   const todayQuery = useQuery({
     queryKey: ["owner-today", activeVenueId],
@@ -117,6 +120,18 @@ export default function OwnerTodayPage() {
                 <Link href="/dashboard/owner/approvals" className="px-3 py-2 rounded-lg text-white text-xs font-semibold" style={{ background: "#9C5C0A" }}>
                   Review
                 </Link>
+              ) : slot.status === "booked" && slot.balance_due != null && slot.balance_due > 0 && slot.booking_id ? (
+                <button
+                  onClick={() =>
+                    setRecording({ bookingId: slot.booking_id!, playerLabel: slot.player_name ?? "Player", balanceDue: slot.balance_due! })
+                  }
+                  className="text-right"
+                >
+                  <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid ?? 0)}</span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full inline-block mt-0.5" style={{ background: "#FBF0DD", color: "#9C5C0A" }}>
+                    RECORD PKR {formatPKR(slot.balance_due)}
+                  </span>
+                </button>
               ) : slot.amount_paid != null ? (
                 <div className="text-right">
                   <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid)}</span>
@@ -131,6 +146,19 @@ export default function OwnerTodayPage() {
           ))
         )}
       </div>
+
+      {recording ? (
+        <RecordPaymentSheet
+          bookingId={recording.bookingId}
+          playerLabel={recording.playerLabel}
+          balanceDue={recording.balanceDue}
+          onClose={() => setRecording(null)}
+          onRecorded={() => {
+            setRecording(null);
+            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -7,7 +7,6 @@ import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { filterLedgerByCourt, ledgerRowsToCsv } from "@court-booking/api-client";
 
 type RangeKey = "7d" | "30d" | "month";
 
@@ -19,6 +18,12 @@ function rangeFor(key: RangeKey): { start: string; end: string } {
   return { start, end };
 }
 
+const METHOD_LABEL: Record<string, string> = {
+  bank_transfer_proof: "Bank transfer",
+  cash_at_venue: "Cash",
+  other: "Other",
+};
+
 export default function OwnerLedgerPage() {
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
@@ -26,21 +31,20 @@ export default function OwnerLedgerPage() {
   const [exporting, setExporting] = useState(false);
   const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
 
-  // Scoped to the SELECTED VENUE (the court filter is client-side -- see filterLedgerByCourt).
   const query = useQuery({
-    queryKey: ["owner-ledger", activeVenueId, start, end],
-    queryFn: () => api.owners.ledger(start, end, activeVenueId),
+    queryKey: ["owner-ledger", activeVenueId, courtId, start, end],
+    queryFn: () => api.owners.ledger(start, end, { venueId: activeVenueId, courtId }),
     enabled: !!activeVenueId,
   });
 
   const courts = activeVenue?.courts ?? [];
-  const courtName = courts.find((c) => c.id === courtId)?.name;
-  const ledger = query.data && courtName ? filterLedgerByCourt(query.data, courtName, start, end) : query.data;
+  const ledger = query.data;
+  const summary = ledger?.summary;
 
   async function handleExport() {
     setExporting(true);
     try {
-      const csv = courtName && ledger ? ledgerRowsToCsv(ledger.bookings) : await api.owners.ledgerExportCsv(start, end, activeVenueId);
+      const csv = await api.owners.ledgerExportCsv(start, end, { venueId: activeVenueId, courtId });
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -61,21 +65,39 @@ export default function OwnerLedgerPage() {
         <h1 className="text-2xl font-bold">Ledger</h1>
         <button
           onClick={handleExport}
-          disabled={exporting || !ledger || ledger.bookings.length === 0}
+          disabled={exporting || !ledger || ledger.entries.length === 0}
           className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm disabled:opacity-50"
         >
           {exporting ? "Exporting…" : "Export CSV"}
         </button>
       </div>
 
+      {summary ? (
+        <div className="grid grid-cols-3 gap-3 max-w-xl">
+          <SummaryTile label="Collected today" value={summary.collected_today} />
+          <SummaryTile label="This week" value={summary.collected_this_week} />
+          <SummaryTile label="This month" value={summary.collected_this_month} />
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-2">
-        <p className="font-mono text-4xl font-semibold">PKR {ledger ? formatPKR(ledger.summary.total_revenue) : "—"}</p>
+        <p className="font-mono text-4xl font-semibold">PKR {ledger ? formatPKR(ledger.summary.total_in_range) : "—"}</p>
         <p className="text-owner-ink-faint text-sm">
-          {ledger ? `${ledger.summary.total_bookings} bookings · PKR ${formatPKR(ledger.summary.avg_revenue_per_day)}/day avg` : ""}
+          {ledger ? `${ledger.entries.length} payment${ledger.entries.length === 1 ? "" : "s"} in this range` : ""}
         </p>
+        {summary && summary.outstanding_balance > 0 ? (
+          <p className="text-sm font-semibold" style={{ color: "#9C5C0A" }}>
+            PKR {formatPKR(summary.outstanding_balance)} still owed on booked slots
+          </p>
+        ) : null}
+        {summary && summary.cancelled_refund_pending > 0 ? (
+          <p className="text-sm font-semibold" style={{ color: "#8C3823" }}>
+            PKR {formatPKR(summary.cancelled_refund_pending)} may be owed back (cancelled, unresolved)
+          </p>
+        ) : null}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {(["7d", "30d", "month"] as const).map((k) => (
           <button
             key={k}
@@ -111,10 +133,10 @@ export default function OwnerLedgerPage() {
       </div>
 
       <div className="bg-owner-surface border border-owner-border rounded-xl overflow-hidden overflow-x-auto">
-        <table className="w-full border-collapse min-w-[640px]">
+        <table className="w-full border-collapse min-w-[720px]">
           <thead>
             <tr className="bg-owner-bg border-b border-owner-border-light text-left">
-              {["Date", "Time", "Player", "Court", "Source", "Status", "Amount", "Due"].map((h) => (
+              {["Date", "Time", "Player", "Court", "Method", "Booking status", "Amount", "Running total"].map((h) => (
                 <th key={h} className="px-4 py-3 text-[11px] font-bold tracking-wider text-owner-ink-faint">{h.toUpperCase()}</th>
               ))}
             </tr>
@@ -130,29 +152,44 @@ export default function OwnerLedgerPage() {
                   <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
                 </td>
               </tr>
-            ) : !ledger || ledger.bookings.length === 0 ? (
+            ) : !ledger || ledger.entries.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-10 text-owner-ink-faint">No bookings in this range.</td>
+                <td colSpan={8} className="text-center py-10 text-owner-ink-faint">No payments in this range.</td>
               </tr>
             ) : (
-              ledger.bookings.slice().reverse().map((row) => (
-                <tr key={row.booking_id} className="border-b border-owner-border-light last:border-0">
-                  <td className="px-4 py-3 font-mono text-sm">{formatShortDate(row.date)}</td>
-                  <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">{formatTime(row.date)}</td>
-                  <td className="px-4 py-3 text-sm font-semibold">{row.player ?? "Walk-in"}</td>
-                  <td className="px-4 py-3 text-sm">{row.court}</td>
-                  <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{row.source}</td>
-                  <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{row.status}</td>
-                  <td className="px-4 py-3 font-mono text-sm font-semibold">{formatPKR(row.amount_paid)}</td>
-                  <td className="px-4 py-3 font-mono text-sm" style={{ color: row.balance_due > 0 ? "#9C5C0A" : "#A6B6BC" }}>
-                    {row.balance_due > 0 ? formatPKR(row.balance_due) : "—"}
-                  </td>
-                </tr>
-              ))
+              ledger.entries.slice().reverse().map((entry) => {
+                const isCorrection = entry.amount_pkr < 0;
+                return (
+                  <tr key={entry.entry_id} className="border-b border-owner-border-light last:border-0">
+                    <td className="px-4 py-3 font-mono text-sm">{formatShortDate(entry.recorded_at)}</td>
+                    <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">{formatTime(entry.recorded_at)}</td>
+                    <td className="px-4 py-3 text-sm font-semibold">{entry.player ?? "Walk-in"}</td>
+                    <td className="px-4 py-3 text-sm">{entry.court}</td>
+                    <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">
+                      {METHOD_LABEL[entry.method] ?? entry.method}
+                      {isCorrection ? " · correction" : ""}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{entry.booking_status}</td>
+                    <td className="px-4 py-3 font-mono text-sm font-semibold" style={{ color: isCorrection ? "#8C3823" : undefined }}>
+                      {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">PKR {formatPKR(entry.running_total)}</td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function SummaryTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-owner-border-light bg-owner-surface px-4 py-3 flex flex-col gap-1">
+      <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">{label.toUpperCase()}</span>
+      <span className="font-mono text-lg font-semibold">PKR {formatPKR(value)}</span>
     </div>
   );
 }

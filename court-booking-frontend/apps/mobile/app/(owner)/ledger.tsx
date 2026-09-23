@@ -9,7 +9,6 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { shareCsv } from "@/lib/export-csv";
 import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { filterLedgerByCourt, ledgerRowsToCsv } from "@court-booking/api-client";
 import { ChevronLeftIcon, DownloadIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { EmptyState, Tab } from "./_dashboard-components";
@@ -32,7 +31,11 @@ const STATUS_LABEL: Record<string, { label: string; bg: string; fg: string }> = 
   held: { label: "HELD", bg: "#F4F6F7", fg: "#5B7079" },
 };
 
-const SOURCE_LABEL: Record<string, string> = { app: "APP", whatsapp: "WHATSAPP", walkin: "WALK-IN", phone: "PHONE" };
+const METHOD_LABEL: Record<string, string> = {
+  bank_transfer_proof: "BANK TRANSFER",
+  cash_at_venue: "CASH",
+  other: "OTHER",
+};
 
 export default function LedgerScreen() {
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
@@ -41,21 +44,20 @@ export default function LedgerScreen() {
   const [exporting, setExporting] = useState(false);
   const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
 
-  // Scoped to the SELECTED VENUE (the court filter is client-side -- see filterLedgerByCourt).
   const query = useQuery({
-    queryKey: ["owner-ledger", activeVenueId, start, end],
-    queryFn: () => api.owners.ledger(start, end, activeVenueId),
+    queryKey: ["owner-ledger", activeVenueId, courtId, start, end],
+    queryFn: () => api.owners.ledger(start, end, { venueId: activeVenueId, courtId }),
     enabled: !!activeVenueId,
   });
 
   const courts = activeVenue?.courts ?? [];
-  const courtName = courts.find((c) => c.id === courtId)?.name;
-  const ledger = query.data && courtName ? filterLedgerByCourt(query.data, courtName, start, end) : query.data;
+  const ledger = query.data;
+  const summary = ledger?.summary;
 
   async function handleExport() {
     setExporting(true);
     try {
-      const csv = courtName && ledger ? ledgerRowsToCsv(ledger.bookings) : await api.owners.ledgerExportCsv(start, end, activeVenueId);
+      const csv = await api.owners.ledgerExportCsv(start, end, { venueId: activeVenueId, courtId });
       await shareCsv(csv, `ledger_${start}_${end}.csv`);
     } catch (e) {
       Alert.alert("Couldn't export", friendlyErrorMessage(e));
@@ -76,7 +78,7 @@ export default function LedgerScreen() {
           </View>
           <Pressable
             onPress={handleExport}
-            disabled={exporting || !ledger || ledger.bookings.length === 0}
+            disabled={exporting || !ledger || ledger.entries.length === 0}
             className="flex-row items-center gap-1.5 px-3 rounded-lg border border-owner-border"
             style={{ minHeight: 44, opacity: exporting ? 0.6 : 1 }}
           >
@@ -85,19 +87,40 @@ export default function LedgerScreen() {
           </Pressable>
         </View>
 
-        <View className="gap-2.5">
-          <View className="flex-row items-baseline justify-between">
-            <Text className="font-plex-semibold text-owner-ink-faint text-[11px] tracking-[1.2px]">
-              {rangeKey === "month" ? "THIS MONTH" : rangeKey === "7d" ? "LAST 7 DAYS" : "LAST 30 DAYS"}
-            </Text>
+        {summary ? (
+          <View className="flex-row gap-2.5">
+            <SummaryTile label="Today" value={summary.collected_today} />
+            <SummaryTile label="This week" value={summary.collected_this_week} />
+            <SummaryTile label="This month" value={summary.collected_this_month} />
           </View>
+        ) : null}
+
+        <View className="gap-2.5">
+          <Text className="font-plex-semibold text-owner-ink-faint text-[11px] tracking-[1.2px]">
+            {rangeKey === "month" ? "THIS MONTH" : rangeKey === "7d" ? "LAST 7 DAYS" : "LAST 30 DAYS"}
+          </Text>
           <Text className="font-mono-semibold text-owner-ink text-[33px] -tracking-[0.6px]">
-            PKR {ledger ? formatPKR(ledger.summary.total_revenue) : "—"}
+            PKR {ledger ? formatPKR(ledger.summary.total_in_range) : "—"}
           </Text>
           <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
-            {ledger ? `${ledger.summary.total_bookings} bookings · PKR ${formatPKR(ledger.summary.avg_revenue_per_day)}/day avg` : ""}
+            {ledger ? `${ledger.entries.length} payment${ledger.entries.length === 1 ? "" : "s"}` : ""}
           </Text>
         </View>
+
+        {summary && (summary.outstanding_balance > 0 || summary.cancelled_refund_pending > 0) ? (
+          <View className="gap-1.5">
+            {summary.outstanding_balance > 0 ? (
+              <Text className="font-plex-medium text-[12.5px]" style={{ color: "#9C5C0A" }}>
+                PKR {formatPKR(summary.outstanding_balance)} still owed on booked slots
+              </Text>
+            ) : null}
+            {summary.cancelled_refund_pending > 0 ? (
+              <Text className="font-plex-medium text-[12.5px]" style={{ color: "#8C3823" }}>
+                PKR {formatPKR(summary.cancelled_refund_pending)} may be owed back (cancelled, unresolved)
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         <View className="flex-row gap-1.5">
           <Tab label="7 days" selected={rangeKey === "7d"} onPress={() => setRangeKey("7d")} />
@@ -121,35 +144,35 @@ export default function LedgerScreen() {
         </View>
       ) : query.isError && !ledger ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
-      ) : !ledger || ledger.bookings.length === 0 ? (
-        <EmptyState title="No bookings in this range" subtitle="Try a longer date range or a different court." />
+      ) : !ledger || ledger.entries.length === 0 ? (
+        <EmptyState title="No payments in this range" subtitle="Try a longer date range or a different court." />
       ) : (
         <ScrollView className="flex-1 bg-owner-surface">
-          {ledger.bookings
+          {ledger.entries
             .slice()
             .reverse()
-            .map((row) => {
-              const statusStyle = STATUS_LABEL[row.status] ?? STATUS_LABEL.held;
+            .map((entry) => {
+              const statusStyle = STATUS_LABEL[entry.booking_status] ?? STATUS_LABEL.held;
+              const isCorrection = entry.amount_pkr < 0;
               return (
-                <View key={row.booking_id} className="flex-row items-center gap-3 px-4.5 py-3.5 border-b border-owner-border-light">
+                <View key={entry.entry_id} className="flex-row items-center gap-3 px-4.5 py-3.5 border-b border-owner-border-light">
                   <View className="gap-0.5" style={{ minWidth: 52 }}>
-                    <Text className="font-mono-semibold text-owner-ink text-[13px]">{formatShortDate(row.date)}</Text>
-                    <Text className="font-mono-medium text-owner-ink-faint text-xs">{formatTime(row.date)}</Text>
+                    <Text className="font-mono-semibold text-owner-ink text-[13px]">{formatShortDate(entry.recorded_at)}</Text>
+                    <Text className="font-mono-medium text-owner-ink-faint text-xs">{formatTime(entry.recorded_at)}</Text>
                   </View>
                   <View className="flex-1 gap-1">
-                    <Text className="font-plex-semibold text-owner-ink text-sm">{row.player ?? "Walk-in"}</Text>
-                    <View className="flex-row gap-1.5">
+                    <Text className="font-plex-semibold text-owner-ink text-sm">{entry.player ?? "Walk-in"}</Text>
+                    <View className="flex-row gap-1.5 flex-wrap">
                       <Badge label={statusStyle.label} bg={statusStyle.bg} fg={statusStyle.fg} />
-                      <Badge label={SOURCE_LABEL[row.source] ?? row.source.toUpperCase()} bg="#F4F6F7" fg="#5B7079" />
+                      <Badge label={METHOD_LABEL[entry.method] ?? entry.method.toUpperCase()} bg="#F4F6F7" fg="#5B7079" />
+                      {isCorrection ? <Badge label="CORRECTION" bg="#F8E5E0" fg="#8C3823" /> : null}
                     </View>
                   </View>
                   <View className="items-end gap-0.5">
-                    <Text className="font-mono-semibold text-owner-ink text-sm">{formatPKR(row.amount_paid)}</Text>
-                    {row.balance_due > 0 ? (
-                      <Text className="font-mono-medium text-[12px]" style={{ color: "#9C5C0A" }}>
-                        +{formatPKR(row.balance_due)} due
-                      </Text>
-                    ) : null}
+                    <Text className="font-mono-semibold text-sm" style={{ color: isCorrection ? "#8C3823" : "#141A1D" }}>
+                      {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
+                    </Text>
+                    <Text className="font-mono-medium text-owner-ink-faint text-[11px]">{entry.court}</Text>
                   </View>
                 </View>
               );
@@ -157,6 +180,15 @@ export default function LedgerScreen() {
         </ScrollView>
       )}
     </SafeAreaView>
+  );
+}
+
+function SummaryTile({ label, value }: { label: string; value: number }) {
+  return (
+    <View className="flex-1 rounded-xl px-3 py-2.5 gap-0.5" style={{ backgroundColor: "#F4F6F7" }}>
+      <Text className="font-plex-semibold text-owner-ink-faint text-[10.5px] tracking-[0.06em]">{label.toUpperCase()}</Text>
+      <Text className="font-mono-semibold text-owner-ink text-[15px]">PKR {formatPKR(value)}</Text>
+    </View>
   );
 }
 

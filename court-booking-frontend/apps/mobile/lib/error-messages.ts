@@ -28,6 +28,7 @@ const MESSAGES: Record<string, string> = {
   VENUE_NOT_FOUND: "We couldn't find that venue.",
   NOT_VENUE_OWNER: "You don't manage this venue.",
   DUPLICATE_PROOF: "This screenshot looks like it's already been used.",
+  PAYMENT_EXCEEDS_BALANCE: "That's more than what's still owed on this booking.",
   PROOF_TOO_LARGE: "That image is too large — please use one under 10MB.",
   INVALID_IMAGE_FORMAT: "Please upload a JPEG, PNG, or WebP image.",
   RATE_LIMITED: "You're doing that too much — please slow down a little.",
