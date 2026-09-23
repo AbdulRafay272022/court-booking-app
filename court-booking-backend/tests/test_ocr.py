@@ -20,6 +20,7 @@ from app.models.venue import Venue
 from app.services.ai.claude_provider import ClaudeProvider
 from app.services.ai.schemas import PaymentExtractionValidationError
 from app.services.payment_service import (
+    PaymentService,
     build_payment_checks,
     compute_name_match,
     compute_receiver_match,
@@ -504,3 +505,56 @@ def test_build_payment_checks_duplicate_flagged():
 # JazzCash/Easypaisa screenshots and report the real hit rate, the same way
 # Section 21's Gemini switch was verified against a live key before being
 # trusted.
+
+
+# --- _parse_ocr_timestamp (Section 32 Part 7) --------------------------------
+# Real receipts print a human, Pakistan-local time and the vision model returns
+# it verbatim -- not ISO. These pin that it parses AND that a value with no
+# offset is read as PKT (assuming UTC would be 5 hours off and break the check).
+
+def test_parse_ocr_timestamp_human_pkt_format_is_read_as_pkt():
+    # 7:12 PM PKT -> 14:12 UTC
+    got = PaymentService._parse_ocr_timestamp("24 Sep 2026, 07:12 PM")
+    assert got == datetime(2026, 9, 24, 14, 12, tzinfo=timezone.utc)
+
+
+def test_parse_ocr_timestamp_human_no_comma():
+    got = PaymentService._parse_ocr_timestamp("24 Sep 2026 06:30 PM")
+    assert got == datetime(2026, 9, 24, 13, 30, tzinfo=timezone.utc)
+
+
+def test_parse_ocr_timestamp_iso_with_offset_kept():
+    got = PaymentService._parse_ocr_timestamp("2026-09-24T19:12:00+05:00")
+    assert got == datetime(2026, 9, 24, 14, 12, tzinfo=timezone.utc)
+
+
+def test_parse_ocr_timestamp_iso_without_offset_is_pkt():
+    # A bare ISO with no zone is still a Pakistan wall-clock reading.
+    got = PaymentService._parse_ocr_timestamp("2026-09-24T19:12:00")
+    assert got == datetime(2026, 9, 24, 14, 12, tzinfo=timezone.utc)
+
+
+def test_parse_ocr_timestamp_unparseable_is_none():
+    assert PaymentService._parse_ocr_timestamp("sometime yesterday") is None
+    assert PaymentService._parse_ocr_timestamp(None) is None
+    assert PaymentService._parse_ocr_timestamp("") is None
+
+
+# --- fixture images (Section 32 Part 7) --------------------------------------
+# The synthetic JazzCash/Easypaisa fixtures in tests/fixtures/payments/ back the
+# honest accuracy run (scripts/ocr_accuracy_report.py, a real-vision-model script
+# kept OUT of the suite). This test just guards them from rot: every one is a
+# real, decodable image the perceptual-hash dedup path can read.
+
+def test_ocr_fixture_images_are_valid_decodable_images():
+    import os
+    from app.utils.image import perceptual_hash
+
+    fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures", "payments")
+    images = [f for f in os.listdir(fixtures_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+    assert len(images) >= 5, f"expected the Part 7 fixtures, found {images}"
+    for name in images:
+        with open(os.path.join(fixtures_dir, name), "rb") as fh:
+            data = fh.read()
+        assert len(data) > 0
+        assert perceptual_hash(data) is not None, f"{name} did not decode / hash"

@@ -66,8 +66,8 @@ OCR_EXTRACTION_INSTRUCTIONS = (
     "This is a screenshot of a mobile banking or mobile wallet payment (e.g. JazzCash, Easypaisa, "
     "a bank transfer receipt). Extract exactly what is visible -- never infer or guess a value that "
     "isn't clearly shown. Return: the transaction amount (numeric), the transaction reference/ID, "
-    "the transaction date and time (ISO 8601, exactly as shown -- do not convert timezones or "
-    "reformat), the payer's name as printed on the receipt, the bank or wallet name (e.g. JazzCash, "
+    "the transaction date and time exactly as printed on the receipt (do not convert time zones or "
+    "reformat it), the payer's name as printed on the receipt, the bank or wallet name (e.g. JazzCash, "
     "Easypaisa, HBL, Meezan), and the receiver's name or the last few digits of the receiver's "
     "account/number if shown. Use null for any field that is not clearly legible -- a blurry or "
     "absent value must be null, never a best guess. Include a confidence score from 0.0 to 1.0 for "
@@ -87,7 +87,7 @@ RECORD_PAYMENT_EXTRACTION_TOOL = {
         "properties": {
             "amount": {"type": ["number", "null"], "description": "Transaction amount, numeric"},
             "reference": {"type": ["string", "null"], "description": "Transaction reference/ID"},
-            "timestamp": {"type": ["string", "null"], "description": "ISO 8601 transaction date/time"},
+            "timestamp": {"type": ["string", "null"], "description": "Transaction date/time exactly as printed on the receipt"},
             "confidence": {"type": "number", "description": "0.0-1.0 confidence in this extraction"},
             "payer_name": {"type": ["string", "null"], "description": "Payer's name as printed on the receipt"},
             "bank_name": {"type": ["string", "null"], "description": "Bank or wallet name, e.g. JazzCash, Easypaisa, HBL"},

@@ -28,7 +28,7 @@ from app.utils.encryption import decrypt_json
 from app.utils.image import perceptual_hash
 from app.utils.s3 import signed_private_url, upload_private_proof
 from app.utils.text import fuzzy_name_match
-from app.utils.timezone import format_pkr, format_time
+from app.utils.timezone import format_pkr, format_time, naive_pkt_to_utc
 
 logger = structlog.get_logger(__name__)
 
@@ -203,13 +203,45 @@ class PaymentService:
 
     @staticmethod
     def _parse_ocr_timestamp(raw: str | None) -> datetime | None:
+        """Parse the payment time the vision model read off the screenshot into
+        a UTC-aware datetime for the time check (Section 32 Part 7).
+
+        Real JazzCash/Easypaisa receipts print a human, Pakistan-local time
+        ("24 Sep 2026, 07:12 PM"), and the vision model returns it verbatim --
+        NOT ISO 8601 -- so ISO-only parsing returned None on essentially every
+        real screenshot, silently making the time check always "not visible"
+        and always blocking auto-approve. Accept ISO too (some inputs/tests use
+        it). A value that carries no offset is a Pakistan wall-clock reading, so
+        it is interpreted as PKT (assuming UTC would be 5 hours off)."""
         if not raw:
             return None
+        parsed = None
         try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
         except ValueError:
+            cleaned = " ".join(raw.strip().replace(",", " ").split()).upper()
+            for fmt in (
+                "%d %b %Y %I:%M %p",   # 24 Sep 2026 07:12 PM
+                "%d %B %Y %I:%M %p",   # 24 September 2026 07:12 PM
+                "%d %b %Y %I:%M:%S %p",
+                "%Y-%m-%d %I:%M %p",   # 2026-09-24 07:12 PM
+                "%Y-%m-%d %H:%M:%S",   # 2026-09-24 19:12:00
+                "%Y-%m-%d %H:%M",
+                "%d/%m/%Y %I:%M %p",   # 24/09/2026 07:12 PM
+                "%d-%m-%Y %I:%M %p",
+                "%b %d %Y %I:%M %p",   # Sep 24 2026 07:12 PM
+            ):
+                try:
+                    parsed = datetime.strptime(cleaned, fmt)
+                    break
+                except ValueError:
+                    continue
+        if parsed is None:
             return None
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        if parsed.tzinfo:
+            return parsed.astimezone(timezone.utc)
+        # No offset on the receipt = a Pakistan-local wall-clock reading.
+        return naive_pkt_to_utc(parsed)
 
     async def _extract_payment_proof(
         self, proof_bytes: bytes, content_type: str, expected_amount: float
