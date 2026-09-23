@@ -54,6 +54,8 @@ class ErrorCode:
     INVALID_IMAGE_FORMAT = "INVALID_IMAGE_FORMAT"
     PAYMENT_ALREADY_REVIEWED = "PAYMENT_ALREADY_REVIEWED"
     PAYMENT_ALREADY_SUBMITTED = "PAYMENT_ALREADY_SUBMITTED"
+    # Section 32 Part 5: a manually-recorded payment (or reversal) would push amount_paid past the booking's price.
+    PAYMENT_EXCEEDS_BALANCE = "PAYMENT_EXCEEDS_BALANCE"
 
     # General
     RATE_LIMITED = "RATE_LIMITED"

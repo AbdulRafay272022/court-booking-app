@@ -76,6 +76,7 @@ async def create_walkin_booking(
         player_phone=payload.player_phone,
         amount_paid=payload.amount_paid,
         recorded_by=owner,
+        method=payload.method,
     )
     return BookingResponse(booking=BookingOut.model_validate(booking))
 

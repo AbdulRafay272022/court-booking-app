@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import AppError, ErrorCode
 from app.models.blackout import Blackout
 from app.models.booking import LIVE_BOOKING_STATUSES, Booking
-from app.models.court import Court
+from app.models.court import Court, CourtAdvanceType
 from app.models.pricing import PricingRule
 from app.models.schedule import ScheduleTemplate
 from app.schemas.availability import CourtMonthSummaryOut, DaySummaryOut, SlotOut
@@ -87,6 +87,22 @@ class AvailabilityService:
             price += float(rule.floodlight_surcharge)
         return price
 
+    @staticmethod
+    def compute_advance(price: float, court: Court, rule: PricingRule) -> float:
+        """Section 32 Part 5: the advance rule lives on the COURT (a fixed PKR amount or a percentage, with
+        an optional minimum) when the owner has set one; `pricing_rules.advance_percentage` stays as the
+        fallback for a court that hasn't (the pre-Part-5 behavior, and still how a player-friendly default
+        of "pay it all now" works when nothing was ever configured)."""
+        if court.advance_type == CourtAdvanceType.FIXED:
+            advance = float(court.advance_value or 0)
+        elif court.advance_type == CourtAdvanceType.PERCENT:
+            advance = price * float(court.advance_value or 0) / 100
+        else:
+            advance = price * float(rule.advance_percentage) / 100
+        if court.advance_minimum is not None:
+            advance = max(advance, float(court.advance_minimum))
+        return round(min(advance, price), 2)
+
     async def _load_rules(self, court_id: uuid.UUID) -> list[PricingRule]:
         result = await self.db.execute(select(PricingRule).where(PricingRule.court_id == court_id))
         return list(result.scalars().all())
@@ -136,7 +152,7 @@ class AvailabilityService:
             price = AvailabilityService.price_for_rule(rule, court) or 0.0
             slot_start_dt = (slot_start_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
             slot_end_dt = (slot_end_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
-            advance_amount = round(price * float(rule.advance_percentage) / 100, 2) if rule else 0.0
+            advance_amount = AvailabilityService.compute_advance(price, court, rule) if rule else 0.0
             after_midnight = slot_start_local.date() > target_date
 
             blackout = next(

@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from app.jobs.growth_job import compute_slot_stats
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.payment import Payment
+from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import UserRole
 from app.models.venue import PlanTier
 from app.utils.timezone import pkt_time_to_utc, pkt_today
@@ -149,30 +150,34 @@ async def test_pending_approvals_queue(
 
 
 async def test_ledger_accuracy(client, db_session_factory, make_user, make_venue, make_court, make_auth_headers):
+    """Section 32 Part 5: the ledger is one row per PAYMENT (payment_entries), not per booking -- seed a
+    payment_entries row alongside each booking (recorded at the booking's own starts_at, for simplicity)."""
     owner = await make_user("+923011000020", role=UserRole.OWNER)
     customer = await make_user("+923011000021", role=UserRole.PLAYER)
     venue = await make_venue(owner)
     court_a = await make_court(venue, name="Court A")
     court_b = await make_court(venue, name="Court B")
 
-    sources = [BookingSource.APP] * 4 + [BookingSource.WHATSAPP] * 3 + [BookingSource.WALKIN] * 2 + [
-        BookingSource.PHONE
-    ]
     async with db_session_factory() as session:
         for i in range(10):
             court = court_a if i % 2 == 0 else court_b
             starts_at = datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc) + timedelta(days=i)
+            booking = Booking(
+                court_id=court.id,
+                player_id=customer.id,
+                starts_at=starts_at,
+                ends_at=starts_at + timedelta(hours=1),
+                price=1000,
+                amount_paid=1000,
+                balance_due=0,
+                status=BookingStatus.COMPLETED,
+            )
+            session.add(booking)
+            await session.flush()
             session.add(
-                Booking(
-                    court_id=court.id,
-                    player_id=customer.id,
-                    starts_at=starts_at,
-                    ends_at=starts_at + timedelta(hours=1),
-                    price=1000,
-                    amount_paid=1000,
-                    balance_due=0,
-                    status=BookingStatus.COMPLETED,
-                    source=sources[i],
+                PaymentEntry(
+                    booking_id=booking.id, amount_pkr=1000, method=PaymentMethod.BANK_TRANSFER_PROOF,
+                    created_at=starts_at,
                 )
             )
         await session.commit()
@@ -185,12 +190,10 @@ async def test_ledger_accuracy(client, db_session_factory, make_user, make_venue
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["bookings"]) == 10
-    assert body["summary"]["total_bookings"] == 10
-    assert body["summary"]["total_revenue"] == 10000.0
-    assert body["summary"]["by_source"] == {"app": 4, "whatsapp": 3, "walkin": 2, "phone": 1}
-    assert body["summary"]["by_court"]["Court A"] == 5000.0
-    assert body["summary"]["by_court"]["Court B"] == 5000.0
+    assert len(body["entries"]) == 10
+    assert body["summary"]["total_in_range"] == 10000
+    assert body["summary"]["by_court"]["Court A"] == 5000
+    assert body["summary"]["by_court"]["Court B"] == 5000
 
 
 async def test_ledger_csv_export(client, db_session_factory, make_user, make_venue, make_court, make_auth_headers):
@@ -201,18 +204,24 @@ async def test_ledger_csv_export(client, db_session_factory, make_user, make_ven
 
     async with db_session_factory() as session:
         starts_at = datetime(2026, 10, 10, 9, 0, tzinfo=timezone.utc)
+        booking = Booking(
+            court_id=court.id,
+            player_id=customer.id,
+            starts_at=starts_at,
+            ends_at=starts_at + timedelta(hours=1),
+            price=1500,
+            amount_paid=1500,
+            balance_due=0,
+            player_name="Ahmed",
+            status=BookingStatus.COMPLETED,
+            source=BookingSource.APP,
+        )
+        session.add(booking)
+        await session.flush()
         session.add(
-            Booking(
-                court_id=court.id,
-                player_id=customer.id,
-                starts_at=starts_at,
-                ends_at=starts_at + timedelta(hours=1),
-                price=1500,
-                amount_paid=1500,
-                balance_due=0,
-                player_name="Ahmed",
-                status=BookingStatus.COMPLETED,
-                source=BookingSource.APP,
+            PaymentEntry(
+                booking_id=booking.id, amount_pkr=1500, method=PaymentMethod.BANK_TRANSFER_PROOF,
+                created_at=starts_at,
             )
         )
         await session.commit()
@@ -227,11 +236,14 @@ async def test_ledger_csv_export(client, db_session_factory, make_user, make_ven
     assert resp.headers["content-type"].startswith("text/csv")
 
     rows = list(csv.reader(io.StringIO(resp.text)))
-    assert rows[0] == ["date", "court", "player", "source", "amount_paid", "balance_due", "status"]
+    assert rows[0] == [
+        "recorded_at", "court", "booking_starts_at", "player", "method", "amount_pkr", "running_total", "booking_status"
+    ]
     assert len(rows) == 2
     assert rows[1][1] == court.name
-    assert rows[1][2] == "Ahmed"
-    assert rows[1][3] == "app"
+    assert rows[1][3] == "Ahmed"
+    assert rows[1][4] == "bank_transfer_proof"
+    assert rows[1][5] == "1500"
 
 
 async def test_growth_suggestions_guardrail_insufficient_history(
@@ -363,28 +375,30 @@ async def test_multi_venue_owner_today_and_ledger_filter_by_venue(
     async with db_session_factory() as session:
         starts_a = pkt_time_to_utc(today, time(9, 0))
         starts_b = pkt_time_to_utc(today, time(11, 0))
-        session.add(
-            Booking(
-                court_id=court_a.id,
-                player_id=customer.id,
-                starts_at=starts_a,
-                ends_at=starts_a + timedelta(hours=1),
-                price=1000,
-                amount_paid=1000,
-                status=BookingStatus.BOOKED,
-            )
+        booking_a = Booking(
+            court_id=court_a.id,
+            player_id=customer.id,
+            starts_at=starts_a,
+            ends_at=starts_a + timedelta(hours=1),
+            price=1000,
+            amount_paid=1000,
+            status=BookingStatus.BOOKED,
         )
-        session.add(
-            Booking(
-                court_id=court_b.id,
-                player_id=customer.id,
-                starts_at=starts_b,
-                ends_at=starts_b + timedelta(hours=1),
-                price=2000,
-                amount_paid=2000,
-                status=BookingStatus.BOOKED,
-            )
+        booking_b = Booking(
+            court_id=court_b.id,
+            player_id=customer.id,
+            starts_at=starts_b,
+            ends_at=starts_b + timedelta(hours=1),
+            price=2000,
+            amount_paid=2000,
+            status=BookingStatus.BOOKED,
         )
+        session.add_all([booking_a, booking_b])
+        await session.flush()
+        session.add_all([
+            PaymentEntry(booking_id=booking_a.id, amount_pkr=1000, method=PaymentMethod.BANK_TRANSFER_PROOF, created_at=starts_a),
+            PaymentEntry(booking_id=booking_b.id, amount_pkr=2000, method=PaymentMethod.BANK_TRANSFER_PROOF, created_at=starts_b),
+        ])
         await session.commit()
 
     owner_headers = await make_auth_headers(owner)
@@ -403,7 +417,7 @@ async def test_multi_venue_owner_today_and_ledger_filter_by_venue(
         headers=owner_headers,
         params={"start_date": today.isoformat(), "end_date": today.isoformat(), "venue_id": str(venue_b.id)},
     )
-    assert ledger_scoped.json()["summary"]["total_revenue"] == 2000.0
+    assert ledger_scoped.json()["summary"]["total_in_range"] == 2000
 
 
 async def test_owner_dashboard_endpoints_require_owner_role(client, make_user, make_auth_headers):

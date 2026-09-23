@@ -13,10 +13,12 @@ from app.models.booking import LIVE_BOOKING_STATUSES, Booking, BookingSource, Bo
 from app.models.court import Court
 from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
+from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.waitlist import WaitlistEntry
 from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 from app.services.availability_service import AvailabilityService
+from app.services.payment_ledger_service import recompute_payment_totals
 from app.utils.timezone import format_when
 
 logger = structlog.get_logger(__name__)
@@ -190,6 +192,7 @@ class BookingService:
         player_phone: str | None,
         amount_paid: float,
         recorded_by: User,
+        method: PaymentMethod = PaymentMethod.CASH_AT_VENUE,
     ) -> Booking:
         court = await self._load_active_court(court_id)
         ends_at = starts_at + timedelta(minutes=court.slot_minutes)
@@ -213,10 +216,24 @@ class BookingService:
             player_phone=player_phone,
             price=price,
             advance_amount=amount_paid,
-            amount_paid=amount_paid,
-            balance_due=max(round(price - amount_paid, 2), 0),
         )
         await self._insert_booking(booking)
+
+        # Section 32 Part 5: the walk-in's amount is a real payment_entries row (method defaults to cash at
+        # the venue, the overwhelmingly common case), not a hand-set amount_paid column.
+        amount_pkr = int(round(amount_paid))
+        if amount_pkr > 0:
+            self.db.add(
+                PaymentEntry(
+                    booking_id=booking.id,
+                    amount_pkr=amount_pkr,
+                    method=method,
+                    recorded_by=recorded_by.id,
+                    note="Walk-in booking",
+                )
+            )
+            await self.db.flush()
+            await recompute_payment_totals(self.db, booking)
 
         if linked_player is not None:
             linked_player.total_bookings += 1
@@ -366,19 +383,23 @@ class BookingService:
             )
         )
 
-    async def confirm_booking(self, booking: Booking) -> Booking:
+    async def confirm_booking(self, booking: Booking, recorded_by: User | None = None) -> Booking:
         """Called once an owner (or auto-approve) verifies the advance
         payment. Guarded by a conditional UPDATE (see _atomic_transition) so
         a double-tap approve, two concurrent approve requests, or an approve
         racing a cancel can never both take effect -- raises
         BOOKING_ALREADY_CANCELLED if the booking's live status has already
         moved past HELD/PAYMENT_SUBMITTED by the time this runs, instead of
-        blindly overwriting whatever it actually is now."""
+        blindly overwriting whatever it actually is now.
+
+        Section 32 Part 5: `amount_paid` is no longer set directly here -- it's always the sum of
+        `payment_entries` (see `recompute_payment_totals`), so confirming a booking records a payment_entries
+        row for the advance instead. `recorded_by` is the owner who approved the payment proof, or None for
+        an auto-approval (nobody clicked anything)."""
         ok = await self._atomic_transition(
             booking,
             from_statuses=(BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED),
             to_status=BookingStatus.BOOKED,
-            amount_paid=booking.advance_amount,
             payment_deadline=None,
         )
         if not ok:
@@ -387,6 +408,19 @@ class BookingService:
                 ErrorCode.BOOKING_ALREADY_CANCELLED,
                 "This booking is no longer awaiting payment review",
             )
+        advance = int(round(float(booking.advance_amount)))
+        if advance > 0:
+            self.db.add(
+                PaymentEntry(
+                    booking_id=booking.id,
+                    amount_pkr=advance,
+                    method=PaymentMethod.BANK_TRANSFER_PROOF,
+                    recorded_by=recorded_by.id if recorded_by else None,
+                    note="Advance payment approved" if recorded_by else "Advance payment auto-approved",
+                )
+            )
+            await self.db.flush()
+            await recompute_payment_totals(self.db, booking)
         if booking.player_id is not None:
             player = await self.db.get(User, booking.player_id)
             if player is not None:

@@ -20,11 +20,13 @@ from app.schemas.admin import (
     RefundQueueEntryOut,
     SuspendUserIn,
 )
+from app.schemas.payment_entry import PaymentEntryOut, PaymentEntryReverseIn
 from app.schemas.venue import VenueOut
 from app.services.admin_service import AdminService
 from app.services.audit_service import AuditService
 from app.services.growth_service import GrowthService
 from app.services.notification_service import NotificationService
+from app.services.payment_ledger_service import PaymentLedgerService
 from app.services.venue_service import VenueService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -215,3 +217,15 @@ async def unsuspend_user(
     user = await service.get_user(user_id)
     user = await service.unsuspend_user(user, admin)
     return AdminUserOut.model_validate(user)
+
+
+@router.post("/payment-entries/{entry_id}/reverse", response_model=PaymentEntryOut)
+async def reverse_payment_entry(
+    entry_id: uuid.UUID, payload: PaymentEntryReverseIn, db: DbSession, admin: RequireAdmin
+) -> PaymentEntryOut:
+    """Section 32 Part 5: an admin correction. Never edits or deletes the original row -- inserts a new
+    reversing entry and recomputes the booking's paid/balance totals from the corrected sum, with an
+    audit-log entry carrying the balance before and after."""
+    ledger = PaymentLedgerService(db)
+    reversal = await ledger.reverse_entry(entry_id, admin=admin, reason=payload.reason)
+    return PaymentEntryOut.model_validate(reversal)

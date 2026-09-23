@@ -1,7 +1,7 @@
 import csv
 import io
 import uuid
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import status
@@ -12,18 +12,20 @@ from app.config import Settings
 from app.errors import AppError, ErrorCode
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.court import Court
+from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
+from app.models.payment_entry import PaymentEntry
 from app.models.stats import SlotStats
 from app.models.user import User
 from app.models.venue import PlanTier, Venue
 from app.services.availability_service import AvailabilityService
 from app.services.payment_service import PaymentService
-from app.utils.timezone import pkt_time_to_utc, pkt_today
+from app.utils.timezone import pkt_date_of, pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
     GrowthOut,
     GrowthSuggestionOut,
+    LedgerEntryOut,
     LedgerOut,
-    LedgerRowOut,
     LedgerSummaryOut,
     PendingApprovalOut,
     TodayCourtOut,
@@ -31,6 +33,9 @@ from app.schemas.owner_dashboard import (
     TodaySlotOut,
     TodaySummaryOut,
 )
+
+# Booked/completed slots whose balance still counts as money owed.
+OUTSTANDING_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED)
 
 REVENUE_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED)
 GROWTH_TIERS = (PlanTier.PRO, PlanTier.BUSINESS)
@@ -179,81 +184,160 @@ class OwnerDashboardService:
             )
         return out
 
-    async def _ledger_bookings(
-        self, owner: User, start_date: date, end_date: date, venue_id: uuid.UUID | None
-    ) -> tuple[list[Booking], dict[uuid.UUID, str]]:
+    async def _sum_entries(self, court_ids: list[uuid.UUID], start_date: date, end_date: date) -> int:
+        """Net PKR recorded (positive entries minus any reversals) for these courts, in a Pakistan-calendar
+        date range -- the building block for the "collected today/this week/this month" headline numbers,
+        which are always "now"-relative and unaffected by whatever filter the entry list below uses."""
+        range_start = pkt_time_to_utc(start_date, time.min)
+        range_end = pkt_time_to_utc(end_date, time.min) + timedelta(days=1)
+        total = await self.db.scalar(
+            select(func.coalesce(func.sum(PaymentEntry.amount_pkr), 0))
+            .join(Booking, Booking.id == PaymentEntry.booking_id)
+            .where(
+                Booking.court_id.in_(court_ids),
+                PaymentEntry.created_at >= range_start,
+                PaymentEntry.created_at < range_end,
+            )
+        )
+        return int(total or 0)
+
+    async def ledger(
+        self,
+        owner: User,
+        start_date: date,
+        end_date: date,
+        venue_id: uuid.UUID | None = None,
+        court_id: uuid.UUID | None = None,
+        method: str | None = None,
+        booking_status: str | None = None,
+    ) -> LedgerOut:
+        if end_date < start_date:
+            raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "end_date must be >= start_date")
         courts = await self._owner_courts(owner, venue_id)
+        if court_id is not None:
+            courts = [c for c in courts if c.id == court_id]
         court_ids = [c.id for c in courts]
         court_names = {c.id: c.name for c in courts}
+
+        today = pkt_today()
+        empty_summary = LedgerSummaryOut(
+            collected_today=0,
+            collected_this_week=0,
+            collected_this_month=0,
+            outstanding_balance=0.0,
+            cancelled_refund_pending=0.0,
+            total_in_range=0,
+            by_court={},
+            by_day={},
+        )
         if not court_ids:
-            return [], court_names
+            return LedgerOut(entries=[], summary=empty_summary)
 
         # Pakistan days: the range the owner picked is in THEIR calendar, so the boundaries are PKT midnights.
         range_start = pkt_time_to_utc(start_date, time.min)
         range_end = pkt_time_to_utc(end_date, time.min) + timedelta(days=1)
-        result = await self.db.execute(
-            select(Booking)
-            .where(Booking.court_id.in_(court_ids), Booking.starts_at >= range_start, Booking.starts_at < range_end)
-            .order_by(Booking.starts_at.asc())
-        )
-        return list(result.scalars().all()), court_names
-
-    async def ledger(
-        self, owner: User, start_date: date, end_date: date, venue_id: uuid.UUID | None = None
-    ) -> LedgerOut:
-        if end_date < start_date:
-            raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "end_date must be >= start_date")
-        bookings, court_names = await self._ledger_bookings(owner, start_date, end_date, venue_id)
-
-        rows = [
-            LedgerRowOut(
-                booking_id=b.id,
-                date=b.starts_at,
-                court=court_names.get(b.court_id, ""),
-                player=b.player_name,
-                source=b.source.value,
-                amount_paid=float(b.amount_paid),
-                balance_due=float(b.balance_due),
-                status=b.status.value,
+        query = (
+            select(PaymentEntry, Booking)
+            .join(Booking, Booking.id == PaymentEntry.booking_id)
+            .where(
+                Booking.court_id.in_(court_ids),
+                PaymentEntry.created_at >= range_start,
+                PaymentEntry.created_at < range_end,
             )
-            for b in bookings
-        ]
+        )
+        if method is not None:
+            query = query.where(PaymentEntry.method == method)
+        if booking_status is not None:
+            query = query.where(Booking.status == booking_status)
+        result = await self.db.execute(query.order_by(PaymentEntry.created_at.asc()))
+        rows = result.all()
 
-        total_revenue = sum(r.amount_paid for r in rows)
-        by_source: Counter[str] = Counter(r.source for r in rows)
-        by_court: dict[str, float] = defaultdict(float)
-        for r in rows:
-            by_court[r.court] += r.amount_paid
-        num_days = (end_date - start_date).days + 1
+        entries: list[LedgerEntryOut] = []
+        running = 0
+        by_court: dict[str, int] = defaultdict(int)
+        by_day: dict[str, int] = defaultdict(int)
+        for entry, booking in rows:
+            running += entry.amount_pkr
+            court_name = court_names.get(booking.court_id, "")
+            by_court[court_name] += entry.amount_pkr
+            by_day[pkt_date_of(entry.created_at).isoformat()] += entry.amount_pkr
+            entries.append(
+                LedgerEntryOut(
+                    entry_id=entry.id,
+                    recorded_at=entry.created_at,
+                    court=court_name,
+                    booking_id=booking.id,
+                    starts_at=booking.starts_at,
+                    player=booking.player_name,
+                    method=entry.method.value,
+                    amount_pkr=entry.amount_pkr,
+                    running_total=running,
+                    booking_status=booking.status.value,
+                )
+            )
+
+        collected_today = await self._sum_entries(court_ids, today, today)
+        week_start = today - timedelta(days=today.weekday())  # Monday-first week
+        collected_week = await self._sum_entries(court_ids, week_start, today)
+        month_start = today.replace(day=1)
+        collected_month = await self._sum_entries(court_ids, month_start, today)
+
+        outstanding = await self.db.scalar(
+            select(func.coalesce(func.sum(Booking.balance_due), 0)).where(
+                Booking.court_id.in_(court_ids),
+                Booking.status.in_(OUTSTANDING_STATUSES),
+                Booking.balance_due > 0,
+            )
+        )
+        refund_pending = await self.db.scalar(
+            select(func.coalesce(func.sum(Booking.amount_paid), 0))
+            .join(PaymentDispute, PaymentDispute.booking_id == Booking.id)
+            .where(Booking.court_id.in_(court_ids), PaymentDispute.resolved.is_(False))
+        )
 
         return LedgerOut(
-            bookings=rows,
+            entries=entries,
             summary=LedgerSummaryOut(
-                total_revenue=round(total_revenue, 2),
-                total_bookings=len(rows),
-                avg_revenue_per_day=round(total_revenue / num_days, 2) if num_days else 0.0,
-                by_source=dict(by_source),
-                by_court={k: round(v, 2) for k, v in by_court.items()},
+                collected_today=collected_today,
+                collected_this_week=collected_week,
+                collected_this_month=collected_month,
+                outstanding_balance=round(float(outstanding or 0), 2),
+                cancelled_refund_pending=round(float(refund_pending or 0), 2),
+                total_in_range=running,
+                by_court=dict(by_court),
+                by_day=dict(by_day),
             ),
         )
 
     async def ledger_csv(
-        self, owner: User, start_date: date, end_date: date, venue_id: uuid.UUID | None = None
+        self,
+        owner: User,
+        start_date: date,
+        end_date: date,
+        venue_id: uuid.UUID | None = None,
+        court_id: uuid.UUID | None = None,
+        method: str | None = None,
+        booking_status: str | None = None,
     ) -> str:
-        ledger = await self.ledger(owner, start_date, end_date, venue_id)
+        ledger = await self.ledger(
+            owner, start_date, end_date, venue_id=venue_id, court_id=court_id, method=method, booking_status=booking_status
+        )
         buf = io.StringIO()
         writer = csv.writer(buf)
-        writer.writerow(["date", "court", "player", "source", "amount_paid", "balance_due", "status"])
-        for row in ledger.bookings:
+        writer.writerow(
+            ["recorded_at", "court", "booking_starts_at", "player", "method", "amount_pkr", "running_total", "booking_status"]
+        )
+        for row in ledger.entries:
             writer.writerow(
                 [
-                    row.date.isoformat(),
+                    row.recorded_at.isoformat(),
                     row.court,
+                    row.starts_at.isoformat(),
                     row.player or "",
-                    row.source,
-                    row.amount_paid,
-                    row.balance_due,
-                    row.status,
+                    row.method,
+                    row.amount_pkr,
+                    row.running_total,
+                    row.booking_status,
                 ]
             )
         return buf.getvalue()
