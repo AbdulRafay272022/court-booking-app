@@ -101,22 +101,41 @@ class OwnerDashboardService:
                     bookings_today.append(b)
         bookings_by_id = {b.id: b for b in bookings_today}
 
+        # `get_day_slots` only considers LIVE_BOOKING_STATUSES (Section 32 Part 9 finding), so once a booking is
+        # checked in or marked no-show its grid cell reverts to "available" -- correct for booking purposes (that
+        # court-time really is free again), but it made the checked-in/no-show record vanish from Today entirely,
+        # defeating "record who and when". Overlay completed/no-show bookings from `bookings_today` (which is NOT
+        # status-filtered) back onto whichever "available" cell they actually cover, the same overlap test
+        # `build_day_slots` itself uses for a live booking.
+        settled_by_court: dict[uuid.UUID, list[Booking]] = defaultdict(list)
+        for b in bookings_today:
+            if b.status in (BookingStatus.COMPLETED, BookingStatus.NO_SHOW):
+                settled_by_court[b.court_id].append(b)
+
         court_outs = []
         for court in courts:
             slots = slots_by_court[court.id]
+            settled = settled_by_court.get(court.id, [])
             slot_outs = []
             for slot in slots:
                 booking = bookings_by_id.get(slot.booking_id) if slot.booking_id else None
+                if booking is None and slot.status == "available" and settled:
+                    booking = next(
+                        (b for b in settled if b.starts_at < slot.ends_at and b.ends_at > slot.starts_at), None
+                    )
+                slot_status = booking.status.value if booking is not None else slot.status
                 slot_outs.append(
                     TodaySlotOut(
                         starts_at=slot.starts_at,
                         ends_at=slot.ends_at,
-                        status=slot.status,
-                        booking_id=slot.booking_id,
+                        status=slot_status,
+                        booking_id=booking.id if booking is not None else slot.booking_id,
                         player_name=booking.player_name if booking else None,
                         amount_paid=float(booking.amount_paid) if booking else None,
                         price=float(booking.price) if booking else None,
                         balance_due=float(booking.balance_due) if booking else None,
+                        checked_in_at=booking.checked_in_at if booking else None,
+                        checked_in_by=booking.checked_in_by if booking else None,
                     )
                 )
             court_outs.append(TodayCourtOut(court_id=court.id, name=court.name, slots=slot_outs))

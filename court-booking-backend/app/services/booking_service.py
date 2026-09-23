@@ -494,6 +494,27 @@ class BookingService:
             )
         return await self._do_check_in(booking, "player")
 
+    async def owner_mark_no_show(self, booking: Booking) -> Booking:
+        """Manual counterpart to the automatic `mark_overdue_no_shows` job
+        (Section 32 Part 9) -- lets an owner flag a no-show as soon as the
+        SAME grace window the job already uses (`NO_SHOW_GRACE_MINUTES`) has
+        passed, instead of silently waiting for the job's next tick. Reuses
+        that one setting rather than introducing a second, different
+        threshold, so a booking never reads as "no-show" to the owner sooner
+        than the automated system would treat it that way."""
+        if booking.status != BookingStatus.BOOKED:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_BOOKING_STATE, "Only booked slots can be marked no-show"
+            )
+        grace = timedelta(minutes=self.settings.NO_SHOW_GRACE_MINUTES)
+        if datetime.now(timezone.utc) < booking.starts_at + grace:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.TOO_EARLY_FOR_NO_SHOW,
+                "Too early to mark this booking as a no-show",
+            )
+        return await self.mark_no_show(booking)
+
     async def mark_no_show(self, booking: Booking) -> Booking:
         if booking.status != BookingStatus.BOOKED:
             raise AppError(
