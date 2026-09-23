@@ -203,3 +203,25 @@ function Row({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+/** Section 32 Part 7 -- tick/warning/cross colors for the five plain-
+ * language checks. "not_available"/"not_configured" are neutral (grey),
+ * never a failure color -- they mean "nothing to compare," not "bad."
+ * Kept in step with mobile's CHECK_COLORS in apps/mobile/app/(owner)/approvals.tsx. */
+const CHECK_COLORS: Record<string, string> = {
+  match: "#1F7A52",
+  mismatch: "#A8432C",
+  warning: "#B8860B",
+  not_available: "#8399A1",
+  not_configured: "#8399A1",
+};
+
+function CheckRow({ check }: { check: { verdict: string; text: string } }) {
+  const color = CHECK_COLORS[check.verdict] ?? "#8399A1";
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: color }} />
+      <span className="flex-1 text-owner-ink text-[13px] leading-[18px]">{check.text}</span>
+    </div>
+  );
+}
