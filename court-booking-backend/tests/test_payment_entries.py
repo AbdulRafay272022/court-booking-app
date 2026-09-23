@@ -311,20 +311,18 @@ async def test_cancelled_bookings_payments_still_appear_in_the_ledger(
     assert any(e["booking_id"] == str(booking.id) and e["booking_status"] == "cancelled" for e in entries)
 
 
-# ---- admin correction: no silent edits/deletes, corrections are reversing entries -------------------------
+# ---- corrections: no silent edits/deletes -- a venue owner can correct their own, an admin any ------------
 
 
-async def test_admin_correction_is_a_reversing_entry_not_an_edit(
+async def test_owner_corrects_their_own_venues_entry_a_reversing_row_not_an_edit(
     client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
 ):
     owner = await make_user("+923070000040", role=UserRole.OWNER)
-    admin = await make_user("+923070000041", role=UserRole.ADMIN)
     player = await make_user("+923070000042", role=UserRole.PLAYER)
     venue = await make_venue(owner)
     court = await _open_court(make_court, make_schedule, make_pricing_rule, venue)
     booking = await _booked(db_session_factory, court, player, price=3500, advance_amount=400)
     owner_headers = await make_auth_headers(owner)
-    admin_headers = await make_auth_headers(admin)
 
     record = await client.post(
         f"/api/v1/bookings/{booking.id}/payment-entries", headers=owner_headers,
@@ -334,8 +332,8 @@ async def test_admin_correction_is_a_reversing_entry_not_an_edit(
     entry_id = record.json()["entry"]["id"]
 
     reverse = await client.post(
-        f"/api/v1/admin/payment-entries/{entry_id}/reverse", headers=admin_headers,
-        json={"reason": "Owner fat-fingered the amount, player only paid the advance"},
+        f"/api/v1/payment-entries/{entry_id}/reverse", headers=owner_headers,
+        json={"reason": "Fat-fingered the amount, player only paid the advance"},
     )
     assert reverse.status_code == 200, reverse.text
     assert reverse.json()["amount_pkr"] == -3500
@@ -351,15 +349,17 @@ async def test_admin_correction_is_a_reversing_entry_not_an_edit(
         assert float(refreshed.balance_due) == 3500.0
 
 
-async def test_only_admin_can_reverse_a_payment_entry(
+async def test_admin_can_correct_any_venues_entry(
     client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
 ):
-    owner = await make_user("+923070000043", role=UserRole.OWNER)
-    player = await make_user("+923070000044", role=UserRole.PLAYER)
+    owner = await make_user("+923070000041", role=UserRole.OWNER)
+    admin = await make_user("+923070000045", role=UserRole.ADMIN)
+    player = await make_user("+923070000046", role=UserRole.PLAYER)
     venue = await make_venue(owner)
     court = await _open_court(make_court, make_schedule, make_pricing_rule, venue)
     booking = await _booked(db_session_factory, court, player)
     owner_headers = await make_auth_headers(owner)
+    admin_headers = await make_auth_headers(admin)
 
     record = await client.post(
         f"/api/v1/bookings/{booking.id}/payment-entries", headers=owner_headers,
@@ -368,9 +368,34 @@ async def test_only_admin_can_reverse_a_payment_entry(
     entry_id = record.json()["entry"]["id"]
 
     resp = await client.post(
-        f"/api/v1/admin/payment-entries/{entry_id}/reverse", headers=owner_headers, json={"reason": "test"}
+        f"/api/v1/payment-entries/{entry_id}/reverse", headers=admin_headers, json={"reason": "platform review"}
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_an_owner_of_a_different_venue_cannot_correct_an_entry(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner = await make_user("+923070000043", role=UserRole.OWNER)
+    other_owner = await make_user("+923070000047", role=UserRole.OWNER)
+    player = await make_user("+923070000044", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await _open_court(make_court, make_schedule, make_pricing_rule, venue)
+    booking = await _booked(db_session_factory, court, player)
+    owner_headers = await make_auth_headers(owner)
+    other_headers = await make_auth_headers(other_owner)
+
+    record = await client.post(
+        f"/api/v1/bookings/{booking.id}/payment-entries", headers=owner_headers,
+        json={"amount_pkr": 100, "method": "cash_at_venue"},
+    )
+    entry_id = record.json()["entry"]["id"]
+
+    resp = await client.post(
+        f"/api/v1/payment-entries/{entry_id}/reverse", headers=other_headers, json={"reason": "test"}
     )
     assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "NOT_YOUR_BOOKING"
 
 
 # ---- walk-ins record a real payment_entries row -------------------------------------------------------

@@ -5,11 +5,12 @@ from fastapi import APIRouter, File, UploadFile, status
 from app.dependencies import AppSettings, CurrentUser, DbSession, RequireOwner
 from app.errors import AppError, ErrorCode
 from app.models.court import Court
+from app.models.payment_entry import PaymentEntry
 from app.models.user import User
 from app.models.venue import Venue
 from app.schemas.booking import BookingOut
 from app.schemas.payment import PaymentOut, PaymentRejectIn, PaymentSubmitResponse, ProofUrlOut
-from app.schemas.payment_entry import PaymentEntryIn, PaymentEntryOut, PaymentEntryResponse
+from app.schemas.payment_entry import PaymentEntryIn, PaymentEntryOut, PaymentEntryResponse, PaymentEntryReverseIn
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
 from app.services.payment_ledger_service import PaymentLedgerService
@@ -220,3 +221,22 @@ async def list_payment_entries(
     ledger = PaymentLedgerService(db)
     entries = await ledger.list_for_booking(booking_id)
     return [PaymentEntryOut.model_validate(e) for e in entries]
+
+
+@router.post("/payment-entries/{entry_id}/reverse", response_model=PaymentEntryOut)
+async def reverse_payment_entry(
+    entry_id: uuid.UUID, payload: PaymentEntryReverseIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+) -> PaymentEntryOut:
+    """Section 32 Part 5: correct a mistaken payment entry. Same accessibility rule as recording one -- a
+    venue owner can correct entries on their own bookings only, an admin can correct any -- checked the same
+    way `record_payment_entry` above does, via `require_accessible_booking`. Never edits or deletes the
+    original row: inserts a reversing entry (see `PaymentLedgerService.reverse_entry`)."""
+    entry = await db.get(PaymentEntry, entry_id)
+    if entry is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Payment entry not found")
+    booking_service = BookingService(db, settings)
+    await booking_service.require_accessible_booking(entry.booking_id, owner)
+
+    ledger = PaymentLedgerService(db)
+    reversal = await ledger.reverse_entry(entry_id, actor=owner, reason=payload.reason)
+    return PaymentEntryOut.model_validate(reversal)

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import AppError, ErrorCode
 from app.models.booking import Booking
 from app.models.payment_entry import PaymentEntry, PaymentMethod
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 
 
@@ -95,11 +95,14 @@ class PaymentLedgerService:
         await self.db.refresh(entry)
         return entry
 
-    async def reverse_entry(self, entry_id: uuid.UUID, *, admin: User, reason: str) -> PaymentEntry:
-        """Admin correction (Section 32 Part 5): never edits or deletes the original row -- inserts a new
-        entry with the opposite amount, linked back via `reverses_entry_id`, and recomputes the booking's
-        totals from the (now-corrected) sum. The audit log entry carries the booking's balance before and
-        after, per the spec's "audit-log entry for every change (who, what, before/after)"."""
+    async def reverse_entry(self, entry_id: uuid.UUID, *, actor: User, reason: str) -> PaymentEntry:
+        """A correction (Section 32 Part 5): never edits or deletes the original row -- inserts a new entry
+        with the opposite amount, linked back via `reverses_entry_id`, and recomputes the booking's totals
+        from the (now-corrected) sum. The audit log entry carries the booking's balance before and after,
+        per the spec's "audit-log entry for every change (who, what, before/after)". Callers must have
+        already checked `actor` may act on this entry's booking (the API layer does this the same way
+        `record_entry`'s caller does, via `BookingService.require_accessible_booking`) -- a venue owner can
+        correct their own venue's entries, an admin can correct any."""
         original = await self.db.get(PaymentEntry, entry_id)
         if original is None:
             raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Payment entry not found")
@@ -113,7 +116,7 @@ class PaymentLedgerService:
             booking_id=booking.id,
             amount_pkr=-original.amount_pkr,
             method=original.method,
-            recorded_by=admin.id,
+            recorded_by=actor.id,
             note=reason,
             reverses_entry_id=original.id,
         )
@@ -123,8 +126,8 @@ class PaymentLedgerService:
         await recompute_payment_totals(self.db, booking)
 
         await self.audit.log(
-            actor_user_id=admin.id,
-            actor_type="admin",
+            actor_user_id=actor.id,
+            actor_type="admin" if actor.role == UserRole.ADMIN else "owner",
             action="payment_entry.reversed",
             entity_type="payment_entry",
             entity_id=original.id,
