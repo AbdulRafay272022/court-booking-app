@@ -19,6 +19,23 @@ been worked so far.
 
 ## START HERE -- handoff as of 2026-09-23 (read this first)
 
+> **UPDATE 2026-09-24: read `docs/SECTION_32_PLAN.md`'s "SESSION HANDOFF (2026-09-24)" section FIRST, before
+> anything below in this file.** Since the 2026-09-23 paragraph below was written, Part 4b was confirmed merged
+> to `main` and deployed (production really is on it -- the confusion that made this worth double-checking is
+> explained in that handoff section), and Parts 5, 9, 10 were built as separate unmerged branches (`section-32-part-5`,
+> `-9`, `-10`, all pushed to `origin`) with Parts 9 and 10 fully verified (real test suites, migrations tested
+> up/down where applicable, live Playwright verification against isolated scratch databases -- never the shared
+> dev DB). **Part 7 (OCR improvements) was stopped mid-build by the owner and pushed as an explicitly-labeled,
+> untested WIP snapshot on `section-32-part-7` (`fea54e5`)** -- review that diff and decide whether to continue
+> or restart it before trusting any of it. Parts 8, 6, 11 are not started. None of Parts 5/9/10/7 are merged into
+> `main` -- the owner's plan is to review all of Parts 5+9+10+7+8+6+11 together as one batch once everything is
+> built, then merge/deploy in one pass. **Another Claude Code session may be open in this same project folder at
+> the same time** -- it was, for at least part of this session, actively using the shared dev DB for Part 5 work.
+> Never assume exclusive access to `court-booking-backend-db-1`/`court_booking_test`; use an isolated scratch
+> Postgres container on a different port for migration testing and live verification instead. Full detail,
+> including the exact branch tips and the mistakes this session had to correct along the way, is in the
+> SESSION HANDOFF section referenced above -- it is more current than everything below it in this file.
+
 **Section 32 Part 4b is backend-tested and frontend-built, on branch `section-32-part-4b`, not merged to
 `main`.** The Docker Desktop/WSL2 wedge from 2026-09-22 (see git history of this file if the story is
 needed) resolved itself after the owner restarted the machine -- `docker ps` came back healthy on

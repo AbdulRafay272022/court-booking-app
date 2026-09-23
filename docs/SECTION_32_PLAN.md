@@ -16,6 +16,65 @@ the progress table, the owner's later additions **verbatim**, and (at the bottom
 `court-booking-backend/CLAUDE.md` (START HERE) and `court-booking-frontend/CLAUDE.md` too. Update this file and the
 progress table after EVERY part.
 
+## SESSION HANDOFF (2026-09-24, read this before touching anything)
+
+**Working method for Parts 5/9/10/7/8/6/11: each part is built independently on its own branch off `main`
+(never off another unmerged part-branch), verified there, pushed to `origin` as a backup branch, and NONE of
+them are merged into `main` yet.** The owner's explicit plan is to review all of them together as one batch
+once everything is built, then merge/deploy in one pass. **Do not merge any of these branches into `main`
+and do not push any of them to `main` without the owner's explicit go**, same standing rule as any migration.
+
+**Real state of each branch, as of this handoff (verify with `git ls-remote --heads origin` and
+`git log <branch> --oneline` before trusting this table -- it decays the moment more work happens):**
+
+| Branch | Tip (short) | Status |
+|---|---|---|
+| `main` | `a70463e` | Deployed to production. Includes Parts 1-2, 3, 4, 4b. |
+| `section-32-part-5` | `32028b7` | Split payments + `payment_entries` ledger, plus a follow-up "Correct a payment" ledger UI. Built in a separate owner-run session, not this one. **Pushed to origin. Not independently re-verified for real test counts/live behavior by this session** -- treat "built" as "built but not yet proven" until someone actually re-runs its suite and live-verifies it, same bar as everything else here. |
+| `section-32-part-9` | `1a815bd` | QR check-in (owner QR display, check-in hub, scan/manual-code entry, player check-in screen, manual no-show endpoint). **Fully verified this session**: real backend suite 484/484 passing, no migration of its own, both frontend apps typecheck clean, live-verified end to end (web Playwright + Expo web) against an isolated scratch Postgres container -- never the shared dev DB. Pushed to origin. |
+| `section-32-part-10` | `8f72ce3` | Manual refunds (no payment gateway). **Fully verified this session**, including a second pass specifically to close a live-UI-verification gap the first pass skipped: real backend suite 485/485 passing (478 baseline + 7 new), migration tested upgrade->downgrade->upgrade on an isolated scratch Postgres container, both frontend apps typecheck clean, and a genuine Playwright click-through of every new screen (pre-cancel refund disclosure, owner's "Refunds to pay" screen incl. double-click idempotency returning a real `409 REFUND_ALREADY_MARKED`, player notification, ledger's new refund row, admin refund-queue overdue flagging) -- no real bugs found, everything already worked. Pushed to origin. Key design decision locked in: `_enforce_cancellation_policy` still hard-blocks a cancel inside the cutoff (unchanged); refund amount is always `booking.amount_paid` whenever a cancel is actually permitted; the spec's "non-refundable advance" test is the zero-paid `payment_review_expired` case, not a forfeit-on-cancel case. Decisions made without asking, flagged: `REFUND_OVERDUE_DAYS = 3`; refund screenshots go to the private S3 bucket (same visibility as payment proofs); Part 5's `payment_entries` dependency was deliberately NOT taken on -- Part 10 adds a plain `refund_amount` field to the existing per-booking ledger row instead, with a note that this should be migrated onto a proper `payment_entries` negative row once Part 5 merges. |
+| `section-32-part-7` | `fea54e5` | OCR improvements. **STOPPED MID-BUILD BY THE OWNER, UNTESTED.** A background build was in progress (payment model/schema fields for payer name/bank-wallet/receiver-tail, migration `a3f9c6e2d174`, vision-provider prompt/schema rework across all three providers, expanded `payment_service` checks, new/expanded tests, a partial web approvals-card update, mobile edit just started) when the owner asked to stop for this handoff. The in-flight working-tree changes were committed as a single, explicitly-labeled WIP commit (`fea54e5`, message starts "WIP Section 32 Part 7 (OCR improvements) -- STOPPED MID-BUILD, UNTESTED") and pushed to origin purely so the work isn't lost on one machine -- **nothing in it has been run, tested, or verified.** Read the two OCR spec blocks in this file (the original "Part 7" bullets further down, and the "Part 7 update" block below in Owner's additions, which explicitly supersedes the original where they differ) before deciding whether to continue this branch's diff or restart it clean off `main`. Either is fine; just decide deliberately after reading the diff, don't assume it's usable as-is. |
+| `section-32-part-8`, `section-32-part-6`, `section-32-part-11` | -- | Not started. No branches exist yet. |
+
+**Lessons this session had to (re-)learn the hard way -- read these before repeating the mistakes:**
+1. **Never trust a prose summary of git state (including one written by a previous Claude session or by yourself
+   earlier in the same conversation) over actually running `git fetch origin`, `git log <ref> --oneline`, and
+   `git ls-remote --heads origin`.** This session's own first status report claimed Part 4b was "not merged, nothing
+   pushed" when it had in fact already been merged and deployed -- the error came from reading this file's stale
+   prose instead of checking git directly. It also initially missed a real `Migration-Go: owner-approved` line in a
+   commit body because a broad `git log --oneline` search only scans the one-line subject, not the full message body
+   (`%B`) -- search the full body when checking for that line.
+2. **A branch that "should" be empty or fresh might not be** -- `section-32-part-5` and `section-32-part-9` both
+   turned out to already have real, complete, untested-by-this-session work sitting on them locally when this
+   session assumed otherwise. Always `git log <branch> --oneline main..<branch>` before starting "fresh" work on
+   any named branch.
+3. **This project may have more than one Claude Code session open in the same folder at once.** They share the
+   same Docker containers and the same dev Postgres database (`court-booking-backend-db-1`, port 5433,
+   `court_booking_test`/dev `court_booking`). Never assume exclusive access. For any migration testing or live
+   verification, stand up an **isolated scratch Postgres container on a different port** (this session used names
+   like `court-booking-scratch-part7`, ports 5555/5556/etc. -- pick an unused one) instead of touching the shared
+   dev DB, and tear it down when done. If `alembic check`/`alembic current` on the shared dev DB fails with
+   "can't locate revision X," that usually means the OTHER session upgraded the shared DB to a migration your
+   currently-checked-out branch doesn't have (not a bug in your branch) -- diagnose before assuming your own work
+   broke something.
+4. **Docker Desktop can go fully unreachable** (`failed to connect to the docker API at
+   npipe:////./pipe/dockerDesktopLinuxEngine`) and needs a manual restart
+   (`Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"`, then poll `docker ps` until it responds,
+   then poll each container's `docker inspect --format='{{.State.Health.Status}}'` until `healthy`) -- ask the
+   project owner before doing this if another session might be mid-task, since restarting Docker Desktop restarts
+   every container, including whatever the other session depends on.
+5. **A background build agent can crash on a pure infrastructure error** (this session hit one API-server DNS
+   failure) with zero code-level cause -- check `git status`/`git diff --stat` and `docker ps -a` for leftover
+   partial work or orphaned scratch containers before assuming a crash means lost work or a broken environment;
+   a clean crash before any file write leaves no residue at all.
+6. **"Already built" always means "built but not yet proven" in this project, regardless of who built it or when**
+   -- re-run the real test suite, re-run `alembic check`/migration up-down, re-typecheck, and re-live-verify before
+   trusting any commit message's own claimed numbers, including this session's own earlier claims.
+7. **Every push to `main` deploys** (see the WARNING at the top of this file) -- even a docs-only commit with no
+   migration triggers a real production redeploy of (functionally identical) application code. This project's own
+   history already does this routinely for doc updates, so it isn't treated as unusually risky, but it is still a
+   real, visible action on shared infrastructure -- mention it plainly rather than pushing to `main` silently.
+
 ## Working rules (from the owner)
 
 - **One part at a time.** After each part: update this file and the progress table, commit, report in plain English with
@@ -93,10 +152,10 @@ ledger) -> **Part 9** (QR check-in) -> **Part 10** (refunds) -> **Part 7** (OCR,
 | 4 | Per-court slot length and pricing, per-venue cancellation, duration picker, closed/booked labels | **Deployed 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` ran from the new image before the new backend started** (backfilled venue policy, added `no_overlapping_live_bookings`; 8 existing bookings satisfied it; `alembic check` clean). The owner chose to rely on the AUTOMATED RDS snapshot of 1:08 AM PKT (no manual one was visible). Live venue policy stays "not allowed". Mobile changes need an EAS build. Docs commit after it is local, **pending push (goes out with the next deploy)**. |
 | 3 | Overnight courts (`closes_next_day`) | **DEPLOYED 2026-09-22 as `87de0ef4b234`; migration `68d7e3464f30` ran from the new image before the backend restarted** (14 schedule rows, 7 live + 7 old inactive, unchanged and valid; head `68d7e3464f30`; `alembic check` clean). The owner said GO and again chose the AUTOMATED RDS snapshot (2026-09-21 20:08 UTC; no manual one was visible). Verified on production with a rollback-only overnight proof (12-slot 3 PM-3 AM grid, 11 PM-1 AM quote PKR 6,000, row counts unchanged). Mobile needs an EAS build. Design and migration notes below. |
 | 4b | Player venue page redesign | **Backend confirmed working (2026-09-23): Docker/WSL2 was back up, one clean `pytest` run passed 478/478 (incl. all 14 `test_month_summary.py` tests), migration `de11b783f108` applied to the local dev DB with `alembic check` clean.** Frontend built on both web and mobile per the calendar-first "Part 4b UPDATE" design below: per-sport tabs, each court's own always-visible month calendar (open/few/full/closed dots, today filled, past/beyond-horizon days greyed), tapping a date opens a popup scoped to that court (dialog on web >=768px / bottom sheet below it and on mobile) with a Monday-first week strip, that day's slot list, and a back arrow to a month view inside the popup. Live-verified with Playwright against the real local backend on the web production build (1200px and 390px) and the Expo web target signed in as a real player -- sport tabs, calendar dots, popup open/close/back-to-month, no console errors. **All on branch `section-32-part-4b`, not merged to `main`, nothing pushed, migration not tested for downgrade yet, mobile needs an EAS build to reach real phones.** Owner to review before merging or moving to Part 5. |
-| 5 | Split payments + `payment_entries` ledger | Not started |
-| 9 | QR check-in (below) | Not started |
-| 10 | Refunds, manual (below) | Not started |
-| 7 | OCR improvements (updated rules below) | Not started |
+| 5 | Split payments + `payment_entries` ledger | **Built on branch `section-32-part-5` (`32028b7`), pushed to origin, not merged.** Built in a separate owner-run session; not independently re-verified by this session -- see SESSION HANDOFF above. |
+| 9 | QR check-in (below) | **Built and fully verified on branch `section-32-part-9` (`1a815bd`), pushed to origin, not merged.** Real 484/484 backend tests, live-verified end to end on an isolated scratch DB. See SESSION HANDOFF above. |
+| 10 | Refunds, manual (below) | **Built and fully verified on branch `section-32-part-10` (`8f72ce3`), pushed to origin, not merged.** Real 485/485 backend tests, migration tested up/down, live Playwright-verified including a fix-verification pass. See SESSION HANDOFF above. |
+| 7 | OCR improvements (updated rules below) | **STOPPED MID-BUILD on branch `section-32-part-7` (`fea54e5`), pushed to origin as an explicitly-labeled WIP/untested snapshot, not merged.** Next session must review the diff and decide continue-vs-restart before trusting any of it. See SESSION HANDOFF above. |
 | 8 | WhatsApp/Gemini prompts. Findings queued: AI money "PKR 3,500"; never invent a reason for an unavailable slot ("fixed 90-minute blocks" when it was simply booked); only say what the tool returned | Not started |
 | 6 | Photos and reviews | Not started |
 | 11 | Screen audit, incl. the owner dashboard's fixed sidebar overflowing below ~600px (owners are on phones) | Not started |

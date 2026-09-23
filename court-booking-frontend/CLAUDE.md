@@ -20,6 +20,18 @@ backend-adjacent.
 
 ## START HERE
 
+> **UPDATE 2026-09-24:** read `../docs/SECTION_32_PLAN.md`'s "SESSION HANDOFF (2026-09-24)" section and the
+> backend `CLAUDE.md`'s matching update FIRST -- they cover the current state of Parts 5/9/10/7 (each on its
+> own unmerged branch, pushed to `origin`, none merged into `main` yet) and the mistakes this session had to
+> correct along the way. Frontend-relevant summary: `section-32-part-9` (pushed, fully verified) added real
+> QR check-in screens on both platforms (web `dashboard/owner/checkin/{qr,page,manual}.tsx`, mobile
+> `(owner)/checkin{-qr,-scan,}.tsx`, player `booking/[id]/checkin.tsx` on both); `section-32-part-10` (pushed,
+> fully verified) added a manual-refunds "Refunds to pay" screen on both platforms (web
+> `dashboard/owner/refunds/`, mobile `(owner)/refunds.tsx`) plus a pre-cancel refund disclosure and a new
+> ledger refund row/column; `section-32-part-7` (OCR improvements) was stopped mid-build and pushed as an
+> explicitly-labeled, untested WIP snapshot -- its frontend diff only reached a partial web approvals-card
+> update before stopping, review before continuing. None of this is on `main` yet.
+
 **Read `../court-booking-backend/CLAUDE.md`'s "START HERE -- handoff" section first**: it has the current
 production state, the prioritised open-items list, how to read production logs (`../court-booking-backend/RUNBOOK.md`
 section 4) and the working rules that apply to this side too. Frontend-specific pointers:
