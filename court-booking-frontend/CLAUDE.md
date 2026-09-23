@@ -863,6 +863,71 @@ local dev DB with `alembic check` clean (see the backend CLAUDE.md's START HERE)
   the migration's downgrade path was not re-tested this session; this is all on a feature branch, not
   merged to `main`, and nothing was pushed.
 
+## Section 32, Part 9 -- QR check-in (2026-09-23, branch `section-32-part-9`, not merged)
+
+Owner Check-in/Mark no-show on Today, a venue-QR display + scan/manual-code hub, and a player check-in
+screen. Built off `main` (not off `section-32-part-5`, per the owner's instruction to keep the remaining
+Section 32 parts independent until a final integration pass). Live-verified against the real local
+backend (production web build) -- not just typechecked. Backend confirmed first: 484/484 backend tests
+(see the backend CLAUDE.md's START HERE for the full writeup, including a real currently-live Today bug
+this part found and fixed).
+
+- **New native deps, mobile only**: `expo-camera` (real QR scanning, `CameraView` + `barcodeScannerSettings`)
+  and `react-native-qrcode-svg` (renders on top of the already-installed `react-native-svg`, no new native
+  linking beyond the camera plugin). `app.json` gained the `expo-camera` plugin with a permission message.
+  **Needs a new EAS build to verify on a real device** -- same standing limitation as every other
+  camera/native feature in this repo; not testable through the Expo-web loop the rest of this project's
+  screens are verified through.
+- **Web deliberately has no live camera scanning** -- `qrcode.react` (QR display only) was added instead.
+  A laptop at a front desk isn't the realistic device for scanning a phone screen; the owner's `/dashboard/
+  owner/checkin` hub says so and points to the mobile app for that. This is a scope decision, flagged here
+  rather than silently made.
+- **New shared code**: `packages/types/src/datetime.ts` gained `selfCheckinWindow(startsAt, now)` -- the
+  player's self-check-in window is ~15 minutes before to 15 minutes after a booking's start; returns
+  `{isOpen, message}` with a human message ("You can check in starting at 7:15 PM." / "Check-in for this
+  booking closed at 7:15 PM.") for the disabled state, never just hiding the option with no explanation.
+  This is a UI gate only -- the server doesn't enforce this window (only the venue token itself), matching
+  this codebase's existing "flag, don't silently block" convention (the backend's implausible-check-in-time
+  flag works the same way). New unit tests, run clean under 3 device timezones like the rest of that file.
+  `packages/api-client/src/bookings.ts` gained `checkinSelf`/`noShow`; `packages/types/src/booking.ts` and
+  `owner.ts` gained `checked_in_by`; `venue.ts` gained `checkin_qr_token` (owner/admin-only, same visibility
+  rule as `bank_details`); `errors.ts` gained `INVALID_CHECKIN_CODE`/`TOO_EARLY_FOR_NO_SHOW` (both apps'
+  `error-messages.ts` map them to plain text).
+- **Today (both platforms)**: booked rows gained "Check in" / "No-show" buttons (calling the tested
+  `checkin`/`noShow` endpoints, invalidating `owner-today` on success); a checked-in row now shows "Checked
+  in 7:05 PM · owner" and a no-show row shows "No-show" instead of silently reverting to "Open" -- this
+  silent-revert was the real bug found and fixed on the backend side (see backend CLAUDE.md). A "Check-in
+  tools" entry point was added next to the existing icon row / header actions.
+- **Owner check-in hub**: mobile `(owner)/checkin.tsx` (two cards) -> `checkin-qr.tsx` (the venue's QR,
+  `react-native-qrcode-svg`) and `checkin-scan.tsx` (`expo-camera` scan of a player's booking QR, or a
+  manual booking-code text field, calling the same `POST /bookings/{id}/checkin` Today's own button uses --
+  no new backend logic). Web `/dashboard/owner/checkin` -> `/checkin/qr` (`qrcode.react`, with a `window
+  .print()` button and print-only CSS so the chrome disappears and just the venue name + code print) and
+  `/checkin/manual` (the same manual-code path, web's only "scan" equivalent).
+- **Player check-in screen**: mobile `(player)/booking/[id]/checkin.tsx`, web `/booking/[id]/checkin`. Two
+  halves: (1) the booking's own QR (its plain booking id, nothing encrypted or signed -- the backend
+  endpoint's own access control is the real guard, same as scanning does no extra validation beyond
+  `require_accessible_booking`) for venue staff to scan, shown any time the booking is `booked`, no window;
+  (2) "scan the venue's QR yourself" / a manual venue-code field, gated by `selfCheckinWindow` -- disabled
+  with the human message outside the window, calling `checkinSelf`. Once `checked_in_at` is set, the screen
+  shows a simple confirmed state instead. Linked from a new "Check in" action on each `booked` card in My
+  Bookings (both platforms).
+- **Live-tested, not just typechecked**: seeded a throwaway owner/player/venue/court with three bookings
+  directly via the DB (argon2-hashed passwords) -- signed in as the owner on the real web login, clicked
+  Check in on Today and confirmed the row updated to "Checked in ... · owner" with the No-show button gone
+  (verified with a row-scoped DOM check after a page-wide `.first()` assertion gave one false failure by
+  matching a *different*, still-booked row's own No-show button -- a test-script bug, not a product bug,
+  confirmed by re-checking); checked a second booking in via the manual-code page and confirmed Today
+  reflected it; confirmed the venue-QR page renders a real SVG code with the venue's name; signed in as the
+  player and confirmed the check-in screen shows "You're checked in" for the owner-checked-in booking, and
+  shows its own QR plus the disabled-with-message state for a booking starting 3 hours out (outside the
+  window). All throwaway data and scripts deleted afterward.
+- **Not done**: mobile needs a new EAS build to reach real phones (standing item); this is all on a feature
+  branch, not merged to `main`, and nothing was pushed. Camera scanning itself (both the owner's
+  player-QR scan and the player's venue-QR scan) is code-reviewed and typechecks but **not device-tested**
+  -- no physical device or emulator in this environment, same limitation as every other camera/native
+  feature in this project.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

@@ -19,6 +19,51 @@ been worked so far.
 
 ## START HERE -- handoff as of 2026-09-23 (read this first)
 
+**Section 32 Part 9 (QR check-in) is backend-tested and frontend-built, on branch `section-32-part-9`
+(off `main`, independent of the other in-flight part branches per the owner's instruction), not merged.**
+484/484 backend tests pass (478 + 6 new). Most of the backend already existed from earlier sessions
+(`Venue.checkin_qr_token`, `POST /bookings/{id}/checkin` owner-scan, `POST /bookings/{id}/checkin/self`
+player self-scan requiring the venue's token, the automatic `mark_overdue_no_shows` cron job) -- this
+part added:
+- **`POST /bookings/{id}/no-show`** (`BookingService.owner_mark_no_show`): a manual counterpart to the
+  automatic job, since the spec says "owner marks it" and no manual path existed. Refuses with a new
+  `TOO_EARLY_FOR_NO_SHOW` until `NO_SHOW_GRACE_MINUTES` (the SAME setting the automatic job already uses)
+  has passed since `starts_at` -- deliberately reuses that one threshold rather than inventing a second,
+  different window, so the manual button and the automatic job can never disagree about when a booking
+  counts as a no-show.
+- **A real, currently-live bug found and fixed**: `AvailabilityService._blackouts_and_bookings` only
+  queries `LIVE_BOOKING_STATUSES` (held/payment_submitted/booked), so once a booking is checked in
+  (`completed`) or auto-marked `no_show`, its grid cell reverts to "available" -- correct for booking
+  purposes (that court-time really is free again), but it means the checked-in/no-show record silently
+  VANISHES from the owner's Today screen, defeating "record who and when". **This has been live in
+  production since the automatic no-show job was wired into the cron entrypoint** (the FCM push pass) --
+  every real no-show since then has been invisible on Today, reverting to "Open" with an "Add booking"
+  button as if nothing happened. Fixed in `owner_dashboard_service.today()`: completed/no-show bookings
+  from the (not status-filtered) `bookings_today` query are overlaid back onto whichever "available" cell
+  they actually cover, using the same overlap test `build_day_slots` itself uses for a live booking.
+  `TodaySlotOut` gained `checked_in_at`/`checked_in_by` so the UI can show who checked a booking in and
+  when. Two new tests confirm both directions (a checked-in booking shows `completed` + the timestamp; a
+  no-show booking shows `no_show`, not `available`).
+- Frontend (both platforms, see the frontend CLAUDE.md's Part 9 entry for the full design): Check-in /
+  Mark no-show buttons directly on Today's booked rows (the primary path), plus a "Check-in tools" hub
+  with a venue-QR display screen and a scan/manual-code screen for a busier front-desk flow, and a player
+  check-in screen (own booking QR to show staff, self-scan of the venue's QR gated to a ~15-minute window
+  via a new shared `selfCheckinWindow` helper in `packages/types`, with a manual code fallback). Mobile
+  gets real camera scanning (`expo-camera` + `react-native-qrcode-svg`, new native deps -- needs an EAS
+  build to verify on a device, the same standing limitation as every other native feature in this repo);
+  web deliberately gets QR display + manual code entry only, no live camera (a laptop front desk isn't the
+  realistic device for scanning -- flagged as a scope decision, not silently decided).
+- **Live-verified** against the real local backend + a production web build (not just typechecked or unit
+  tested): a seeded owner/player/venue/court with 3 bookings -- clicked Check in on Today and confirmed the
+  slot flipped to "Checked in H:MM AM · owner" with the No-show button gone from that row (confirmed with a
+  row-scoped check, not just a page-wide one, after an early page-wide assertion gave a false failure by
+  matching a *different*, still-booked row's own No-show button); checked in a second booking via the
+  manual-code page and confirmed Today reflected it; confirmed the player's own check-in page shows
+  "You're checked in" for the owner-checked-in booking, and shows its own QR plus the
+  "You can check in starting at ..." message (disabled code field) for a booking starting outside the
+  15-minute window. The `selfCheckinWindow` helper itself has dedicated unit tests run under 3 device
+  timezones. All test data and scratch scripts deleted afterward.
+
 **Section 32 Part 4b is backend-tested and frontend-built, on branch `section-32-part-4b`, not merged to
 `main`.** The Docker Desktop/WSL2 wedge from 2026-09-22 (see git history of this file if the story is
 needed) resolved itself after the owner restarted the machine -- `docker ps` came back healthy on
