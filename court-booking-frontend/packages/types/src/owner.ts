@@ -55,6 +55,8 @@ export interface LedgerRow {
   amount_paid: number;
   balance_due: number;
   status: string;
+  /** Section 32 Part 10: negative, present only once a refund on this booking was actually marked paid. */
+  refund_amount: number | null;
 }
 
 export interface LedgerSummary {
@@ -85,6 +87,25 @@ export interface GrowthSuggestion {
 export interface Growth {
   underbooked_slots: GrowthSuggestion[];
   computed_at: string;
+}
+
+/** GET /owners/refunds -- Section 32 Part 10's owner-facing "Refunds to pay" screen. */
+export interface OwnerRefund {
+  id: string;
+  booking_id: string;
+  court_name: string;
+  venue_name: string;
+  player_name: string | null;
+  player_phone: string | null;
+  starts_at: string;
+  reason: string;
+  refund_amount: number;
+  refund_status: "owed" | "refunded";
+  refunded_amount: number | null;
+  refund_reference: string | null;
+  refunded_at: string | null;
+  created_at: string;
+  is_overdue: boolean;
 }
 
 /** GET /owners/digest */
