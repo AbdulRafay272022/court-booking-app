@@ -19,41 +19,63 @@ been worked so far.
 
 ## START HERE -- handoff as of 2026-09-23 (read this first)
 
-**Section 32 Part 4b is backend-tested and frontend-built, on branch `section-32-part-4b`, not merged to
-`main`.** The Docker Desktop/WSL2 wedge from 2026-09-22 (see git history of this file if the story is
-needed) resolved itself after the owner restarted the machine -- `docker ps` came back healthy on
-2026-09-23 and one clean `pytest` run (no concurrent run) passed 478/478, including all 14
-`tests/test_month_summary.py` tests. Migration `de11b783f108` was applied to the local dev DB (not
-production) with `alembic check` clean afterwards.
+**Section 32 Part 4b is deployed to production** (`a70463ef7dc3`; migration `de11b783f108` ran clean,
+`alembic check` clean, verified live on `https://3.6.48.6.sslip.io/venues/maidan-court`). Its first deploy
+attempt was blocked by an unrelated bug in `infra/scripts/check-migration-guard.sh` (a `grep -q` +
+`set -o pipefail` interaction: `grep -q` exits the instant it finds a match, which can leave the upstream
+`tr` mid-write when the pipe closes, and under `pipefail` that SIGPIPE becomes the pipeline's exit status
+even though grep itself found the approval line -- confirmed deterministic with a real Ubuntu 24.04
+container, 5/5 either way) -- fixed by capturing `git log`'s output into a variable before grepping it
+(commit `a70463e`, script-only, no `Migration-Go` line needed since no migration file was touched). If a
+future migration push gets blocked despite a correct `Migration-Go` line, this class of bug is the first
+thing to check.
 
-**What backend Part 4b shipped (all confirmed working, not just written):**
-- Migration `de11b783f108` (after `68d7e3464f30`): `venues.booking_horizon_days` (int, 1-365, default 90;
-  CHECK `valid_booking_horizon`) -- how many days ahead a player may book at that venue; an owner's
-  walk-in is not limited by it.
-- `AvailabilityService`: `build_day_slots` (pure, takes already-loaded data) split out of `get_day_slots`
-  so the day view and the new month summary share identical grid code; `month_summary(court,
-  month_first, booking_horizon_days)` (4 queries for the whole month, not one set per day) returns a
-  `DaySummaryOut` per day with `state` past/beyond/closed/full/few/open, `open_slots`, `total_slots`, plus
-  `starts_from_price` and `last_bookable_date`; `require_within_horizon` (raises `BOOKING_TOO_FAR`) is
-  called from `quote_range` (so the quote endpoint, the hold, and the AI all obey the horizon) but NOT
-  from `price_for_range_with_advance` (the walk-in path -- deliberately unlimited).
-- Endpoint `GET /courts/{id}/availability/summary?month=YYYY-MM` (`CourtMonthSummaryOut`), cached
-  `public, max-age=30` -- confirmed live against real local data (`twin-court-club`, seeded before this
-  session), not just by the test suite.
-- Not yet done: the migration's downgrade path was not re-tested this session (only a clean upgrade +
-  `alembic check`); re-test up/down/up on a scratch DB before this ever touches production, per the
-  standing migration rules above.
+**Section 32 Part 5 (split payments + the `payment_entries` ledger) is backend-done and rigorously
+tested, on branch `section-32-part-5`, not merged to `main`.** 493/493 backend tests pass (478 + 15 new in
+`tests/test_payment_entries.py`). What it shipped:
+- New table `payment_entries` (append-only: `booking_id`, `amount_pkr` -- whole PKR, a negative value is
+  an admin correction reversing an earlier row via `reverses_entry_id` -- `method`, `recorded_by`, `note`).
+  `bookings.amount_paid`/`balance_due` are no longer set directly anywhere; `confirm_booking` and
+  `create_walkin` now insert a payment_entries row and call `payment_ledger_service.recompute_payment_totals`
+  instead, which is the ONLY place those two columns are written.
+- `courts.advance_type`/`advance_value`/`advance_minimum` (nullable): a fixed PKR amount or a percentage,
+  with an optional minimum floor, set per court. Null `advance_type` falls back to the matched
+  `pricing_rule.advance_percentage` (unchanged pre-Part-5 behavior) -- `AvailabilityService.compute_advance`
+  is the one place this is computed, feeding `build_day_slots` and therefore every quote/hold.
+  `GET/PATCH /courts/{id}` already accepted arbitrary field updates, so no new endpoint was needed there.
+- `PaymentLedgerService.record_entry` (owner records a balance payment; `POST /bookings/{id}/payment-entries`)
+  row-locks the booking (`SELECT ... FOR UPDATE`) before checking the balance and inserting -- the same
+  concurrency concern `payment_service._claim_review` solves for approve/reject, solved differently here
+  because the invariant is a running SUM across child rows, not one column. Refuses to record more than the
+  balance due (`PAYMENT_EXCEEDS_BALANCE`). `PaymentLedgerService.reverse_entry` (admin correction,
+  `POST /admin/payment-entries/{id}/reverse`) inserts a reversing entry and recomputes -- never edits or
+  deletes. Both audit-logged with before/after.
+- The ledger (`OwnerDashboardService.ledger`) is now one row per PAYMENT, not per booking, keyed by
+  `payment_entries.created_at` (when the money was recorded), not the booking's slot time -- this was a
+  deliberate semantic fix, not just a reshape: a financial ledger should read by when cash moved. Summary:
+  collected today/this week/this month (always "now"-relative, independent of the selected filter range),
+  outstanding_balance (booked/completed slots with balance_due > 0), cancelled_refund_pending (paid
+  bookings with an unresolved `payment_disputes` row), by_court, by_day. New filters: `court_id`, `method`,
+  `booking_status` (server-side now -- the old client-side `filterLedgerByCourt` workaround in the frontend
+  api-client is gone, since the real gap it worked around, a missing server-side court filter, no longer
+  exists).
+- Migration `0e808ff86785`: backfills one payment_entries row per existing booking with `amount_paid > 0`
+  (method inferred from `source`: walkin -> cash_at_venue, else -> bank_transfer_proof), confirmed
+  zero-mismatch against every booking's `amount_paid` afterward. Tested upgrade AND downgrade on a scratch
+  DB seeded with production-shaped data (an app-paid booking, a walk-in-paid booking, an unpaid held
+  booking, a court-level advance rule, a correction/reversal entry) -- downgrade drops both additions
+  cleanly and leaves `bookings.amount_paid`/`balance_due` completely untouched (already independent
+  columns); full up-down-up cycle clean, `alembic check` clean both times. **A real bug was caught and
+  fixed during this testing**: the backfill's `CASE WHEN ... END` needed an explicit `::payment_method`
+  cast, or Postgres rejects it as a type mismatch -- caught on the very first local-dev upgrade attempt,
+  before it ever went near a scratch DB or production.
 
-**Frontend Part 4b (calendar-first, both web and mobile) is built and live-verified**, not just
-typechecked: per-sport tabs (hidden for a single-sport venue, defaulting from `?sport=` or the venue's
-first sport -- both search pages now pass `?sport=` to the venue link), each active court renders its own
-always-visible month calendar (green/amber/red/hollow dots, today filled, past/beyond-horizon days greyed
-and not tappable, prev/next capped at the venue's horizon), tapping a date opens a popup scoped to that
-one court (centered dialog on web >=768px, bottom sheet below it and on mobile) with a Monday-first week
-strip, that day's slot list, and a back arrow to a month view inside the popup without closing it. See
-the frontend CLAUDE.md's own Part 4b entry for the full file list and how it was verified (Playwright
-against the real backend, not mocks). Screenshots were shown to the owner directly, not committed to the
-repo. Nothing pushed; no `Migration-Go` line added; production untouched.
+**Frontend Part 5 is built and live-verified** against the real local backend (owner "Record payment" on
+Today, the rewritten per-payment Ledger with the new summary tiles, a per-court advance-rule card in Venue
+Settings) -- see the frontend CLAUDE.md's own Part 5 entry. **Not built**: a dedicated admin UI for
+`reverse_entry` (the backend endpoint is done and tested; reachable via `/docs` for now, matching this
+project's existing pattern for exceptional admin actions -- flagged, not silently decided). Nothing pushed;
+no `Migration-Go` line added; production untouched.
 
 The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in
 Roman Urdu; answer in plain English, keep it short, and **verify before claiming** (they were burned

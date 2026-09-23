@@ -804,7 +804,7 @@ owner hours accept close <= open (`hoursKind`: same-day / next-day / 24-hours) w
 `weeklyHoursError` refuses an overnight day that runs into the next day's opening, and `slotPreview` counts across midnight.
 Duration choices need no change (contiguity is by `ends_at == next starts_at`). Tests: `court-setup.test.ts`.
 
-## Section 32, Part 4b -- calendar-first venue page (2026-09-23, branch `section-32-part-4b`, not merged)
+## Section 32, Part 4b -- calendar-first venue page (2026-09-23, DEPLOYED as `a70463ef7dc3`)
 
 Replaces the old page-level week strip + side-by-side court slot lists with the owner's "Part 4b UPDATE"
 design in `../docs/SECTION_32_PLAN.md`: per-sport tabs, each court's own always-visible month calendar, a
@@ -862,6 +862,68 @@ local dev DB with `alembic check` clean (see the backend CLAUDE.md's START HERE)
 - **Not done**: mobile needs a new EAS build to reach real phones (standing item, unrelated to this part);
   the migration's downgrade path was not re-tested this session; this is all on a feature branch, not
   merged to `main`, and nothing was pushed.
+
+## Section 32, Part 5 -- split payments + the payment_entries ledger (2026-09-23, branch `section-32-part-5`, not merged)
+
+Owner "Record payment" action, the ledger rewritten as one row per PAYMENT with real summary numbers, and
+a per-court advance-rule card in Venue Settings. Built on both `apps/mobile` and `apps/web`, live-verified
+against the real local backend (production web build) signed in as a real seeded owner -- not just
+typechecked. Backend confirmed first: 493/493 backend tests and a full migration up/down/up cycle on a
+scratch DB (see the backend CLAUDE.md's START HERE for the full writeup).
+
+- **New shared package code**: `packages/types/src/payment-entry.ts` (`PaymentEntry`, `PaymentMethod`,
+  `RecordPaymentEntryInput`, `PaymentEntryResult`); `packages/types/src/owner.ts`'s `Ledger` reshaped from
+  `{bookings, summary}` (booking-scoped) to `{entries, summary}` (payment-scoped) -- `LedgerEntry` has
+  `recorded_at`/`method`/`amount_pkr`/`running_total`/`booking_status` per row, `LedgerSummary` gained
+  `collected_today`/`collected_this_week`/`collected_this_month`/`outstanding_balance`/
+  `cancelled_refund_pending`/`total_in_range` alongside `by_court`/`by_day`; `packages/types/src/court.ts`'s
+  `Court`/`CreateCourtInput` gained `advance_type`/`advance_value`/`advance_minimum`.
+  `packages/api-client/src/owners.ts`'s `ledger()`/`ledgerExportCsv()` now take a `LedgerFilters` object
+  (`venueId`/`courtId`/`method`/`bookingStatus`) sent as real server-side query params -- the old
+  `filterLedgerByCourt`/`ledgerRowsToCsv` client-side-filtering workaround is gone (the backend now has a
+  real `court_id` param, the actual gap that workaround existed for). `packages/api-client/src/payments.ts`
+  gained `recordEntry`/`listEntriesForBooking`/`reverseEntry`.
+- **`RecordPaymentSheet`** (`apps/mobile/components/record-payment-sheet.tsx`,
+  `apps/web/components/owner/record-payment-sheet.tsx`): amount + method (cash/bank transfer/other) + an
+  optional note, wired into a new "RECORD PKR X" action on the owner Today screen's booked-with-a-balance
+  slots (both platforms) -- tapping it opens the sheet pre-filled with the full balance, submits via
+  `api.payments.recordEntry`, and invalidates `owner-today` on success. The submit button disables
+  client-side when the typed amount exceeds the balance (the server is still the real guard, per the
+  backend's row-locked `record_entry`).
+- **Ledger rewritten** (`apps/mobile/app/(owner)/ledger.tsx`, `apps/web/app/dashboard/owner/ledger/page.tsx`):
+  three summary tiles (collected today/this week/this month) above the existing range/court filters, an
+  "outstanding balance" and "cancelled refund pending" line when either is nonzero, and the row list now
+  shows one row per payment_entries row (method badge, a negative amount rendered as a red "CORRECTION").
+  Court filtering is a real query param now, not client-side.
+- **`AdvanceRuleFields`** (`apps/mobile/components/court-setup-fields.tsx`,
+  `apps/web/components/setup/advance-rule-fields.tsx`): a new "Advance payment" card in Venue Settings,
+  per court -- Default (from pricing) / Fixed amount / Percentage chips, an amount or percentage field,
+  and an optional minimum floor. Wired into `CourtSettingsForm`'s existing save flow (both platforms),
+  sent via the same `api.courts.update` PATCH the slot-length/hours/pricing fields already use (no new
+  endpoint needed -- `CourtUpdateIn`'s `exclude_unset` pattern on the backend already applies whatever
+  fields are sent).
+- **My Bookings and the pay screen needed no changes** -- both already read `booking.amount_paid`/
+  `balance_due` directly, which are unchanged in shape; Part 5 only changed how those two columns get
+  written server-side (always from `payment_entries` now), not what they mean to a client.
+- **A real, pre-existing bug surfaced during Part 4b verification recurred and was confirmed unrelated to
+  Part 5**: the owner session rotates unexpectedly ~8 seconds after login (already flagged, not
+  investigated, in Section 31) -- the verification script hit a batch of 401 console errors near the end
+  of a ~15-second run, traced in the backend log to a `POST /auth/refresh` firing right on schedule for
+  that known bug. Every functional check before the refresh (record a payment, view the ledger, save an
+  advance rule) passed cleanly against the same session.
+- **Not built**: a dedicated admin UI for reversing a payment entry -- the backend endpoint
+  (`POST /admin/payment-entries/{id}/reverse`) is done and tested, but this project's admin console has a
+  deliberately small surface (per Section 26/29's own precedent: most admin actions go through `/docs`),
+  so a correction UI was left for whenever the owner actually wants one rather than built speculatively.
+- **Live-tested, not just typechecked**: seeded a throwaway owner/venue/court/booking directly via the DB
+  (argon2-hashed password, a court with a fixed-400 advance rule, a booking with a 400 advance entry
+  already recorded) -- signed in through the real web login, recorded a PKR 2,000 cash payment on Today
+  and watched the balance drop from 3,100 to 1,100, confirmed the ledger showed both entries (400 bank
+  transfer, 2,000 cash) with correct running totals and the right collected-today number, confirmed
+  over-paying was blocked client-side, and changed the court's advance rule to a 15% percentage and
+  confirmed the save succeeded. All throwaway data and scripts deleted afterward.
+- **Not done**: mobile needs a new EAS build to reach real phones (standing item); this is all on a
+  feature branch, not merged to `main`, and nothing was pushed.
 
 ## How this project gets worked (recipe for the next sprint)
 
