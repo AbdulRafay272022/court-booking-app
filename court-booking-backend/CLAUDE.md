@@ -47,9 +47,15 @@ tested, on branch `section-32-part-5`, not merged to `main`.** 493/493 backend t
   row-locks the booking (`SELECT ... FOR UPDATE`) before checking the balance and inserting -- the same
   concurrency concern `payment_service._claim_review` solves for approve/reject, solved differently here
   because the invariant is a running SUM across child rows, not one column. Refuses to record more than the
-  balance due (`PAYMENT_EXCEEDS_BALANCE`). `PaymentLedgerService.reverse_entry` (admin correction,
-  `POST /admin/payment-entries/{id}/reverse`) inserts a reversing entry and recomputes -- never edits or
-  deletes. Both audit-logged with before/after.
+  balance due (`PAYMENT_EXCEEDS_BALANCE`). `PaymentLedgerService.reverse_entry` (a correction,
+  `POST /payment-entries/{id}/reverse`) inserts a reversing entry and recomputes -- never edits or deletes.
+  Both audit-logged with before/after. **Moved from admin-only to `RequireOwner` after the owner asked for
+  a Correct action on the Ledger screen**: the Ledger is route-gated to owner role on both platforms (an
+  admin account is redirected away from it entirely), so an admin-only reversal endpoint reachable only
+  from that screen would have been unusable by anyone -- flagged and confirmed with the owner (via
+  AskUserQuestion) before relaxing it, rather than silently deciding either way. Same accessibility check as
+  `record_entry`'s caller already used (`BookingService.require_accessible_booking`): a venue owner can
+  correct their own venue's entries, an admin any.
 - The ledger (`OwnerDashboardService.ledger`) is now one row per PAYMENT, not per booking, keyed by
   `payment_entries.created_at` (when the money was recorded), not the booking's slot time -- this was a
   deliberate semantic fix, not just a reshape: a financial ledger should read by when cash moved. Summary:
@@ -72,9 +78,9 @@ tested, on branch `section-32-part-5`, not merged to `main`.** 493/493 backend t
 
 **Frontend Part 5 is built and live-verified** against the real local backend (owner "Record payment" on
 Today, the rewritten per-payment Ledger with the new summary tiles, a per-court advance-rule card in Venue
-Settings) -- see the frontend CLAUDE.md's own Part 5 entry. **Not built**: a dedicated admin UI for
-`reverse_entry` (the backend endpoint is done and tested; reachable via `/docs` for now, matching this
-project's existing pattern for exceptional admin actions -- flagged, not silently decided). Nothing pushed;
+Settings, and a "Correct a payment" action on each ledger row -- shows the original amount/date/booking,
+requires a typed reason, confirms before submitting) -- see the frontend CLAUDE.md's own Part 5 entry.
+494/494 backend tests pass (478 + 16). Nothing pushed;
 no `Migration-Go` line added; production untouched.
 
 The project owner is a non-engineer running a real pilot (Karachi padel/futsal) and often writes in

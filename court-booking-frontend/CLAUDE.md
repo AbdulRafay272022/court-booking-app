@@ -911,10 +911,31 @@ scratch DB (see the backend CLAUDE.md's START HERE for the full writeup).
   of a ~15-second run, traced in the backend log to a `POST /auth/refresh` firing right on schedule for
   that known bug. Every functional check before the refresh (record a payment, view the ledger, save an
   advance rule) passed cleanly against the same session.
-- **Not built**: a dedicated admin UI for reversing a payment entry -- the backend endpoint
-  (`POST /admin/payment-entries/{id}/reverse`) is done and tested, but this project's admin console has a
-  deliberately small surface (per Section 26/29's own precedent: most admin actions go through `/docs`),
-  so a correction UI was left for whenever the owner actually wants one rather than built speculatively.
+- **"Correct a payment" (added in a follow-up, before merge, per the project owner's direct request)**:
+  a `CorrectPaymentSheet` component per platform (`apps/mobile/components/correct-payment-sheet.tsx`,
+  `apps/web/components/owner/correct-payment-sheet.tsx`), opened by a "Correct" action on each non-correction
+  row of the Ledger (mobile: small text link under the amount; web: a button in a new 9th table column).
+  Shows the original entry's amount/date/court/booking/method, requires a typed reason (Confirm stays
+  disabled until non-empty, so a mistaken payment can't be reversed with a single accidental tap), and
+  calls the existing `api.payments.reverseEntry` -- no new backend logic was written for this, purely a UI
+  wrapper as asked. On success it invalidates `owner-ledger` and `owner-today` so the ledger and the
+  booking's balance update immediately.
+  **A real access-model conflict was found and resolved, not silently picked either way**: the reversal
+  endpoint had been built admin-only (`RequireAdmin`), but the Ledger screen is owner-only-gated on both
+  platforms (`useRequireAuth(["owner"])` web, `Stack.Protected` mobile) -- an admin account can't reach
+  the Ledger screen at all, so an admin-only endpoint reachable only from a "Correct" button on that screen
+  would have been unusable by anyone. Flagged to the project owner via a direct question rather than
+  guessed; they chose to open the endpoint to venue owners (see the backend CLAUDE.md's Part 5 entry for
+  the exact change: `RequireOwner` + an ownership check via the same `require_accessible_booking` pattern
+  `record_entry` already uses, so a venue owner can correct their own venue's entries and an admin any).
+  **Live-tested end to end** against the real local backend (seeded owner/venue/court/booking): recorded a
+  PKR 2,000 cash payment (balance 3,100 -> 1,100), opened Correct on that row, confirmed the sheet showed
+  the right amount/date/booking and that Confirm was disabled with an empty reason, typed a reason,
+  confirmed reversal succeeded, confirmed the ledger gained exactly one new row (a `-PKR 2,000` "correction"
+  row, both the original and the reversal visible with correct running totals, not a deleted-looking gap),
+  and confirmed the booking's balance on Today returned to exactly 3,100. Backend: 16 tests in
+  `test_payment_entries.py` (including one owner-can't-correct-another-venue's-entry 403 case), 494/494
+  full suite.
 - **Live-tested, not just typechecked**: seeded a throwaway owner/venue/court/booking directly via the DB
   (argon2-hashed password, a court with a fixed-400 advance rule, a booking with a 400 advance entry
   already recorded) -- signed in through the real web login, recorded a PKR 2,000 cash payment on Today
