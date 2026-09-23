@@ -11,7 +11,7 @@ import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { openSupportWhatsApp } from "@/lib/support";
 import { confirmLogout } from "@/lib/logout";
-import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon } from "@/components/icons";
+import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, RefreshIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
@@ -223,6 +223,9 @@ export default function OwnerTodayScreen() {
         </IconButton>
         <IconButton onPress={() => router.push("/(owner)/ledger")}>
           <BarsIcon />
+        </IconButton>
+        <IconButton onPress={() => router.push("/(owner)/refunds")}>
+          <RefreshIcon size={16} color="#5B7079" />
         </IconButton>
         <IconButton onPress={() => router.push("/(owner)/growth")}>
           <TrendingUpIcon size={18} color="#5B7079" />
