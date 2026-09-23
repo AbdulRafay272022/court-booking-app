@@ -863,6 +863,41 @@ local dev DB with `alembic check` clean (see the backend CLAUDE.md's START HERE)
   the migration's downgrade path was not re-tested this session; this is all on a feature branch, not
   merged to `main`, and nothing was pushed.
 
+## Section 32, Part 10 -- manual refunds (2026-09-24, branch `section-32-part-10`, not merged)
+
+Backend design and the cutoff-policy decision this needed first: see the backend `CLAUDE.md`'s own
+Section 32 Part 10 entry. Frontend half, built on `main` (not on top of the unmerged Part 4b/Part 5/Part 9
+branches, per the project owner's "each part independent, reviewed together later" plan):
+
+- **New "Refunds to pay" screen**, both platforms (`apps/web/app/dashboard/owner/refunds/page.tsx`,
+  `apps/mobile/app/(owner)/refunds.tsx`) -- lists open refunds (`GET /owners/refunds`) and a "Mark Refunded"
+  form (required reference, optional amount defaulting to what's owed, optional screenshot on web) calling
+  `POST /owners/refunds/{id}/mark-refunded`. Linked from the owner sidebar nav (web) and Today's icon row
+  (mobile, reusing `RefreshIcon` -- no dedicated refund icon exists in `components/icons.tsx`).
+- **Cancel confirmation now states the refund amount up front**, both platforms' My Bookings (`apps/web/app/bookings/page.tsx`,
+  `apps/mobile/app/(player)/(tabs)/bookings.tsx`): "You paid PKR X -- the venue owes you that amount back," computed
+  client-side from `booking.amount_paid` (no new endpoint needed -- see the backend entry for why a permitted cancel
+  is always fully refundable under the locked-in cutoff decision).
+- **Ledger gained a Refund column**, both platforms, reading the new `LedgerRow.refund_amount` field; the shared
+  `packages/api-client/src/owners.ts` helpers (`filterLedgerByCourt`, `ledgerRowsToCsv`, used for the client-side
+  court-filtered CSV export) were updated to net refunds into the totals and add the trailing CSV column, matching
+  the server export.
+- New `OwnerRefund` type (`packages/types/src/owner.ts`) and `api.owners.refunds()` / `api.owners.markRefundPaid()`
+  (`packages/api-client/src/owners.ts`, the latter multipart via `requestUpload`, mirroring `submitPaymentProof`'s
+  pattern); `REFUND_ALREADY_MARKED` / `REFUND_EXCEEDS_OWED_AMOUNT` added to `packages/types/src/errors.ts` and both
+  apps' `lib/error-messages.ts`.
+- **Verified:** both apps typecheck clean (`apps/web`: `next build` including its TypeScript pass; `apps/mobile`:
+  `tsc --noEmit`, after briefly running the Expo dev server once so its auto-generated route types would include
+  the brand-new `/refunds` route -- see the existing gotcha on this below). Backend: 485 tests passing against an
+  isolated scratch Postgres container, migration tested upgrade+downgrade+upgrade clean, `alembic check` clean, the
+  new routes confirmed present in a genuinely running app's `/openapi.json`. **Not done this session** (time-boxed,
+  flagged rather than silently skipped): a full Playwright click-through of the new screens -- the backend flows
+  they call are proven end to end via the real pytest suite (real Postgres, real HTTP requests through the ASGI
+  test client), but the UI itself wasn't driven headlessly this time. Do that before merging, same bar as every
+  other unmerged Section 32 part.
+- **Not pushed anywhere except `origin/section-32-part-10`** (a backup branch, not a merge) -- nothing here is
+  live, and nothing was merged into `main`.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before
