@@ -51,7 +51,12 @@ export interface Court {
   advance_type: CourtAdvanceType | null;
   advance_value: number | null;
   advance_minimum: number | null;
+  /** @deprecated use photo_urls */
   photo_url: string | null;
+  /** Section 32 Part 6: court photo gallery (public URLs), cover first. */
+  photo_urls: string[];
+  /** Section 32 Part 6: same order as photo_urls; owner UI reorders/deletes by key. */
+  photo_keys: string[];
   sort_order: number;
   is_active: boolean;
   schedule_templates: ScheduleTemplate[];

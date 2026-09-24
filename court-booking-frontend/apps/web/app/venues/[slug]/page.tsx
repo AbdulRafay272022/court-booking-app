@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { serverApi } from "@/lib/server-api";
 import { capitalize } from "@/lib/format";
 import { VenueScheduleClient } from "./venue-schedule-client";
+import { VenueReviews } from "@/components/venue-reviews";
 
 export async function generateMetadata({ params }: PageProps<"/venues/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -39,9 +40,10 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
       addressRegion: venue.city,
       addressCountry: "PK",
     },
-    aggregateRating: venue.average_rating
-      ? { "@type": "AggregateRating", ratingValue: venue.average_rating, reviewCount: 1 }
-      : undefined,
+    aggregateRating:
+      venue.average_rating && venue.review_count > 0
+        ? { "@type": "AggregateRating", ratingValue: venue.average_rating, reviewCount: venue.review_count }
+        : undefined,
   };
 
   return (
@@ -87,6 +89,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
               {venue.average_rating != null ? (
                 <span className="px-3 py-1.5 rounded-full bg-player-accent-soft border border-player-accent-soft-border text-[13.5px] font-bold text-player-accent-hover">
                   ★ {venue.average_rating.toFixed(1)}
+                  {venue.review_count > 0 ? ` (${venue.review_count})` : ""}
                 </span>
               ) : null}
             </div>
@@ -105,6 +108,8 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
           </div>
 
           <VenueScheduleClient venueId={venue.id} venueName={venue.name} sports={venue.sports} courts={venue.courts.filter((c) => c.is_active)} />
+
+          <VenueReviews venueId={venue.id} />
         </div>
 
         <aside className="flex flex-col gap-4">

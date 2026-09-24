@@ -21,6 +21,10 @@ import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
 import { CourtSetupFields } from "@/components/setup/court-setup-fields";
 import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
 import { AdvanceRuleFields } from "@/components/setup/advance-rule-fields";
+import { PhotoManager } from "@/components/setup/photo-manager";
+
+const MAX_VENUE_PHOTOS = 8;
+const MAX_COURT_PHOTOS = 5;
 
 type Message = { kind: "ok" | "error"; text: string } | null;
 
@@ -35,6 +39,7 @@ function SaveMessage({ message }: { message: Message }) {
 
 export default function VenueSettingsPage() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
+  const queryClient = useQueryClient();
   const courts = activeVenue?.courts ?? [];
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const activeCourtId = courtId ?? courts[0]?.id;
@@ -65,6 +70,26 @@ export default function VenueSettingsPage() {
         />
       ) : null}
 
+      {activeVenue ? (
+        <SectionCard>
+          <SectionLabel>Venue photos</SectionLabel>
+          <PhotoManager
+            label="Venue photos"
+            photoUrls={activeVenue.photo_urls}
+            photoKeys={activeVenue.photo_keys}
+            max={MAX_VENUE_PHOTOS}
+            onUpload={async (blob) => {
+              await api.venues.uploadPhoto(activeVenue.id, blob);
+              await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+            }}
+            onReorder={async (keys) => {
+              await api.venues.reorderPhotos(activeVenue.id, keys);
+              await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+            }}
+          />
+        </SectionCard>
+      ) : null}
+
       {courts.length > 1 ? (
         <div className="flex flex-col gap-2">
           <FieldLabel>Each court has its own slot length, opening hours and prices. Pick a court to edit:</FieldLabel>
@@ -93,6 +118,25 @@ export default function VenueSettingsPage() {
         <>
           {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
           <CourtSettingsForm key={court.id} court={court} />
+          <SectionCard key={`photos-${court.id}`}>
+            <SectionLabel>{court.name} photos</SectionLabel>
+            <PhotoManager
+              label={`${court.name} photos`}
+              photoUrls={court.photo_urls}
+              photoKeys={court.photo_keys}
+              max={MAX_COURT_PHOTOS}
+              onUpload={async (blob) => {
+                await api.courts.uploadPhoto(court.id, blob);
+                await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
+                await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+              }}
+              onReorder={async (keys) => {
+                await api.courts.reorderPhotos(court.id, keys);
+                await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
+                await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+              }}
+            />
+          </SectionCard>
           <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
         </>
       )}

@@ -33,14 +33,24 @@ export function createVenuesApi(client: ApiClient) {
         body: JSON.stringify(input),
       }),
 
-    uploadPhoto: (venueId: string, fileUri: string, fileName = "photo.jpg", mimeType = "image/jpeg") => {
+    // native passes a `uri` string; web passes a real File/Blob (Section 32 Part 6).
+    uploadPhoto: (venueId: string, file: string | Blob, fileName = "photo.jpg", mimeType = "image/jpeg") => {
       const formData = new FormData();
-      formData.append("file", { uri: fileUri, name: fileName, type: mimeType } as unknown as Blob);
-      return client.request<Venue>(`/venues/${venueId}/photos`, {
-        method: "POST",
-        body: formData,
-      });
+      if (typeof file === "string") {
+        formData.append("file", { uri: file, name: fileName, type: mimeType } as unknown as Blob);
+      } else {
+        formData.append("file", file, fileName);
+      }
+      return client.request<Venue>(`/venues/${venueId}/photos`, { method: "POST", body: formData });
     },
+
+    /** Section 32 Part 6: reorder / delete / set-cover -- send the desired ordered list of
+     * this venue's own photo keys (index 0 = cover; an omitted key is deleted). */
+    reorderPhotos: (venueId: string, keys: string[]) =>
+      client.request<Venue>(`/venues/${venueId}/photos`, {
+        method: "PUT",
+        body: JSON.stringify({ photos: keys }),
+      }),
 
     deactivate: (venueId: string) =>
       client.request<void>(`/venues/${venueId}`, { method: "DELETE" }),
