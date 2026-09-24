@@ -16,6 +16,28 @@ the progress table, the owner's later additions **verbatim**, and (at the bottom
 `court-booking-backend/CLAUDE.md` (START HERE) and `court-booking-frontend/CLAUDE.md` too. Update this file and the
 progress table after EVERY part.
 
+## BATCH REVIEW BRANCH (`section-32-batch-review`, 2026-09-25) -- read this if you're on that branch
+
+All 7 parts (5, 9, 10, 7, 8, 6, 11) are assembled onto `section-32-batch-review` off `main` for the owner
+to review before any `main` merge. NOT merged to `main`; needs an RDS snapshot + `Migration-Go: owner-approved`
++ the owner's explicit go when that time comes.
+
+- **Merge order:** 9 -> 10 -> 5 -> 7 -> 8 -> 6 -> 11 (each `--no-ff`). Order chosen so the big ledger rewrite
+  (Part 5) lands before the smaller dashboard additions layer on; migration order is independent of this.
+- **Migration heads linearized** (re-chained, not a merge migration -- none were deployed, all additive):
+  `de11b783f108 -> 0e808ff86785 (P5) -> a3f7c9d2e185 (P10) -> a3f9c6e2d174 (P7) -> c7d1a9b4e2f0 (P6)`. One head;
+  `alembic check` clean; up->down->up verified end to end on an isolated scratch DB.
+- **layout.tsx (P6 Reviews nav vs P11 responsive):** both kept -- the responsive drawer/top-bar layout renders
+  the full NAV, which includes Reviews (P6) and Refunds to pay (P10).
+- **Cross-part integration done during assembly (review these):** (1) re-applied Part 9's Today checked-in/
+  no-show overlay onto Part 5's rewritten `owner_dashboard_service.today()`; (2) a paid refund (Part 10
+  `mark_refund_paid`) now records a real NEGATIVE `payment_entries` row + recompute, so it shows in Part 5's
+  per-payment ledger -- the wiring both handoffs deferred to "once Part 5 merges". The per-booking `refund_amount`
+  ledger column from Part 10 is superseded by this.
+- **Proof (assembled):** backend suite **571 passing** on an isolated scratch Postgres; migration chain
+  up/down/up + single head + no drift; both apps typecheck clean (`next build` green, mobile `tsc` clean);
+  live web Playwright pass and Expo-web smoke over all 7 parts' surfaces -- all green, no page errors.
+
 ## SESSION HANDOFF (2026-09-24, read this before touching anything)
 
 **Working method for Parts 5/9/10/7/8/6/11: each part is built independently on its own branch off `main`
@@ -156,9 +178,9 @@ ledger) -> **Part 9** (QR check-in) -> **Part 10** (refunds) -> **Part 7** (OCR,
 | 9 | QR check-in (below) | **Built and fully verified on branch `section-32-part-9` (`1a815bd`), pushed to origin, not merged.** Real 484/484 backend tests, live-verified end to end on an isolated scratch DB. See SESSION HANDOFF above. |
 | 10 | Refunds, manual (below) | **Built and fully verified on branch `section-32-part-10` (`8f72ce3`), pushed to origin, not merged.** Real 485/485 backend tests, migration tested up/down, live Playwright-verified including a fix-verification pass. See SESSION HANDOFF above. |
 | 7 | OCR improvements (updated rules below) | **Built + FULLY VERIFIED on branch `section-32-part-7` (`4713f85`), pushed to origin, not merged.** Real **522/522** backend tests on an isolated scratch DB, migration tested up/down/up (`alembic check` clean), both apps typecheck clean, live Playwright/Expo-web-verified on both platforms. Fixtures + accuracy DONE (synthetic JazzCash/Easypaisa fixtures + a real-Gemini accuracy script: 32/32 on synthetic images -- an optimistic upper bound; real pilot screenshots still recommended for a true number). That run caught + fixed a real bug: the model returns the payment time as printed, not ISO, so the time check was silently always "not visible" -- parser now handles human PKT timestamps. See SESSION HANDOFF above. |
-| 8 | WhatsApp/Gemini prompts. Findings queued: AI money "PKR 3,500"; never invent a reason for an unavailable slot ("fixed 90-minute blocks" when it was simply booked); only say what the tool returned | Not started |
+| 8 | WhatsApp/Gemini prompts | **Built + verified on branch `section-32-part-8`, not merged.** Backend-only (no frontend diff). Rewrote `build_system_prompt`/`SYSTEM_PROMPT` (senior persona; one question at a time; booking-flow summary; never mention buttons/tapping/clicking/UTC/tool-names/IDs; no markdown; never invent a reason a slot is unavailable; failure replies give a next step). Added `sanitize_reply` (code-level safety net: strips leaked markdown + button/tap/click wording on top of the existing 24h/UTC `enforce_display_format`), applied to every assistant reply. Fixed `WhatsAppService._send` to NOT retry deterministic 4xx (retries only 429/5xx/network) -- open item 8. Added the inner 500 catch-all in `RequestContextMiddleware` returning the JSON error envelope, and reordered middleware so CORS is outermost, so an unhandled 500 no longer reaches the browser without CORS headers ("Can't reach the server") -- open item 2. **Verified:** full backend suite **484/484** on isolated scratch Postgres (5545); no migration; both frontends typecheck clean + web `next build` green; and a real-Gemini conversation run (`scripts/chat_conversation_check.py`, kept out of pytest) across English + Roman Urdu with **0 hard-rule violations** (no 24h/UTC/button/markdown; money "PKR 7,000"/"PKR 3,500"; duration asked; full summary; unavailable-slot answered without an invented reason). Money-format + "never invent a reason" were mostly already in place from Parts 1-2/4; this part hardened the prompt and added the safety net + the two infra fixes. **Not done here:** reading PRODUCTION Gemini logs/`messages` for a findings list (needs prod SSM/DB access; production still runs the OLD prompt until this deploys) -- exact RUNBOOK §4 commands to hand the owner. Note: the shared local Gemini key is quota-limited (429s) and leaks in the provider error URL -- recommend rotating it. |
 | 6 | Photos and reviews | Not started |
-| 11 | Screen audit, incl. the owner dashboard's fixed sidebar overflowing below ~600px (owners are on phones) | Not started |
+| 11 | Screen audit, incl. the owner dashboard's fixed sidebar overflowing below ~600px (owners are on phones) | **Built + verified on branch `section-32-part-11`, not merged. Frontend-only (web), no backend/mobile changes.** Root cause of the named bug: the owner dashboard was a desktop-only two-column layout -- a fixed 240px sidebar (`w-60 shrink-0`) beside the content -- so on a ~390px phone the content was crushed into ~150px, and on a short viewport the sidebar's footer (support/Log out) overflowed with no scroll. Fix (`apps/web/app/dashboard/owner/layout.tsx`): responsive layout -- below `md` a sticky top bar + hamburger opens a slide-in drawer holding the full nav/venue-picker/support/log-out (nav tap closes it), content is full-width; at `md`+ the sidebar returns and is now independently scrollable (`md:sticky md:h-screen md:overflow-y-auto`) so a short viewport never clips its footer. Also softened the admin header padding on phones (`px-4 sm:px-8`). Audit findings: the settings-page eslint errors noted in the handoff are already gone (removed in Part 4 -- no `useEffect` there now); the admin console is a top-bar layout (no sidebar-crush issue). **Verified:** web `next build` green (typecheck + lint); live Playwright at 1280x900 (sidebar, no hamburger), 390x844 (sidebar hidden, hamburger + drawer works, nav tap closes+navigates, no horizontal overflow), and a short 1200x520 viewport (sidebar footer reachable) -- all pass. No backend changes (suite unchanged from main's baseline); no mobile changes (native app is already phone-sized). |
 
 ## Owner's additions (verbatim, 2026-09-22)
 

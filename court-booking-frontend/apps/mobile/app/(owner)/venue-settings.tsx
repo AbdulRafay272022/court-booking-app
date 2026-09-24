@@ -20,7 +20,8 @@ import { formatWhen } from "@/lib/format";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
-import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
+import { AdvanceRuleFields, CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
+import { PhotoManager } from "@/components/photo-manager";
 import { FieldLabel, PrimaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
 import { Tab } from "./_dashboard-components";
 
@@ -69,6 +70,15 @@ export default function VenueSettingsScreen() {
           />
         ) : null}
 
+        {activeVenue ? (
+          <VenuePhotosCard
+            key={`photos-${activeVenue.id}`}
+            venueId={activeVenue.id}
+            photoUrls={activeVenue.photo_urls}
+            photoKeys={activeVenue.photo_keys}
+          />
+        ) : null}
+
         {loading ? (
           <View className="py-10 items-center justify-center">
             <ActivityIndicator color="#0E6274" />
@@ -81,6 +91,7 @@ export default function VenueSettingsScreen() {
           <>
             {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
             <CourtSettingsForm key={court.id} court={court} />
+            <CourtPhotosCard key={`court-photos-${court.id}`} court={court} />
             <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
           </>
         )}
@@ -125,23 +136,37 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
 function CourtSettingsForm({ court }: { court: Court }) {
   const queryClient = useQueryClient();
   const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
+  const [advanceType, setAdvanceType] = useState<"" | "fixed" | "percent">(court.advance_type ?? "");
+  const [advanceValue, setAdvanceValue] = useState(court.advance_value != null ? String(court.advance_value) : "");
+  const [advanceMinimum, setAdvanceMinimum] = useState(court.advance_minimum != null ? String(court.advance_minimum) : "");
   const [saving, setSaving] = useState(false);
   const problem = courtSetupProblem(setup);
+  const advanceProblem =
+    advanceType !== "" && !advanceValue.trim() ? "Enter an advance amount or percentage, or switch back to Default." : null;
 
   async function save() {
     if (problem) {
       Alert.alert("Check this court", problem);
       return;
     }
+    if (advanceProblem) {
+      Alert.alert("Check the advance rule", advanceProblem);
+      return;
+    }
     setSaving(true);
     try {
       if (setup.slotMinutes !== court.slot_minutes) await api.courts.update(court.id, { slot_minutes: setup.slotMinutes });
+      await api.courts.update(court.id, {
+        advance_type: advanceType || null,
+        advance_value: advanceType ? Number(advanceValue) : null,
+        advance_minimum: advanceMinimum.trim() ? Number(advanceMinimum) : null,
+      });
       await api.courts.setSchedule(court.id, buildSchedules(setup));
       await api.courts.setPricing(court.id, buildPricingRules(setup));
       await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      Alert.alert("Saved", `${court.name}: slot length, hours and prices updated.`);
+      Alert.alert("Saved", `${court.name}: slot length, hours, prices and advance rule updated.`);
     } catch (e) {
       Alert.alert("Couldn't save", friendlyErrorMessage(e));
     } finally {
@@ -153,8 +178,63 @@ function CourtSettingsForm({ court }: { court: Court }) {
     <>
       <Text className="font-plex-bold text-owner-ink text-[17px]">{court.name}</Text>
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
+      <AdvanceRuleFields
+        advanceType={advanceType}
+        advanceValue={advanceValue}
+        advanceMinimum={advanceMinimum}
+        onChange={(patch) => {
+          if (patch.advanceType !== undefined) setAdvanceType(patch.advanceType);
+          if (patch.advanceValue !== undefined) setAdvanceValue(patch.advanceValue);
+          if (patch.advanceMinimum !== undefined) setAdvanceMinimum(patch.advanceMinimum);
+        }}
+      />
       <PrimaryButton label="Save changes" onPress={save} loading={saving} />
     </>
+  );
+}
+
+function VenuePhotosCard({ venueId, photoUrls, photoKeys }: { venueId: string; photoUrls: string[]; photoKeys: string[] }) {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+  return (
+    <PhotoManager
+      title="Venue photos"
+      photoUrls={photoUrls}
+      photoKeys={photoKeys}
+      max={8}
+      onUpload={async (uri) => {
+        await api.venues.uploadPhoto(venueId, uri);
+        await refresh();
+      }}
+      onReorder={async (keys) => {
+        await api.venues.reorderPhotos(venueId, keys);
+        await refresh();
+      }}
+    />
+  );
+}
+
+function CourtPhotosCard({ court }: { court: Court }) {
+  const queryClient = useQueryClient();
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
+    await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+  };
+  return (
+    <PhotoManager
+      title={`${court.name} photos`}
+      photoUrls={court.photo_urls}
+      photoKeys={court.photo_keys}
+      max={5}
+      onUpload={async (uri) => {
+        await api.courts.uploadPhoto(court.id, uri);
+        await refresh();
+      }}
+      onReorder={async (keys) => {
+        await api.courts.reorderPhotos(court.id, keys);
+        await refresh();
+      }}
+    />
   );
 }
 

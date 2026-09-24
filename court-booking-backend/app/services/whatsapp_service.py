@@ -2,12 +2,26 @@ from datetime import datetime, timedelta, timezone
 
 import structlog
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.config import Settings
 from app.services.whatsapp_templates import TEMPLATES, build_components
 
 logger = structlog.get_logger(__name__)
+
+
+def _is_retryable_send_error(exc: BaseException) -> bool:
+    """Retry only errors a retry could actually fix: a network/timeout blip, a 429
+    (rate limited), or a 5xx (Meta-side). A deterministic 4xx -- 404 (template not
+    registered), 400 (bad payload), 401/403 (auth) -- will fail identically on every
+    attempt, so retrying it 3x just adds ~4s of latency to a request that was always
+    going to fail (Section 32 Part 8 / open item 8). 429 is the one 4xx worth retrying."""
+    if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status == 429 or status >= 500
+    return False
 
 
 def mask_phone(phone: str | None) -> str | None:
@@ -68,7 +82,11 @@ class WhatsAppService:
             "Content-Type": "application/json",
         }
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        retry=retry_if_exception(_is_retryable_send_error),
+    )
     async def _send(self, payload: dict) -> dict:
         if not self.settings.WHATSAPP_API_TOKEN:
             logger.info("whatsapp.send.skipped_no_token", to=payload.get("to"))

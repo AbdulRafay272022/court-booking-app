@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
+from app.models.court import CourtAdvanceType
+from app.utils.s3 import public_url
 from app.utils.schedule import closes_next_day_for
 
 
@@ -75,6 +77,17 @@ def _check_slot_minutes(v: int | None) -> int | None:
     return v
 
 
+def _check_advance_rule(advance_type: CourtAdvanceType | None, advance_value: float | None) -> None:
+    if advance_type is None:
+        return
+    if advance_value is None:
+        raise ValueError("advance_value is required when advance_type is set")
+    if advance_type == CourtAdvanceType.PERCENT and not (0 <= advance_value <= 100):
+        raise ValueError("advance_value must be between 0 and 100 when advance_type is 'percent'")
+    if advance_type == CourtAdvanceType.FIXED and advance_value < 0:
+        raise ValueError("advance_value must be >= 0 when advance_type is 'fixed'")
+
+
 class CourtCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     sport: str = Field(min_length=1, max_length=50)
@@ -86,8 +99,18 @@ class CourtCreateIn(BaseModel):
     # The cancellation policy is per VENUE now (Section 32 Part 4). A client that still sends
     # cancellation_allowed / cancellation_cutoff_hours for a court has them ignored: unknown fields are
     # dropped by this model, and nothing here writes the deprecated court columns.
+    # Section 32 Part 5: a fixed PKR amount or a percentage, with an optional minimum floor. Null
+    # advance_type falls back to the matched pricing rule's own advance_percentage.
+    advance_type: CourtAdvanceType | None = None
+    advance_value: float | None = None
+    advance_minimum: int | None = Field(default=None, ge=0)
 
     _slot_minutes_ok = field_validator("slot_minutes")(_check_slot_minutes)
+
+    @model_validator(mode="after")
+    def _advance_rule_ok(self) -> "CourtCreateIn":
+        _check_advance_rule(self.advance_type, self.advance_value)
+        return self
 
 
 class CourtUpdateIn(BaseModel):
@@ -101,8 +124,20 @@ class CourtUpdateIn(BaseModel):
     photo_url: str | None = None
     sort_order: int | None = None
     is_active: bool | None = None
+    advance_type: CourtAdvanceType | None = None
+    advance_value: float | None = None
+    advance_minimum: int | None = Field(default=None, ge=0)
 
     _slot_minutes_ok = field_validator("slot_minutes")(_check_slot_minutes)
+
+    @model_validator(mode="after")
+    def _advance_rule_ok(self) -> "CourtUpdateIn":
+        # Partial update: only enforce the pairing when advance_type is being SET to a real value in this
+        # same request (that's when advance_value must come along with it); clearing it to null, or not
+        # touching either field, needs no cross-check against whatever the court already has.
+        if "advance_type" in self.model_fields_set and self.advance_type is not None:
+            _check_advance_rule(self.advance_type, self.advance_value)
+        return self
 
 
 class CourtOut(BaseModel):
@@ -121,11 +156,30 @@ class CourtOut(BaseModel):
     # from before Section 32 Part 4 still work. New clients read venue.cancellation_* instead.
     cancellation_allowed: bool
     cancellation_cutoff_hours: int | None
-    photo_url: str | None
+    advance_type: CourtAdvanceType | None
+    advance_value: float | None
+    advance_minimum: int | None
+    photo_url: str | None  # deprecated; use photo_urls
+    # Section 32 Part 6: the S3 keys come straight off the model (from_attributes) but are
+    # never serialized; photo_urls (computed) turns them into public/CloudFront URLs, so it
+    # populates automatically everywhere CourtOut is built, including nested in VenueOut.
+    photos: list[str] | None = Field(default=None, exclude=True, repr=False)
     sort_order: int
     is_active: bool
     schedule_templates: list[ScheduleTemplateOut] = Field(default_factory=list)
     pricing_rules: list[PricingRuleOut] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def photo_urls(self) -> list[str]:
+        return [public_url(key) for key in (self.photos or [])]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def photo_keys(self) -> list[str]:
+        # The owner UI needs the keys (same order as photo_urls) to reorder/delete via
+        # PUT /courts/{id}/photos. Keys aren't secret -- they're the tail of the public URL.
+        return list(self.photos or [])
 
 
 class CourtDetailResponse(BaseModel):

@@ -1,3 +1,5 @@
+import type { PaymentChecks } from "./payment";
+
 export interface TodaySlot {
   starts_at: string;
   ends_at: string;
@@ -7,6 +9,9 @@ export interface TodaySlot {
   amount_paid: number | null;
   price: number | null;
   balance_due: number | null;
+  /** Section 32 Part 9. */
+  checked_in_at: string | null;
+  checked_in_by: "owner" | "player" | null;
 }
 
 export interface TodayCourt {
@@ -44,30 +49,43 @@ export interface PendingApproval {
   proof_url: string | null;
   submitted_at: string;
   minutes_since_submission: number;
+  /** Section 32 Part 7 -- the five plain-language checks for this payment. */
+  checks: PaymentChecks;
 }
 
-export interface LedgerRow {
-  booking_id: string;
-  date: string;
+/** Section 32 Part 5: one row per PAYMENT (payment_entries), not per booking -- a booking with an advance
+ * plus a later balance payment is two rows here. A negative amount_pkr is an admin correction reversing
+ * an earlier row. */
+export interface LedgerEntry {
+  entry_id: string;
+  recorded_at: string;
   court: string;
+  booking_id: string;
+  starts_at: string;
   player: string | null;
-  source: string;
-  amount_paid: number;
-  balance_due: number;
-  status: string;
+  // Batch merge: Part 5's per-payment ledger row supersedes Part 10's per-booking row.
+  method: string;
+  amount_pkr: number;
+  running_total: number;
+  booking_status: string;
 }
 
 export interface LedgerSummary {
-  total_revenue: number;
-  total_bookings: number;
-  avg_revenue_per_day: number;
-  by_source: Record<string, number>;
+  /** Always "now"-relative (Pakistan time), independent of the selected date range/filters. */
+  collected_today: number;
+  collected_this_week: number;
+  collected_this_month: number;
+  outstanding_balance: number;
+  cancelled_refund_pending: number;
+  /** Net total of `entries` below (respects the selected date range and filters). */
+  total_in_range: number;
   by_court: Record<string, number>;
+  by_day: Record<string, number>;
 }
 
 /** GET /owners/ledger */
 export interface Ledger {
-  bookings: LedgerRow[];
+  entries: LedgerEntry[];
   summary: LedgerSummary;
 }
 
@@ -85,6 +103,25 @@ export interface GrowthSuggestion {
 export interface Growth {
   underbooked_slots: GrowthSuggestion[];
   computed_at: string;
+}
+
+/** GET /owners/refunds -- Section 32 Part 10's owner-facing "Refunds to pay" screen. */
+export interface OwnerRefund {
+  id: string;
+  booking_id: string;
+  court_name: string;
+  venue_name: string;
+  player_name: string | null;
+  player_phone: string | null;
+  starts_at: string;
+  reason: string;
+  refund_amount: number;
+  refund_status: "owed" | "refunded";
+  refunded_amount: number | null;
+  refund_reference: string | null;
+  refunded_at: string | null;
+  created_at: string;
+  is_overdue: boolean;
 }
 
 /** GET /owners/digest */

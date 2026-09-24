@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.models.booking import BookingSource, BookingStatus, CancelledBy
+from app.models.payment_entry import PaymentMethod
 
 
 def _require_tz_aware(v: datetime) -> datetime:
@@ -37,6 +38,9 @@ class WalkInBookingIn(BaseModel):
     player_name: str = Field(min_length=1, max_length=100)
     player_phone: str | None = None
     amount_paid: float = Field(ge=0)
+    # Section 32 Part 5: how the walk-in amount was actually received. Defaults to cash at the venue, the
+    # overwhelmingly common case for an in-person booking.
+    method: PaymentMethod = PaymentMethod.CASH_AT_VENUE
 
 
 class BookingCancelIn(BaseModel):

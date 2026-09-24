@@ -1,25 +1,36 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, File, Form, Response, UploadFile, status
 from sqlalchemy import select
 
 from app.api.payments import _payment_out
 from app.dependencies import AppSettings, DbSession, RequireOwner
+from app.errors import AppError, ErrorCode
 from app.models.booking import Booking
 from app.models.court import Court
+from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
+from app.models.user import User
 from app.models.venue import Venue
-from app.schemas.admin import OwnerDigestOut
+from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
 from app.schemas.owner_dashboard import GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
 from app.schemas.payment import PaymentOut
 from app.schemas.venue import VenueOut
+from app.services.admin_service import AdminService
+from app.services.booking_service import BookingService
 from app.services.growth_service import GrowthService
+from app.services.notification_service import NotificationService
 from app.services.owner_dashboard_service import OwnerDashboardService
 from app.services.venue_service import VenueService
+from app.utils.image import InvalidImageError, validate_image
+from app.utils.s3 import upload_private_proof
 
 router = APIRouter(prefix="/owners", tags=["owners"])
+
+MAX_REFUND_SCREENSHOT_BYTES = 10 * 1024 * 1024
+ALLOWED_REFUND_SCREENSHOT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 @router.get("/venues", response_model=list[VenueOut])
@@ -104,9 +115,14 @@ async def owner_ledger(
     start_date: date,
     end_date: date,
     venue_id: uuid.UUID | None = None,
+    court_id: uuid.UUID | None = None,
+    method: str | None = None,
+    booking_status: str | None = None,
 ) -> LedgerOut:
     service = OwnerDashboardService(db, settings)
-    return await service.ledger(owner, start_date, end_date, venue_id=venue_id)
+    return await service.ledger(
+        owner, start_date, end_date, venue_id=venue_id, court_id=court_id, method=method, booking_status=booking_status
+    )
 
 
 @router.get("/ledger/export")
@@ -117,9 +133,14 @@ async def owner_ledger_export(
     start_date: date,
     end_date: date,
     venue_id: uuid.UUID | None = None,
+    court_id: uuid.UUID | None = None,
+    method: str | None = None,
+    booking_status: str | None = None,
 ) -> Response:
     service = OwnerDashboardService(db, settings)
-    csv_text = await service.ledger_csv(owner, start_date, end_date, venue_id=venue_id)
+    csv_text = await service.ledger_csv(
+        owner, start_date, end_date, venue_id=venue_id, court_id=court_id, method=method, booking_status=booking_status
+    )
     return Response(
         content=csv_text,
         media_type="text/csv",
@@ -133,3 +154,85 @@ async def owner_growth(
 ) -> GrowthOut:
     service = OwnerDashboardService(db, settings)
     return await service.growth_suggestions(owner, venue_id=venue_id)
+
+
+@router.get("/refunds", response_model=list[OwnerRefundOut])
+async def owner_refunds(
+    db: DbSession, settings: AppSettings, owner: RequireOwner, venue_id: uuid.UUID | None = None
+) -> list[OwnerRefundOut]:
+    """Section 32 Part 10: the owner's "Refunds to pay" screen."""
+    service = OwnerDashboardService(db, settings)
+    return await service.refunds_owed(owner, venue_id=venue_id)
+
+
+@router.post("/refunds/{dispute_id}/mark-refunded", response_model=OwnerRefundOut)
+async def owner_mark_refund_paid(
+    dispute_id: uuid.UUID,
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireOwner,
+    reference: str = Form(...),
+    amount: float | None = Form(None),
+    screenshot: UploadFile | None = File(None),
+) -> OwnerRefundOut:
+    """The owner sent the refund outside the app (JazzCash/bank transfer)
+    and is recording that here -- there is no payment gateway integration,
+    this is purely a record. `reference` is required (what does the owner
+    point to if a player disputes this later); `amount`/`screenshot` are
+    optional per the spec."""
+    dispute = await db.get(PaymentDispute, dispute_id)
+    if dispute is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Refund not found")
+    booking_service = BookingService(db, settings)
+    booking = await booking_service.require_accessible_booking(dispute.booking_id, owner)
+
+    screenshot_key: str | None = None
+    if screenshot is not None:
+        if screenshot.content_type not in ALLOWED_REFUND_SCREENSHOT_TYPES:
+            raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_IMAGE_FORMAT, "Unsupported image type")
+        screenshot_bytes = await screenshot.read()
+        if len(screenshot_bytes) > MAX_REFUND_SCREENSHOT_BYTES:
+            raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.PROOF_TOO_LARGE, "Screenshot too large")
+        try:
+            validate_image(screenshot_bytes)
+        except InvalidImageError as exc:
+            raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_IMAGE_FORMAT, str(exc)) from exc
+        # Private bucket, same visibility rule as a payment proof (only the
+        # venue's own owner or an admin can ever ask for the signed URL back) --
+        # this is evidence of an outgoing transfer, not something to publish.
+        screenshot_key = await upload_private_proof(screenshot_bytes, screenshot.filename or "refund.jpg", screenshot.content_type)
+
+    admin_service = AdminService(db, settings)
+    dispute = await admin_service.mark_refund_paid(
+        dispute, actor=owner, amount=amount, reference=reference, screenshot_key=screenshot_key
+    )
+
+    court = await db.get(Court, booking.court_id)
+    venue = await db.get(Venue, court.venue_id) if court is not None else None
+    if booking.player_id is not None:
+        player = await db.get(User, booking.player_id)
+        if player is not None:
+            await NotificationService(db, settings).notify_refund_paid(
+                user=player,
+                court_name=court.name if court else "",
+                amount=float(dispute.refunded_amount or 0),
+                reference=reference,
+            )
+
+    return OwnerRefundOut(
+        id=dispute.id,
+        booking_id=booking.id,
+        court_name=court.name if court else "",
+        venue_name=venue.name if venue else "",
+        player_name=booking.player_name,
+        player_phone=booking.player_phone,
+        starts_at=booking.starts_at,
+        reason=dispute.reason,
+        refund_amount=float(dispute.refund_amount or 0),
+        refund_status=dispute.refund_status,
+        refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
+        refund_reference=dispute.refund_reference,
+        refunded_at=dispute.refunded_at,
+        created_at=dispute.created_at,
+        is_overdue=False,
+    )

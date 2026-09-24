@@ -19,6 +19,10 @@ from app.utils.geo import distance_meters, within_radius
 from app.utils.s3 import public_url, upload_public_photo
 from app.utils.text import slugify
 
+# Section 32 Part 6: sensible upload caps.
+MAX_VENUE_PHOTOS = 8
+MAX_COURT_PHOTOS = 5
+
 
 class VenueService:
     def __init__(self, db: AsyncSession, settings: Settings) -> None:
@@ -124,8 +128,25 @@ class VenueService:
         return await self.get_venue(venue.id)
 
     async def add_photo(self, venue: Venue, data: bytes, filename: str, content_type: str) -> Venue:
+        if len(venue.photos or []) >= MAX_VENUE_PHOTOS:
+            raise AppError(
+                400, ErrorCode.PHOTO_LIMIT_REACHED, f"A venue can have at most {MAX_VENUE_PHOTOS} photos."
+            )
         key = await upload_public_photo(data, filename, content_type)
         venue.photos = [*(venue.photos or []), key]
+        await self.db.commit()
+        return await self.get_venue(venue.id)
+
+    async def set_photos(self, venue: Venue, keys: list[str]) -> Venue:
+        """Reorder / delete / set-cover in one shot (Section 32 Part 6): the client sends the
+        desired ORDERED list of the venue's own photo keys. Index 0 is the cover. A key not
+        already on this venue is rejected (you can't add via this path -- use add_photo), and
+        an omitted key is a delete. The S3 object of a removed key is left in the public bucket
+        (harmless orphan); only the reference is dropped."""
+        current = set(venue.photos or [])
+        if len(keys) != len(set(keys)) or not set(keys).issubset(current):
+            raise AppError(400, ErrorCode.INVALID_PHOTO, "Photo list must be a reordering of this venue's own photos.")
+        venue.photos = list(keys)
         await self.db.commit()
         return await self.get_venue(venue.id)
 
@@ -178,12 +199,21 @@ class VenueService:
             rows = [(row[0], None) for row in result.all()]
         return rows, total or 0
 
+    async def rating_summary(self, venue_id: uuid.UUID) -> tuple[float | None, int]:
+        """(average_rating, review_count) over VISIBLE reviews only -- an admin-hidden
+        review (Section 32 Part 6) counts for neither."""
+        avg, count = (
+            await self.db.execute(
+                select(func.avg(Review.rating), func.count(Review.id)).where(
+                    Review.venue_id == venue_id, Review.is_hidden.is_(False)
+                )
+            )
+        ).one()
+        return (round(float(avg), 2) if avg is not None else None, int(count or 0))
+
     async def average_rating(self, venue_id: uuid.UUID) -> float | None:
-        result = await self.db.execute(
-            select(func.avg(Review.rating)).where(Review.venue_id == venue_id)
-        )
-        avg = result.scalar_one_or_none()
-        return round(float(avg), 2) if avg is not None else None
+        avg, _count = await self.rating_summary(venue_id)
+        return avg
 
     def decrypted_bank_details(self, venue: Venue) -> dict | None:
         return decrypt_json(venue.bank_details, self.settings)
@@ -197,7 +227,8 @@ class VenueService:
 
         out = VenueOut.model_validate(venue)
         out.photo_urls = self.photo_urls(venue)
-        out.average_rating = await self.average_rating(venue.id)
+        out.photo_keys = list(venue.photos or [])
+        out.average_rating, out.review_count = await self.rating_summary(venue.id)
         out.distance_meters = distance
         can_see_bank_details = requesting_user is not None and (
             requesting_user.role == UserRole.ADMIN or requesting_user.id == venue.owner_id

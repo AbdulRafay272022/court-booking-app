@@ -28,6 +28,9 @@ export interface Booking {
   cancelled_by: CancelledBy | null;
   cancellation_reason: string | null;
   checked_in_at: string | null;
+  /** Section 32 Part 9: "owner" (scanned the player's own QR / tapped Check in on Today)
+   * or "player" (self-check-in via the venue's printed QR). Null until checked in. */
+  checked_in_by: "owner" | "player" | null;
   created_at: string;
 }
 

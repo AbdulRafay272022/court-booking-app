@@ -2,11 +2,12 @@ import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDistance, formatPKR } from "@/lib/format";
+import { formatDistance, formatPKR, formatShortDate } from "@/lib/format";
 import { formatDuration } from "@court-booking/types";
 import { ChevronLeftIcon, StarIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
@@ -92,6 +93,7 @@ export default function VenueDetailScreen() {
                 <View className="flex-row items-center gap-1">
                   <StarIcon />
                   <Text className="font-figtree-bold text-player-ink text-[13px]">{venue.average_rating.toFixed(1)}</Text>
+                  <Text className="font-figtree-medium text-player-ink-faint text-[12px]">({venue.review_count})</Text>
                 </View>
               ) : null}
             </View>
@@ -110,11 +112,11 @@ export default function VenueDetailScreen() {
         ) : null}
       </View>
 
-      {courts.length === 0 ? (
-        <EmptyState title="No active courts" subtitle="This venue hasn't published any courts for this sport yet." />
-      ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-6 gap-3.5">
-          {courts.map((court) => {
+      <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-6 gap-3.5">
+        {courts.length === 0 ? (
+          <EmptyState title="No active courts" subtitle="This venue hasn't published any courts for this sport yet." />
+        ) : (
+          courts.map((court) => {
             const price = prices[court.id];
             return (
               <View key={court.id} className="bg-player-surface border border-player-border-light rounded-[18px] p-4 gap-3.5">
@@ -131,9 +133,10 @@ export default function VenueDetailScreen() {
                 />
               </View>
             );
-          })}
-        </ScrollView>
-      )}
+          })
+        )}
+        <VenueReviews venueId={venue.id} />
+      </ScrollView>
 
       {popup ? (
         <CourtDayPopup
@@ -147,5 +150,81 @@ export default function VenueDetailScreen() {
         />
       ) : null}
     </SafeAreaView>
+  );
+}
+
+function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
+  return (
+    <View className="flex-row items-center gap-0.5" accessibilityLabel={`${rating} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <StarIcon key={n} size={size} color={n <= rating ? "#EF5A2C" : "#D8D2CB"} />
+      ))}
+    </View>
+  );
+}
+
+/** Section 32 Part 6: reviews list on the venue page (newest first, first name only). An admin
+ * viewing the page sees a Hide/Unhide control per review; players/owners only see visible ones. */
+function VenueReviews({ venueId }: { venueId: string }) {
+  const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
+  const reviewsQuery = useQuery({ queryKey: ["venue-reviews", venueId], queryFn: () => api.reviews.listForVenue(venueId) });
+  const reviews = reviewsQuery.data ?? [];
+
+  async function toggleHidden(reviewId: string, hidden: boolean) {
+    try {
+      if (hidden) await api.admin.unhideReview(reviewId);
+      else await api.admin.hideReview(reviewId);
+      await queryClient.invalidateQueries({ queryKey: ["venue-reviews", venueId] });
+    } catch (e) {
+      // no-op alert on web; keep it quiet, the list just won't change
+      console.warn("toggle review failed", friendlyErrorMessage(e));
+    }
+  }
+
+  return (
+    <View className="gap-3 mt-1">
+      <Text className="font-figtree-bold text-player-ink text-[16px] -tracking-[0.2px]">
+        Reviews{reviews.length ? ` (${reviews.length})` : ""}
+      </Text>
+      {reviewsQuery.isLoading ? (
+        <ActivityIndicator color="#EF5A2C" />
+      ) : reviews.length === 0 ? (
+        <Text className="font-figtree-medium text-player-ink-faint text-[13px]">No reviews yet. Play a game and be the first!</Text>
+      ) : (
+        reviews.map((r) => (
+          <View
+            key={r.id}
+            className="bg-player-surface border border-player-border-light rounded-[14px] p-3.5 gap-1.5"
+            style={{ opacity: r.is_hidden ? 0.55 : 1 }}
+          >
+            <View className="flex-row items-center justify-between">
+              <Text className="font-figtree-bold text-player-ink text-[14px]">{r.player_first_name ?? "Player"}</Text>
+              <Stars rating={r.rating} />
+            </View>
+            {r.comment ? <Text className="font-figtree-medium text-player-ink text-[13.5px] leading-[19px]">{r.comment}</Text> : null}
+            <Text className="font-figtree-medium text-player-ink-faint text-[11.5px]">{formatShortDate(r.created_at)}</Text>
+            {r.owner_reply ? (
+              <View className="mt-1 pl-3 border-l-2 border-player-border-light gap-0.5">
+                <Text className="font-figtree-semibold text-player-ink-muted text-[12px]">Owner reply</Text>
+                <Text className="font-figtree-medium text-player-ink text-[13px] leading-[18px]">{r.owner_reply}</Text>
+              </View>
+            ) : null}
+            {isAdmin ? (
+              <Pressable
+                accessibilityLabel={r.is_hidden ? "Unhide review" : "Hide review"}
+                onPress={() => toggleHidden(r.id, r.is_hidden)}
+                className="self-start mt-1 px-2.5 py-1 rounded bg-player-surface-2"
+              >
+                <Text className="font-figtree-semibold text-[12px]" style={{ color: r.is_hidden ? "#1F7A52" : "#A8432C" }}>
+                  {r.is_hidden ? "Unhide (admin)" : "Hide (admin)"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ))
+      )}
+    </View>
   );
 }

@@ -13,10 +13,12 @@ from app.models.booking import LIVE_BOOKING_STATUSES, Booking, BookingSource, Bo
 from app.models.court import Court
 from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
+from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.waitlist import WaitlistEntry
 from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 from app.services.availability_service import AvailabilityService
+from app.services.payment_ledger_service import recompute_payment_totals
 from app.utils.timezone import format_when
 
 logger = structlog.get_logger(__name__)
@@ -190,6 +192,7 @@ class BookingService:
         player_phone: str | None,
         amount_paid: float,
         recorded_by: User,
+        method: PaymentMethod = PaymentMethod.CASH_AT_VENUE,
     ) -> Booking:
         court = await self._load_active_court(court_id)
         ends_at = starts_at + timedelta(minutes=court.slot_minutes)
@@ -213,10 +216,24 @@ class BookingService:
             player_phone=player_phone,
             price=price,
             advance_amount=amount_paid,
-            amount_paid=amount_paid,
-            balance_due=max(round(price - amount_paid, 2), 0),
         )
         await self._insert_booking(booking)
+
+        # Section 32 Part 5: the walk-in's amount is a real payment_entries row (method defaults to cash at
+        # the venue, the overwhelmingly common case), not a hand-set amount_paid column.
+        amount_pkr = int(round(amount_paid))
+        if amount_pkr > 0:
+            self.db.add(
+                PaymentEntry(
+                    booking_id=booking.id,
+                    amount_pkr=amount_pkr,
+                    method=method,
+                    recorded_by=recorded_by.id,
+                    note="Walk-in booking",
+                )
+            )
+            await self.db.flush()
+            await recompute_payment_totals(self.db, booking)
 
         if linked_player is not None:
             linked_player.total_bookings += 1
@@ -363,22 +380,32 @@ class BookingService:
                 payment_id=payment.id,
                 player_id=booking.player_id,
                 reason="player_cancelled_paid_booking",
+                # Section 32 Part 10: a voluntary cancel that reaches this point already
+                # passed _enforce_cancellation_policy, so it's always fully refundable --
+                # there's no code path where a cancel succeeds "inside the cutoff" for a
+                # partial/non-refundable amount to apply to (the cutoff blocks the cancel
+                # outright instead). Refund owed = whatever was actually paid.
+                refund_amount=booking.amount_paid,
             )
         )
 
-    async def confirm_booking(self, booking: Booking) -> Booking:
+    async def confirm_booking(self, booking: Booking, recorded_by: User | None = None) -> Booking:
         """Called once an owner (or auto-approve) verifies the advance
         payment. Guarded by a conditional UPDATE (see _atomic_transition) so
         a double-tap approve, two concurrent approve requests, or an approve
         racing a cancel can never both take effect -- raises
         BOOKING_ALREADY_CANCELLED if the booking's live status has already
         moved past HELD/PAYMENT_SUBMITTED by the time this runs, instead of
-        blindly overwriting whatever it actually is now."""
+        blindly overwriting whatever it actually is now.
+
+        Section 32 Part 5: `amount_paid` is no longer set directly here -- it's always the sum of
+        `payment_entries` (see `recompute_payment_totals`), so confirming a booking records a payment_entries
+        row for the advance instead. `recorded_by` is the owner who approved the payment proof, or None for
+        an auto-approval (nobody clicked anything)."""
         ok = await self._atomic_transition(
             booking,
             from_statuses=(BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED),
             to_status=BookingStatus.BOOKED,
-            amount_paid=booking.advance_amount,
             payment_deadline=None,
         )
         if not ok:
@@ -387,6 +414,19 @@ class BookingService:
                 ErrorCode.BOOKING_ALREADY_CANCELLED,
                 "This booking is no longer awaiting payment review",
             )
+        advance = int(round(float(booking.advance_amount)))
+        if advance > 0:
+            self.db.add(
+                PaymentEntry(
+                    booking_id=booking.id,
+                    amount_pkr=advance,
+                    method=PaymentMethod.BANK_TRANSFER_PROOF,
+                    recorded_by=recorded_by.id if recorded_by else None,
+                    note="Advance payment approved" if recorded_by else "Advance payment auto-approved",
+                )
+            )
+            await self.db.flush()
+            await recompute_payment_totals(self.db, booking)
         if booking.player_id is not None:
             player = await self.db.get(User, booking.player_id)
             if player is not None:
@@ -493,6 +533,27 @@ class BookingService:
                 status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_CHECKIN_CODE, "Invalid venue check-in code"
             )
         return await self._do_check_in(booking, "player")
+
+    async def owner_mark_no_show(self, booking: Booking) -> Booking:
+        """Manual counterpart to the automatic `mark_overdue_no_shows` job
+        (Section 32 Part 9) -- lets an owner flag a no-show as soon as the
+        SAME grace window the job already uses (`NO_SHOW_GRACE_MINUTES`) has
+        passed, instead of silently waiting for the job's next tick. Reuses
+        that one setting rather than introducing a second, different
+        threshold, so a booking never reads as "no-show" to the owner sooner
+        than the automated system would treat it that way."""
+        if booking.status != BookingStatus.BOOKED:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_BOOKING_STATE, "Only booked slots can be marked no-show"
+            )
+        grace = timedelta(minutes=self.settings.NO_SHOW_GRACE_MINUTES)
+        if datetime.now(timezone.utc) < booking.starts_at + grace:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.TOO_EARLY_FOR_NO_SHOW,
+                "Too early to mark this booking as a no-show",
+            )
+        return await self.mark_no_show(booking)
 
     async def mark_no_show(self, booking: Booking) -> Booking:
         if booking.status != BookingStatus.BOOKED:
@@ -630,6 +691,12 @@ class BookingService:
                     payment_id=payment.id,
                     player_id=booking.player_id,
                     reason="payment_review_expired",
+                    # Section 32 Part 10: the payment was never approved (that's exactly
+                    # why this queue exists), so `booking.amount_paid` is still 0 -- the
+                    # player may well have transferred real money, but nothing in this
+                    # app ever recorded it as paid. Refund owed is 0 by definition here;
+                    # this is this codebase's real instance of a "non-refundable advance."
+                    refund_amount=0,
                 )
             )
 

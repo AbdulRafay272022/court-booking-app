@@ -395,6 +395,12 @@ async def test_vision_provider_timeout_degrades_to_manual_review(
 async def test_auto_approve_when_conditions_met(
     client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, db_session_factory, monkeypatch
 ):
+    """Section 32 Part 7 made auto-approve additionally require the name and
+    time checks to genuinely pass (and the receiver check to match or have
+    nothing configured) -- this test's fake extraction now supplies a
+    matching payer_name and an in-window timestamp so the "everything lines
+    up" case still auto-approves. See test_auto_approve_blocked_by_name_mismatch
+    /_time_check_outside_timer below for the new blocking cases."""
     _mock_upload(monkeypatch)
 
     settings = get_settings()
@@ -402,14 +408,14 @@ async def test_auto_approve_when_conditions_met(
 
     async def fake_extract(self, image_bytes, mime_type, expected_amount):
         return PaymentExtraction(
-            amount=3000, reference='TXN1', timestamp=None,
-            confidence=0.95, raw_response={},
+            amount=3000, reference='TXN1', timestamp=datetime.now(timezone.utc).isoformat(),
+            confidence=0.95, raw_response={}, payer_name="Ali Raza",
         )
 
     monkeypatch.setattr("app.services.ai.claude_provider.ClaudeProvider.extract_payment_proof", fake_extract)
 
     owner = await make_user("+923005000018", role=UserRole.OWNER)
-    customer = await make_user("+923005000019", role=UserRole.PLAYER)
+    customer = await make_user("+923005000019", role=UserRole.PLAYER, name="Ali Raza")
     venue = await make_venue(owner, auto_approve_enabled=True, auto_approve_min_bookings=5)
     court = await make_court(venue)
     await _open_all_week(make_schedule, court)
@@ -440,6 +446,213 @@ async def test_auto_approve_when_conditions_met(
     )
     assert submit.json()["payment"]["auto_approved"] is True
     assert submit.json()["booking"]["status"] == "booked"
+
+
+async def test_auto_approve_blocked_by_name_mismatch(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, db_session_factory, monkeypatch
+):
+    """Section 32 Part 7: auto-approve now requires the name check to
+    genuinely match -- otherwise identical setup to
+    test_auto_approve_when_conditions_met, but the screenshot's payer name
+    doesn't match the player's account name, so it must fall through to
+    manual review (payment_submitted), never an auto-reject."""
+    _mock_upload(monkeypatch)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+
+    async def fake_extract(self, image_bytes, mime_type, expected_amount):
+        return PaymentExtraction(
+            amount=3000, reference='TXN1', timestamp=datetime.now(timezone.utc).isoformat(),
+            confidence=0.95, raw_response={}, payer_name="Someone Else Entirely",
+        )
+
+    monkeypatch.setattr("app.services.ai.claude_provider.ClaudeProvider.extract_payment_proof", fake_extract)
+
+    owner = await make_user("+923005000060", role=UserRole.OWNER)
+    customer = await make_user("+923005000061", role=UserRole.PLAYER, name="Ali Raza")
+    venue = await make_venue(owner, auto_approve_enabled=True, auto_approve_min_bookings=5)
+    court = await make_court(venue)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=3000)
+    customer_headers = await make_auth_headers(customer)
+
+    async with db_session_factory() as session:
+        for i in range(5):
+            session.add(
+                Booking(
+                    court_id=court.id, player_id=customer.id,
+                    starts_at=datetime.now(timezone.utc) - timedelta(days=i + 10),
+                    ends_at=datetime.now(timezone.utc) - timedelta(days=i + 10) + timedelta(hours=1),
+                    price=3000, amount_paid=3000, status=BookingStatus.COMPLETED,
+                )
+            )
+        await session.commit()
+
+    booking = await _hold_booking(client, court, customer_headers)
+    submit = await client.post(
+        f"/api/v1/bookings/{booking['id']}/payment-proof",
+        headers=customer_headers,
+        files={"image": ("proof.jpg", io.BytesIO(_sample_png_bytes()), "image/jpeg")},
+    )
+    body = submit.json()
+    assert body["payment"]["auto_approved"] is False
+    assert body["payment"]["name_match_verdict"] == "mismatch"
+    assert body["booking"]["status"] == "payment_submitted"
+
+
+async def test_auto_approve_blocked_by_time_check_outside_timer(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, db_session_factory, monkeypatch
+):
+    """Same as above but for the time check: a screenshot timestamped well
+    after the 15-minute hold timer ended must block auto-approve, but still
+    only route to manual review, never a 500 or an auto-reject."""
+    _mock_upload(monkeypatch)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+
+    async def fake_extract(self, image_bytes, mime_type, expected_amount):
+        # held_until is ~BOOKING_HOLD_MINUTES (15) after the hold was just
+        # created "now" -- a timestamp 2 hours in the FUTURE relative to
+        # that is safely past held_until + the 2-minute tolerance, i.e.
+        # genuinely "after_timer" (paid after the timer ended). A timestamp
+        # in the past relative to "now" would instead be before_hold (paid
+        # before the hold even existed) -- a different case, covered above.
+        too_late = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        return PaymentExtraction(
+            amount=3000, reference='TXN1', timestamp=too_late,
+            confidence=0.95, raw_response={}, payer_name="Ali Raza",
+        )
+
+    monkeypatch.setattr("app.services.ai.claude_provider.ClaudeProvider.extract_payment_proof", fake_extract)
+
+    owner = await make_user("+923005000062", role=UserRole.OWNER)
+    customer = await make_user("+923005000063", role=UserRole.PLAYER, name="Ali Raza")
+    venue = await make_venue(owner, auto_approve_enabled=True, auto_approve_min_bookings=5)
+    court = await make_court(venue)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=3000)
+    customer_headers = await make_auth_headers(customer)
+
+    async with db_session_factory() as session:
+        for i in range(5):
+            session.add(
+                Booking(
+                    court_id=court.id, player_id=customer.id,
+                    starts_at=datetime.now(timezone.utc) - timedelta(days=i + 10),
+                    ends_at=datetime.now(timezone.utc) - timedelta(days=i + 10) + timedelta(hours=1),
+                    price=3000, amount_paid=3000, status=BookingStatus.COMPLETED,
+                )
+            )
+        await session.commit()
+
+    booking = await _hold_booking(client, court, customer_headers)
+    submit = await client.post(
+        f"/api/v1/bookings/{booking['id']}/payment-proof",
+        headers=customer_headers,
+        files={"image": ("proof.jpg", io.BytesIO(_sample_png_bytes()), "image/jpeg")},
+    )
+    body = submit.json()
+    assert body["payment"]["auto_approved"] is False
+    assert body["payment"]["time_check_verdict"] == "after_timer"
+    assert body["booking"]["status"] == "payment_submitted"
+
+
+async def test_pending_approvals_includes_the_five_plain_language_checks(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    """The owner's approval-card data (Section 32 Part 7) -- confirm
+    GET /owners/pending-approvals actually returns the `checks` object with
+    ready-made sentences, not just the raw OCR fields."""
+    _mock_upload(monkeypatch)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+
+    async def fake_extract(self, image_bytes, mime_type, expected_amount):
+        return PaymentExtraction(
+            amount=500, reference="TXN1", timestamp=datetime.now(timezone.utc).isoformat(),
+            confidence=0.9, raw_response={}, payer_name="Someone Else", bank_name="Easypaisa",
+        )
+
+    monkeypatch.setattr("app.services.ai.claude_provider.ClaudeProvider.extract_payment_proof", fake_extract)
+
+    owner = await make_user("+923005000064", role=UserRole.OWNER, name="Owner Person")
+    customer = await make_user("+923005000065", role=UserRole.PLAYER, name="Ali Raza")
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=3000)  # advance 3000, screenshot shows 500 -> mismatch
+    owner_headers = await make_auth_headers(owner)
+    customer_headers = await make_auth_headers(customer)
+
+    booking = await _hold_booking(client, court, customer_headers)
+    await client.post(
+        f"/api/v1/bookings/{booking['id']}/payment-proof",
+        headers=customer_headers,
+        files={"image": ("proof.jpg", io.BytesIO(_sample_png_bytes()), "image/jpeg")},
+    )
+
+    resp = await client.get("/api/v1/owners/pending-approvals", headers=owner_headers)
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1
+    checks = rows[0]["checks"]
+    assert checks["name"]["verdict"] == "mismatch"
+    assert "Someone Else" in checks["name"]["text"] and "Ali Raza" in checks["name"]["text"]
+    assert checks["amount"]["verdict"] == "mismatch"
+    assert "less than expected" in checks["amount"]["text"]
+    assert checks["balance_text"].startswith("Total PKR 3,000.")
+    assert checks["time"]["verdict"] == "match"
+    assert checks["bank"]["text"].startswith("Paid via Easypaisa")
+    assert checks["duplicate"]["verdict"] == "match"
+
+
+async def test_time_check_works_when_model_returns_a_human_pkt_timestamp(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    """Regression (Section 32 Part 7): the real vision model returns the payment
+    time exactly as printed on the receipt -- a human, Pakistan-local string like
+    "24 Sep 2026, 07:12 PM", NOT ISO 8601. ISO-only parsing turned that into None,
+    silently making the time check always "not visible" and blocking auto-approve
+    on every real screenshot. The time on the receipt is PKT, so it must be read
+    as PKT (not UTC) to land inside the hold window."""
+    from app.utils.timezone import utc_to_pkt_naive
+
+    _mock_upload(monkeypatch)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+
+    paid_human = utc_to_pkt_naive(datetime.now(timezone.utc)).strftime("%d %b %Y, %I:%M %p")
+
+    async def fake_extract(self, image_bytes, mime_type, expected_amount):
+        return PaymentExtraction(
+            amount=3000, reference="TXN-HUMAN", timestamp=paid_human,
+            confidence=0.95, raw_response={}, payer_name="Ali Raza", bank_name="JazzCash",
+        )
+
+    monkeypatch.setattr("app.services.ai.claude_provider.ClaudeProvider.extract_payment_proof", fake_extract)
+
+    owner = await make_user("+923005000066", role=UserRole.OWNER, name="Owner Person")
+    customer = await make_user("+923005000067", role=UserRole.PLAYER, name="Ali Raza")
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=3000)
+    owner_headers = await make_auth_headers(owner)
+    customer_headers = await make_auth_headers(customer)
+
+    booking = await _hold_booking(client, court, customer_headers)
+    await client.post(
+        f"/api/v1/bookings/{booking['id']}/payment-proof",
+        headers=customer_headers,
+        files={"image": ("proof.jpg", io.BytesIO(_sample_png_bytes()), "image/jpeg")},
+    )
+
+    resp = await client.get("/api/v1/owners/pending-approvals", headers=owner_headers)
+    assert resp.status_code == 200
+    row = resp.json()[0]
+    # The human PKT timestamp parsed and landed inside the hold window.
+    assert row["checks"]["time"]["verdict"] == "match"
+    assert "Within the timer" in row["checks"]["time"]["text"]
 
 
 async def test_global_auto_approve_disabled_forces_manual_review(

@@ -415,3 +415,37 @@ async def test_tool_loop_stops_after_max_iterations(
     service = AIChatService(db_session, settings)
     result = await service.process_message(user=player, message="hello", history=[])
     assert "trouble" in result.reply.lower() or "rephrasing" in result.reply.lower()
+
+
+# --- Section 32 Part 8: outgoing-reply sanitizer -----------------------------
+from app.services.ai_chat_service import sanitize_reply, _strip_button_talk, _strip_markdown
+
+
+def test_sanitize_strips_markdown_bold_that_whatsapp_shows_literally():
+    assert _strip_markdown("Pay **PKR 3,500** now") == "Pay PKR 3,500 now"
+    assert _strip_markdown("__Court 1__ is free") == "Court 1 is free"
+    assert _strip_markdown("# Heading\n- item one\n- item two").strip() == "Heading\nitem one\nitem two"
+
+
+def test_sanitize_removes_button_tap_click_wording():
+    for text in [
+        "Please tap the button below to confirm.",
+        "Click the Yes button to book it.",
+        "Press the buttons to continue.",
+    ]:
+        cleaned = _strip_button_talk(text).lower()
+        assert "button" not in cleaned
+        assert "tap" not in cleaned and "click" not in cleaned and "press" not in cleaned
+
+
+def test_sanitize_keeps_the_reply_yes_or_no_fallback():
+    text = "Shall I book it? Reply Yes or No"
+    assert _strip_button_talk(text) == text
+
+
+def test_sanitize_reply_combines_all_safety_nets():
+    # 24-hour time + markdown + button talk in one reply.
+    out = sanitize_reply("**Great!** Your slot is 19:00 to 20:00. Tap the Yes button below to confirm.")
+    assert "**" not in out
+    assert "19:00" not in out  # enforce_display_format handles the clock
+    assert "button" not in out.lower() and "tap" not in out.lower()

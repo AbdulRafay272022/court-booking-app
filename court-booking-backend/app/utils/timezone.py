@@ -15,6 +15,15 @@ def pkt_time_to_utc(d: date, t: time) -> datetime:
     return (local_naive - PKT_OFFSET).replace(tzinfo=timezone.utc)
 
 
+def naive_pkt_to_utc(local_naive: datetime) -> datetime:
+    """A naive Pakistan wall-clock datetime -> UTC-aware. Inverse of
+    utc_to_pkt_naive. Used for a payment screenshot's printed time (JazzCash/
+    Easypaisa show Pakistan local time with no offset), so it can be compared
+    against the booking's UTC timestamps -- treating that naive time as UTC
+    would be 5 hours off (Section 32 Part 7)."""
+    return (local_naive - PKT_OFFSET).replace(tzinfo=timezone.utc)
+
+
 def utc_to_pkt_naive(dt: datetime) -> datetime:
     """Convert a UTC-aware datetime to the equivalent Pakistan-local
     wall-clock moment, as a naive datetime -- for comparing a real booking

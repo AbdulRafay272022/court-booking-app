@@ -1,11 +1,17 @@
+import enum
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, literal_column, text
+from sqlalchemy import ARRAY, Boolean, ForeignKey, Integer, Numeric, String, Text, literal_column, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from app.database import Base
-from app.models.mixins import TimestampMixin, UUIDPkMixin
+from app.models.mixins import TimestampMixin, UUIDPkMixin, pg_enum
+
+
+class CourtAdvanceType(str, enum.Enum):
+    FIXED = "fixed"
+    PERCENT = "percent"
 
 
 class Court(UUIDPkMixin, TimestampMixin, Base):
@@ -48,7 +54,24 @@ class Court(UUIDPkMixin, TimestampMixin, Base):
         literal_column("(SELECT v.cancellation_cutoff_hours FROM venues v WHERE v.id = courts.venue_id)", Integer),
         deferred=False,
     )
+    # Section 32 Part 5: the owner's advance rule for this court -- a fixed PKR amount or a percentage of the
+    # total, with an optional minimum floor. Null `advance_type` means no court-level override: the advance
+    # keeps coming from the matched pricing_rule's own `advance_percentage` (the pre-Part-5 behavior).
+    advance_type: Mapped[CourtAdvanceType | None] = mapped_column(
+        pg_enum(CourtAdvanceType, "court_advance_type"), nullable=True
+    )
+    # PKR if advance_type is FIXED, a 0-100 percentage if PERCENT. Numeric to match every other money/percent
+    # column in this schema (pricing_rules.advance_percentage, bookings.price, ...).
+    advance_value: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    # A floor in whole PKR: the computed advance is raised to this if it would otherwise be lower. Never
+    # raises the advance above the booking's own total.
+    advance_minimum: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Deprecated single-photo column (kept one release, unused now that Part 6 added
+    # the `photos` gallery below). CourtOut.photo_urls is computed from `photos`.
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Section 32 Part 6: per-court photo gallery, list of S3 keys (mirrors venues.photos);
+    # order is display order, index 0 is the cover.
+    photos: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False

@@ -3,6 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
+from app.schemas.payment import PaymentChecksOut
+
 
 class TodaySlotOut(BaseModel):
     starts_at: datetime
@@ -14,6 +16,9 @@ class TodaySlotOut(BaseModel):
     # Section 32 Part 2: the owner's Today row shows what is still owed at the venue, not just what was paid.
     price: float | None = None
     balance_due: float | None = None
+    # Section 32 Part 9: so Today can show "Checked in 7:05 PM" / offer Check in or Mark no-show.
+    checked_in_at: datetime | None = None
+    checked_in_by: str | None = None
 
 
 class TodayCourtOut(BaseModel):
@@ -49,29 +54,48 @@ class PendingApprovalOut(BaseModel):
     proof_url: str | None
     submitted_at: datetime
     minutes_since_submission: float
+    checks: PaymentChecksOut  # Section 32 Part 7 -- the five plain-language checks
 
 
-class LedgerRowOut(BaseModel):
-    booking_id: uuid.UUID
-    date: datetime
+class LedgerEntryOut(BaseModel):
+    """One row per PAYMENT (Section 32 Part 5), not per booking -- a booking with an advance plus a
+    balance payment is two rows here. A negative amount_pkr is an admin correction reversing an earlier
+    row (see PaymentEntry.reverses_entry_id)."""
+
+    entry_id: uuid.UUID
+    recorded_at: datetime
     court: str
+    booking_id: uuid.UUID
+    starts_at: datetime
     player: str | None
-    source: str
-    amount_paid: float
-    balance_due: float
-    status: str
+    # Section 32 batch merge: Part 5's per-payment ledger supersedes Part 10's per-booking row.
+    # Part 10's refund_amount-on-the-row is intentionally dropped here; wiring a paid refund to
+    # appear as a real negative payment_entry is a deliberate follow-up (see batch-review notes).
+    method: str
+    amount_pkr: int
+    running_total: int
+    booking_status: str
 
 
 class LedgerSummaryOut(BaseModel):
-    total_revenue: float
-    total_bookings: int
-    avg_revenue_per_day: float
-    by_source: dict[str, int]
-    by_court: dict[str, float]
+    # Always "now"-relative (Pakistan time), independent of whatever date range/filters are selected for
+    # `entries` below -- these are the owner's always-current headline numbers.
+    collected_today: int
+    collected_this_week: int
+    collected_this_month: int
+    # Money owed for BOOKED/COMPLETED slots whose balance isn't fully collected yet.
+    outstanding_balance: float
+    # Money paid on bookings with an unresolved payment_disputes row (a cancelled/expired booking a
+    # player likely paid real money for and hasn't been refunded).
+    cancelled_refund_pending: float
+    # Net total of `entries` below (respects the caller's date range and filters).
+    total_in_range: int
+    by_court: dict[str, int]
+    by_day: dict[str, int]
 
 
 class LedgerOut(BaseModel):
-    bookings: list[LedgerRowOut]
+    entries: list[LedgerEntryOut]
     summary: LedgerSummaryOut
 
 

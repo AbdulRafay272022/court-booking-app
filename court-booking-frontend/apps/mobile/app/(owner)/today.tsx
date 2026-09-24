@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -11,8 +11,9 @@ import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { openSupportWhatsApp } from "@/lib/support";
 import { confirmLogout } from "@/lib/logout";
-import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon } from "@/components/icons";
+import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, QrIcon, RefreshIcon, StarBadgeIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
+import { RecordPaymentSheet } from "@/components/record-payment-sheet";
 import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 
@@ -22,11 +23,16 @@ const STATUS_STYLE: Record<string, { border: string; bg: string }> = {
   held: { border: "#5B7079", bg: "#FFFFFF" },
   available: { border: "#C6D2D7", bg: "#FFFFFF" },
   blocked: { border: "#DCE3E6", bg: "#EFF2F3" },
+  completed: { border: "#5B7079", bg: "#FFFFFF" },
+  no_show: { border: "#8C3823", bg: "#F8E5E0" },
 };
 
 export default function OwnerTodayScreen() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
+  const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
+  const [recording, setRecording] = useState<{ bookingId: string; playerLabel: string; balanceDue: number } | null>(null);
+  const queryClient = useQueryClient();
 
   const todayQuery = useQuery({
     queryKey: ["owner-today", activeVenueId],
@@ -34,6 +40,39 @@ export default function OwnerTodayScreen() {
     enabled: !!activeVenueId,
     refetchInterval: (query) => pollInterval(query, 15_000),
   });
+
+  async function handleCheckIn(bookingId: string) {
+    setBusyBookingId(bookingId);
+    try {
+      await api.bookings.checkin(bookingId);
+      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+    } catch (e) {
+      Alert.alert("Couldn't check in", friendlyErrorMessage(e));
+    } finally {
+      setBusyBookingId(null);
+    }
+  }
+
+  async function handleNoShow(bookingId: string) {
+    Alert.alert("Mark as no-show?", "This records that the player never showed up for this booking.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Mark no-show",
+        style: "destructive",
+        onPress: async () => {
+          setBusyBookingId(bookingId);
+          try {
+            await api.bookings.noShow(bookingId);
+            await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+          } catch (e) {
+            Alert.alert("Couldn't mark no-show", friendlyErrorMessage(e));
+          } finally {
+            setBusyBookingId(null);
+          }
+        },
+      },
+    ]);
+  }
 
   const data = todayQuery.data;
   const courts = data?.courts ?? [];
@@ -194,13 +233,58 @@ export default function OwnerTodayScreen() {
                   >
                     <Text className="font-plex-semibold text-owner-accent text-[12.5px]">Add booking</Text>
                   </Pressable>
+                ) : slot.status === "booked" && slot.balance_due != null && slot.balance_due > 0 && slot.booking_id ? (
+                  <Pressable
+                    onPress={() =>
+                      setRecording({
+                        bookingId: slot.booking_id!,
+                        playerLabel: slot.player_name ?? "Player",
+                        balanceDue: slot.balance_due!,
+                      })
+                    }
+                    className="items-end"
+                  >
+                    <Text className="font-mono-semibold text-[13.5px] text-owner-ink">PKR {formatPKR(slot.amount_paid ?? 0)}</Text>
+                    <View className="px-2.5 h-7 rounded-full items-center justify-center flex-row" style={{ backgroundColor: "#FBF0DD" }}>
+                      <Text className="font-plex-bold text-[10.5px]" style={{ color: "#9C5C0A" }}>
+                        RECORD PKR {formatPKR(slot.balance_due)}
+                      </Text>
+                    </View>
+                  </Pressable>
                 ) : slot.amount_paid != null ? (
-                  <View className="items-end">
+                  <View className="items-end gap-1">
                     <Text className="font-mono-semibold text-[13.5px] text-owner-ink">PKR {formatPKR(slot.amount_paid)}</Text>
                     {slot.status === "booked" && slot.balance_due != null ? (
                       <Text className="font-plex-semibold text-[11px]" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
                         {slot.balance_due > 0 ? `PKR ${formatPKR(slot.balance_due)} due at venue` : "Fully paid"}
                       </Text>
+                    ) : null}
+                    {slot.status === "booked" && slot.booking_id ? (
+                      <View className="flex-row gap-1.5 mt-0.5">
+                        <Pressable
+                          disabled={busyBookingId === slot.booking_id}
+                          onPress={() => handleCheckIn(slot.booking_id as string)}
+                          className="px-2.5 py-1 rounded-md"
+                          style={{ backgroundColor: "#0E6274", opacity: busyBookingId === slot.booking_id ? 0.5 : 1 }}
+                        >
+                          <Text className="font-plex-semibold text-white text-[10.5px]">Check in</Text>
+                        </Pressable>
+                        <Pressable
+                          disabled={busyBookingId === slot.booking_id}
+                          onPress={() => handleNoShow(slot.booking_id as string)}
+                          className="px-2.5 py-1 rounded-md border"
+                          style={{ borderColor: "#8C3823", opacity: busyBookingId === slot.booking_id ? 0.5 : 1 }}
+                        >
+                          <Text className="font-plex-semibold text-[10.5px]" style={{ color: "#8C3823" }}>No-show</Text>
+                        </Pressable>
+                      </View>
+                    ) : slot.status === "completed" && slot.checked_in_at ? (
+                      <Text className="font-plex-semibold text-[11px]" style={{ color: "#1F7A52" }}>
+                        Checked in {formatTime(slot.checked_in_at)}
+                        {slot.checked_in_by ? ` · ${slot.checked_in_by}` : ""}
+                      </Text>
+                    ) : slot.status === "no_show" ? (
+                      <Text className="font-plex-semibold text-[11px]" style={{ color: "#8C3823" }}>No-show</Text>
                     ) : null}
                   </View>
                 ) : null}
@@ -221,16 +305,38 @@ export default function OwnerTodayScreen() {
         <IconButton onPress={() => Alert.alert("Coming soon", "Browsing other days from Today isn't built yet — use the ledger for a date range.")}>
           <CalendarIcon />
         </IconButton>
+        <IconButton onPress={() => router.push("/(owner)/checkin")}>
+          <QrIcon />
+        </IconButton>
         <IconButton onPress={() => router.push("/(owner)/ledger")}>
           <BarsIcon />
         </IconButton>
+        <IconButton onPress={() => router.push("/(owner)/refunds")}>
+          <RefreshIcon size={16} color="#5B7079" />
+        </IconButton>
         <IconButton onPress={() => router.push("/(owner)/growth")}>
           <TrendingUpIcon size={18} color="#5B7079" />
+        </IconButton>
+        <IconButton onPress={() => router.push("/(owner)/reviews")}>
+          <StarBadgeIcon size={18} color="#5B7079" />
         </IconButton>
         <IconButton onPress={() => router.push("/(owner)/venue-settings")}>
           <SettingsIcon />
         </IconButton>
       </View>
+
+      {recording ? (
+        <RecordPaymentSheet
+          bookingId={recording.bookingId}
+          playerLabel={recording.playerLabel}
+          balanceDue={recording.balanceDue}
+          onClose={() => setRecording(null)}
+          onRecorded={() => {
+            setRecording(null);
+            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -243,6 +349,10 @@ function statusLabel(status: string): string {
       return "Open";
     case "blocked":
       return "Closed";
+    case "completed":
+      return "Checked in";
+    case "no_show":
+      return "No-show";
     default:
       return "Booking";
   }
@@ -260,6 +370,10 @@ function statusSubtitle(status: string): string {
       return "No booking yet";
     case "blocked":
       return "Blocked by venue";
+    case "completed":
+      return "Player checked in";
+    case "no_show":
+      return "Player never checked in";
     default:
       return "";
   }

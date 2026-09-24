@@ -5,12 +5,15 @@ from fastapi import APIRouter, File, UploadFile, status
 from app.dependencies import AppSettings, CurrentUser, DbSession, RequireOwner
 from app.errors import AppError, ErrorCode
 from app.models.court import Court
+from app.models.payment_entry import PaymentEntry
 from app.models.user import User
 from app.models.venue import Venue
 from app.schemas.booking import BookingOut
 from app.schemas.payment import PaymentOut, PaymentRejectIn, PaymentSubmitResponse, ProofUrlOut
+from app.schemas.payment_entry import PaymentEntryIn, PaymentEntryOut, PaymentEntryResponse, PaymentEntryReverseIn
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
+from app.services.payment_ledger_service import PaymentLedgerService
 from app.services.payment_service import PaymentService
 from app.services.venue_service import VenueService
 from app.utils.image import InvalidImageError, validate_image
@@ -177,3 +180,63 @@ async def list_payments_for_booking(
     payment_service = PaymentService(db, settings)
     payments = await payment_service.list_for_booking(booking_id)
     return [_payment_out(p) for p in payments]
+
+
+@router.post(
+    "/bookings/{booking_id}/payment-entries",
+    response_model=PaymentEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_payment_entry(
+    booking_id: uuid.UUID, payload: PaymentEntryIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+) -> PaymentEntryResponse:
+    """Section 32 Part 5: the owner (or admin) records money actually received against a booking --
+    typically the balance paid in cash at the venue, or a bank transfer that didn't go through the
+    app's payment-proof flow. Refuses to record more than the balance due."""
+    booking_service = BookingService(db, settings)
+    booking = await booking_service.require_accessible_booking(booking_id, owner)
+
+    ledger = PaymentLedgerService(db)
+    entry = await ledger.record_entry(
+        booking.id,
+        amount_pkr=payload.amount_pkr,
+        method=payload.method,
+        recorded_by=owner,
+        note=payload.note,
+    )
+    await db.refresh(booking)
+    return PaymentEntryResponse(
+        entry=PaymentEntryOut.model_validate(entry),
+        amount_paid=float(booking.amount_paid),
+        balance_due=float(booking.balance_due),
+    )
+
+
+@router.get("/bookings/{booking_id}/payment-entries", response_model=list[PaymentEntryOut])
+async def list_payment_entries(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, user: CurrentUser
+) -> list[PaymentEntryOut]:
+    booking_service = BookingService(db, settings)
+    await booking_service.require_accessible_booking(booking_id, user)
+    ledger = PaymentLedgerService(db)
+    entries = await ledger.list_for_booking(booking_id)
+    return [PaymentEntryOut.model_validate(e) for e in entries]
+
+
+@router.post("/payment-entries/{entry_id}/reverse", response_model=PaymentEntryOut)
+async def reverse_payment_entry(
+    entry_id: uuid.UUID, payload: PaymentEntryReverseIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+) -> PaymentEntryOut:
+    """Section 32 Part 5: correct a mistaken payment entry. Same accessibility rule as recording one -- a
+    venue owner can correct entries on their own bookings only, an admin can correct any -- checked the same
+    way `record_payment_entry` above does, via `require_accessible_booking`. Never edits or deletes the
+    original row: inserts a reversing entry (see `PaymentLedgerService.reverse_entry`)."""
+    entry = await db.get(PaymentEntry, entry_id)
+    if entry is None:
+        raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Payment entry not found")
+    booking_service = BookingService(db, settings)
+    await booking_service.require_accessible_booking(entry.booking_id, owner)
+
+    ledger = PaymentLedgerService(db)
+    reversal = await ledger.reverse_entry(entry_id, actor=owner, reason=payload.reason)
+    return PaymentEntryOut.model_validate(reversal)

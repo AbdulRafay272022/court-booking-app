@@ -20,6 +20,8 @@ export interface VenueSummary {
   photo_urls: string[];
   status: VenueStatus;
   average_rating: number | null;
+  /** Section 32 Part 6: number of visible reviews. */
+  review_count: number;
   distance_meters: number | null;
 }
 
@@ -42,6 +44,8 @@ export interface Venue {
   sports: string[];
   amenities: string[] | null;
   photo_urls: string[];
+  /** Section 32 Part 6: same order as photo_urls; the owner UI reorders/deletes by key. */
+  photo_keys: string[];
   status: VenueStatus;
   rejection_reason: string | null;
   auto_approve_enabled: boolean;
@@ -57,9 +61,16 @@ export interface Venue {
   created_at: string;
   courts: Court[];
   average_rating: number | null;
+  /** Section 32 Part 6: number of visible reviews. */
+  review_count: number;
   distance_meters: number | null;
   /** Populated only when the requester is this venue's owner or an admin. */
   bank_details: BankDetails | null;
+  /** Section 32 Part 9: a per-venue token meant to be printed/posted physically at the
+   * venue entrance -- a player scans it (POST /bookings/:id/checkin/self) to check
+   * themselves in. Populated only when the requester is this venue's owner or an admin,
+   * same visibility rule as bank_details. */
+  checkin_qr_token: string | null;
   /** Only populated by GET /venues/by-slug/:slug */
   available_slots_today?: number | null;
 }

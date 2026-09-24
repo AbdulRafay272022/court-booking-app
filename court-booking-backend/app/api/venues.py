@@ -10,6 +10,7 @@ from app.models.court import Court
 from app.models.user import User
 from app.schemas.marketing import AnnouncementIn, AnnouncementResultOut
 from app.schemas.venue import (
+    PhotoOrderIn,
     VenueCreateIn,
     VenueDetailResponse,
     VenueListItemOut,
@@ -54,6 +55,7 @@ async def list_venues(
     )
     venues = []
     for venue, distance in rows:
+        avg, count = await service.rating_summary(venue.id)
         venues.append(
             VenueListItemOut(
                 id=venue.id,
@@ -64,7 +66,8 @@ async def list_venues(
                 sports=venue.sports,
                 photo_urls=VenueService.photo_urls(venue),
                 status=venue.status,
-                average_rating=await service.average_rating(venue.id),
+                average_rating=avg,
+                review_count=count,
                 distance_meters=distance,
             )
         )
@@ -130,6 +133,18 @@ async def upload_venue_photo(
     service = VenueService(db, settings)
     venue = await service.require_owned_venue(venue_id, owner)
     venue = await service.add_photo(venue, data, file.filename or "photo.jpg", file.content_type)
+    return await service.to_out(venue, requesting_user=owner)
+
+
+@router.put("/{venue_id}/photos", response_model=VenueOut)
+async def reorder_venue_photos(
+    venue_id: uuid.UUID, payload: PhotoOrderIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+) -> VenueOut:
+    """Reorder / delete / set-cover (Section 32 Part 6): send the desired ordered list of
+    this venue's own photo keys (index 0 is the cover; an omitted key is deleted)."""
+    service = VenueService(db, settings)
+    venue = await service.require_owned_venue(venue_id, owner)
+    venue = await service.set_photos(venue, payload.photos)
     return await service.to_out(venue, requesting_user=owner)
 
 

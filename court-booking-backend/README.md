@@ -61,7 +61,7 @@ everything is under `/api/v1`):
 | Payments | `/payments`, `/bookings/{id}/payments` | `approve`, `reject`, `proof-url` |
 | Waitlist | `/waitlist` | join (returns FIFO `position`), `mine`, cancel |
 | Reviews | `/reviews`, `/venues/{id}/reviews` | create, owner `reply` |
-| Owners | `/owners` | `venues`, per-venue `bookings`/`payments/pending`, `digest`, `today`, `pending-approvals`, `ledger` (+`export`), `growth` (Pro tier) |
+| Owners | `/owners` | `venues`, per-venue `bookings`/`payments/pending`, `digest`, `today`, `pending-approvals`, `ledger` (+`export`), `growth` (Pro tier), `refunds` (+`{id}/mark-refunded` -- Section 32 Part 10, not yet deployed) |
 | Admin | `/admin` | `dashboard`, `stats`, `venues`(`/pending`), `venues/{id}/approve\|reject\|request-changes`, `bookings`, `users` (`search`/`flagged`), `disputes` (+`/refund-queue`, `/passive-venues`, `/flagged-checkins`), `users/{id}/suspend\|unsuspend` |
 | Chat | `/chat` | `message` (AI tool-calling turn, in-app), `history` (filterable by `venue_id`/`booking_id`) |
 | Webhooks | `/webhooks/whatsapp` | inbound WhatsApp messages (verify + receive) |

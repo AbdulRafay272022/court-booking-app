@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     # approvals screen produces zero explicit rejections and so was
     # otherwise invisible to the dispute system (AUDIT_FINDINGS.md finding #14)
     DISPUTE_MIN_PASSIVE_EXPIRIES: int = 2
+    # Section 32 Part 10: a refund still marked "owed" this many days after
+    # it was flagged surfaces as overdue to admin. Picked as a reasonable
+    # default for a real-money pilot, not specified by the spec -- flagged
+    # as a decision made without asking.
+    REFUND_OVERDUE_DAYS: int = 3
 
     # Platform-wide kill switches, read at request time (no redeploy needed
     # to flip either) -- see AUDIT_FINDINGS.md finding #21. If the AI chat

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, SmallInteger, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, SmallInteger, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +25,11 @@ class Review(UUIDPkMixin, CreatedAtMixin, Base):
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner_replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Section 32 Part 6: admin moderation + player-edit tracking.
+    is_hidden: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     venue: Mapped["Venue"] = relationship(back_populates="reviews")  # noqa: F821
     player: Mapped["User"] = relationship()  # noqa: F821

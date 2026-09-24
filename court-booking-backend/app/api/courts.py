@@ -1,11 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import AppSettings, DbSession, RequireOwner
 from app.errors import AppError, ErrorCode
+from app.utils.s3 import upload_public_photo
 from app.utils.schedule import overlap_error
 from app.models.blackout import Blackout
 from app.models.court import Court
@@ -23,16 +24,21 @@ from app.schemas.court import (
     ScheduleTemplateOut,
     SchedulesIn,
 )
+from app.schemas.venue import PhotoOrderIn
 from app.models.user import User
 from app.services.audit_service import AuditService
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
-from app.services.venue_service import VenueService
+from app.services.venue_service import MAX_COURT_PHOTOS, VenueService
 
 router = APIRouter(tags=["courts"])
 
 # Weekday names for messages, in the backend's numbering (Monday = 0).
 _DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+# Section 32 Part 6 -- same limits/validation as venue photos.
+ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
 
 async def _get_court(db: DbSession, court_id: uuid.UUID) -> Court:
@@ -146,6 +152,43 @@ async def deactivate_court(court_id: uuid.UUID, db: DbSession, settings: AppSett
                 new_value={"court_id": str(court_id), "booking_status": booking.status.value},
             )
         await db.commit()
+
+
+@router.post("/courts/{court_id}/photos", response_model=CourtOut)
+async def upload_court_photo(
+    court_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner, file: UploadFile = File(...)
+) -> CourtOut:
+    """Add one photo to a court's gallery (Section 32 Part 6), max MAX_COURT_PHOTOS."""
+    if file.content_type not in ALLOWED_PHOTO_TYPES:
+        raise AppError(400, ErrorCode.INVALID_PHOTO, "Unsupported image type.")
+    data = await file.read()
+    if len(data) > MAX_PHOTO_BYTES:
+        raise AppError(400, ErrorCode.INVALID_PHOTO, "Image too large.")
+    court = await _get_court(db, court_id)
+    await VenueService(db, settings).require_owned_venue(court.venue_id, owner)
+    if len(court.photos or []) >= MAX_COURT_PHOTOS:
+        raise AppError(400, ErrorCode.PHOTO_LIMIT_REACHED, f"A court can have at most {MAX_COURT_PHOTOS} photos.")
+    key = await upload_public_photo(data, file.filename or "photo.jpg", file.content_type, prefix="courts")
+    court.photos = [*(court.photos or []), key]
+    await db.commit()
+    return CourtOut.model_validate(await _get_court(db, court_id))
+
+
+@router.put("/courts/{court_id}/photos", response_model=CourtOut)
+async def reorder_court_photos(
+    court_id: uuid.UUID, payload: PhotoOrderIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+) -> CourtOut:
+    """Reorder / delete / set-cover: send the desired ordered list of this court's own
+    photo keys (index 0 is the cover; an omitted key is deleted) -- Section 32 Part 6."""
+    court = await _get_court(db, court_id)
+    await VenueService(db, settings).require_owned_venue(court.venue_id, owner)
+    current = set(court.photos or [])
+    keys = payload.photos
+    if len(keys) != len(set(keys)) or not set(keys).issubset(current):
+        raise AppError(400, ErrorCode.INVALID_PHOTO, "Photo list must be a reordering of this court's own photos.")
+    court.photos = list(keys)
+    await db.commit()
+    return CourtOut.model_validate(await _get_court(db, court_id))
 
 
 @router.post("/courts/{court_id}/schedule", response_model=list[ScheduleTemplateOut])

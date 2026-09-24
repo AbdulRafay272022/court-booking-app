@@ -20,11 +20,13 @@ from app.schemas.admin import (
     RefundQueueEntryOut,
     SuspendUserIn,
 )
+from app.schemas.review import ReviewOut
 from app.schemas.venue import VenueOut
 from app.services.admin_service import AdminService
 from app.services.audit_service import AuditService
 from app.services.growth_service import GrowthService
 from app.services.notification_service import NotificationService
+from app.services.review_service import ReviewService
 from app.services.venue_service import VenueService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -215,3 +217,39 @@ async def unsuspend_user(
     user = await service.get_user(user_id)
     user = await service.unsuspend_user(user, admin)
     return AdminUserOut.model_validate(user)
+
+
+@router.post("/reviews/{review_id}/hide", response_model=ReviewOut)
+async def hide_review(
+    review_id: uuid.UUID, db: DbSession, settings: AppSettings, admin: RequireAdmin
+) -> ReviewOut:
+    """Admin hides an abusive review (Section 32 Part 6) -- it drops out of the public
+    venue list; the average rating and count recompute over visible reviews only."""
+    service = ReviewService(db, settings)
+    review = await service.get(review_id)
+    was_hidden = review.is_hidden
+    out = await service.set_hidden(review, True)
+    await AuditService(db).log(
+        actor_user_id=admin.id, actor_type="admin", action="review_hidden",
+        entity_type="review", entity_id=review_id,
+        old_value={"is_hidden": was_hidden}, new_value={"is_hidden": True},
+    )
+    await db.commit()
+    return out
+
+
+@router.post("/reviews/{review_id}/unhide", response_model=ReviewOut)
+async def unhide_review(
+    review_id: uuid.UUID, db: DbSession, settings: AppSettings, admin: RequireAdmin
+) -> ReviewOut:
+    service = ReviewService(db, settings)
+    review = await service.get(review_id)
+    was_hidden = review.is_hidden
+    out = await service.set_hidden(review, False)
+    await AuditService(db).log(
+        actor_user_id=admin.id, actor_type="admin", action="review_unhidden",
+        entity_type="review", entity_id=review_id,
+        old_value={"is_hidden": was_hidden}, new_value={"is_hidden": False},
+    )
+    await db.commit()
+    return out

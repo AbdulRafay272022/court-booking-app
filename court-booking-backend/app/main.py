@@ -60,6 +60,13 @@ def create_app() -> FastAPI:
     )
     app.state.chat_rate_limiter = FixedWindowCounter()
 
+    # Order matters: add_middleware puts the LAST-added one OUTERMOST, so CORS must be
+    # added last to wrap everything -- that way even a response produced by an inner
+    # middleware's exception catch-all (RequestContextMiddleware, Section 32 Part 8)
+    # still passes back out through CORS and gets its headers. An unhandled 500 that
+    # skips CORS shows in the browser as a network failure, which has misled us before.
+    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
@@ -67,8 +74,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.add_middleware(RateLimitMiddleware, settings=settings)
-    app.add_middleware(RequestContextMiddleware)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

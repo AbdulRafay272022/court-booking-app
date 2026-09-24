@@ -70,6 +70,8 @@ class VenueOut(BaseModel):
     sports: list[str]
     amenities: list[str] | None
     photo_urls: list[str] = Field(default_factory=list)
+    # Same order as photo_urls; the owner UI reorders/deletes by key (Section 32 Part 6).
+    photo_keys: list[str] = Field(default_factory=list)
     status: VenueStatus
     rejection_reason: str | None = None
     auto_approve_enabled: bool
@@ -80,6 +82,7 @@ class VenueOut(BaseModel):
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None
+    review_count: int = 0  # Section 32 Part 6
     distance_meters: float | None = None
     # Only populated for the venue's owner or an admin; omitted otherwise.
     bank_details: dict | None = None
@@ -107,7 +110,15 @@ class VenueListItemOut(BaseModel):
     photo_urls: list[str] = Field(default_factory=list)
     status: VenueStatus
     average_rating: float | None = None
+    review_count: int = 0  # Section 32 Part 6
     distance_meters: float | None = None
+
+
+class PhotoOrderIn(BaseModel):
+    """Section 32 Part 6: the desired ordered list of a venue's/court's own photo keys
+    (index 0 = cover). Reorder = new order; delete = omit a key; set-cover = put it first."""
+
+    photos: list[str] = Field(default_factory=list)
 
 
 class VenueListResponse(BaseModel):

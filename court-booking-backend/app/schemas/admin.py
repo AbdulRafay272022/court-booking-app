@@ -129,6 +129,36 @@ class RefundQueueEntryOut(BaseModel):
     reason: str
     resolved: bool
     created_at: datetime
+    # Section 32 Part 10 (manual refunds)
+    refund_amount: float | None
+    refund_status: str
+    refunded_amount: float | None
+    refund_reference: str | None
+    refunded_at: datetime | None
+    refunded_by_user_id: uuid.UUID | None
+    is_overdue: bool
+
+
+class OwnerRefundOut(BaseModel):
+    """The owner-facing 'Refunds to pay' row -- a narrower view of the same
+    payment_disputes row RefundQueueEntryOut exposes to admin, scoped to
+    only the owner's own venues and only what an owner needs to act on it."""
+
+    id: uuid.UUID
+    booking_id: uuid.UUID
+    court_name: str
+    venue_name: str
+    player_name: str | None
+    player_phone: str | None
+    starts_at: datetime
+    reason: str
+    refund_amount: float
+    refund_status: str
+    refunded_amount: float | None
+    refund_reference: str | None
+    refunded_at: datetime | None
+    created_at: datetime
+    is_overdue: bool
 
 
 class SuspendUserIn(BaseModel):

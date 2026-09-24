@@ -14,7 +14,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-owner-bg text-owner-ink">
-      <header className="flex items-center justify-between px-8 py-5 bg-owner-surface border-b border-owner-border">
+      <header className="flex items-center justify-between px-4 sm:px-8 py-5 bg-owner-surface border-b border-owner-border">
         <div className="flex items-center gap-3">
           <Logo tone="owner" size={34} />
           <div>

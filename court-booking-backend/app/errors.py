@@ -42,6 +42,18 @@ class ErrorCode:
     INVALID_DURATION = "INVALID_DURATION"  # Section 32 Part 4: a booking length the court can't give
     BOOKING_ALREADY_CANCELLED = "BOOKING_ALREADY_CANCELLED"
     INVALID_CHECKIN_CODE = "INVALID_CHECKIN_CODE"
+    TOO_EARLY_FOR_NO_SHOW = "TOO_EARLY_FOR_NO_SHOW"  # Section 32 Part 9: owner manual no-show, before the grace window
+
+    # Reviews (Section 32 Part 6)
+    ALREADY_REVIEWED = "ALREADY_REVIEWED"
+    REVIEW_NOT_ALLOWED = "REVIEW_NOT_ALLOWED"  # booking not completed / not the player's
+    REVIEW_NOT_FOUND = "REVIEW_NOT_FOUND"
+    NOT_YOUR_REVIEW = "NOT_YOUR_REVIEW"
+    REVIEW_EDIT_WINDOW_CLOSED = "REVIEW_EDIT_WINDOW_CLOSED"
+
+    # Photos (Section 32 Part 6)
+    PHOTO_LIMIT_REACHED = "PHOTO_LIMIT_REACHED"
+    INVALID_PHOTO = "INVALID_PHOTO"
 
     # Venue
     VENUE_NOT_APPROVED = "VENUE_NOT_APPROVED"
@@ -54,12 +66,18 @@ class ErrorCode:
     INVALID_IMAGE_FORMAT = "INVALID_IMAGE_FORMAT"
     PAYMENT_ALREADY_REVIEWED = "PAYMENT_ALREADY_REVIEWED"
     PAYMENT_ALREADY_SUBMITTED = "PAYMENT_ALREADY_SUBMITTED"
+    # Section 32 Part 10 (manual refunds)
+    REFUND_ALREADY_MARKED = "REFUND_ALREADY_MARKED"
+    REFUND_EXCEEDS_OWED_AMOUNT = "REFUND_EXCEEDS_OWED_AMOUNT"
+    # Section 32 Part 5: a manually-recorded payment (or reversal) would push amount_paid past the booking's price.
+    PAYMENT_EXCEEDS_BALANCE = "PAYMENT_EXCEEDS_BALANCE"
 
     # General
     RATE_LIMITED = "RATE_LIMITED"
     FORBIDDEN = "FORBIDDEN"
     NOT_FOUND = "NOT_FOUND"
     VALIDATION_ERROR = "VALIDATION_ERROR"
+    INTERNAL_ERROR = "INTERNAL_ERROR"  # unhandled 500 -- returned by the RequestContextMiddleware catch-all
 
 
 # Fallback mapping for plain HTTPException raises that don't carry an

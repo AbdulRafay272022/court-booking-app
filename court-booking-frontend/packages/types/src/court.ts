@@ -29,6 +29,8 @@ export interface Blackout {
   reason: string | null; // maintenance | weather | private_event | other
 }
 
+export type CourtAdvanceType = "fixed" | "percent";
+
 export interface Court {
   id: string;
   venue_id: string;
@@ -43,7 +45,18 @@ export interface Court {
    * Part 4. New code reads `venue.cancellation_allowed` / `venue.cancellation_cutoff_hours` instead. */
   cancellation_allowed: boolean;
   cancellation_cutoff_hours: number | null;
+  /** Section 32 Part 5: the owner's advance rule for this court -- a fixed PKR amount or a percentage of
+   * the total, with an optional minimum floor. Null advance_type falls back to the matched pricing rule's
+   * own advance_percentage (the pre-Part-5 behavior). */
+  advance_type: CourtAdvanceType | null;
+  advance_value: number | null;
+  advance_minimum: number | null;
+  /** @deprecated use photo_urls */
   photo_url: string | null;
+  /** Section 32 Part 6: court photo gallery (public URLs), cover first. */
+  photo_urls: string[];
+  /** Section 32 Part 6: same order as photo_urls; owner UI reorders/deletes by key. */
+  photo_keys: string[];
   sort_order: number;
   is_active: boolean;
   schedule_templates: ScheduleTemplate[];
@@ -58,6 +71,10 @@ export interface CreateCourtInput {
   is_indoor?: boolean;
   has_floodlights?: boolean;
   capacity?: number;
+  // Section 32 Part 5: null advance_type falls back to the pricing rule's own advance_percentage.
+  advance_type?: CourtAdvanceType | null;
+  advance_value?: number | null;
+  advance_minimum?: number | null;
 }
 
 export interface ScheduleTemplateInput {
