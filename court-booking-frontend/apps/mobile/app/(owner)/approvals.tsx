@@ -157,6 +157,20 @@ export default function ApprovalsScreen() {
             <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
           </View>
 
+          {current.checks ? (
+            <View className="bg-owner-surface border border-owner-border rounded-xl p-4.5 gap-3">
+              <Text className="font-plex-bold text-owner-ink text-[13.5px]">Checks</Text>
+              <CheckRow check={current.checks.name} />
+              <CheckRow check={current.checks.amount} />
+              <Text className="font-mono-medium text-owner-ink-muted text-[12.5px] -mt-1.5">
+                {current.checks.balance_text}
+              </Text>
+              <CheckRow check={current.checks.time} />
+              <CheckRow check={current.checks.bank} />
+              <CheckRow check={current.checks.duplicate} />
+            </View>
+          ) : null}
+
           {current.proof_url ? (
             <View className="bg-owner-surface border border-owner-border rounded-xl p-3.5">
               <Image source={{ uri: current.proof_url }} style={{ width: "100%", height: 260, borderRadius: 8 }} resizeMode="contain" />
@@ -247,6 +261,27 @@ function Row({ label, value }: { label: string; value: string }) {
     <View className="flex-row items-center justify-between">
       <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">{label}</Text>
       <Text className="font-mono-semibold text-owner-ink text-[13.5px]">{value}</Text>
+    </View>
+  );
+}
+
+/** Section 32 Part 7 -- tick/warning/cross colors for the five plain-
+ * language checks. "not_available"/"not_configured" are neutral (grey),
+ * never a failure color -- they mean "nothing to compare," not "bad." */
+const CHECK_COLORS: Record<string, string> = {
+  match: "#1F7A52",
+  mismatch: "#A8432C",
+  warning: "#B8860B",
+  not_available: "#8399A1",
+  not_configured: "#8399A1",
+};
+
+function CheckRow({ check }: { check: { verdict: string; text: string } }) {
+  const color = CHECK_COLORS[check.verdict] ?? "#8399A1";
+  return (
+    <View className="flex-row items-start gap-2.5">
+      <View className="w-2 h-2 rounded-full mt-1.5" style={{ backgroundColor: color }} />
+      <Text className="flex-1 font-plex-medium text-owner-ink text-[13px] leading-[18px]">{check.text}</Text>
     </View>
   );
 }

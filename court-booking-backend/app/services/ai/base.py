@@ -70,6 +70,14 @@ class PaymentExtraction:
     raw_response: dict  # Full provider response, stored for debugging
     model_used: str = ""
     raw_usage: dict[str, int] = field(default_factory=dict)
+    # Section 32 Part 7: payer/bank/receiver, null if not clearly visible --
+    # never guessed. `flags` are informational tags (not_a_receipt, cropped,
+    # edited_or_rescreenshotted, failed_or_pending_transaction), never an
+    # auto-reject signal.
+    payer_name: str | None = None
+    bank_name: str | None = None
+    receiver_name: str | None = None
+    flags: list[str] = field(default_factory=list)
 
 
 class AIProvider(ABC):

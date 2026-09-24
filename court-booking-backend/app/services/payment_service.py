@@ -16,6 +16,7 @@ from app.models.court import Court
 from app.models.payment import Payment
 from app.models.user import User
 from app.models.venue import Venue
+from app.schemas.payment import PaymentCheckOut, PaymentChecksOut
 from app.services.ai.base import PaymentExtraction
 from app.services.ai.factory import UnconfiguredProviderError, get_vision_provider
 from app.services.ai.schemas import PaymentExtractionValidationError
@@ -23,14 +24,173 @@ from app.services.ai.usage import log_ai_usage
 from app.services.audit_service import AuditService
 from app.services.booking_service import BookingService, recompute_reliability
 from app.services.waitlist_service import WaitlistService
+from app.utils.encryption import decrypt_json
 from app.utils.image import perceptual_hash
 from app.utils.s3 import signed_private_url, upload_private_proof
+from app.utils.text import fuzzy_name_match
+from app.utils.timezone import format_pkr, format_time, naive_pkt_to_utc
 
 logger = structlog.get_logger(__name__)
 
 _UNCONFIGURED_EXTRACTION = PaymentExtraction(
     amount=None, reference=None, timestamp=None, confidence=None, raw_response={}
 )
+
+
+def compute_name_match(payer_name: str | None, account_name: str | None) -> str:
+    """"match" / "mismatch" / "unavailable" -- Section 32 Part 7. Never a
+    signal to auto-reject; a mismatch is a warning the owner sees, nothing
+    more, since people legitimately pay from a relative's account."""
+    if not payer_name or not account_name:
+        return "unavailable"
+    return "match" if fuzzy_name_match(payer_name, account_name) else "mismatch"
+
+
+def compute_time_check(ocr_timestamp: datetime | None, booking: Booking) -> str:
+    """"within_timer" / "before_hold" / "after_timer" / "not_visible" --
+    the payment time must be after the hold was created and before
+    held_until, with a 2-minute clock tolerance either side (Section 32
+    Part 7). Blocks auto-approve when not "within_timer", but never
+    auto-rejects -- the owner can still approve manually."""
+    if ocr_timestamp is None:
+        return "not_visible"
+    tolerance = timedelta(minutes=2)
+    if ocr_timestamp < booking.created_at - tolerance:
+        return "before_hold"
+    if booking.held_until is not None and ocr_timestamp > booking.held_until + tolerance:
+        return "after_timer"
+    return "within_timer"
+
+
+def compute_receiver_match(receiver_name: str | None, venue: Venue | None, settings: Settings) -> str:
+    """"match" / "mismatch" / "not_configured" / "unavailable" -- compares
+    the OCR-extracted receiver against the venue's own saved bank details
+    (Section 32 Part 7). "not_configured" (no saved bank details to compare
+    against) does not block auto-approve; a genuine "mismatch" does."""
+    if venue is None or not venue.bank_details:
+        return "not_configured"
+    bank_details = decrypt_json(venue.bank_details, settings)
+    account_title = (bank_details or {}).get("account_title") if isinstance(bank_details, dict) else None
+    if not account_title:
+        return "not_configured"
+    if not receiver_name:
+        return "unavailable"
+    return "match" if fuzzy_name_match(receiver_name, account_title) else "mismatch"
+
+
+def build_payment_checks(payment: Payment, booking: Booking, account_name: str | None) -> PaymentChecksOut:
+    """Pure, no I/O -- the five plain-language checks for the owner's
+    approval card (Section 32 Part 7), built from verdicts already computed
+    and stored on `payment` at submission time. Every sentence is
+    ready-made here, never hand-rolled by the frontend -- the same "hand it
+    a ready-made string" convention this codebase already uses for money
+    and time in the AI chat's tool results.
+
+    Deliberately does NOT change how much a booking is credited for
+    (`booking.amount_paid`/`balance_due` come from the existing
+    `confirm_booking` flow, unchanged by this Part) -- an overpayment is
+    only *described* here ("PKR 50 more than expected"), not yet credited
+    beyond the fixed advance. Crediting the real paid amount belongs to
+    Section 32 Part 5's `payment_entries` ledger (built independently,
+    unmerged as of this Part); wiring the two together is a batch-merge
+    step, not something to guess at here."""
+    payer_name = payment.ocr_payer_name
+
+    if payment.name_match_verdict == "match":
+        name = PaymentCheckOut(
+            verdict="match", text=f"Name on screenshot: {payer_name}. App account: {account_name}. Matched."
+        )
+    elif payment.name_match_verdict == "mismatch":
+        name = PaymentCheckOut(
+            verdict="mismatch", text=f"Name on screenshot: {payer_name}. App account: {account_name}. Not matched."
+        )
+    elif not payer_name:
+        name = PaymentCheckOut(verdict="not_available", text="Name not visible on the screenshot.")
+    else:
+        name = PaymentCheckOut(verdict="not_available", text=f"Name on screenshot: {payer_name}.")
+
+    total = float(booking.price)
+    paid_so_far = float(booking.amount_paid)
+    balance_due = float(booking.balance_due)
+    balance_text = (
+        f"Total {format_pkr(total)}. Paid so far {format_pkr(paid_so_far)}. "
+        f"Balance due at the venue: {format_pkr(balance_due)}."
+    )
+    ocr_amount = float(payment.ocr_amount) if payment.ocr_amount is not None else None
+    expected = float(payment.amount_claimed) if payment.amount_claimed is not None else None
+    if ocr_amount is None:
+        amount = PaymentCheckOut(verdict="not_available", text="Amount not visible on the screenshot.")
+    elif payment.ocr_verdict == "match":
+        amount = PaymentCheckOut(
+            verdict="match",
+            text=f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}. Matched.",
+        )
+    elif expected is not None and ocr_amount < expected:
+        amount = PaymentCheckOut(
+            verdict="mismatch",
+            text=f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(expected - ocr_amount)} less than expected.",
+        )
+    elif expected is not None and ocr_amount > expected:
+        amount = PaymentCheckOut(
+            verdict="mismatch",
+            text=f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(ocr_amount - expected)} more than expected.",
+        )
+    else:
+        amount = PaymentCheckOut(
+            verdict="mismatch",
+            text=f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}.",
+        )
+
+    if payment.time_check_verdict == "within_timer":
+        # `booking.held_until` is cleared to None once the booking leaves
+        # HELD (mark_payment_submitted/confirm_booking both null it out) --
+        # by the time this card is rendered the booking has almost always
+        # already moved past HELD, so the verdict itself (computed and
+        # stored once, at submission time, before it was cleared) is the
+        # source of truth here, not whatever held_until reads *now*. Show
+        # the fuller sentence when it's still available, a shorter but
+        # still correct one otherwise -- never downgrade the verdict itself.
+        if payment.ocr_timestamp and booking.held_until:
+            time_check = PaymentCheckOut(
+                verdict="match",
+                text=(
+                    f"Paid {format_time(payment.ocr_timestamp)}. Booking started {format_time(booking.created_at)}. "
+                    f"Timer ended {format_time(booking.held_until)}. Within the timer."
+                ),
+            )
+        elif payment.ocr_timestamp:
+            time_check = PaymentCheckOut(verdict="match", text=f"Paid {format_time(payment.ocr_timestamp)}. Within the timer.")
+        else:
+            time_check = PaymentCheckOut(verdict="match", text="Within the timer.")
+    elif payment.time_check_verdict == "before_hold":
+        time_check = PaymentCheckOut(verdict="warning", text="Paid before the booking started.")
+    elif payment.time_check_verdict == "after_timer":
+        time_check = PaymentCheckOut(verdict="warning", text="Paid after the timer ended.")
+    else:
+        time_check = PaymentCheckOut(verdict="warning", text="Time not visible.")
+
+    bank_label = payment.ocr_bank or "an unknown bank/wallet"
+    if payment.receiver_match_verdict == "match":
+        bank = PaymentCheckOut(verdict="match", text=f"Paid via {bank_label}. Receiver matches the venue's saved bank details.")
+    elif payment.receiver_match_verdict == "mismatch":
+        bank = PaymentCheckOut(
+            verdict="mismatch", text=f"Paid via {bank_label}. Receiver does not match the venue's saved bank details."
+        )
+    elif payment.receiver_match_verdict == "not_configured":
+        bank = PaymentCheckOut(
+            verdict="not_configured", text=f"Paid via {bank_label}. The venue hasn't saved bank details to check against."
+        )
+    else:
+        bank = PaymentCheckOut(verdict="not_available", text=f"Paid via {bank_label}. Receiver name not visible.")
+
+    if payment.is_duplicate:
+        duplicate = PaymentCheckOut(
+            verdict="mismatch", text="This screenshot (or transaction reference) matches a payment already on file."
+        )
+    else:
+        duplicate = PaymentCheckOut(verdict="match", text="No duplicate found.")
+
+    return PaymentChecksOut(name=name, amount=amount, balance_text=balance_text, time=time_check, bank=bank, duplicate=duplicate)
 
 
 class PaymentService:
@@ -43,13 +203,45 @@ class PaymentService:
 
     @staticmethod
     def _parse_ocr_timestamp(raw: str | None) -> datetime | None:
+        """Parse the payment time the vision model read off the screenshot into
+        a UTC-aware datetime for the time check (Section 32 Part 7).
+
+        Real JazzCash/Easypaisa receipts print a human, Pakistan-local time
+        ("24 Sep 2026, 07:12 PM"), and the vision model returns it verbatim --
+        NOT ISO 8601 -- so ISO-only parsing returned None on essentially every
+        real screenshot, silently making the time check always "not visible"
+        and always blocking auto-approve. Accept ISO too (some inputs/tests use
+        it). A value that carries no offset is a Pakistan wall-clock reading, so
+        it is interpreted as PKT (assuming UTC would be 5 hours off)."""
         if not raw:
             return None
+        parsed = None
         try:
-            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
         except ValueError:
+            cleaned = " ".join(raw.strip().replace(",", " ").split()).upper()
+            for fmt in (
+                "%d %b %Y %I:%M %p",   # 24 Sep 2026 07:12 PM
+                "%d %B %Y %I:%M %p",   # 24 September 2026 07:12 PM
+                "%d %b %Y %I:%M:%S %p",
+                "%Y-%m-%d %I:%M %p",   # 2026-09-24 07:12 PM
+                "%Y-%m-%d %H:%M:%S",   # 2026-09-24 19:12:00
+                "%Y-%m-%d %H:%M",
+                "%d/%m/%Y %I:%M %p",   # 24/09/2026 07:12 PM
+                "%d-%m-%Y %I:%M %p",
+                "%b %d %Y %I:%M %p",   # Sep 24 2026 07:12 PM
+            ):
+                try:
+                    parsed = datetime.strptime(cleaned, fmt)
+                    break
+                except ValueError:
+                    continue
+        if parsed is None:
             return None
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        if parsed.tzinfo:
+            return parsed.astimezone(timezone.utc)
+        # No offset on the receipt = a Pakistan-local wall-clock reading.
+        return naive_pkt_to_utc(parsed)
 
     async def _extract_payment_proof(
         self, proof_bytes: bytes, content_type: str, expected_amount: float
@@ -172,6 +364,13 @@ class PaymentService:
             ocr_verdict = "mismatch"
 
         duplicate = await self._find_duplicate(proof_hash, extraction.reference, booking.id)
+        ocr_timestamp = self._parse_ocr_timestamp(extraction.timestamp)
+
+        venue = await self._venue_for_booking(booking)
+        account_name = await self._resolve_player_account_name(booking)
+        name_match_verdict = compute_name_match(extraction.payer_name, account_name)
+        time_check_verdict = compute_time_check(ocr_timestamp, booking)
+        receiver_match_verdict = compute_receiver_match(extraction.receiver_name, venue, self.settings)
 
         payment = Payment(
             booking_id=booking.id,
@@ -180,10 +379,17 @@ class PaymentService:
             amount_claimed=expected_amount,
             ocr_amount=ocr_amount,
             ocr_ref=extraction.reference,
-            ocr_timestamp=self._parse_ocr_timestamp(extraction.timestamp),
+            ocr_timestamp=ocr_timestamp,
             ocr_verdict=ocr_verdict,
             ocr_confidence=extraction.confidence,
             ocr_raw=extraction.raw_response,
+            ocr_payer_name=extraction.payer_name,
+            ocr_bank=extraction.bank_name,
+            ocr_receiver=extraction.receiver_name,
+            ocr_flags=extraction.flags or None,
+            name_match_verdict=name_match_verdict,
+            time_check_verdict=time_check_verdict,
+            receiver_match_verdict=receiver_match_verdict,
             is_duplicate=duplicate is not None,
             duplicate_of=duplicate.id if duplicate else None,
         )
@@ -257,6 +463,20 @@ class PaymentService:
             return False
         if ocr_verdict != "match" or is_duplicate or booking.player_id is None:
             return False
+        # Section 32 Part 7: auto-approve additionally requires the name and
+        # time checks to have genuinely matched/passed, and the receiver
+        # check to either match or have nothing to compare against
+        # ("not_configured" -- a venue that hasn't entered bank details
+        # yet). Anything uncertain (unavailable/not_visible) or a genuine
+        # mismatch routes to manual review instead -- never to an
+        # auto-reject; the owner always makes the final call on anything
+        # that isn't a clean five-for-five match.
+        if payment.name_match_verdict != "match":
+            return False
+        if payment.time_check_verdict != "within_timer":
+            return False
+        if payment.receiver_match_verdict not in ("match", "not_configured"):
+            return False
         venue = await self._venue_for_booking(booking)
         if venue is None or not venue.auto_approve_enabled:
             return False
@@ -290,6 +510,18 @@ class PaymentService:
         if court is None:
             return None
         return await self.db.get(Venue, court.venue_id)
+
+    async def _resolve_player_account_name(self, booking: Booking) -> str | None:
+        """The name-match check needs the player's REAL account name, not
+        `booking.player_name` (only ever set for walk-ins) -- for an app
+        booking, resolve it via `player_id`. Falls back to
+        `booking.player_name` when there's no linked account (a walk-in
+        that was never matched to a registered user)."""
+        if booking.player_id is not None:
+            player = await self.db.get(User, booking.player_id)
+            if player is not None and player.name:
+                return player.name
+        return booking.player_name
 
     async def get_payment(self, payment_id: uuid.UUID) -> Payment:
         payment = await self.db.get(Payment, payment_id)
