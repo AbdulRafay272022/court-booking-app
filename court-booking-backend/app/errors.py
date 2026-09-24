@@ -60,6 +60,7 @@ class ErrorCode:
     FORBIDDEN = "FORBIDDEN"
     NOT_FOUND = "NOT_FOUND"
     VALIDATION_ERROR = "VALIDATION_ERROR"
+    INTERNAL_ERROR = "INTERNAL_ERROR"  # unhandled 500 -- returned by the RequestContextMiddleware catch-all
 
 
 # Fallback mapping for plain HTTPException raises that don't carry an
