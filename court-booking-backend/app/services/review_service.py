@@ -112,6 +112,19 @@ class ReviewService:
         rows = (await self.db.execute(query)).scalars().all()
         return [self.to_out(r) for r in rows]
 
+    async def list_for_player(self, player_id: uuid.UUID) -> list[ReviewOut]:
+        """The player's own reviews (Section 32 Part 6) -- lets My Bookings show
+        'Rate your game' vs 'Edit your review' per completed booking after a reload."""
+        rows = (
+            await self.db.execute(
+                select(Review)
+                .where(Review.player_id == player_id)
+                .options(selectinload(Review.player))
+                .order_by(Review.created_at.desc())
+            )
+        ).scalars().all()
+        return [self.to_out(r) for r in rows]
+
     async def summary(self, venue_id: uuid.UUID) -> ReviewSummaryOut:
         """Average rating + count over VISIBLE reviews (hidden ones don't count)."""
         row = (

@@ -18,6 +18,12 @@ async def create_review(
     return await ReviewService(db, settings).create(user, payload)
 
 
+@router.get("/reviews/mine", response_model=list[ReviewOut])
+async def list_my_reviews(db: DbSession, settings: AppSettings, user: CurrentUser) -> list[ReviewOut]:
+    """The player's own reviews, so My Bookings knows which completed bookings are already reviewed."""
+    return await ReviewService(db, settings).list_for_player(user.id)
+
+
 @router.patch("/reviews/{review_id}", response_model=ReviewOut)
 async def edit_review(
     review_id: uuid.UUID, payload: ReviewUpdateIn, db: DbSession, settings: AppSettings, user: CurrentUser

@@ -21,6 +21,7 @@ import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
 import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
+import { PhotoManager } from "@/components/photo-manager";
 import { FieldLabel, PrimaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
 import { Tab } from "./_dashboard-components";
 
@@ -69,6 +70,15 @@ export default function VenueSettingsScreen() {
           />
         ) : null}
 
+        {activeVenue ? (
+          <VenuePhotosCard
+            key={`photos-${activeVenue.id}`}
+            venueId={activeVenue.id}
+            photoUrls={activeVenue.photo_urls}
+            photoKeys={activeVenue.photo_keys}
+          />
+        ) : null}
+
         {loading ? (
           <View className="py-10 items-center justify-center">
             <ActivityIndicator color="#0E6274" />
@@ -81,6 +91,7 @@ export default function VenueSettingsScreen() {
           <>
             {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
             <CourtSettingsForm key={court.id} court={court} />
+            <CourtPhotosCard key={`court-photos-${court.id}`} court={court} />
             <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
           </>
         )}
@@ -155,6 +166,51 @@ function CourtSettingsForm({ court }: { court: Court }) {
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
       <PrimaryButton label="Save changes" onPress={save} loading={saving} />
     </>
+  );
+}
+
+function VenuePhotosCard({ venueId, photoUrls, photoKeys }: { venueId: string; photoUrls: string[]; photoKeys: string[] }) {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+  return (
+    <PhotoManager
+      title="Venue photos"
+      photoUrls={photoUrls}
+      photoKeys={photoKeys}
+      max={8}
+      onUpload={async (uri) => {
+        await api.venues.uploadPhoto(venueId, uri);
+        await refresh();
+      }}
+      onReorder={async (keys) => {
+        await api.venues.reorderPhotos(venueId, keys);
+        await refresh();
+      }}
+    />
+  );
+}
+
+function CourtPhotosCard({ court }: { court: Court }) {
+  const queryClient = useQueryClient();
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
+    await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+  };
+  return (
+    <PhotoManager
+      title={`${court.name} photos`}
+      photoUrls={court.photo_urls}
+      photoKeys={court.photo_keys}
+      max={5}
+      onUpload={async (uri) => {
+        await api.courts.uploadPhoto(court.id, uri);
+        await refresh();
+      }}
+      onReorder={async (keys) => {
+        await api.courts.reorderPhotos(court.id, keys);
+        await refresh();
+      }}
+    />
   );
 }
 

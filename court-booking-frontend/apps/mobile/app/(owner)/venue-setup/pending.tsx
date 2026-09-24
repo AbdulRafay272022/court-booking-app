@@ -7,6 +7,7 @@ import type { Venue } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { CheckIcon, WhatsAppIcon } from "@/components/icons";
+import { PhotoManager } from "@/components/photo-manager";
 import { confirmLogout } from "@/lib/logout";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 
@@ -85,6 +86,10 @@ export default function VenuePendingScreen() {
     router.push("/(owner)/walkin");
   }
 
+  async function reloadVenue() {
+    setVenue(await api.venues.get(venueId));
+  }
+
   if (error) {
     return (
       <SafeAreaView className="flex-1 bg-owner-bg items-center justify-center px-6">
@@ -157,6 +162,44 @@ export default function VenuePendingScreen() {
             isLast
           />
         </View>
+
+        <View className="gap-1">
+          <Text className="font-plex-bold text-owner-ink text-[15px]">Add photos</Text>
+          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+            Good photos help players choose you. You can add more or reorder them anytime in Venue settings.
+          </Text>
+        </View>
+        <PhotoManager
+          title="Venue photos"
+          photoUrls={venue.photo_urls}
+          photoKeys={venue.photo_keys}
+          max={8}
+          onUpload={async (uri) => {
+            await api.venues.uploadPhoto(venue.id, uri);
+            await reloadVenue();
+          }}
+          onReorder={async (keys) => {
+            await api.venues.reorderPhotos(venue.id, keys);
+            await reloadVenue();
+          }}
+        />
+        {(venue.courts ?? []).map((c) => (
+          <PhotoManager
+            key={`court-photos-${c.id}`}
+            title={`${c.name} photos`}
+            photoUrls={c.photo_urls}
+            photoKeys={c.photo_keys}
+            max={5}
+            onUpload={async (uri) => {
+              await api.courts.uploadPhoto(c.id, uri);
+              await reloadVenue();
+            }}
+            onReorder={async (keys) => {
+              await api.courts.reorderPhotos(c.id, keys);
+              await reloadVenue();
+            }}
+          />
+        ))}
 
         <View className="bg-owner-accent-soft border border-owner-accent-soft-border rounded-[13px] p-[18px] gap-3">
           <View className="gap-1">

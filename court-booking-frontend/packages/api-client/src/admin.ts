@@ -4,6 +4,7 @@ import type {
   AdminUser,
   Dispute,
   PlatformStats,
+  Review,
   Venue,
 } from "@court-booking/types";
 import type { ApiClient } from "./client";
@@ -50,5 +51,12 @@ export function createAdminApi(client: ApiClient) {
 
     unsuspendUser: (userId: string) =>
       client.request<AdminUser>(`/admin/users/${userId}/unsuspend`, { method: "POST" }),
+
+    // Section 32 Part 6 -- admin moderation of reviews.
+    hideReview: (reviewId: string) =>
+      client.request<Review>(`/admin/reviews/${reviewId}/hide`, { method: "POST" }),
+
+    unhideReview: (reviewId: string) =>
+      client.request<Review>(`/admin/reviews/${reviewId}/unhide`, { method: "POST" }),
   };
 }

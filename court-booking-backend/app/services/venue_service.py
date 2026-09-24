@@ -227,6 +227,7 @@ class VenueService:
 
         out = VenueOut.model_validate(venue)
         out.photo_urls = self.photo_urls(venue)
+        out.photo_keys = list(venue.photos or [])
         out.average_rating, out.review_count = await self.rating_summary(venue.id)
         out.distance_meters = distance
         can_see_bank_details = requesting_user is not None and (

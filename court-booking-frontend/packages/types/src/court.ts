@@ -43,7 +43,12 @@ export interface Court {
    * Part 4. New code reads `venue.cancellation_allowed` / `venue.cancellation_cutoff_hours` instead. */
   cancellation_allowed: boolean;
   cancellation_cutoff_hours: number | null;
+  /** @deprecated use photo_urls */
   photo_url: string | null;
+  /** Section 32 Part 6: court photo gallery (public URLs), cover first. */
+  photo_urls: string[];
+  /** Section 32 Part 6: same order as photo_urls; owner UI reorders/deletes by key. */
+  photo_keys: string[];
   sort_order: number;
   is_active: boolean;
   schedule_templates: ScheduleTemplate[];

@@ -51,6 +51,24 @@ export function createCourtsApi(client: ApiClient) {
       }),
 
     listBlackouts: (courtId: string) => client.request<Blackout[]>(`/courts/${courtId}/blackouts`),
+
+    // Section 32 Part 6 -- court photo gallery. native passes a `uri` string; web a File/Blob.
+    uploadPhoto: (courtId: string, file: string | Blob, fileName = "photo.jpg", mimeType = "image/jpeg") => {
+      const formData = new FormData();
+      if (typeof file === "string") {
+        formData.append("file", { uri: file, name: fileName, type: mimeType } as unknown as Blob);
+      } else {
+        formData.append("file", file, fileName);
+      }
+      return client.request<Court>(`/courts/${courtId}/photos`, { method: "POST", body: formData });
+    },
+
+    /** Reorder / delete / set-cover -- ordered list of this court's own photo keys (index 0 = cover). */
+    reorderPhotos: (courtId: string, keys: string[]) =>
+      client.request<Court>(`/courts/${courtId}/photos`, {
+        method: "PUT",
+        body: JSON.stringify({ photos: keys }),
+      }),
   };
 }
 

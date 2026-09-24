@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,9 +8,12 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTimeRange } from "@/lib/format";
-import type { Booking, BookingStatus } from "@court-booking/types";
+import { StarIcon } from "@/components/icons";
+import type { Booking, BookingStatus, Review } from "@court-booking/types";
 import { cancellationPolicyText } from "@court-booking/api-client";
 import { EmptyState } from "../_components";
+
+const SEVEN_DAYS_MS = 7 * 24 * 3_600_000;
 
 const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger" }> = {
   held: { label: "HOLDING", tone: "waiting" },
@@ -21,7 +24,7 @@ const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "w
   cancelled: { label: "CANCELLED", tone: "danger" },
 };
 
-function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () => void }) {
+function BookingCard({ booking, review, onChanged }: { booking: Booking; review?: Review | null; onChanged: () => void }) {
   const courtQuery = useQuery({ queryKey: ["court", booking.court_id], queryFn: () => api.courts.get(booking.court_id) });
   const venueQuery = useQuery({
     queryKey: ["venue", courtQuery.data?.venue_id],
@@ -140,18 +143,113 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
           {withinCutoff ? "The cancellation window for this booking has closed." : cancellationPolicyText(court)}
         </Text>
       ) : null}
+
+      {booking.status === "completed" ? <RateGame booking={booking} review={review ?? null} onSaved={onChanged} /> : null}
     </Pressable>
   );
 }
 
+/** Section 32 Part 6: "Rate your game" on a completed booking -- create, or edit within 7 days. */
+function RateGame({ booking, review, onSaved }: { booking: Booking; review: Review | null; onSaved: () => void }) {
+  const editable = review == null || Date.now() - new Date(review.created_at).getTime() <= SEVEN_DAYS_MS;
+  const [open, setOpen] = useState(false);
+  const [rating, setRating] = useState(review?.rating ?? 0);
+  const [comment, setComment] = useState(review?.comment ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (rating < 1) {
+      Alert.alert("Pick a rating", "Tap the stars to rate your game (1 to 5).");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (review) await api.reviews.edit(review.id, { rating, comment: comment.trim() || undefined });
+      else await api.reviews.create({ booking_id: booking.id, rating, comment: comment.trim() || undefined });
+      setOpen(false);
+      onSaved();
+    } catch (e) {
+      Alert.alert("Couldn't save your review", friendlyErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Collapsed: show existing rating (if any) + a button to rate/edit.
+  if (!open) {
+    return (
+      <View className="mt-1 pt-3 border-t border-player-border-light gap-2">
+        {review ? (
+          <View className="flex-row items-center gap-2">
+            <View className="flex-row" accessibilityLabel={`Your rating: ${review.rating} of 5`}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <StarIcon key={n} size={15} color={n <= review.rating ? "#EF5A2C" : "#D8D2CB"} />
+              ))}
+            </View>
+            <Text className="font-figtree-medium text-player-ink-faint text-[12px]">Your review</Text>
+          </View>
+        ) : (
+          <Text className="font-figtree-semibold text-player-ink text-[13px]">How was your game?</Text>
+        )}
+        {editable ? (
+          <Pressable accessibilityLabel={review ? "Edit your review" : "Rate your game"} onPress={() => setOpen(true)} className="self-start px-3.5 h-9 rounded-full items-center justify-center bg-player-accent">
+            <Text className="font-figtree-bold text-white text-[12.5px]">{review ? "Edit review" : "Rate your game"}</Text>
+          </Pressable>
+        ) : (
+          <Text className="font-figtree-medium text-player-ink-faint text-[11.5px]">Reviews can be edited within 7 days of posting.</Text>
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <View className="mt-1 pt-3 border-t border-player-border-light gap-2.5">
+      <Text className="font-figtree-semibold text-player-ink text-[13px]">Rate your game</Text>
+      <View className="flex-row gap-1.5">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <Pressable key={n} accessibilityLabel={`${n} star${n > 1 ? "s" : ""}`} onPress={() => setRating(n)} hitSlop={6}>
+            <StarIcon size={30} color={n <= rating ? "#EF5A2C" : "#D8D2CB"} />
+          </Pressable>
+        ))}
+      </View>
+      <TextInput
+        value={comment}
+        onChangeText={setComment}
+        placeholder="Add a comment (optional)"
+        placeholderTextColor="#9A9791"
+        multiline
+        className="min-h-[64px] border border-player-border-light rounded-[12px] p-3 font-figtree-medium text-player-ink text-[13.5px]"
+        style={{ textAlignVertical: "top" }}
+      />
+      <View className="flex-row gap-2.5">
+        <Pressable onPress={() => setOpen(false)} className="flex-1 h-11 rounded-full border border-player-border-light items-center justify-center">
+          <Text className="font-figtree-semibold text-player-ink text-[13px]">Cancel</Text>
+        </Pressable>
+        <Pressable onPress={submit} disabled={saving} className="flex-1 h-11 rounded-full items-center justify-center bg-player-accent" style={{ opacity: saving ? 0.6 : 1 }}>
+          <Text className="font-figtree-bold text-white text-[13px]">{saving ? "Saving…" : review ? "Save changes" : "Submit review"}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function PlayerBookingsScreen() {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
   const query = useQuery({
     queryKey: ["bookings-mine", tab],
     queryFn: () => api.bookings.mine(tab),
   });
+  // Section 32 Part 6: the player's own reviews, to show "Rate your game" vs "Edit review"
+  // per completed booking. Only needed on the Past tab (that's where completed bookings live).
+  const reviewsQuery = useQuery({ queryKey: ["my-reviews"], queryFn: () => api.reviews.mine(), enabled: tab === "past" });
+  const reviewByBooking = new Map((reviewsQuery.data ?? []).map((r) => [r.booking_id, r]));
 
   const bookings = query.data ?? [];
+  const refetchAll = () => {
+    query.refetch();
+    queryClient.invalidateQueries({ queryKey: ["my-reviews"] });
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
@@ -188,7 +286,7 @@ export default function PlayerBookingsScreen() {
       ) : (
         <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4.5 pb-8 gap-3.5">
           {bookings.map((b) => (
-            <BookingCard key={b.id} booking={b} onChanged={() => query.refetch()} />
+            <BookingCard key={b.id} booking={b} review={reviewByBooking.get(b.id)} onChanged={refetchAll} />
           ))}
         </ScrollView>
       )}

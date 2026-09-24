@@ -70,6 +70,8 @@ class VenueOut(BaseModel):
     sports: list[str]
     amenities: list[str] | None
     photo_urls: list[str] = Field(default_factory=list)
+    # Same order as photo_urls; the owner UI reorders/deletes by key (Section 32 Part 6).
+    photo_keys: list[str] = Field(default_factory=list)
     status: VenueStatus
     rejection_reason: str | None = None
     auto_approve_enabled: bool

@@ -137,6 +137,13 @@ class CourtOut(BaseModel):
     def photo_urls(self) -> list[str]:
         return [public_url(key) for key in (self.photos or [])]
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def photo_keys(self) -> list[str]:
+        # The owner UI needs the keys (same order as photo_urls) to reorder/delete via
+        # PUT /courts/{id}/photos. Keys aren't secret -- they're the tail of the public URL.
+        return list(self.photos or [])
+
 
 class CourtDetailResponse(BaseModel):
     court: CourtOut

@@ -168,3 +168,16 @@ async def test_hide_requires_admin(
     )).json()["id"]
     resp = await client.post(f"/api/v1/admin/reviews/{review_id}/hide", headers=await make_auth_headers(player))
     assert resp.status_code == 403
+
+
+async def test_list_my_reviews(
+    client, make_user, make_venue, make_court, make_auth_headers, db_session_factory
+):
+    owner, player, venue, court = await _setup(make_user, make_venue, make_court, ("+923061000020", "+923061000021"))
+    booking = await _completed_booking(db_session_factory, court, player)
+    headers = await make_auth_headers(player)
+    await client.post("/api/v1/reviews", headers=headers, json={"booking_id": str(booking.id), "rating": 5})
+    mine = await client.get("/api/v1/reviews/mine", headers=headers)
+    assert mine.status_code == 200
+    rows = mine.json()
+    assert len(rows) == 1 and rows[0]["booking_id"] == str(booking.id)
