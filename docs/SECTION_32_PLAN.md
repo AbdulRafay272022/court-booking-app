@@ -16,6 +16,28 @@ the progress table, the owner's later additions **verbatim**, and (at the bottom
 `court-booking-backend/CLAUDE.md` (START HERE) and `court-booking-frontend/CLAUDE.md` too. Update this file and the
 progress table after EVERY part.
 
+## BATCH REVIEW BRANCH (`section-32-batch-review`, 2026-09-25) -- read this if you're on that branch
+
+All 7 parts (5, 9, 10, 7, 8, 6, 11) are assembled onto `section-32-batch-review` off `main` for the owner
+to review before any `main` merge. NOT merged to `main`; needs an RDS snapshot + `Migration-Go: owner-approved`
++ the owner's explicit go when that time comes.
+
+- **Merge order:** 9 -> 10 -> 5 -> 7 -> 8 -> 6 -> 11 (each `--no-ff`). Order chosen so the big ledger rewrite
+  (Part 5) lands before the smaller dashboard additions layer on; migration order is independent of this.
+- **Migration heads linearized** (re-chained, not a merge migration -- none were deployed, all additive):
+  `de11b783f108 -> 0e808ff86785 (P5) -> a3f7c9d2e185 (P10) -> a3f9c6e2d174 (P7) -> c7d1a9b4e2f0 (P6)`. One head;
+  `alembic check` clean; up->down->up verified end to end on an isolated scratch DB.
+- **layout.tsx (P6 Reviews nav vs P11 responsive):** both kept -- the responsive drawer/top-bar layout renders
+  the full NAV, which includes Reviews (P6) and Refunds to pay (P10).
+- **Cross-part integration done during assembly (review these):** (1) re-applied Part 9's Today checked-in/
+  no-show overlay onto Part 5's rewritten `owner_dashboard_service.today()`; (2) a paid refund (Part 10
+  `mark_refund_paid`) now records a real NEGATIVE `payment_entries` row + recompute, so it shows in Part 5's
+  per-payment ledger -- the wiring both handoffs deferred to "once Part 5 merges". The per-booking `refund_amount`
+  ledger column from Part 10 is superseded by this.
+- **Proof (assembled):** backend suite **571 passing** on an isolated scratch Postgres; migration chain
+  up/down/up + single head + no drift; both apps typecheck clean (`next build` green, mobile `tsc` clean);
+  live web Playwright pass and Expo-web smoke over all 7 parts' surfaces -- all green, no page errors.
+
 ## SESSION HANDOFF (2026-09-24, read this before touching anything)
 
 **Working method for Parts 5/9/10/7/8/6/11: each part is built independently on its own branch off `main`
