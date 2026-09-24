@@ -14,6 +14,12 @@ class UserRole(str, enum.Enum):
     PLAYER = "player"
     OWNER = "owner"
     ADMIN = "admin"
+    # Section 32 Part 12: a staff/manager account an owner adds to help run
+    # their own venue(s). Passes the coarse owner gate (RequireOwner) but every
+    # action is then checked against staff_members + staff_permissions for the
+    # specific venue -- see app/services/staff_service.py and the two ownership
+    # chokepoints (VenueService.require_owned_venue / BookingService.require_accessible_booking).
+    STAFF = "staff"
 
 
 class Gender(str, enum.Enum):
