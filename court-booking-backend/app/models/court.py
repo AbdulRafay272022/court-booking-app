@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, literal_column, text
+from sqlalchemy import ARRAY, Boolean, ForeignKey, Integer, String, Text, literal_column, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
@@ -48,7 +48,12 @@ class Court(UUIDPkMixin, TimestampMixin, Base):
         literal_column("(SELECT v.cancellation_cutoff_hours FROM venues v WHERE v.id = courts.venue_id)", Integer),
         deferred=False,
     )
+    # Deprecated single-photo column (kept one release, unused now that Part 6 added
+    # the `photos` gallery below). CourtOut.photo_urls is computed from `photos`.
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Section 32 Part 6: per-court photo gallery, list of S3 keys (mirrors venues.photos);
+    # order is display order, index 0 is the cover.
+    photos: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("true"), nullable=False

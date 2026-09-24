@@ -51,8 +51,8 @@ async def upload_bytes(
     return await asyncio.to_thread(_put_object_sync, data, key, bucket, content_type, private=private)
 
 
-async def upload_public_photo(data: bytes, filename: str, content_type: str) -> str:
-    key = build_key("venues", filename)
+async def upload_public_photo(data: bytes, filename: str, content_type: str, *, prefix: str = "venues") -> str:
+    key = build_key(prefix, filename)
     await upload_bytes(data, key, settings.S3_BUCKET_PUBLIC, content_type)
     return key
 

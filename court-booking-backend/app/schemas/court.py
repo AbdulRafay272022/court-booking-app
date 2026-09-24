@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
+from app.utils.s3 import public_url
 from app.utils.schedule import closes_next_day_for
 
 
@@ -121,11 +122,20 @@ class CourtOut(BaseModel):
     # from before Section 32 Part 4 still work. New clients read venue.cancellation_* instead.
     cancellation_allowed: bool
     cancellation_cutoff_hours: int | None
-    photo_url: str | None
+    photo_url: str | None  # deprecated; use photo_urls
+    # Section 32 Part 6: the S3 keys come straight off the model (from_attributes) but are
+    # never serialized; photo_urls (computed) turns them into public/CloudFront URLs, so it
+    # populates automatically everywhere CourtOut is built, including nested in VenueOut.
+    photos: list[str] | None = Field(default=None, exclude=True, repr=False)
     sort_order: int
     is_active: bool
     schedule_templates: list[ScheduleTemplateOut] = Field(default_factory=list)
     pricing_rules: list[PricingRuleOut] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def photo_urls(self) -> list[str]:
+        return [public_url(key) for key in (self.photos or [])]
 
 
 class CourtDetailResponse(BaseModel):
