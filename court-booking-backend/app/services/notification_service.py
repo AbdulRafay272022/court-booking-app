@@ -15,7 +15,7 @@ from app.services.apns import send_apns
 from app.services.fcm import PushOutcome, send_push
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
-from app.utils.timezone import format_date_relative, format_time_range, format_when, format_when_range
+from app.utils.timezone import format_date_relative, format_pkr, format_time_range, format_when, format_when_range
 from app.services.whatsapp_templates import TEMPLATES
 
 logger = structlog.get_logger(__name__)
@@ -314,6 +314,19 @@ class NotificationService:
             "Payment rejected",
             f"Payment rejected: {reason}. Your slot has been released.",
             template_params=[court_name, reason],
+        )
+
+    async def notify_refund_paid(self, *, user: User, court_name: str, amount: float, reference: str) -> None:
+        """Section 32 Part 10: the venue owner marked a manual (outside-the-app)
+        refund as sent. This is a record of what the owner reported, not proof
+        the transfer actually landed -- same trust model as the rest of this
+        pilot's manual-payment flow."""
+        await self._send_push_and_whatsapp(
+            user,
+            "refund_paid",
+            "Refund sent",
+            f"The venue for {court_name} recorded a refund of {format_pkr(amount)} (ref: {reference}).",
+            template_params=[court_name, format_pkr(amount), reference],
         )
 
     async def notify_owner_new_booking(

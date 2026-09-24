@@ -310,7 +310,8 @@ async def test_ledger_csv_export(client, db_session_factory, make_user, make_ven
     assert resp.headers["content-type"].startswith("text/csv")
 
     rows = list(csv.reader(io.StringIO(resp.text)))
-    assert rows[0] == ["date", "court", "player", "source", "amount_paid", "balance_due", "status"]
+    # Section 32 Part 10 added a trailing refund_amount column (empty when nothing was refunded).
+    assert rows[0] == ["date", "court", "player", "source", "amount_paid", "balance_due", "status", "refund_amount"]
     assert len(rows) == 2
     assert rows[1][1] == court.name
     assert rows[1][2] == "Ahmed"

@@ -145,7 +145,11 @@ export default function LedgerScreen() {
                   </View>
                   <View className="items-end gap-0.5">
                     <Text className="font-mono-semibold text-owner-ink text-sm">{formatPKR(row.amount_paid)}</Text>
-                    {row.balance_due > 0 ? (
+                    {row.refund_amount ? (
+                      <Text className="font-mono-semibold text-[12px]" style={{ color: "#A8432C" }}>
+                        -{formatPKR(Math.abs(row.refund_amount))} refunded
+                      </Text>
+                    ) : row.balance_due > 0 ? (
                       <Text className="font-mono-medium text-[12px]" style={{ color: "#9C5C0A" }}>
                         +{formatPKR(row.balance_due)} due
                       </Text>

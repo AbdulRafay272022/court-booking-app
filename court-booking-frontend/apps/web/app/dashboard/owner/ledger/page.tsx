@@ -114,7 +114,7 @@ export default function OwnerLedgerPage() {
         <table className="w-full border-collapse min-w-[640px]">
           <thead>
             <tr className="bg-owner-bg border-b border-owner-border-light text-left">
-              {["Date", "Time", "Player", "Court", "Source", "Status", "Amount", "Due"].map((h) => (
+              {["Date", "Time", "Player", "Court", "Source", "Status", "Amount", "Refund", "Due"].map((h) => (
                 <th key={h} className="px-4 py-3 text-[11px] font-bold tracking-wider text-owner-ink-faint">{h.toUpperCase()}</th>
               ))}
             </tr>
@@ -122,17 +122,17 @@ export default function OwnerLedgerPage() {
           <tbody>
             {venuesLoading || query.isLoading ? (
               <tr>
-                <td colSpan={8} className="text-center py-10 text-owner-ink-faint">Loading…</td>
+                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">Loading…</td>
               </tr>
             ) : query.isError && !ledger ? (
               <tr>
-                <td colSpan={8} className="py-4">
+                <td colSpan={9} className="py-4">
                   <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
                 </td>
               </tr>
             ) : !ledger || ledger.bookings.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-10 text-owner-ink-faint">No bookings in this range.</td>
+                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">No bookings in this range.</td>
               </tr>
             ) : (
               ledger.bookings.slice().reverse().map((row) => (
@@ -144,6 +144,9 @@ export default function OwnerLedgerPage() {
                   <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{row.source}</td>
                   <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{row.status}</td>
                   <td className="px-4 py-3 font-mono text-sm font-semibold">{formatPKR(row.amount_paid)}</td>
+                  <td className="px-4 py-3 font-mono text-sm font-semibold" style={{ color: row.refund_amount ? "#A8432C" : "#A6B6BC" }}>
+                    {row.refund_amount ? `-${formatPKR(Math.abs(row.refund_amount))}` : "—"}
+                  </td>
                   <td className="px-4 py-3 font-mono text-sm" style={{ color: row.balance_due > 0 ? "#9C5C0A" : "#A6B6BC" }}>
                     {row.balance_due > 0 ? formatPKR(row.balance_due) : "—"}
                   </td>

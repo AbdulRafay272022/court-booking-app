@@ -4,6 +4,7 @@ import type {
   Ledger,
   LedgerRow,
   OwnerDigest,
+  OwnerRefund,
   OwnerToday,
   Payment,
   PendingApproval,
@@ -41,6 +42,33 @@ export function createOwnersApi(client: ApiClient) {
 
     growth: (venueId?: string) =>
       client.request<Growth>(`/owners/growth${toQuery({ venue_id: venueId })}`),
+
+    /** Section 32 Part 10: the owner's "Refunds to pay" screen. */
+    refunds: (venueId?: string) =>
+      client.request<OwnerRefund[]>(`/owners/refunds${toQuery({ venue_id: venueId })}`),
+
+    /** Records a refund the owner already sent OUTSIDE the app (JazzCash/bank) -- there is no
+     * payment gateway here, this is purely a record with a reference and an optional screenshot.
+     * `amount` lets an owner record a smaller-than-owed refund (negotiated in person); the
+     * backend rejects anything larger than what's actually owed. */
+    markRefundPaid: (
+      disputeId: string,
+      reference: string,
+      amount?: number,
+      screenshot?: string | Blob,
+      fileName = "refund.jpg",
+      mimeType = "image/jpeg",
+    ) => {
+      const formData = new FormData();
+      formData.append("reference", reference);
+      if (amount !== undefined) formData.append("amount", String(amount));
+      if (screenshot !== undefined) {
+        const part =
+          typeof screenshot === "string" ? ({ uri: screenshot, name: fileName, type: mimeType } as unknown as Blob) : screenshot;
+        formData.append("screenshot", part, fileName);
+      }
+      return client.requestUpload<OwnerRefund>(`/owners/refunds/${disputeId}/mark-refunded`, formData);
+    },
   };
 }
 
@@ -51,7 +79,7 @@ export function createOwnersApi(client: ApiClient) {
  * name and the summary recomputed from what's left. */
 export function filterLedgerByCourt(ledger: Ledger, courtName: string, startDate: string, endDate: string): Ledger {
   const bookings = ledger.bookings.filter((b) => b.court === courtName);
-  const total = bookings.reduce((n, b) => n + b.amount_paid, 0);
+  const total = bookings.reduce((n, b) => n + b.amount_paid + (b.refund_amount ?? 0), 0);
   const days = Math.max(1, Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86_400_000) + 1);
   const by_source: Record<string, number> = {};
   for (const b of bookings) by_source[b.source] = (by_source[b.source] ?? 0) + 1;
@@ -73,7 +101,10 @@ export function ledgerRowsToCsv(rows: LedgerRow[]): string {
     const t = String(v);
     return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
   };
-  const lines = [["date", "court", "player", "source", "amount_paid", "balance_due", "status"].join(",")];
-  for (const r of rows) lines.push([r.date, r.court, r.player ?? "", r.source, r.amount_paid, r.balance_due, r.status].map(esc).join(","));
+  const lines = [["date", "court", "player", "source", "amount_paid", "balance_due", "status", "refund_amount"].join(",")];
+  for (const r of rows)
+    lines.push(
+      [r.date, r.court, r.player ?? "", r.source, r.amount_paid, r.balance_due, r.status, r.refund_amount ?? ""].map(esc).join(","),
+    );
   return lines.join("\r\n") + "\r\n";
 }

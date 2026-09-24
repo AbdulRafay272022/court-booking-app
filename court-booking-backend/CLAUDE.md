@@ -135,7 +135,8 @@ Standing rules the owner set for Parts 3-5 -- follow them, do not re-ask:
 | 4 | Per-court slot length + pricing, per-VENUE cancellation, closed/booked labelling, duration picker | **DEPLOYED 2026-09-22 as `cabd2f2ccf4a`; migration `dd23d75cf310` applied on production** (from the new image before the backend restarted; output: backfilled, no disagreeing venues, constraint added, 8 bookings satisfied it, head = `dd23d75cf310`, `alembic check` clean). Verified live on production: schedule, quote (3 h = PKR 7,000), AI reply. Live venue policy stays "not allowed". Mobile needs an EAS build. **Full plan and rules: `docs/SECTION_32_PLAN.md`.** |
 | 3 | Overnight courts (`closes_next_day`) | **DEPLOYED 2026-09-22 as `87de0ef4b234`; migration `68d7e3464f30` applied on production** (head, `alembic check` clean, live hours unchanged). Design: `docs/SECTION_32_PLAN.md` ("Part 3 design"). Mobile needs an EAS build. |
 | 5 | Split payments + `payment_entries` ledger | Not started |
-| 9, 10 | **Spec text not received** -- the spec pasted so far has Parts 1-8 only. Ask the owner for Parts 9 and 10 before starting them. | Blocked on the spec |
+| 9 | QR check-in | Built and tested on branch `section-32-part-9` (built in a separate session, independently verified and pushed to origin 2026-09-23/24 as part of the same reconciliation pass that found it) -- see `docs/SECTION_32_PLAN.md`'s progress table. |
+| 10 | Refunds, manual (no payment gateway) | **Built and tested on branch `section-32-part-10` (2026-09-24), not merged to `main`, pushed to origin as a backup branch only.** See `docs/SECTION_32_PLAN.md`'s progress table and the entry below for the full design. |
 | 7 | OCR improvements | Not started |
 | 8 | WhatsApp/Gemini prompts. Added findings: AI money is always "PKR 3,500" (never "Rs. 3500.0"; hand the model a ready-made string like the slot `label`); the model must NEVER invent a reason for an unavailable slot ("fixed 90-minute blocks" when it was simply booked) -- only say what the tool returned. | Not started |
 | 6 | Photos + reviews | Not started |
@@ -163,6 +164,58 @@ with ANOTHER court's hours and prices because the app's query client keeps the p
 the live test, fixed (the form mounts only when `data.id === selected court`); see the frontend CLAUDE.md rule. (3) The chat's
 opening question was sent twice in dev (effect ran twice); guarded with a ref. Known flaky test: `test_typed_yes_books_the_slot_...`
 compares a host-clock timestamp with a DB-clock one and failed once under load (passes alone and on rerun).
+
+**SECTION 32 PART 10 (built and tested 2026-09-24, branch `section-32-part-10`, NOT merged to `main`, NOT deployed).**
+Manual refunds (no payment gateway) reuse `payment_disputes` (Section 23 finding #5 / Section 24 finding #13) rather
+than a new table -- migration `a3f7c9d2e185` adds `refund_amount`/`refund_status`/`refunded_amount`/`refund_reference`/
+`refund_screenshot_key`/`refunded_by_user_id`/`refunded_at`, backfilling existing rows (0 for
+`payment_review_expired`, the booking's `amount_paid` for `player_cancelled_paid_booking`). Tested upgrade + downgrade
++ upgrade on an isolated scratch Postgres container (never the shared dev DB, since another session was using it at
+the time) with `alembic check` clean throughout.
+- **A real design decision was needed before this could be built, and the owner made it (2026-09-24):**
+  `_enforce_cancellation_policy` hard-blocks a cancel outright (`CANCELLATION_NOT_ALLOWED`/`CANCELLATION_WINDOW_CLOSED`)
+  whenever the venue disallows it or the cutoff has passed -- there is no code path where a cancel "succeeds inside the
+  cutoff" for a partial/non-refundable amount to apply to, contradicting the spec's "the advance may be non-refundable
+  inside the cutoff" framing. **Decision: keep the hard block exactly as-is, don't change it or its error codes/copy.**
+  Consequence: `refund_amount` is always simply `booking.amount_paid` whenever a cancel is actually permitted to go
+  through. The spec's required "non-refundable advance" test is the already-reachable `payment_review_expired` case
+  instead (the payment was never approved, so `amount_paid` is still 0 -- see `test_payment_review_expired_dispute_has_zero_refund_amount`).
+- **What exists:** `GET /owners/refunds` (the owner's own venues, `refund_status == "owed"` only, deliberately NOT
+  filtered by `Court.is_active` -- a refund owed on a booking shouldn't vanish because the court was later
+  deactivated), `POST /owners/refunds/{dispute_id}/mark-refunded` (multipart: required `reference`, optional `amount`
+  -- lets an owner record a smaller-than-owed refund negotiated in person, but rejects anything larger with
+  `REFUND_EXCEEDS_OWED_AMOUNT` -- and optional `screenshot`, uploaded to the private bucket like a payment proof, same
+  visibility rule). Marking a refund paid uses the same atomic conditional-UPDATE guard as payment approve/reject
+  (`WHERE refund_status = 'owed'`) so a double-click can never double-process -- the second call gets a clean
+  `REFUND_ALREADY_MARKED` (409), not silent corruption. `GET /admin/disputes/refund-queue` (existing endpoint) now
+  also returns the refund fields plus a derived `is_overdue` (owed and flagged more than `REFUND_OVERDUE_DAYS` (3,
+  a decision made without asking) days ago -- computed at read time, not stored, this codebase's usual pattern).
+  `GET /owners/ledger` gained a `refund_amount` field per row (negative, set only once a refund is actually marked
+  paid) -- the CSV export gained a matching trailing column; a pre-existing test pinning the exact CSV header
+  (`test_ledger_csv_export`) needed updating for this, not a regression.
+- **Part 5 dependency, resolved without blocking on it:** `section-32-part-5` (local + pushed to origin, unmerged)
+  has a proper `payment_entries` append-only ledger that supports negative amounts -- exactly what "the ledger shows
+  the refund as a negative entry" wants. Built independently against what's actually on `main` today instead (a
+  `refund_amount` field on the existing per-booking ledger row) since Part 5 isn't merged; when it does merge, this
+  should become a real negative `payment_entries` row instead of a bolted-on field.
+- **Tests:** `tests/test_refunds.py`, 7 new tests -- partial refund (advance paid, not the full price), the
+  zero-paid "non-refundable advance" case, the owner refunds screen end to end (list -> mark refunded -> gone from
+  the open list -> shows as a negative ledger entry), refund larger than owed rejected, a smaller-than-owed partial
+  refund allowed, double-click idempotency, and the overdue-after-N-days flag. Full suite: **485 passed** (478 on
+  `main` + these 7), run against the isolated scratch DB, `AI_PROVIDER=claude AI_VISION_PROVIDER=claude`. Both
+  frontend apps typecheck clean (`apps/web`'s `next build` -- TypeScript passes as part of it -- and `apps/mobile`'s
+  `tsc --noEmit`, after regenerating Expo Router's route types, which don't know about a brand-new route until the
+  dev server has scanned it once, a known gotcha in this file already).
+- **Frontend:** a new "Refunds to pay" screen on both platforms (`apps/web/app/dashboard/owner/refunds/page.tsx`,
+  `apps/mobile/app/(owner)/refunds.tsx`), linked from the owner sidebar (web) and Today's icon row (mobile). The
+  player-facing cancel confirmation (My Bookings, both platforms) now states the refundable amount in plain words
+  before the player confirms, per the spec -- computed client-side from `booking.amount_paid`, since per the cutoff
+  decision above a permitted cancel is always fully refundable, no new endpoint needed for the preview.
+- **Not done / flagged:** live end-to-end verification used the real pytest suite against real Postgres (this
+  project's own bar for "tested against a real database") plus confirming the new routes are wired into a genuinely
+  running app instance (`/openapi.json` on a live scratch backend); a full Playwright click-through of the new
+  screens was not completed this session (time-boxed) -- worth doing before this merges, same as any other
+  unmerged Section 32 part.
 
 **Open items, roughly by priority (none started unless noted):**
 0. **Found while proving Parts 1-2 on production (for Part 8):** the AI sometimes writes the price as "Rs. 3500.0"
