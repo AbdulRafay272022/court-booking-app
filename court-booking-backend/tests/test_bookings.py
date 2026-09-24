@@ -1,5 +1,6 @@
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
+from app.models.booking import Booking, BookingStatus
 from app.models.user import UserRole
 
 
@@ -502,6 +503,122 @@ async def test_self_checkin_rejects_wrong_venue_token(
     )
     assert checkin.status_code == 400
     assert checkin.json()["error"]["code"] == "INVALID_CHECKIN_CODE"
+
+
+async def test_owner_marks_no_show_after_the_grace_window(
+    client, db_session_factory, make_user, make_venue, make_court, make_auth_headers
+):
+    owner = await make_user("+923004000033", role=UserRole.OWNER)
+    customer = await make_user("+923004000034", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    owner_headers = await make_auth_headers(owner)
+
+    async with db_session_factory() as session:
+        booking = Booking(
+            court_id=court.id,
+            player_id=customer.id,
+            starts_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            ends_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            price=1000,
+            status=BookingStatus.BOOKED,
+        )
+        session.add(booking)
+        await session.commit()
+        booking_id = booking.id
+
+    resp = await client.post(f"/api/v1/bookings/{booking_id}/no-show", headers=owner_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()["booking"]
+    assert body["status"] == "no_show"
+
+    async with db_session_factory() as session:
+        player = await session.get(type(customer), customer.id)
+        assert player.total_no_shows == 1
+
+
+async def test_owner_cannot_mark_no_show_before_the_grace_window(
+    client, db_session_factory, make_user, make_venue, make_court, make_auth_headers
+):
+    owner = await make_user("+923004000035", role=UserRole.OWNER)
+    customer = await make_user("+923004000036", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    owner_headers = await make_auth_headers(owner)
+
+    async with db_session_factory() as session:
+        # Started 5 minutes ago -- well inside the default 60-minute grace window.
+        booking = Booking(
+            court_id=court.id,
+            player_id=customer.id,
+            starts_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            ends_at=datetime.now(timezone.utc) + timedelta(minutes=55),
+            price=1000,
+            status=BookingStatus.BOOKED,
+        )
+        session.add(booking)
+        await session.commit()
+        booking_id = booking.id
+
+    resp = await client.post(f"/api/v1/bookings/{booking_id}/no-show", headers=owner_headers)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "TOO_EARLY_FOR_NO_SHOW"
+
+
+async def test_owner_cannot_mark_no_show_on_a_checked_in_booking(
+    client, db_session_factory, make_user, make_venue, make_court, make_auth_headers
+):
+    owner = await make_user("+923004000037", role=UserRole.OWNER)
+    customer = await make_user("+923004000038", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    owner_headers = await make_auth_headers(owner)
+
+    async with db_session_factory() as session:
+        booking = Booking(
+            court_id=court.id,
+            player_id=customer.id,
+            starts_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            ends_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            price=1000,
+            status=BookingStatus.COMPLETED,
+            checked_in_at=datetime.now(timezone.utc) - timedelta(hours=2),
+        )
+        session.add(booking)
+        await session.commit()
+        booking_id = booking.id
+
+    resp = await client.post(f"/api/v1/bookings/{booking_id}/no-show", headers=owner_headers)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "INVALID_BOOKING_STATE"
+
+
+async def test_a_different_owner_cannot_mark_no_show(
+    client, db_session_factory, make_user, make_venue, make_court, make_auth_headers
+):
+    owner = await make_user("+923004000039", role=UserRole.OWNER)
+    other_owner = await make_user("+923004000040", role=UserRole.OWNER)
+    customer = await make_user("+923004000047", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+    other_headers = await make_auth_headers(other_owner)
+
+    async with db_session_factory() as session:
+        booking = Booking(
+            court_id=court.id,
+            player_id=customer.id,
+            starts_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            ends_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            price=1000,
+            status=BookingStatus.BOOKED,
+        )
+        session.add(booking)
+        await session.commit()
+        booking_id = booking.id
+
+    resp = await client.post(f"/api/v1/bookings/{booking_id}/no-show", headers=other_headers)
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "NOT_YOUR_BOOKING"
 
 
 async def test_self_checkin_and_owner_checkin_are_mutually_idempotent(

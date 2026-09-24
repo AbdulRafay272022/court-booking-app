@@ -21,6 +21,7 @@ import {
   parseTime24,
   pktDateString,
   pktDayTabs,
+  selfCheckinWindow,
   toTime24,
   weekOf,
 } from "./datetime";
@@ -36,6 +37,24 @@ test("times are 12-hour Pakistan time, including the midnight boundary", () => {
   assert.equal(formatTime(at("2026-09-23T19:30:00Z")), "12:30 AM");
   assert.equal(formatTime(at("2026-09-23T07:00:00Z")), "12:00 PM");
   assert.equal(formatTimeRange(at("2026-09-23T14:30:00Z"), at("2026-09-23T16:00:00Z")), "7:30 PM to 9:00 PM");
+});
+
+test("self-check-in window is 15 minutes before to 15 minutes after the booking's start (Section 32 Part 9)", () => {
+  const startsAt = at("2026-09-21T14:00:00Z"); // 7:00 PM PKT
+  const tooEarly = selfCheckinWindow(startsAt, at("2026-09-21T13:30:00Z")); // 6:30 PM, 30 min before
+  assert.equal(tooEarly.isOpen, false);
+  assert.equal(tooEarly.message, "You can check in starting at 6:45 PM.");
+
+  const justOpened = selfCheckinWindow(startsAt, at("2026-09-21T13:45:00Z")); // 6:45 PM, exactly 15 min before
+  assert.equal(justOpened.isOpen, true);
+
+  const onTime = selfCheckinWindow(startsAt, at("2026-09-21T14:05:00Z")); // 7:05 PM
+  assert.equal(onTime.isOpen, true);
+  assert.equal(onTime.message, "");
+
+  const justClosed = selfCheckinWindow(startsAt, at("2026-09-21T14:16:00Z")); // 7:16 PM, 1 min after it closed
+  assert.equal(justClosed.isOpen, false);
+  assert.equal(justClosed.message, "Check-in for this booking closed at 7:15 PM.");
 });
 
 test("the date is the PAKISTAN date: 12:30 AM on the 24th is the 24th although UTC says the 23rd", () => {

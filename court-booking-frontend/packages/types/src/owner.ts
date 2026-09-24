@@ -7,6 +7,9 @@ export interface TodaySlot {
   amount_paid: number | null;
   price: number | null;
   balance_due: number | null;
+  /** Section 32 Part 9. */
+  checked_in_at: string | null;
+  checked_in_by: "owner" | "player" | null;
 }
 
 export interface TodayCourt {

@@ -129,6 +129,17 @@ function BookingCard({ booking, onChanged }: { booking: Booking; onChanged: () =
         ) : null}
       </View>
 
+      {booking.status === "booked" ? (
+        <Pressable
+          onPress={() => router.push({ pathname: "/(player)/booking/[id]/checkin", params: { id: booking.id } })}
+          className="self-start"
+        >
+          <Text className="font-figtree-semibold text-[13px]" style={{ color: isDark ? "#5FBF95" : "#0E6274" }}>
+            Check in
+          </Text>
+        </Pressable>
+      ) : null}
+
       {canCancel ? (
         <Pressable onPress={handleCancel} disabled={cancelling} className="self-start">
           <Text className="font-figtree-semibold text-[13px]" style={{ color: isDark ? "#E29B8A" : "#A8432C" }}>

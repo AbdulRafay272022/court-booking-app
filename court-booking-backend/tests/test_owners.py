@@ -94,6 +94,89 @@ async def test_today_view_accuracy(
     assert slot_at_10["status"] == "available"
 
 
+async def test_today_shows_checkin_state_after_owner_checks_in(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_auth_headers
+):
+    """Section 32 Part 9: Today must surface checked_in_at/checked_in_by (so
+    the owner sees "Checked in 7:05 PM" instead of the slot silently staying
+    "Booking") and the completed status, once the owner taps Check in."""
+    owner = await make_user("+923011000090", role=UserRole.OWNER)
+    customer = await make_user("+923011000091", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+
+    today = _today_utc()
+    weekday = today.weekday()
+    await make_schedule(court, day_of_week=weekday, open_time=time(8, 0), close_time=time(20, 0))
+
+    booked_start = pkt_time_to_utc(today, time(10, 0))
+    async with db_session_factory() as session:
+        booking = Booking(
+            court_id=court.id,
+            player_id=customer.id,
+            starts_at=booked_start,
+            ends_at=booked_start + timedelta(hours=1),
+            price=3000,
+            amount_paid=3000,
+            player_name=customer.name or "Ahmed",
+            status=BookingStatus.BOOKED,
+            source=BookingSource.APP,
+        )
+        session.add(booking)
+        await session.commit()
+        booking_id = booking.id
+
+    owner_headers = await make_auth_headers(owner)
+    await client.post(f"/api/v1/bookings/{booking_id}/checkin", headers=owner_headers)
+
+    resp = await client.get("/api/v1/owners/today", headers=owner_headers)
+    court_out = resp.json()["courts"][0]
+    slot = next(s for s in court_out["slots"] if s["booking_id"] == str(booking_id))
+    assert slot["status"] == "completed"
+    assert slot["checked_in_at"] is not None
+    assert slot["checked_in_by"] == "owner"
+
+
+async def test_today_shows_no_show_instead_of_reverting_to_available(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_auth_headers
+):
+    """Section 32 Part 9 finding: get_day_slots only considers LIVE_BOOKING_STATUSES, so a no-show booking's
+    grid cell used to silently revert to "available" on Today -- the owner lost all record of it. Confirms the
+    no-show overlay in owner_dashboard_service.today() surfaces it instead."""
+    owner = await make_user("+923011000092", role=UserRole.OWNER)
+    customer = await make_user("+923011000093", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await make_court(venue)
+
+    today = _today_utc()
+    weekday = today.weekday()
+    await make_schedule(court, day_of_week=weekday, open_time=time(8, 0), close_time=time(20, 0))
+
+    booked_start = pkt_time_to_utc(today, time(10, 0))
+    async with db_session_factory() as session:
+        booking = Booking(
+            court_id=court.id,
+            player_id=customer.id,
+            starts_at=booked_start,
+            ends_at=booked_start + timedelta(hours=1),
+            price=3000,
+            amount_paid=3000,
+            player_name=customer.name or "Ahmed",
+            status=BookingStatus.NO_SHOW,
+            source=BookingSource.APP,
+        )
+        session.add(booking)
+        await session.commit()
+        booking_id = booking.id
+
+    owner_headers = await make_auth_headers(owner)
+    resp = await client.get("/api/v1/owners/today", headers=owner_headers)
+    court_out = resp.json()["courts"][0]
+    slot = next(s for s in court_out["slots"] if s["booking_id"] == str(booking_id))
+    assert slot["status"] == "no_show"
+    assert slot["checked_in_at"] is None
+
+
 async def test_pending_approvals_queue(
     client, db_session_factory, make_user, make_venue, make_court, make_auth_headers
 ):

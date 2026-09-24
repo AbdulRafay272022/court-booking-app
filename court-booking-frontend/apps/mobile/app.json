@@ -61,6 +61,12 @@
         {
           "locationWhenInUsePermission": "Maidan uses your location to pin your venue's exact spot for players."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Maidan uses your camera to scan a check-in QR code."
+        }
       ]
     ],
     "extra": {

@@ -60,6 +60,11 @@ export interface Venue {
   distance_meters: number | null;
   /** Populated only when the requester is this venue's owner or an admin. */
   bank_details: BankDetails | null;
+  /** Section 32 Part 9: a per-venue token meant to be printed/posted physically at the
+   * venue entrance -- a player scans it (POST /bookings/:id/checkin/self) to check
+   * themselves in. Populated only when the requester is this venue's owner or an admin,
+   * same visibility rule as bank_details. */
+  checkin_qr_token: string | null;
   /** Only populated by GET /venues/by-slug/:slug */
   available_slots_today?: number | null;
 }

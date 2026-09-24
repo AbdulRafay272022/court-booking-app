@@ -146,6 +146,19 @@ async def check_in_booking(
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
+@router.post("/{booking_id}/no-show", response_model=BookingResponse)
+async def mark_booking_no_show(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner
+) -> BookingResponse:
+    """Section 32 Part 9: manual counterpart to the automatic no-show job --
+    lets an owner flag a no-show as soon as the grace window has passed,
+    instead of waiting on the job's next tick."""
+    service = BookingService(db, settings)
+    booking = await service.require_accessible_booking(booking_id, owner)
+    booking = await service.owner_mark_no_show(booking)
+    return BookingResponse(booking=BookingOut.model_validate(booking))
+
+
 @router.post("/{booking_id}/checkin/self", response_model=BookingResponse)
 async def check_in_booking_self(
     booking_id: uuid.UUID, payload: BookingSelfCheckinIn, db: DbSession, settings: AppSettings, user: CurrentUser

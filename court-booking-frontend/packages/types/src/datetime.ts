@@ -164,6 +164,33 @@ export function formatSlotTimes(slot: { starts_at: Instant; ends_at: Instant; af
   return slot.after_midnight ? `${WEEKDAYS[pktParts(slot.starts_at).weekday]} ${range}` : range;
 }
 
+/** Section 32 Part 9: the player's self-check-in window is about 15 minutes before to 15 minutes after a
+ * booking's start -- outside it, "Scan to check in" is disabled with a clear message instead of hidden
+ * outright, matching this codebase's "flag, don't silently block" convention. Purely a UI gate: the server
+ * doesn't enforce this window (only the venue QR token), so this never blocks a real self-check-in attempt
+ * by itself. */
+const CHECKIN_WINDOW_MINUTES = 15;
+
+export interface CheckinWindow {
+  isOpen: boolean;
+  /** "You can check in starting at 7:15 PM." / "Check-in for this booking closed at 7:35 PM." / "" once open. */
+  message: string;
+}
+
+export function selfCheckinWindow(startsAt: Instant, now: Instant = new Date()): CheckinWindow {
+  const start = new Date(startsAt).getTime();
+  const nowMs = new Date(now).getTime();
+  const opensAt = start - CHECKIN_WINDOW_MINUTES * 60_000;
+  const closesAt = start + CHECKIN_WINDOW_MINUTES * 60_000;
+  if (nowMs < opensAt) {
+    return { isOpen: false, message: `You can check in starting at ${formatTime(new Date(opensAt))}.` };
+  }
+  if (nowMs > closesAt) {
+    return { isOpen: false, message: `Check-in for this booking closed at ${formatTime(new Date(closesAt))}.` };
+  }
+  return { isOpen: true, message: "" };
+}
+
 /** "Wed, 23 Sep"; the year is added only when it is not the current (Pakistan) year: "Tue, 5 Jan 2027". */
 export function formatDate(instant: Instant, now: Instant = new Date()): string {
   const p = pktParts(instant);

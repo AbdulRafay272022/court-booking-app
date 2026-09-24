@@ -14,6 +14,9 @@ class TodaySlotOut(BaseModel):
     # Section 32 Part 2: the owner's Today row shows what is still owed at the venue, not just what was paid.
     price: float | None = None
     balance_due: float | None = None
+    # Section 32 Part 9: so Today can show "Checked in 7:05 PM" / offer Check in or Mark no-show.
+    checked_in_at: datetime | None = None
+    checked_in_by: str | None = None
 
 
 class TodayCourtOut(BaseModel):
