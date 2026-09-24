@@ -2,7 +2,6 @@ import type {
   Booking,
   Growth,
   Ledger,
-  LedgerRow,
   OwnerDigest,
   OwnerRefund,
   OwnerToday,
@@ -12,6 +11,16 @@ import type {
 } from "@court-booking/types";
 import type { ApiClient } from "./client";
 import { toQuery } from "./util";
+
+/** Section 32 Part 5: filters for the per-payment ledger. All optional -- `venueId`/`courtId` scope which
+ * courts' payments show up, `method`/`bookingStatus` narrow the row list. The three "collected" summary
+ * numbers are always "now"-relative and ignore these, except for venue/court scoping. */
+export interface LedgerFilters {
+  venueId?: string;
+  courtId?: string;
+  method?: string;
+  bookingStatus?: string;
+}
 
 export function createOwnersApi(client: ApiClient) {
   return {
@@ -30,14 +39,28 @@ export function createOwnersApi(client: ApiClient) {
     pendingApprovals: (venueId?: string) =>
       client.request<PendingApproval[]>(`/owners/pending-approvals${toQuery({ venue_id: venueId })}`),
 
-    ledger: (startDate: string, endDate: string, venueId?: string) =>
+    ledger: (startDate: string, endDate: string, filters: LedgerFilters = {}) =>
       client.request<Ledger>(
-        `/owners/ledger${toQuery({ start_date: startDate, end_date: endDate, venue_id: venueId })}`,
+        `/owners/ledger${toQuery({
+          start_date: startDate,
+          end_date: endDate,
+          venue_id: filters.venueId,
+          court_id: filters.courtId,
+          method: filters.method,
+          booking_status: filters.bookingStatus,
+        })}`,
       ),
 
-    ledgerExportCsv: (startDate: string, endDate: string, venueId?: string) =>
+    ledgerExportCsv: (startDate: string, endDate: string, filters: LedgerFilters = {}) =>
       client.requestText(
-        `/owners/ledger/export${toQuery({ start_date: startDate, end_date: endDate, venue_id: venueId })}`,
+        `/owners/ledger/export${toQuery({
+          start_date: startDate,
+          end_date: endDate,
+          venue_id: filters.venueId,
+          court_id: filters.courtId,
+          method: filters.method,
+          booking_status: filters.bookingStatus,
+        })}`,
       ),
 
     growth: (venueId?: string) =>
@@ -70,41 +93,4 @@ export function createOwnersApi(client: ApiClient) {
       return client.requestUpload<OwnerRefund>(`/owners/refunds/${disputeId}/mark-refunded`, formData);
     },
   };
-}
-
-/** The ledger endpoint filters by VENUE only (`venue_id`) -- there is no court filter server-side. The
- * dashboards used to pass the selected COURT id in the venue slot, which (a) never scoped the ledger to the
- * selected venue (so a multi-venue owner saw every venue mixed together) and (b) made the court tabs send a
- * court UUID as a venue id (an empty ledger). Court filtering is client-side now: rows are filtered by court
- * name and the summary recomputed from what's left. */
-export function filterLedgerByCourt(ledger: Ledger, courtName: string, startDate: string, endDate: string): Ledger {
-  const bookings = ledger.bookings.filter((b) => b.court === courtName);
-  const total = bookings.reduce((n, b) => n + b.amount_paid + (b.refund_amount ?? 0), 0);
-  const days = Math.max(1, Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86_400_000) + 1);
-  const by_source: Record<string, number> = {};
-  for (const b of bookings) by_source[b.source] = (by_source[b.source] ?? 0) + 1;
-  return {
-    bookings,
-    summary: {
-      total_revenue: total,
-      total_bookings: bookings.length,
-      avg_revenue_per_day: total / days,
-      by_source,
-      by_court: { [courtName]: total },
-    },
-  };
-}
-
-/** Same columns as the server's CSV export (`GET /owners/ledger/export`), for a court-filtered view. */
-export function ledgerRowsToCsv(rows: LedgerRow[]): string {
-  const esc = (v: string | number) => {
-    const t = String(v);
-    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-  };
-  const lines = [["date", "court", "player", "source", "amount_paid", "balance_due", "status", "refund_amount"].join(",")];
-  for (const r of rows)
-    lines.push(
-      [r.date, r.court, r.player ?? "", r.source, r.amount_paid, r.balance_due, r.status, r.refund_amount ?? ""].map(esc).join(","),
-    );
-  return lines.join("\r\n") + "\r\n";
 }

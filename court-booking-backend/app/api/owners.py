@@ -115,9 +115,14 @@ async def owner_ledger(
     start_date: date,
     end_date: date,
     venue_id: uuid.UUID | None = None,
+    court_id: uuid.UUID | None = None,
+    method: str | None = None,
+    booking_status: str | None = None,
 ) -> LedgerOut:
     service = OwnerDashboardService(db, settings)
-    return await service.ledger(owner, start_date, end_date, venue_id=venue_id)
+    return await service.ledger(
+        owner, start_date, end_date, venue_id=venue_id, court_id=court_id, method=method, booking_status=booking_status
+    )
 
 
 @router.get("/ledger/export")
@@ -128,9 +133,14 @@ async def owner_ledger_export(
     start_date: date,
     end_date: date,
     venue_id: uuid.UUID | None = None,
+    court_id: uuid.UUID | None = None,
+    method: str | None = None,
+    booking_status: str | None = None,
 ) -> Response:
     service = OwnerDashboardService(db, settings)
-    csv_text = await service.ledger_csv(owner, start_date, end_date, venue_id=venue_id)
+    csv_text = await service.ledger_csv(
+        owner, start_date, end_date, venue_id=venue_id, court_id=court_id, method=method, booking_status=booking_status
+    )
     return Response(
         content=csv_text,
         media_type="text/csv",

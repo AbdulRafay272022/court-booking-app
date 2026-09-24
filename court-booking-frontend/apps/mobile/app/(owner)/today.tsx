@@ -13,6 +13,7 @@ import { openSupportWhatsApp } from "@/lib/support";
 import { confirmLogout } from "@/lib/logout";
 import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, QrIcon, RefreshIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
+import { RecordPaymentSheet } from "@/components/record-payment-sheet";
 import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 
@@ -30,6 +31,7 @@ export default function OwnerTodayScreen() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
+  const [recording, setRecording] = useState<{ bookingId: string; playerLabel: string; balanceDue: number } | null>(null);
   const queryClient = useQueryClient();
 
   const todayQuery = useQuery({
@@ -231,6 +233,24 @@ export default function OwnerTodayScreen() {
                   >
                     <Text className="font-plex-semibold text-owner-accent text-[12.5px]">Add booking</Text>
                   </Pressable>
+                ) : slot.status === "booked" && slot.balance_due != null && slot.balance_due > 0 && slot.booking_id ? (
+                  <Pressable
+                    onPress={() =>
+                      setRecording({
+                        bookingId: slot.booking_id!,
+                        playerLabel: slot.player_name ?? "Player",
+                        balanceDue: slot.balance_due!,
+                      })
+                    }
+                    className="items-end"
+                  >
+                    <Text className="font-mono-semibold text-[13.5px] text-owner-ink">PKR {formatPKR(slot.amount_paid ?? 0)}</Text>
+                    <View className="px-2.5 h-7 rounded-full items-center justify-center flex-row" style={{ backgroundColor: "#FBF0DD" }}>
+                      <Text className="font-plex-bold text-[10.5px]" style={{ color: "#9C5C0A" }}>
+                        RECORD PKR {formatPKR(slot.balance_due)}
+                      </Text>
+                    </View>
+                  </Pressable>
                 ) : slot.amount_paid != null ? (
                   <View className="items-end gap-1">
                     <Text className="font-mono-semibold text-[13.5px] text-owner-ink">PKR {formatPKR(slot.amount_paid)}</Text>
@@ -301,6 +321,19 @@ export default function OwnerTodayScreen() {
           <SettingsIcon />
         </IconButton>
       </View>
+
+      {recording ? (
+        <RecordPaymentSheet
+          bookingId={recording.bookingId}
+          playerLabel={recording.playerLabel}
+          balanceDue={recording.balanceDue}
+          onClose={() => setRecording(null)}
+          onRecorded={() => {
+            setRecording(null);
+            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

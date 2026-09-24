@@ -58,6 +58,8 @@ class ErrorCode:
     # Section 32 Part 10 (manual refunds)
     REFUND_ALREADY_MARKED = "REFUND_ALREADY_MARKED"
     REFUND_EXCEEDS_OWED_AMOUNT = "REFUND_EXCEEDS_OWED_AMOUNT"
+    # Section 32 Part 5: a manually-recorded payment (or reversal) would push amount_paid past the booking's price.
+    PAYMENT_EXCEEDS_BALANCE = "PAYMENT_EXCEEDS_BALANCE"
 
     # General
     RATE_LIMITED = "RATE_LIMITED"

@@ -20,7 +20,7 @@ import { formatWhen } from "@/lib/format";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
-import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
+import { AdvanceRuleFields, CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
 import { FieldLabel, PrimaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
 import { Tab } from "./_dashboard-components";
 
@@ -125,23 +125,37 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
 function CourtSettingsForm({ court }: { court: Court }) {
   const queryClient = useQueryClient();
   const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
+  const [advanceType, setAdvanceType] = useState<"" | "fixed" | "percent">(court.advance_type ?? "");
+  const [advanceValue, setAdvanceValue] = useState(court.advance_value != null ? String(court.advance_value) : "");
+  const [advanceMinimum, setAdvanceMinimum] = useState(court.advance_minimum != null ? String(court.advance_minimum) : "");
   const [saving, setSaving] = useState(false);
   const problem = courtSetupProblem(setup);
+  const advanceProblem =
+    advanceType !== "" && !advanceValue.trim() ? "Enter an advance amount or percentage, or switch back to Default." : null;
 
   async function save() {
     if (problem) {
       Alert.alert("Check this court", problem);
       return;
     }
+    if (advanceProblem) {
+      Alert.alert("Check the advance rule", advanceProblem);
+      return;
+    }
     setSaving(true);
     try {
       if (setup.slotMinutes !== court.slot_minutes) await api.courts.update(court.id, { slot_minutes: setup.slotMinutes });
+      await api.courts.update(court.id, {
+        advance_type: advanceType || null,
+        advance_value: advanceType ? Number(advanceValue) : null,
+        advance_minimum: advanceMinimum.trim() ? Number(advanceMinimum) : null,
+      });
       await api.courts.setSchedule(court.id, buildSchedules(setup));
       await api.courts.setPricing(court.id, buildPricingRules(setup));
       await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      Alert.alert("Saved", `${court.name}: slot length, hours and prices updated.`);
+      Alert.alert("Saved", `${court.name}: slot length, hours, prices and advance rule updated.`);
     } catch (e) {
       Alert.alert("Couldn't save", friendlyErrorMessage(e));
     } finally {
@@ -153,6 +167,16 @@ function CourtSettingsForm({ court }: { court: Court }) {
     <>
       <Text className="font-plex-bold text-owner-ink text-[17px]">{court.name}</Text>
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
+      <AdvanceRuleFields
+        advanceType={advanceType}
+        advanceValue={advanceValue}
+        advanceMinimum={advanceMinimum}
+        onChange={(patch) => {
+          if (patch.advanceType !== undefined) setAdvanceType(patch.advanceType);
+          if (patch.advanceValue !== undefined) setAdvanceValue(patch.advanceValue);
+          if (patch.advanceMinimum !== undefined) setAdvanceMinimum(patch.advanceMinimum);
+        }}
+      />
       <PrimaryButton label="Save changes" onPress={save} loading={saving} />
     </>
   );

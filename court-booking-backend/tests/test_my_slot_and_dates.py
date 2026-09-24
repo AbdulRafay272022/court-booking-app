@@ -6,6 +6,7 @@ from datetime import datetime, time, timedelta, timezone
 from sqlalchemy import select
 
 from app.models.booking import Booking, BookingSource, BookingStatus
+from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import UserRole
 from app.models.waitlist import WaitlistEntry
 from app.utils.timezone import pkt_time_to_utc, pkt_today
@@ -116,12 +117,22 @@ async def test_a_slot_after_midnight_pkt_can_be_held_because_alignment_uses_the_
 
 
 async def _add_bookings(db_session_factory, court, player, times):
+    """One booking per instant in `times`, each with a payment_entries row RECORDED at that same instant --
+    Section 32 Part 5's ledger is keyed by when the money was recorded (payment_entries.created_at), not
+    when the booking's slot is, so a test of the ledger's PKT-day-boundary handling needs to control that
+    timestamp directly rather than the booking's starts_at."""
     async with db_session_factory() as session:
         for starts in times:
+            booking = Booking(
+                court_id=court.id, player_id=player.id, starts_at=starts, ends_at=starts + timedelta(hours=1),
+                price=1000, amount_paid=1000, status=BookingStatus.BOOKED, source=BookingSource.APP,
+            )
+            session.add(booking)
+            await session.flush()
             session.add(
-                Booking(
-                    court_id=court.id, player_id=player.id, starts_at=starts, ends_at=starts + timedelta(hours=1),
-                    price=1000, amount_paid=1000, status=BookingStatus.BOOKED, source=BookingSource.APP,
+                PaymentEntry(
+                    booking_id=booking.id, amount_pkr=1000, method=PaymentMethod.BANK_TRANSFER_PROOF,
+                    created_at=starts,
                 )
             )
         await session.commit()
@@ -152,7 +163,7 @@ async def test_owner_today_and_ledger_use_pakistan_days_not_utc_days(
     async def ledger(start, end):
         resp = await client.get("/api/v1/owners/ledger", headers=headers, params={"start_date": start.isoformat(), "end_date": end.isoformat()})
         assert resp.status_code == 200, resp.text
-        return resp.json()["summary"]["total_bookings"]
+        return len(resp.json()["entries"])
 
     assert await ledger(monday, monday) == 2  # 1 AM and 11:30 PM are Monday; 12:30 AM belongs to Tuesday
     assert await ledger(tuesday, tuesday) == 1

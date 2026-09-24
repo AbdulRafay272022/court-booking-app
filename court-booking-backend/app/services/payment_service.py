@@ -349,7 +349,7 @@ class PaymentService:
             entity_type="payment",
             entity_id=payment.id,
         )
-        await self.booking_service.confirm_booking(booking)
+        await self.booking_service.confirm_booking(booking, recorded_by=approved_by)
         await self.db.commit()
         await self.db.refresh(payment)
         return payment

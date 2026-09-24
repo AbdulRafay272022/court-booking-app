@@ -4,6 +4,7 @@ export * from "./court";
 export * from "./availability";
 export * from "./booking";
 export * from "./payment";
+export * from "./payment-entry";
 export * from "./waitlist";
 export * from "./chat";
 export * from "./review";
