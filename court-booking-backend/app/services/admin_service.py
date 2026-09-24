@@ -11,6 +11,7 @@ from app.models.booking import Booking, BookingStatus
 from app.models.court import Court
 from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
+from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import User
 from app.models.venue import Venue, VenueStatus
 from app.schemas.admin import (
@@ -357,6 +358,25 @@ class AdminService:
                 ErrorCode.REFUND_ALREADY_MARKED,
                 "This refund has already been marked as paid",
             )
+        # Section 32 batch-merge integration (Parts 5 + 10): a paid refund is money that LEFT again, so it
+        # belongs in the payment_entries ledger as a real NEGATIVE entry (this is the wiring both parts'
+        # handoffs deferred to "once Part 5 merges"). recompute keeps bookings.amount_paid in step.
+        from app.services.payment_ledger_service import recompute_payment_totals
+
+        if target_amount > 0:
+            booking = await self.db.get(Booking, dispute.booking_id, with_for_update=True)
+            if booking is not None:
+                self.db.add(
+                    PaymentEntry(
+                        booking_id=booking.id,
+                        amount_pkr=-int(round(target_amount)),
+                        method=PaymentMethod.OTHER,
+                        recorded_by=actor.id,
+                        note=f"Refund paid ({reference})",
+                    )
+                )
+                await self.db.flush()
+                await recompute_payment_totals(self.db, booking)
         await self.audit.log(
             actor_user_id=actor.id,
             actor_type=actor.role.value,

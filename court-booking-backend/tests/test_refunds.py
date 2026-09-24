@@ -212,8 +212,12 @@ async def test_owner_refunds_screen_lists_and_marks_refund_paid(
         params={"start_date": (today - timedelta(days=1)).isoformat(), "end_date": (today + timedelta(days=3)).isoformat()},
     )
     assert ledger.status_code == 200
-    ledger_row = next(r for r in ledger.json()["bookings"] if r["booking_id"] == booking["id"])
-    assert ledger_row["refund_amount"] == -400.0
+    # Batch merge (Parts 5 + 10): a paid refund shows as a real NEGATIVE payment_entries ledger row,
+    # not a refund_amount column on a per-booking row (Part 5's ledger is per-payment now).
+    refund_entry = next(
+        e for e in ledger.json()["entries"] if e["booking_id"] == booking["id"] and e["amount_pkr"] < 0
+    )
+    assert refund_entry["amount_pkr"] == -400
 
 
 async def test_mark_refund_exceeding_owed_amount_is_rejected(
