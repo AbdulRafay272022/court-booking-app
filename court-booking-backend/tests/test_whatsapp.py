@@ -368,7 +368,6 @@ async def test_send_logs_wamid_on_accept_and_never_the_token(monkeypatch):
 
 async def test_send_logs_metas_error_object_on_rejection(monkeypatch):
     from structlog.testing import capture_logs
-    from tenacity import RetryError
 
     settings = get_settings()
     monkeypatch.setattr(settings, "WHATSAPP_API_TOKEN", "super-secret-token")
@@ -396,14 +395,51 @@ async def test_send_logs_metas_error_object_on_rejection(monkeypatch):
     with capture_logs() as logs:
         try:
             await WhatsAppService(settings).send_text("+923118366981", "hello")
-        except RetryError:
+        except httpx.HTTPStatusError:
+            # Section 32 Part 8: a deterministic 400 now raises directly and is NOT retried
+            # (it used to be wrapped in a RetryError after 3 wasted attempts).
             pass
         else:
             raise AssertionError("a 400 from Meta must still raise")
 
     rejected = [e for e in logs if e["event"] == "whatsapp.send.rejected"]
     assert rejected, "Meta's error body must be logged, not just the status line"
+    assert len(rejected) == 1, "a deterministic 400 must not be retried"
     assert rejected[0]["http_status"] == 400
     assert rejected[0]["meta_error"]["code"] == 131047
     assert rejected[0]["log_level"] == "warning"
     assert "super-secret-token" not in str(logs)
+
+
+async def test_send_retries_5xx_and_429_but_not_other_4xx(monkeypatch):
+    """Section 32 Part 8 / open item 8: a deterministic 4xx (404 template missing,
+    400 bad payload) fails identically on every retry, so _send must NOT retry it
+    (that just added ~4s of latency to a doomed request). 429 and 5xx still retry."""
+    import asyncio
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "WHATSAPP_API_TOKEN", "test-token")
+
+    async def _no_sleep(*a, **k):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)  # keep tenacity's backoff instant
+    service = WhatsAppService(settings)
+
+    for status_code, expected_attempts in [(404, 1), (400, 1), (401, 1), (429, 3), (500, 3), (503, 3)]:
+        calls = {"n": 0}
+
+        async def fake_post(self, url, headers=None, json=None, _sc=status_code, _calls=calls):
+            _calls["n"] += 1
+            return httpx.Response(
+                _sc, json={"error": {"code": 0, "message": "x"}}, request=httpx.Request("POST", url)
+            )
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+        raised = False
+        try:
+            await service._send({"to": "923001234567", "type": "text"})
+        except Exception:  # noqa: BLE001
+            raised = True
+        assert raised, f"status {status_code} should have raised"
+        assert calls["n"] == expected_attempts, f"status {status_code}: {calls['n']} attempts, expected {expected_attempts}"

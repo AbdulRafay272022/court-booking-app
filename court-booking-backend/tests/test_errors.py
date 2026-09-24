@@ -247,3 +247,27 @@ async def test_rate_limit_returns_429_with_error_envelope(db_session_factory, mo
 
     assert statuses.count(429) >= 1
     assert statuses[:3] == [200, 200, 200]
+
+
+async def test_unhandled_500_returns_error_envelope_with_cors_headers():
+    """Section 32 Part 8 / open item 2: an unhandled 500 used to escape past CORS and
+    reach the browser with no CORS headers, so it looked like a network failure. The
+    RequestContextMiddleware catch-all now returns the standard envelope, and CORS is
+    the outermost middleware, so the response carries Access-Control-Allow-Origin."""
+    from httpx import ASGITransport, AsyncClient
+
+    app = create_app()
+
+    @app.get("/_boom_test")
+    async def _boom():  # noqa: ANN202
+        raise ValueError("kaboom")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/_boom_test", headers={"Origin": "http://localhost:3000"})
+
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["error"]["code"] == ErrorCode.INTERNAL_ERROR
+    assert "message" in body["error"]
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
