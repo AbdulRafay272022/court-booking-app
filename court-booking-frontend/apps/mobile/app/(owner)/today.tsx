@@ -9,9 +9,10 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDayHeader, formatPKR, formatTime } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useAuthStore } from "@/lib/auth-store";
 import { openSupportWhatsApp } from "@/lib/support";
 import { confirmLogout } from "@/lib/logout";
-import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, QrIcon, RefreshIcon, StarBadgeIcon } from "@/components/icons";
+import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, QrIcon, RefreshIcon, StarBadgeIcon, PersonIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { RecordPaymentSheet } from "@/components/record-payment-sheet";
 import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
@@ -29,6 +30,7 @@ const STATUS_STYLE: Record<string, { border: string; bg: string }> = {
 
 export default function OwnerTodayScreen() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
+  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
   const [recording, setRecording] = useState<{ bookingId: string; playerLabel: string; balanceDue: number } | null>(null);
@@ -320,6 +322,11 @@ export default function OwnerTodayScreen() {
         <IconButton onPress={() => router.push("/(owner)/reviews")}>
           <StarBadgeIcon size={18} color="#5B7079" />
         </IconButton>
+        {isOwner ? (
+          <IconButton onPress={() => router.push("/(owner)/staff")}>
+            <PersonIcon size={18} color="#5B7079" />
+          </IconButton>
+        ) : null}
         <IconButton onPress={() => router.push("/(owner)/venue-settings")}>
           <SettingsIcon />
         </IconButton>

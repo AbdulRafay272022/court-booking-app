@@ -5,7 +5,9 @@ import { createAvailabilityApi } from "./availability";
 import { createBookingsApi } from "./bookings";
 import { createChatApi } from "./chat";
 import { createCourtsApi } from "./courts";
+import { createFeatureFlagsApi } from "./feature-flags";
 import { createOwnersApi } from "./owners";
+import { createStaffApi } from "./staff";
 import { createPaymentsApi } from "./payments";
 import { createReviewsApi } from "./reviews";
 import { createUsersApi } from "./users";
@@ -24,6 +26,8 @@ export * from "./chat";
 export * from "./reviews";
 export * from "./owners";
 export * from "./admin";
+export * from "./feature-flags";
+export * from "./staff";
 export * from "./users";
 export * from "./session";
 export * from "./venue-draft";
@@ -43,6 +47,8 @@ export function createCourtBookingApi(config: ApiClientConfig) {
     reviews: createReviewsApi(client),
     owners: createOwnersApi(client),
     admin: createAdminApi(client),
+    featureFlags: createFeatureFlagsApi(client),
+    staff: createStaffApi(client),
     users: createUsersApi(client),
   };
 }

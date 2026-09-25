@@ -1,4 +1,4 @@
-export type UserRole = "player" | "owner" | "admin";
+export type UserRole = "player" | "owner" | "admin" | "staff";
 
 /** Roles selectable at signup. Admin is never self-assignable. */
 export type SignupRole = "player" | "owner";
