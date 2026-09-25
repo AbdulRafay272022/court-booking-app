@@ -10,11 +10,38 @@ from app.database import get_db
 from app.errors import AppError, ErrorCode
 from app.models.user import User, UserRole
 from app.services.auth_service import AuthService
+from app.services.feature_flag_service import FeatureFlagService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
+
+
+def get_feature_flag_service(request: Request, db: DbSession) -> FeatureFlagService:
+    """A FeatureFlagService bound to the app.state cache (endpoints read through
+    the cache; services that hold their own db read uncached for freshness)."""
+    cache = getattr(request.app.state, "feature_flag_cache", None)
+    return FeatureFlagService(db, cache)
+
+
+FeatureFlags = Annotated[FeatureFlagService, Depends(get_feature_flag_service)]
+
+
+def require_feature(key: str) -> Callable[..., None]:
+    """Endpoint gate: 403 FEATURE_DISABLED when the admin has globally turned the
+    feature off. Applied to endpoints that only make sense when the feature is on;
+    the matching UI must also hide the entry point so nobody dead-ends here."""
+
+    async def dependency(flags: FeatureFlags) -> None:
+        if not await flags.is_on(key):
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.FEATURE_DISABLED,
+                "This feature is currently unavailable.",
+            )
+
+    return dependency
 
 
 async def get_current_user(
@@ -79,6 +106,12 @@ def require_roles(*roles: UserRole) -> Callable[[CurrentUser], User]:
 
 RequireOwner = Annotated[User, Depends(require_roles(UserRole.OWNER, UserRole.ADMIN))]
 RequireAdmin = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
+# Section 32 Part 12: shared owner-action endpoints that a STAFF account may also
+# reach. The role gate only lets STAFF past; the per-action permission is then
+# enforced in the service layer (require_owned_venue / require_accessible_booking
+# with a `permission=`). Owner-only endpoints keep RequireOwner so staff can never
+# create venues, edit bank details, or manage other staff.
+RequireStaffCapable = Annotated[User, Depends(require_roles(UserRole.OWNER, UserRole.ADMIN, UserRole.STAFF))]
 
 
 async def enforce_chat_rate_limit(request: Request, user: CurrentUser, settings: AppSettings) -> None:

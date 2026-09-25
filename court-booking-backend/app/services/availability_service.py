@@ -14,6 +14,7 @@ from app.models.court import Court, CourtAdvanceType
 from app.models.pricing import PricingRule
 from app.models.schedule import ScheduleTemplate
 from app.schemas.availability import CourtMonthSummaryOut, DaySummaryOut, SlotOut
+from app.services.feature_flag_service import flag_on
 from app.utils.schedule import (
     minutes_from_midnight,
     opening_day_of,
@@ -389,13 +390,23 @@ class AvailabilityService:
                     "No pricing rule covers this slot; ask the venue to configure pricing",
                 )
             picked.append(slot)
+        price = round(sum(s.price for s in picked), 2)
+        advance_amount = round(sum(s.advance_amount for s in picked), 2)
+        # Split-payments kill switch (Section 32 Part 12): when off, a new booking
+        # must be paid in full up front -- force the advance to the whole price so
+        # there's no balance due. The payment ledger still runs underneath exactly
+        # as before (confirm_booking records the single full-price entry); this only
+        # removes partial advances going forward, and never touches bookings that
+        # already have split-payment history.
+        if not await flag_on(self.db, "split_payments"):
+            advance_amount = price
         return RangeQuote(
             starts_at=picked[0].starts_at,
             ends_at=picked[-1].ends_at,
             slot_count=slot_count,
             duration_minutes=slot_count * court.slot_minutes,
-            price=round(sum(s.price for s in picked), 2),
-            advance_amount=round(sum(s.advance_amount for s in picked), 2),
+            price=price,
+            advance_amount=advance_amount,
             slots=picked,
         )
 

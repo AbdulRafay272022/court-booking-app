@@ -5,6 +5,7 @@ import type { Review } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { formatShortDate } from "@/lib/format";
 import { useAuthStore } from "@/lib/auth-store";
+import { useFeatureFlags } from "@/lib/use-feature-flags";
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -21,9 +22,12 @@ export function VenueReviews({ venueId }: { venueId: string }) {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
+  const { isOn } = useFeatureFlags();
+  const reviewsEnabled = isOn("reviews");
   const query = useQuery({
     queryKey: ["venue-reviews", venueId],
     queryFn: () => api.reviews.listForVenue(venueId),
+    enabled: reviewsEnabled,
   });
   const reviews = query.data ?? [];
 
@@ -32,6 +36,9 @@ export function VenueReviews({ venueId }: { venueId: string }) {
     else await api.admin.hideReview(r.id);
     await queryClient.invalidateQueries({ queryKey: ["venue-reviews", venueId] });
   }
+
+  // Admin global kill switch (Section 32 Part 12): reviews hidden everywhere when off.
+  if (!reviewsEnabled) return null;
 
   return (
     <section className="flex flex-col gap-4" data-testid="venue-reviews">

@@ -7,9 +7,11 @@ from app.api import (
     bookings,
     chat,
     courts,
+    feature_flags,
     owners,
     payments,
     reviews,
+    staff,
     users,
     venues,
     waitlist,
@@ -31,3 +33,5 @@ api_router.include_router(owners.router)
 api_router.include_router(admin.router)
 api_router.include_router(chat.router)
 api_router.include_router(webhooks.router)
+api_router.include_router(feature_flags.router)
+api_router.include_router(staff.router)

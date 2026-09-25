@@ -1,4 +1,5 @@
 from app.config import get_settings
+from app.models.feature_flag import FeatureFlag
 from app.models.user import UserRole
 
 
@@ -47,16 +48,20 @@ async def test_chat_endpoint_enforces_per_user_rate_limit(client, make_user, mak
     assert other_resp.status_code == 200
 
 
-async def test_ai_chat_disabled_returns_clean_error_not_500(client, make_user, make_auth_headers, monkeypatch):
-    """Platform-wide kill switch (finding #21): flipping AI_CHAT_ENABLED off
-    must degrade gracefully (same 200 + canned reply as an unconfigured
-    provider), never a 500 -- and must actually short-circuit before ever
-    calling a real provider (a real key configured here would 500/hang on
-    a real network call in this test environment if the switch didn't
-    work, since httpx isn't mocked)."""
+async def test_ai_chat_disabled_returns_clean_error_not_500(
+    client, make_user, make_auth_headers, db_session_factory, monkeypatch
+):
+    """Admin global kill switch (Section 32 Part 12; was the AI_CHAT_ENABLED
+    setting): turning the ai_chat_booking flag off must degrade gracefully (same
+    200 + canned reply as an unconfigured provider), never a 500 -- and must
+    short-circuit before ever calling a real provider (a real key configured here
+    would 500/hang on a real network call if the switch didn't work, since httpx
+    isn't mocked)."""
     settings = get_settings()
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(settings, "AI_CHAT_ENABLED", False)
+    async with db_session_factory() as session:
+        session.add(FeatureFlag(key="ai_chat_booking", enabled=False, label="AI chat booking"))
+        await session.commit()
 
     player = await make_user("+923015000097", role=UserRole.PLAYER)
     headers = await make_auth_headers(player)

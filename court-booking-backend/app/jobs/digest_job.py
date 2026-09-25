@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
+from app.services.feature_flag_service import flag_on
 from app.models.user import User, UserRole
 from app.services.growth_service import GrowthService
 from app.services.notification_service import NotificationService
@@ -28,6 +29,9 @@ async def send_owner_daily_digests(session_factory: async_sessionmaker = AsyncSe
     failed: list[str] = []
 
     async with session_factory() as db:
+        # Admin global kill switch (Section 32 Part 12): skip the whole run when off.
+        if not await flag_on(db, "digest_reminders"):
+            return {"sent": 0, "failed": [], "skipped": "digest_reminders flag off"}
         notifications = NotificationService(db, settings)
         growth_service = GrowthService(db)
         owners_result = await db.execute(select(User).where(User.role == UserRole.OWNER))

@@ -1,8 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
 
-from app.dependencies import AppSettings, CurrentUser, DbSession, RequireOwner
+from app.dependencies import AppSettings, CurrentUser, DbSession, RequireStaffCapable, require_feature
 from app.errors import AppError, ErrorCode
 from app.models.court import Court
 from app.models.payment_entry import PaymentEntry
@@ -105,12 +105,14 @@ async def submit_payment_proof(
 
 @router.post("/payments/{payment_id}/approve", response_model=PaymentSubmitResponse)
 async def approve_payment(
-    payment_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner
+    payment_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> PaymentSubmitResponse:
     payment_service = PaymentService(db, settings)
     payment = await payment_service.get_payment(payment_id)
     booking_service = BookingService(db, settings)
-    booking = await booking_service.require_accessible_booking(payment.booking_id, owner)
+    booking = await booking_service.require_accessible_booking(
+        payment.booking_id, owner, permission="approve_payments"
+    )
 
     payment = await payment_service.approve_payment(payment, booking, owner)
     await db.refresh(booking)
@@ -133,12 +135,14 @@ async def approve_payment(
 
 @router.post("/payments/{payment_id}/reject", response_model=PaymentSubmitResponse)
 async def reject_payment(
-    payment_id: uuid.UUID, payload: PaymentRejectIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    payment_id: uuid.UUID, payload: PaymentRejectIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> PaymentSubmitResponse:
     payment_service = PaymentService(db, settings)
     payment = await payment_service.get_payment(payment_id)
     booking_service = BookingService(db, settings)
-    booking = await booking_service.require_accessible_booking(payment.booking_id, owner)
+    booking = await booking_service.require_accessible_booking(
+        payment.booking_id, owner, permission="approve_payments"
+    )
 
     payment = await payment_service.reject_payment(payment, booking, owner, payload.reason)
     await db.refresh(booking)
@@ -155,15 +159,16 @@ async def reject_payment(
 
 @router.get("/payments/{payment_id}/proof-url", response_model=ProofUrlOut)
 async def get_proof_url(
-    payment_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner
+    payment_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> ProofUrlOut:
     payment_service = PaymentService(db, settings)
     payment = await payment_service.get_payment(payment_id)
     # require_accessible_booking already enforces that `owner` owns the venue
-    # this booking's court belongs to (or is an admin) -- a different venue's
-    # owner gets a 403 here, not a leaked URL.
+    # this booking's court belongs to (or is an admin, or a staff member with the
+    # approve_payments permission) -- a different venue's owner gets a 403 here,
+    # not a leaked URL.
     booking_service = BookingService(db, settings)
-    await booking_service.require_accessible_booking(payment.booking_id, owner)
+    await booking_service.require_accessible_booking(payment.booking_id, owner, permission="approve_payments")
 
     url = PaymentService.proof_url(payment, expires_in=300)
     if url is None:
@@ -186,15 +191,17 @@ async def list_payments_for_booking(
     "/bookings/{booking_id}/payment-entries",
     response_model=PaymentEntryResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("split_payments"))],
 )
 async def record_payment_entry(
-    booking_id: uuid.UUID, payload: PaymentEntryIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    booking_id: uuid.UUID, payload: PaymentEntryIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> PaymentEntryResponse:
-    """Section 32 Part 5: the owner (or admin) records money actually received against a booking --
-    typically the balance paid in cash at the venue, or a bank transfer that didn't go through the
-    app's payment-proof flow. Refuses to record more than the balance due."""
+    """Section 32 Part 5: the owner (or admin, or a staff member with record_payments) records money
+    actually received against a booking -- typically the balance paid in cash at the venue, or a bank
+    transfer that didn't go through the app's payment-proof flow. Refuses to record more than the balance
+    due. Blocked (403 FEATURE_DISABLED) when the split-payments flag is off."""
     booking_service = BookingService(db, settings)
-    booking = await booking_service.require_accessible_booking(booking_id, owner)
+    booking = await booking_service.require_accessible_booking(booking_id, owner, permission="record_payments")
 
     ledger = PaymentLedgerService(db)
     entry = await ledger.record_entry(
@@ -223,9 +230,13 @@ async def list_payment_entries(
     return [PaymentEntryOut.model_validate(e) for e in entries]
 
 
-@router.post("/payment-entries/{entry_id}/reverse", response_model=PaymentEntryOut)
+@router.post(
+    "/payment-entries/{entry_id}/reverse",
+    response_model=PaymentEntryOut,
+    dependencies=[Depends(require_feature("split_payments"))],
+)
 async def reverse_payment_entry(
-    entry_id: uuid.UUID, payload: PaymentEntryReverseIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    entry_id: uuid.UUID, payload: PaymentEntryReverseIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> PaymentEntryOut:
     """Section 32 Part 5: correct a mistaken payment entry. Same accessibility rule as recording one -- a
     venue owner can correct entries on their own bookings only, an admin can correct any -- checked the same
@@ -235,7 +246,7 @@ async def reverse_payment_entry(
     if entry is None:
         raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Payment entry not found")
     booking_service = BookingService(db, settings)
-    await booking_service.require_accessible_booking(entry.booking_id, owner)
+    await booking_service.require_accessible_booking(entry.booking_id, owner, permission="record_payments")
 
     ledger = PaymentLedgerService(db)
     reversal = await ledger.reverse_entry(entry_id, actor=owner, reason=payload.reason)

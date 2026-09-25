@@ -19,6 +19,7 @@ from app.models.stats import SlotStats
 from app.models.user import User
 from app.models.venue import PlanTier, Venue
 from app.services.availability_service import AvailabilityService
+from app.services.feature_flag_service import flag_on
 from app.services.payment_service import PaymentService, build_payment_checks
 from app.utils.timezone import pkt_date_of, pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
@@ -446,6 +447,10 @@ class OwnerDashboardService:
         for a given court, that court simply has no rows and contributes no
         suggestions -- there's no separate "not enough data" branch to
         maintain here, the guardrail already lives in one place."""
+        # Admin global kill switch (Section 32 Part 12): stop surfacing suggestions.
+        # The screen already handles an empty list ("check back in a few weeks").
+        if not await flag_on(self.db, "growth_suggestions"):
+            return GrowthOut(underbooked_slots=[], computed_at=pkt_today())
         if venue_id is not None:
             venue = await self.db.get(Venue, venue_id)
             if venue is None or venue.owner_id != owner.id:

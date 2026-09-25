@@ -475,3 +475,48 @@ Reality: players usually pay a small advance (for example PKR 200 or 400 on a PK
 - [ ] WhatsApp never says the word "button"; real interactive buttons are sent.
 - [ ] Gemini log findings delivered; prompt rewritten; conversation tests pass.
 </pasted_content id="0052">
+
+---
+
+## Part 12 -- Admin feature flags + owner staff/permissions (2026-09-25, branch `section-32-part-12`, NOT merged)
+
+Built after the Section 32 batch shipped to production. Own branch off `main` (e384329).
+Full queued spec: `docs/post-batch-backlog.md` (branch `docs/post-batch-backlog`). Owner signed off
+on the schema + 4 decisions before the migration was written.
+
+**Migration `d4e8f1a9c2b7`** (down_revision `c7d1a9b4e2f0`): adds `staff` to the `user_role` enum
+(irreversible on downgrade, documented), `feature_flags` (13 rows seeded ON), `staff_members`,
+`staff_permissions`. Verified up/down/up + `alembic check` clean on an isolated scratch PostGIS
+container. Additive only.
+
+**Layer 1 -- global feature flags (13):** `ocr_verification`, `qr_checkin`, `split_payments`,
+`refunds`, `ai_chat_booking`, `photos`, `reviews`, `growth_suggestions`, `push_notifications`,
+`auto_approve`, `waitlist`, `marketing_announcements`, `digest_reminders`. Read via
+`FeatureFlagService` (endpoints go through a short-TTL `app.state` cache + `require_feature()`
+dependency; services read fresh via `flag_on()`). Missing row = ON (fail-open). Admin flips live
+(GET/PATCH `/admin/feature-flags`); public GET `/feature-flags` for UI gating. The old env kill
+switches `AI_CHAT_ENABLED`/`GLOBAL_AUTO_APPROVE_ENABLED` were retired into flags. In-app
+player<->owner chat (spec flag #6) does NOT exist in the codebase -- no flag built.
+
+**Owner decisions baked in (2026-09-25):**
+- Flags 3 & 4 (the "messy" ones): **split_payments OFF** = hide split/balance UI + record/reverse
+  endpoints AND force 100% advance on new bookings (`quote_range`), but the ledger keeps running
+  underneath (existing partial payments untouched). **refunds OFF** = block only the mark-refunded
+  action; the owed-refunds list stays VIEW-ONLY and the refund-flagging writes are never suppressed
+  (owed money never vanishes).
+- Extra flags added beyond the spec's 9: auto_approve, waitlist, marketing_announcements,
+  digest_reminders.
+
+**Layer 2 -- staff:** new `STAFF` role, admitted on shared owner endpoints via `RequireStaffCapable`;
+the two ownership chokepoints (`VenueService.require_owned_venue` /
+`BookingService.require_accessible_booking`) take a `permission=` and check
+`staff_members`+`staff_permissions` for STAFF users. Owner-only endpoints (create venue, bank
+details, manage staff) stay `RequireOwner`. Staff scoped to ONE owner, venue-level. Deactivation
+revokes the staff user's sessions immediately. `/staff` CRUD + permission catalog (greys out
+permissions whose flag is off). Dashboard reads resolve a staff actor -> owner+venue scope.
+
+**Verified:** backend 584 tests green (13 new: `test_feature_flags`, `test_staff`) on scratch
+Postgres; web 12/12 Playwright (admin flag panel toggles persist, owner staff CRUD, flag-off hides
+UI); mobile 4/4 Expo web (staff screen). Both apps typecheck clean. Pushed to origin; NOT merged to
+`main` (needs the owner's go + a fresh RDS snapshot + `Migration-Go: owner-approved`, same as every
+migration). After this: the 8-item post-batch UI/UX backlog.

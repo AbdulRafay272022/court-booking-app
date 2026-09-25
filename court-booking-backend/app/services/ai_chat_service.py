@@ -19,6 +19,7 @@ from app.services.ai.tools import BOOKING_TOOLS
 from app.services.ai.usage import log_ai_usage
 from app.services.availability_service import MAX_BOOKING_MINUTES, AvailabilityService
 from app.services.booking_service import BookingService
+from app.services.feature_flag_service import flag_on
 from app.services.venue_service import VenueService
 from app.errors import AppError, ErrorCode
 from app.utils.timezone import (
@@ -217,12 +218,12 @@ class AIChatService:
     async def process_message(
         self, *, user: User, message: str, history: list[dict] | None = None
     ) -> ChatResult:
-        if not self.settings.AI_CHAT_ENABLED:
-            # Platform-wide kill switch (AUDIT_FINDINGS.md finding #21) --
-            # same graceful, no-cost fallback as an unconfigured provider
-            # below, deliberately indistinguishable from it to a caller, so
-            # flipping this off in an emergency (an abusive tool-calling
-            # loop, say) never surfaces as a confusing error to end users.
+        # Admin global kill switch (Section 32 Part 12; was the AI_CHAT_ENABLED env
+        # switch). Same graceful, no-cost fallback as an unconfigured provider
+        # below, deliberately indistinguishable from it to a caller, so flipping
+        # this off in an emergency (an abusive tool-calling loop, say) never
+        # surfaces as a confusing error to end users.
+        if not await flag_on(self.db, "ai_chat_booking"):
             logger.warning("ai_chat.disabled_by_kill_switch")
             return ChatResult(
                 reply="Thanks for your message! Our team will get back to you shortly. "

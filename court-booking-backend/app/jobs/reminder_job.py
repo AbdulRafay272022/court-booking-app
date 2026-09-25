@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
+from app.services.feature_flag_service import flag_on
 from app.models.booking import Booking, BookingStatus
 from app.models.court import Court
 from app.models.user import User
@@ -27,6 +28,9 @@ async def send_booking_reminders(session_factory: async_sessionmaker = AsyncSess
     sent = 0
 
     async with session_factory() as db:
+        # Admin global kill switch (Section 32 Part 12): skip when off.
+        if not await flag_on(db, "digest_reminders"):
+            return 0
         notifications = NotificationService(db, settings)
         result = await db.execute(
             select(Booking).where(

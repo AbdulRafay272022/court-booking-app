@@ -5,6 +5,7 @@ from PIL import Image
 
 from app.config import get_settings
 from app.models.booking import Booking, BookingStatus
+from app.models.feature_flag import FeatureFlag
 from app.models.user import User, UserRole
 from app.services.ai.base import PaymentExtraction
 
@@ -666,7 +667,10 @@ async def test_global_auto_approve_disabled_forces_manual_review(
 
     settings = get_settings()
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(settings, "GLOBAL_AUTO_APPROVE_ENABLED", False)
+    # Section 32 Part 12: the auto-approve kill switch is now the DB feature flag.
+    async with db_session_factory() as _flag_session:
+        _flag_session.add(FeatureFlag(key="auto_approve", enabled=False, label="Auto-approve payments"))
+        await _flag_session.commit()
 
     async def fake_extract(self, image_bytes, mime_type, expected_amount):
         return PaymentExtraction(

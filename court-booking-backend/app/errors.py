@@ -72,6 +72,14 @@ class ErrorCode:
     # Section 32 Part 5: a manually-recorded payment (or reversal) would push amount_paid past the booking's price.
     PAYMENT_EXCEEDS_BALANCE = "PAYMENT_EXCEEDS_BALANCE"
 
+    # Section 32 Part 12 (admin feature flags + staff)
+    FEATURE_DISABLED = "FEATURE_DISABLED"  # an admin has globally turned this feature off
+    FEATURE_FLAG_NOT_FOUND = "FEATURE_FLAG_NOT_FOUND"
+    STAFF_NOT_FOUND = "STAFF_NOT_FOUND"
+    STAFF_ALREADY_EXISTS = "STAFF_ALREADY_EXISTS"  # this user is already staff at this venue
+    INVALID_STAFF_PERMISSION = "INVALID_STAFF_PERMISSION"
+    NOT_STAFF_PERMITTED = "NOT_STAFF_PERMITTED"  # staff account lacks the permission for this action
+
     # General
     RATE_LIMITED = "RATE_LIMITED"
     FORBIDDEN = "FORBIDDEN"

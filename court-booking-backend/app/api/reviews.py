@@ -1,8 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
-from app.dependencies import AppSettings, CurrentUser, DbSession, OptionalCurrentUser, RequireOwner
+from app.dependencies import (
+    AppSettings,
+    CurrentUser,
+    DbSession,
+    OptionalCurrentUser,
+    RequireStaffCapable,
+    require_feature,
+)
 from app.models.user import UserRole
 from app.schemas.review import ReviewCreateIn, ReviewOut, ReviewReplyIn, ReviewUpdateIn
 from app.services.review_service import ReviewService
@@ -11,7 +18,12 @@ from app.services.venue_service import VenueService
 router = APIRouter(tags=["reviews"])
 
 
-@router.post("/reviews", response_model=ReviewOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/reviews",
+    response_model=ReviewOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("reviews"))],
+)
 async def create_review(
     payload: ReviewCreateIn, db: DbSession, settings: AppSettings, user: CurrentUser
 ) -> ReviewOut:
@@ -42,11 +54,15 @@ async def list_venue_reviews(
     return await ReviewService(db, settings).list_for_venue(venue_id, include_hidden=include_hidden)
 
 
-@router.post("/reviews/{review_id}/reply", response_model=ReviewOut)
+@router.post(
+    "/reviews/{review_id}/reply",
+    response_model=ReviewOut,
+    dependencies=[Depends(require_feature("reviews"))],
+)
 async def reply_to_review(
-    review_id: uuid.UUID, payload: ReviewReplyIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    review_id: uuid.UUID, payload: ReviewReplyIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> ReviewOut:
     service = ReviewService(db, settings)
     review = await service.get(review_id)
-    await VenueService(db, settings).require_owned_venue(review.venue_id, owner)
+    await VenueService(db, settings).require_owned_venue(review.venue_id, owner, permission="respond_reviews")
     return await service.reply(review, payload.owner_reply)

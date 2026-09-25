@@ -8,27 +8,35 @@ import { api } from "@/lib/api";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useFeatureFlags } from "@/lib/use-feature-flags";
 import { SUPPORT_WHATSAPP_NUMBER, supportWhatsAppUrl } from "@/lib/support";
 import { Logo } from "@/components/auth/logo";
 import { VenuePicker, VenueStatusBanner } from "@/components/owner/venue-nav";
 
-const NAV = [
-  { href: "/dashboard/owner/today", label: "Today" },
-  { href: "/dashboard/owner/approvals", label: "Approvals" },
-  { href: "/dashboard/owner/walkin", label: "Add booking" },
-  { href: "/dashboard/owner/ledger", label: "Ledger" },
-  { href: "/dashboard/owner/refunds", label: "Refunds to pay" },
-  { href: "/dashboard/owner/growth", label: "Growth" },
-  { href: "/dashboard/owner/reviews", label: "Reviews" },
-  { href: "/dashboard/owner/settings", label: "Venue settings" },
-  { href: "/account", label: "Account" },
-];
-
 export default function OwnerDashboardLayout({ children }: { children: React.ReactNode }) {
-  const { ready } = useRequireAuth(["owner"]);
+  // Staff accounts (Section 32 Part 12) use the same dashboard with a reduced view.
+  const { ready } = useRequireAuth(["owner", "staff"]);
   const pathname = usePathname();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const { isOn } = useFeatureFlags();
+  const isStaff = user?.role === "staff";
+
+  // Nav entries hide when their feature flag is globally off; "Staff" is
+  // owner/admin-only (staff can't manage other staff). Per-action permissions
+  // are still enforced by the backend if a staff member deep-links.
+  const NAV = [
+    { href: "/dashboard/owner/today", label: "Today" },
+    { href: "/dashboard/owner/approvals", label: "Approvals" },
+    { href: "/dashboard/owner/walkin", label: "Add booking" },
+    { href: "/dashboard/owner/ledger", label: "Ledger" },
+    ...(isOn("refunds") ? [{ href: "/dashboard/owner/refunds", label: "Refunds to pay" }] : []),
+    ...(isOn("growth_suggestions") ? [{ href: "/dashboard/owner/growth", label: "Growth" }] : []),
+    ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: "Reviews" }] : []),
+    { href: "/dashboard/owner/settings", label: "Venue settings" },
+    ...(!isStaff ? [{ href: "/dashboard/owner/staff", label: "Staff" }] : []),
+    { href: "/account", label: "Account" },
+  ];
   const { venues: pickerVenues, activeVenue, activeVenueId, setVenueId } = useOwnerVenues();
   // Section 32 Part 11: on a phone the sidebar becomes a slide-in drawer.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -36,7 +44,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
   const venuesQuery = useQuery({ queryKey: ["owner-venues"], queryFn: () => api.owners.venues(), enabled: ready });
   const venues = venuesQuery.data;
   useEffect(() => {
-    if (!venues || pathname !== "/dashboard/owner/today") return;
+    if (isStaff || !venues || pathname !== "/dashboard/owner/today") return;
     if (venues.length === 0) {
       router.replace("/venue-setup/register");
       return;
@@ -47,7 +55,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
       venues.find((v) => v.status === "rejected") ??
       venues[0];
     router.replace(`/venue-setup/status?venueId=${target.id}`);
-  }, [venues, pathname, router]);
+  }, [venues, pathname, router, isStaff]);
 
   function signOut() {
     useAuthStore.getState().signOut();
@@ -55,7 +63,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
   }
 
   if (!ready) return <div className="min-h-screen bg-owner-bg" />;
-  if (pathname === "/dashboard/owner/today" && !venuesQuery.isError && (!venues || !venues.some((v) => v.status === "approved"))) {
+  if (!isStaff && pathname === "/dashboard/owner/today" && !venuesQuery.isError && (!venues || !venues.some((v) => v.status === "approved"))) {
     return <div className="min-h-screen bg-owner-bg" />;
   }
 

@@ -1,10 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import selectinload
 
-from app.dependencies import AppSettings, DbSession, RequireOwner
+from app.dependencies import AppSettings, DbSession, RequireStaffCapable, require_feature
 from app.errors import AppError, ErrorCode
 from app.utils.s3 import upload_public_photo
 from app.utils.schedule import overlap_error
@@ -58,10 +58,10 @@ async def _get_court(db: DbSession, court_id: uuid.UUID) -> Court:
 
 @router.post("/venues/{venue_id}/courts", response_model=CourtDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_court(
-    venue_id: uuid.UUID, payload: CourtCreateIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    venue_id: uuid.UUID, payload: CourtCreateIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> CourtDetailResponse:
     venue_service = VenueService(db, settings)
-    venue = await venue_service.require_owned_venue(venue_id, owner)
+    venue = await venue_service.require_owned_venue(venue_id, owner, permission="edit_court_settings")
 
     court = Court(
         venue_id=venue_id,
@@ -102,11 +102,11 @@ async def get_court(court_id: uuid.UUID, db: DbSession) -> CourtOut:
 
 @router.patch("/courts/{court_id}", response_model=CourtOut)
 async def update_court(
-    court_id: uuid.UUID, payload: CourtUpdateIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    court_id: uuid.UUID, payload: CourtUpdateIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> CourtOut:
     court = await _get_court(db, court_id)
     venue_service = VenueService(db, settings)
-    await venue_service.require_owned_venue(court.venue_id, owner)
+    await venue_service.require_owned_venue(court.venue_id, owner, permission="edit_court_settings")
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(court, field, value)
@@ -115,10 +115,10 @@ async def update_court(
 
 
 @router.delete("/courts/{court_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def deactivate_court(court_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner) -> None:
+async def deactivate_court(court_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable) -> None:
     court = await _get_court(db, court_id)
     venue_service = VenueService(db, settings)
-    await venue_service.require_owned_venue(court.venue_id, owner)
+    await venue_service.require_owned_venue(court.venue_id, owner, permission="edit_court_settings")
 
     # Deactivating a court doesn't touch any of its existing live bookings
     # or waitlist entries on its own -- deliberately NOT auto-cancelling
@@ -154,9 +154,13 @@ async def deactivate_court(court_id: uuid.UUID, db: DbSession, settings: AppSett
         await db.commit()
 
 
-@router.post("/courts/{court_id}/photos", response_model=CourtOut)
+@router.post(
+    "/courts/{court_id}/photos",
+    response_model=CourtOut,
+    dependencies=[Depends(require_feature("photos"))],
+)
 async def upload_court_photo(
-    court_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner, file: UploadFile = File(...)
+    court_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable, file: UploadFile = File(...)
 ) -> CourtOut:
     """Add one photo to a court's gallery (Section 32 Part 6), max MAX_COURT_PHOTOS."""
     if file.content_type not in ALLOWED_PHOTO_TYPES:
@@ -165,7 +169,7 @@ async def upload_court_photo(
     if len(data) > MAX_PHOTO_BYTES:
         raise AppError(400, ErrorCode.INVALID_PHOTO, "Image too large.")
     court = await _get_court(db, court_id)
-    await VenueService(db, settings).require_owned_venue(court.venue_id, owner)
+    await VenueService(db, settings).require_owned_venue(court.venue_id, owner, permission="manage_photos")
     if len(court.photos or []) >= MAX_COURT_PHOTOS:
         raise AppError(400, ErrorCode.PHOTO_LIMIT_REACHED, f"A court can have at most {MAX_COURT_PHOTOS} photos.")
     key = await upload_public_photo(data, file.filename or "photo.jpg", file.content_type, prefix="courts")
@@ -174,14 +178,18 @@ async def upload_court_photo(
     return CourtOut.model_validate(await _get_court(db, court_id))
 
 
-@router.put("/courts/{court_id}/photos", response_model=CourtOut)
+@router.put(
+    "/courts/{court_id}/photos",
+    response_model=CourtOut,
+    dependencies=[Depends(require_feature("photos"))],
+)
 async def reorder_court_photos(
-    court_id: uuid.UUID, payload: PhotoOrderIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    court_id: uuid.UUID, payload: PhotoOrderIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> CourtOut:
     """Reorder / delete / set-cover: send the desired ordered list of this court's own
     photo keys (index 0 is the cover; an omitted key is deleted) -- Section 32 Part 6."""
     court = await _get_court(db, court_id)
-    await VenueService(db, settings).require_owned_venue(court.venue_id, owner)
+    await VenueService(db, settings).require_owned_venue(court.venue_id, owner, permission="manage_photos")
     current = set(court.photos or [])
     keys = payload.photos
     if len(keys) != len(set(keys)) or not set(keys).issubset(current):
@@ -193,7 +201,7 @@ async def reorder_court_photos(
 
 @router.post("/courts/{court_id}/schedule", response_model=list[ScheduleTemplateOut])
 async def set_schedule(
-    court_id: uuid.UUID, payload: SchedulesIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    court_id: uuid.UUID, payload: SchedulesIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> list[ScheduleTemplateOut]:
     """Upserts schedule_templates: only the days included in the request are
     touched -- any existing active template for those days is deactivated
@@ -201,7 +209,7 @@ async def set_schedule(
     one active template per court+day), and every other day is left alone."""
     court = await _get_court(db, court_id)
     venue_service = VenueService(db, settings)
-    await venue_service.require_owned_venue(court.venue_id, owner)
+    await venue_service.require_owned_venue(court.venue_id, owner, permission="edit_court_settings")
 
     days = {s.day_of_week for s in payload.schedules}
 
@@ -240,11 +248,11 @@ async def set_schedule(
 
 @router.post("/courts/{court_id}/pricing", response_model=list[PricingRuleOut])
 async def set_pricing_rules(
-    court_id: uuid.UUID, payload: PricingRulesIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    court_id: uuid.UUID, payload: PricingRulesIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> list[PricingRuleOut]:
     court = await _get_court(db, court_id)
     venue_service = VenueService(db, settings)
-    await venue_service.require_owned_venue(court.venue_id, owner)
+    await venue_service.require_owned_venue(court.venue_id, owner, permission="edit_court_settings")
 
     await db.execute(delete(PricingRule).where(PricingRule.court_id == court_id))
     for rule in payload.rules:
@@ -257,11 +265,11 @@ async def set_pricing_rules(
 
 @router.post("/courts/{court_id}/blackouts", response_model=BlackoutOut, status_code=status.HTTP_201_CREATED)
 async def add_blackout(
-    court_id: uuid.UUID, payload: BlackoutIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    court_id: uuid.UUID, payload: BlackoutIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> BlackoutOut:
     court = await _get_court(db, court_id)
     venue_service = VenueService(db, settings)
-    await venue_service.require_owned_venue(court.venue_id, owner)
+    await venue_service.require_owned_venue(court.venue_id, owner, permission="edit_court_settings")
 
     blackout = Blackout(court_id=court_id, created_by=owner.id, **payload.model_dump())
     db.add(blackout)
