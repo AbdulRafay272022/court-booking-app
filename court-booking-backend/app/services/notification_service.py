@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.venue import PlanTier, Venue
 from app.services.apns import send_apns
 from app.services.fcm import PushOutcome, send_push
+from app.services.feature_flag_service import flag_on
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
 from app.utils.timezone import format_date_relative, format_pkr, format_time_range, format_when, format_when_range
@@ -140,6 +141,11 @@ class NotificationService:
     ) -> None:
         """Tier 1: push only. The `data` payload is what the mobile app's tap handler
         deep-links from (apps/mobile/app/_layout.tsx, `routeForNotification`)."""
+        # Admin global kill switch (Section 32 Part 12): suppress the notification
+        # side effect entirely; the booking/payment logic that triggered it is
+        # unaffected. OTP delivery does NOT come through here, so it's unaffected.
+        if not await flag_on(self.db, "push_notifications"):
+            return
         data = {"event_type": event_type}
         if reference_id is not None:
             data["reference_id"] = str(reference_id)
@@ -164,6 +170,10 @@ class NotificationService:
         approval that had actually worked. Failures are logged and recorded as a `failed`
         notification_log row instead. (OTP delivery is deliberately NOT routed through here: there
         a delivery failure is the answer, see AuthService.request_otp.)"""
+        # Admin global kill switch (Section 32 Part 12): suppress the WhatsApp
+        # notification side effect. OTP is not routed through here, so it stays on.
+        if not await flag_on(self.db, "push_notifications"):
+            return None, None
         last_inbound = await self.last_inbound_whatsapp_at(user.phone)
         try:
             _result, template_used = await self.whatsapp.send_smart(

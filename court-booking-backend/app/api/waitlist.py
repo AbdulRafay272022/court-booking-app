@@ -1,8 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
-from app.dependencies import AppSettings, CurrentUser, DbSession
+from app.dependencies import AppSettings, CurrentUser, DbSession, require_feature
 from app.models.court import Court
 from app.models.venue import Venue
 from app.schemas.waitlist import WaitlistCreateIn, WaitlistJoinOut, WaitlistOut
@@ -11,7 +11,12 @@ from app.services.waitlist_service import WaitlistService
 router = APIRouter(prefix="/waitlist", tags=["waitlist"])
 
 
-@router.post("", response_model=WaitlistJoinOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=WaitlistJoinOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("waitlist"))],
+)
 async def join_waitlist(
     payload: WaitlistCreateIn, db: DbSession, settings: AppSettings, user: CurrentUser
 ) -> WaitlistJoinOut:

@@ -4,7 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
-from app.dependencies import AppSettings, DbSession, PageParams, RequireAdmin
+from app.dependencies import AppSettings, DbSession, FeatureFlags, PageParams, RequireAdmin
 from app.models.booking import BookingStatus
 from app.models.user import User
 from app.models.venue import Venue, VenueStatus
@@ -20,6 +20,7 @@ from app.schemas.admin import (
     RefundQueueEntryOut,
     SuspendUserIn,
 )
+from app.schemas.feature_flag import FeatureFlagOut, FeatureFlagUpdateIn
 from app.schemas.review import ReviewOut
 from app.schemas.venue import VenueOut
 from app.services.admin_service import AdminService
@@ -35,6 +36,19 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/stats", response_model=PlatformStatsOut)
 async def platform_stats(db: DbSession, admin: RequireAdmin) -> PlatformStatsOut:
     return await GrowthService(db).platform_stats()
+
+
+# --- Section 32 Part 12: global feature flags -------------------------------
+@router.get("/feature-flags", response_model=list[FeatureFlagOut])
+async def list_feature_flags(flags: FeatureFlags, admin: RequireAdmin) -> list[FeatureFlagOut]:
+    return await flags.list_flags()
+
+
+@router.patch("/feature-flags/{key}", response_model=FeatureFlagOut)
+async def update_feature_flag(
+    key: str, payload: FeatureFlagUpdateIn, flags: FeatureFlags, admin: RequireAdmin
+) -> FeatureFlagOut:
+    return await flags.set_flag(key, payload.enabled, admin.id)
 
 
 @router.get("/dashboard", response_model=AdminDashboardOut)

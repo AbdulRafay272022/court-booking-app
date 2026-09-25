@@ -94,13 +94,10 @@ class Settings(BaseSettings):
     # as a decision made without asking.
     REFUND_OVERDUE_DAYS: int = 3
 
-    # Platform-wide kill switches, read at request time (no redeploy needed
-    # to flip either) -- see AUDIT_FINDINGS.md finding #21. If the AI chat
-    # gets manipulated into an abusive tool-calling loop, or vision OCR
-    # starts mis-extracting amounts and auto-approving underpaid bookings,
-    # these are the emergency stop.
-    AI_CHAT_ENABLED: bool = True
-    GLOBAL_AUTO_APPROVE_ENABLED: bool = True
+    # NOTE: the platform-wide kill switches that used to live here
+    # (AI_CHAT_ENABLED, GLOBAL_AUTO_APPROVE_ENABLED) moved to the admin
+    # feature_flags table in Section 32 Part 12 ('ai_chat_booking' and
+    # 'auto_approve'), so they can be flipped live with no redeploy.
 
     # SMS
     SMS_API_URL: str = ""

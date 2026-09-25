@@ -23,6 +23,7 @@ from app.services.ai.schemas import PaymentExtractionValidationError
 from app.services.ai.usage import log_ai_usage
 from app.services.audit_service import AuditService
 from app.services.booking_service import BookingService, recompute_reliability
+from app.services.feature_flag_service import flag_on
 from app.services.waitlist_service import WaitlistService
 from app.utils.encryption import decrypt_json
 from app.utils.image import perceptual_hash
@@ -250,6 +251,13 @@ class PaymentService:
         AI_PROVIDER) selects -- Section 21. Mirrors the pre-Section-21
         behavior of `OCRService`, which no-op'd (empty result) rather than
         erroring when no API key was configured."""
+        # Admin global kill switch (Section 32 Part 12). OFF => skip the billed
+        # vision call and return the all-null extraction, exactly as an
+        # unconfigured provider does: the payment gets ocr_verdict="unreadable",
+        # auto-approve is blocked, and the owner reviews the screenshot by eye --
+        # the pre-Part-7 behavior.
+        if not await flag_on(self.db, "ocr_verification"):
+            return _UNCONFIGURED_EXTRACTION
         try:
             vision = get_vision_provider(self.settings)
         except UnconfiguredProviderError:
@@ -455,11 +463,10 @@ class PaymentService:
     async def _maybe_auto_approve(
         self, payment: Payment, booking: Booking, ocr_verdict: str, is_duplicate: bool
     ) -> bool:
-        if not self.settings.GLOBAL_AUTO_APPROVE_ENABLED:
-            # Platform-wide kill switch (AUDIT_FINDINGS.md finding #21) --
-            # e.g. vision OCR starting to mis-extract amounts. Forces every
-            # payment to manual owner review regardless of any venue's own
-            # auto_approve_enabled setting.
+        # Admin global kill switch (Section 32 Part 12; was GLOBAL_AUTO_APPROVE_ENABLED).
+        # OFF forces every payment to manual owner review regardless of any venue's
+        # own auto_approve_enabled setting.
+        if not await flag_on(self.db, "auto_approve"):
             return False
         if ocr_verdict != "match" or is_duplicate or booking.player_id is None:
             return False

@@ -1,10 +1,17 @@
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from sqlalchemy import select
 
-from app.dependencies import AppSettings, DbSession, OptionalCurrentUser, RequireOwner
+from app.dependencies import (
+    AppSettings,
+    DbSession,
+    OptionalCurrentUser,
+    RequireOwner,
+    RequireStaffCapable,
+    require_feature,
+)
 from app.models.booking import Booking
 from app.models.court import Court
 from app.models.user import User
@@ -120,9 +127,13 @@ async def update_venue(
     return await service.to_out(venue, requesting_user=owner)
 
 
-@router.post("/{venue_id}/photos", response_model=VenueOut)
+@router.post(
+    "/{venue_id}/photos",
+    response_model=VenueOut,
+    dependencies=[Depends(require_feature("photos"))],
+)
 async def upload_venue_photo(
-    venue_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner, file: UploadFile = File(...)
+    venue_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable, file: UploadFile = File(...)
 ) -> VenueOut:
     if file.content_type not in ALLOWED_PHOTO_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported image type")
@@ -131,19 +142,23 @@ async def upload_venue_photo(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image too large")
 
     service = VenueService(db, settings)
-    venue = await service.require_owned_venue(venue_id, owner)
+    venue = await service.require_owned_venue(venue_id, owner, permission="manage_photos")
     venue = await service.add_photo(venue, data, file.filename or "photo.jpg", file.content_type)
     return await service.to_out(venue, requesting_user=owner)
 
 
-@router.put("/{venue_id}/photos", response_model=VenueOut)
+@router.put(
+    "/{venue_id}/photos",
+    response_model=VenueOut,
+    dependencies=[Depends(require_feature("photos"))],
+)
 async def reorder_venue_photos(
-    venue_id: uuid.UUID, payload: PhotoOrderIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    venue_id: uuid.UUID, payload: PhotoOrderIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> VenueOut:
     """Reorder / delete / set-cover (Section 32 Part 6): send the desired ordered list of
     this venue's own photo keys (index 0 is the cover; an omitted key is deleted)."""
     service = VenueService(db, settings)
-    venue = await service.require_owned_venue(venue_id, owner)
+    venue = await service.require_owned_venue(venue_id, owner, permission="manage_photos")
     venue = await service.set_photos(venue, payload.photos)
     return await service.to_out(venue, requesting_user=owner)
 
@@ -156,7 +171,11 @@ async def deactivate_venue(venue_id: uuid.UUID, db: DbSession, settings: AppSett
     await db.commit()
 
 
-@router.post("/{venue_id}/announcements", response_model=AnnouncementResultOut)
+@router.post(
+    "/{venue_id}/announcements",
+    response_model=AnnouncementResultOut,
+    dependencies=[Depends(require_feature("marketing_announcements"))],
+)
 async def send_announcement(
     venue_id: uuid.UUID, payload: AnnouncementIn, db: DbSession, settings: AppSettings, owner: RequireOwner
 ) -> AnnouncementResultOut:

@@ -255,7 +255,9 @@ class BookingService:
             raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.BOOKING_NOT_FOUND, "Booking not found")
         return booking
 
-    async def require_accessible_booking(self, booking_id: uuid.UUID, user: User) -> Booking:
+    async def require_accessible_booking(
+        self, booking_id: uuid.UUID, user: User, permission: str | None = None
+    ) -> Booking:
         booking = await self.get_booking(booking_id)
         if user.role == UserRole.ADMIN:
             return booking
@@ -266,8 +268,16 @@ class BookingService:
             from app.models.venue import Venue
 
             venue = await self.db.get(Venue, court.venue_id)
-            if venue is not None and venue.owner_id == user.id:
-                return booking
+            if venue is not None:
+                if venue.owner_id == user.id:
+                    return booking
+                # A STAFF user reaches a booking through the venue they staff, but
+                # only for an action they hold the permission for (Part 12).
+                if user.role == UserRole.STAFF and permission is not None:
+                    from app.services.staff_service import staff_can
+
+                    if await staff_can(self.db, user.id, venue.id, permission):
+                        return booking
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
 
     async def cancel_booking(self, booking: Booking, cancelled_by: CancelledBy, reason: str | None) -> Booking:

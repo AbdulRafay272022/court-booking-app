@@ -17,6 +17,7 @@ from app.database import engine
 from app.errors import AppError, ErrorCode, fallback_code_for_status
 from app.middleware.rate_limit import FixedWindowCounter, RateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
+from app.services.feature_flag_service import FeatureFlagCache
 
 logger = structlog.get_logger(__name__)
 
@@ -59,6 +60,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.state.chat_rate_limiter = FixedWindowCounter()
+    # Section 32 Part 12: short-TTL cache of the admin feature flags, read by the
+    # require_feature() dependency. An admin toggle busts it (single-worker).
+    app.state.feature_flag_cache = FeatureFlagCache()
 
     # Order matters: add_middleware puts the LAST-added one OUTERMOST, so CORS must be
     # added last to wrap everything -- that way even a response produced by an inner

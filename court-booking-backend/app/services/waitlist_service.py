@@ -13,6 +13,7 @@ from app.models.court import Court
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.waitlist import WaitlistEntry
+from app.services.feature_flag_service import flag_on
 from app.services.notification_service import NotificationService
 
 
@@ -136,6 +137,10 @@ class WaitlistService:
         one_live_booking_per_slot race, same as any two players racing for
         the same slot -- create_hold is unchanged. Returns the number of
         entries notified."""
+        # Admin global kill switch (Section 32 Part 12): no availability
+        # notifications when the waitlist feature is off.
+        if not await flag_on(self.db, "waitlist"):
+            return 0
         entries = await self._matching_entries(court.id, freed_slot_starts_at)
         if not entries:
             return 0

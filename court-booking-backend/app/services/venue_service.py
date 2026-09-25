@@ -105,11 +105,27 @@ class VenueService:
             raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.VENUE_NOT_FOUND, "Venue not found")
         return venue
 
-    async def require_owned_venue(self, venue_id: uuid.UUID, user: User) -> Venue:
+    async def require_owned_venue(
+        self, venue_id: uuid.UUID, user: User, permission: str | None = None
+    ) -> Venue:
+        """Authorize `user` to act on `venue_id`. Admins and the real owner always
+        pass. A STAFF user passes only if `permission` is given AND they hold that
+        permission at this venue (Section 32 Part 12). Owner-only actions pass no
+        permission, so staff are rejected there."""
         venue = await self.get_venue(venue_id)
-        if user.role != UserRole.ADMIN and venue.owner_id != user.id:
-            raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_VENUE_OWNER, "Not your venue")
-        return venue
+        if user.role == UserRole.ADMIN or venue.owner_id == user.id:
+            return venue
+        if user.role == UserRole.STAFF and permission is not None:
+            from app.services.staff_service import staff_can
+
+            if await staff_can(self.db, user.id, venue.id, permission):
+                return venue
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.NOT_STAFF_PERMITTED,
+                "Your account isn't allowed to do this.",
+            )
+        raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_VENUE_OWNER, "Not your venue")
 
     async def update_venue(self, venue: Venue, payload: VenueUpdateIn) -> Venue:
         data = payload.model_dump(exclude_unset=True)

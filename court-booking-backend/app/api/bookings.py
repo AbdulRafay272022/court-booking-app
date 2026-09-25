@@ -1,8 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.dependencies import AppSettings, CurrentUser, DbSession, PageParams, RequireOwner
+from app.dependencies import (
+    AppSettings,
+    CurrentUser,
+    DbSession,
+    PageParams,
+    RequireStaffCapable,
+    require_feature,
+)
 from app.errors import AppError, ErrorCode
 from app.models.booking import BookingStatus, CancelledBy
 from app.models.court import Court
@@ -58,7 +65,7 @@ async def hold_booking(
 
 @router.post("/walkin", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 async def create_walkin_booking(
-    payload: WalkInBookingIn, db: DbSession, settings: AppSettings, owner: RequireOwner
+    payload: WalkInBookingIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> BookingResponse:
     """Owner/staff records a booking made by phone or at the counter -- cash
     already collected, so it's booked immediately with no hold or proof."""
@@ -66,7 +73,7 @@ async def create_walkin_booking(
     if court is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Court not found")
     venue_service = VenueService(db, settings)
-    await venue_service.require_owned_venue(court.venue_id, owner)
+    await venue_service.require_owned_venue(court.venue_id, owner, permission="walkin")
 
     service = BookingService(db, settings)
     booking = await service.create_walkin(
@@ -114,7 +121,9 @@ async def cancel_booking(
     user: CurrentUser,
 ) -> BookingResponse:
     service = BookingService(db, settings)
-    booking = await service.require_accessible_booking(booking_id, user)
+    # Player cancels their own booking; an owner or a staff member with the
+    # cancel_booking permission cancels one at their venue.
+    booking = await service.require_accessible_booking(booking_id, user, permission="cancel_booking")
     court = await db.get(Court, booking.court_id)
     was_already_cancelled = booking.status == BookingStatus.CANCELLED
 
@@ -139,28 +148,32 @@ async def cancel_booking(
 
 @router.post("/{booking_id}/checkin", response_model=BookingResponse)
 async def check_in_booking(
-    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> BookingResponse:
     service = BookingService(db, settings)
-    booking = await service.require_accessible_booking(booking_id, owner)
+    booking = await service.require_accessible_booking(booking_id, owner, permission="check_in")
     booking = await service.check_in(booking)
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
 @router.post("/{booking_id}/no-show", response_model=BookingResponse)
 async def mark_booking_no_show(
-    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireOwner
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> BookingResponse:
     """Section 32 Part 9: manual counterpart to the automatic no-show job --
-    lets an owner flag a no-show as soon as the grace window has passed,
-    instead of waiting on the job's next tick."""
+    lets an owner (or staff with check_in) flag a no-show as soon as the grace
+    window has passed, instead of waiting on the job's next tick."""
     service = BookingService(db, settings)
-    booking = await service.require_accessible_booking(booking_id, owner)
+    booking = await service.require_accessible_booking(booking_id, owner, permission="check_in")
     booking = await service.owner_mark_no_show(booking)
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
-@router.post("/{booking_id}/checkin/self", response_model=BookingResponse)
+@router.post(
+    "/{booking_id}/checkin/self",
+    response_model=BookingResponse,
+    dependencies=[Depends(require_feature("qr_checkin"))],
+)
 async def check_in_booking_self(
     booking_id: uuid.UUID, payload: BookingSelfCheckinIn, db: DbSession, settings: AppSettings, user: CurrentUser
 ) -> BookingResponse:
