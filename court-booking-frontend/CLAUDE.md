@@ -20,6 +20,27 @@ backend-adjacent.
 
 ## START HERE
 
+> **UPDATE 2026-09-25/26 (newest -- read first):** Section 32 is fully shipped to production through **Part 12**.
+> `main` is at `18498d5`. The Section 32 batch (Parts 5/9/10/7/8/6/11) deployed as `e384329`, then Part 12
+> (admin feature flags + owner staff/permissions) as `18498d5`. See the backend `CLAUDE.md`'s top "UPDATE
+> 2026-09-25/26" block for the full state (prod migration head, snapshots, the Docker wipe, prod test-account
+> deletions). **Frontend Part 12 additions (all on `main` now):**
+> - Shared: `packages/types/src/feature-flag.ts` + `staff.ts` (and `UserRole` gained `"staff"`);
+>   `packages/api-client/src/feature-flags.ts` (`api.featureFlags.publicFlags/list/setEnabled`) + `staff.ts`
+>   (`api.staff.list/permissionCatalog/get/create/setPermissions/setActive`).
+> - Web: admin flag panel `apps/web/app/dashboard/admin/feature-flags/` (+ admin nav in `dashboard/admin/layout.tsx`);
+>   owner staff screen `apps/web/app/dashboard/owner/staff/`; `apps/web/lib/use-feature-flags.ts`; the owner
+>   layout now admits the `staff` role (reduced view) and hides flag-off nav items; `venue-reviews.tsx` hides
+>   when the reviews flag is off.
+> - Mobile: owner staff screen `apps/mobile/app/(owner)/staff.tsx`, linked owner-only from Today.
+> - Verified live: web 12/12 Playwright, mobile 4/4 Expo web, both apps typecheck clean.
+> **NEXT: the 8-item post-batch UI/UX backlog** (`../docs/post-batch-backlog.md`, branch `docs/post-batch-backlog`).
+> **Docker was wiped for space (2026-09-25/26)** -- no local dev env exists; recreate with
+> `docker compose up -d db localstack` in `../court-booking-backend/` before any live testing (see backend CLAUDE.md).
+> Test-loop reminder that bit us again this session: **the apps rotate/refresh session tokens**, so a seeded
+> Playwright/Expo token can go stale (401) between runs -- mint a fresh token per run and seed localStorage only
+> when empty.
+
 > **UPDATE 2026-09-24:** read `../docs/SECTION_32_PLAN.md`'s "SESSION HANDOFF (2026-09-24)" section and the
 > backend `CLAUDE.md`'s matching update FIRST -- they cover the current state of Parts 5/9/10/7 (each on its
 > own unmerged branch, pushed to `origin`, none merged into `main` yet) and the mistakes this session had to

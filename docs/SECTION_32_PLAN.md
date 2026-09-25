@@ -478,9 +478,14 @@ Reality: players usually pay a small advance (for example PKR 200 or 400 on a PK
 
 ---
 
-## Part 12 -- Admin feature flags + owner staff/permissions (2026-09-25, branch `section-32-part-12`, NOT merged)
+## Part 12 -- Admin feature flags + owner staff/permissions (2026-09-25, **DEPLOYED to production**)
 
-Built after the Section 32 batch shipped to production. Own branch off `main` (e384329).
+**DEPLOYED 2026-09-25 as merge commit `18498d5` on `main`; migration `d4e8f1a9c2b7` ran on production RDS
+(head now `d4e8f1a9c2b7`, `alembic check` clean, app healthy, `/feature-flags` returns all 13 flags ON).**
+Pre-merge verified on a fresh RDS snapshot restore (up/down/up + check + spot-checks); snapshot
+`court-booking-pre-part12-2026-09-25` retained as restore point.
+
+Built after the Section 32 batch shipped to production. Was on branch `section-32-part-12` off `main` (e384329).
 Full queued spec: `docs/post-batch-backlog.md` (branch `docs/post-batch-backlog`). Owner signed off
 on the schema + 4 decisions before the migration was written.
 
@@ -517,6 +522,6 @@ permissions whose flag is off). Dashboard reads resolve a staff actor -> owner+v
 
 **Verified:** backend 584 tests green (13 new: `test_feature_flags`, `test_staff`) on scratch
 Postgres; web 12/12 Playwright (admin flag panel toggles persist, owner staff CRUD, flag-off hides
-UI); mobile 4/4 Expo web (staff screen). Both apps typecheck clean. Pushed to origin; NOT merged to
-`main` (needs the owner's go + a fresh RDS snapshot + `Migration-Go: owner-approved`, same as every
-migration). After this: the 8-item post-batch UI/UX backlog.
+UI); mobile 4/4 Expo web (staff screen). Both apps typecheck clean. **Merged + deployed to `main`
+(`18498d5`) 2026-09-25 with the `Migration-Go: owner-approved` line.** After this: the 8-item post-batch
+UI/UX backlog (`docs/post-batch-backlog.md`).

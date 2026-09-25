@@ -19,6 +19,40 @@ been worked so far.
 
 ## START HERE -- handoff as of 2026-09-23 (read this first)
 
+> **UPDATE 2026-09-25/26 (read this FIRST -- newest state):**
+>
+> **Section 32 is fully shipped to production, through Part 12.** `main` is at commit `18498d5`; the production
+> RDS (`court-booking-app-db`, ap-south-1, private) is at Alembic head **`d4e8f1a9c2b7`**. The whole Section 32
+> batch (Parts 5, 9, 10, 7, 8, 6, 11) was merged + deployed as `e384329` (migration head `c7d1a9b4e2f0`), then
+> **Part 12** (admin global feature flags + owner staff/permissions) was merged + deployed as `18498d5`
+> (migration `d4e8f1a9c2b7`, additive: `feature_flags` seeded 13 flags ON, `staff_members`, `staff_permissions`,
+> and a `staff` value on the `user_role` enum). Both deploys used the full pre-merge safety pattern (fresh RDS
+> snapshot -> restore to a temp IP-scoped instance -> migration up/down/up + `alembic check` on
+> production-shaped data -> teardown) and the `Migration-Go: owner-approved` commit line. Pre-merge snapshots
+> `court-booking-pre-s32-batch-2026-09-25` and `court-booking-pre-part12-2026-09-25` are retained as restore
+> points. Part 12 detail: `docs/SECTION_32_PLAN.md`'s "Part 12" section; frontend half: frontend `CLAUDE.md`.
+>
+> **NEXT WORK: the 8-item post-batch UI/UX backlog** in `docs/post-batch-backlog.md` (source of truth; lives on
+> branch `docs/post-batch-backlog`, pushed to origin, not merged to `main`). Part 12 was intentionally built
+> before it. Owner has not started it yet.
+>
+> **DOCKER WAS WIPED CLEAN for disk space on 2026-09-25/26** (`docker rm -f` all containers +
+> `docker system prune -a --volumes` + `docker volume prune -a`, ~4.7 GB reclaimed). There are now **no
+> containers, images, or volumes**, and **the local dev DB and its data are GONE** (it was throwaway test data).
+> To bring local dev back from scratch: `docker compose up -d db localstack` (from `court-booking-backend/`;
+> Postgres+PostGIS on host port 5433, LocalStack S3 on 4566), then `alembic upgrade head`, then create the two
+> S3 buckets once (`.env.example` has the `aws s3 mb` one-liners), then `python -m app.seed` if you want demo
+> data. Standing convention: this project routinely spins up **isolated scratch Postgres containers on non-5433
+> ports** for migration/live testing and for RDS-snapshot restores -- always `docker rm -f` them (and the temp
+> RDS instance + its SG + subnet group) when done, and `docker system prune` periodically, so disk doesn't
+> creep. Never leave scratch containers/volumes lying around.
+>
+> **Production data note:** several confirmed test accounts were hard-deleted from production this session
+> (owner-approved, gated dry-run->commit over SSM through the app container): the two `My venue` owner accounts
+> and player/re-signup accounts on `+923172629949` / `+923318393675`. Production venues are back to just the
+> pilot venue "Maidan COurt". Deletion pattern used: discover FK graph from `information_schema`, delete
+> children->parents in one transaction, verify zero remaining rows, then COMMIT (auto-rollback if not clean).
+
 > **UPDATE 2026-09-24: read `docs/SECTION_32_PLAN.md`'s "SESSION HANDOFF (2026-09-24)" section FIRST, before
 > anything below in this file.** Since the 2026-09-23 paragraph below was written, Part 4b was confirmed merged
 > to `main` and deployed (production really is on it -- the confusion that made this worth double-checking is
