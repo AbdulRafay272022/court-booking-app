@@ -4,8 +4,10 @@ import { formatTime24As12, parseTime24 } from "./datetime";
 /** Slot lengths an owner may choose per court (90 is here for padel). Mirrors the backend's ALLOWED_SLOT_MINUTES. */
 export const SLOT_MINUTES_OPTIONS = [30, 60, 90, 120] as const;
 
-/** Longest single booking a player can make, whatever the court's slot length. Mirrors the backend's MAX_BOOKING_MINUTES. */
-export const MAX_BOOKING_MINUTES = 240;
+/** Longest single booking a player can make, whatever the court's slot length. Mirrors the backend's
+ * MAX_BOOKING_MINUTES (raised 240 -> 360 in post-batch #8: a long evening / near-overnight booking needs
+ * more than 4 hours). Keep this in step with the backend constant. */
+export const MAX_BOOKING_MINUTES = 360;
 
 /** "30 minutes", "1 hour", "1.5 hours", "2 hours": how a booking length is said to a player. */
 export function formatDuration(minutes: number): string {

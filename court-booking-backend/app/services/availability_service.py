@@ -25,7 +25,9 @@ from app.utils.timezone import PKT_OFFSET, utc_to_pkt_naive
 
 MAX_RANGE_DAYS = 28
 # Longest single booking a player can make, whatever the court's slot length (Section 32 Part 4).
-MAX_BOOKING_MINUTES = 240
+# Raised 240 -> 360 (post-batch #8): a real long evening / near-overnight padel or futsal booking needs
+# more than 4 hours. One global cap for now; a per-court override can come later if a venue needs it.
+MAX_BOOKING_MINUTES = 360
 
 
 @dataclass(frozen=True)

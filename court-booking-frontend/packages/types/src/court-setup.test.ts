@@ -134,19 +134,20 @@ function slot(startHour: number, minutes: number, status: Slot["status"] = "avai
   };
 }
 
-test("duration choices stop at the first taken slot and at four hours", () => {
+test("duration choices stop at the first taken slot and at six hours", () => {
   const day = [slot(10, 60), slot(11, 60), slot(12, 60), slot(13, 60, "booked"), slot(14, 60)];
   assert.deepEqual(durationChoices(day, 0, 60).map((c) => c.minutes), [60, 120, 180]);
   assert.deepEqual(durationChoices(day, 2, 60).map((c) => c.minutes), [60]);
+  // post-batch #8: the cap is 6 hours now, so a 60-min court offers up to six slots
   const open = Array.from({ length: 8 }, (_, i) => slot(6 + i, 60));
-  assert.deepEqual(durationChoices(open, 0, 60).map((c) => c.minutes), [60, 120, 180, 240]); // capped at 4 h
-  // a 30-minute court: eight consecutive 30-minute slots make 4 hours, so up to 8 slots (30 min ... 4 h)
+  assert.deepEqual(durationChoices(open, 0, 60).map((c) => c.minutes), [60, 120, 180, 240, 300, 360]); // capped at 6 h
+  // a 30-minute court: twelve consecutive 30-minute slots make 6 hours, so up to 12 slots (30 min ... 6 h)
   const half = Array.from({ length: 12 }, (_, i) => {
     const s = slot(6, 30);
     const start = Date.parse(s.starts_at) + i * 30 * 60_000;
     return { ...s, starts_at: new Date(start).toISOString(), ends_at: new Date(start + 30 * 60_000).toISOString() };
   });
-  assert.deepEqual(durationChoices(half, 0, 30).map((c) => c.minutes), [30, 60, 90, 120, 150, 180, 210, 240]);
+  assert.deepEqual(durationChoices(half, 0, 30).map((c) => c.minutes), [30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360]);
 });
 
 test("duration choices need slots that follow each other with no gap", () => {
@@ -155,8 +156,8 @@ test("duration choices need slots that follow each other with no gap", () => {
 });
 
 test("durations read in plain words", () => {
-  assert.deepEqual([30, 60, 90, 120, 150, 180, 240].map(formatDuration), [
-    "30 minutes", "1 hour", "1.5 hours", "2 hours", "2.5 hours", "3 hours", "4 hours",
+  assert.deepEqual([30, 60, 90, 120, 150, 180, 240, 300, 360].map(formatDuration), [
+    "30 minutes", "1 hour", "1.5 hours", "2 hours", "2.5 hours", "3 hours", "4 hours", "5 hours", "6 hours",
   ]);
 });
 
