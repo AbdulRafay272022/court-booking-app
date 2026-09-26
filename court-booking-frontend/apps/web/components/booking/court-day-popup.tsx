@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, pktDateString, weekOf } from "@court-booking/types";
+import { addDays, monthOf, pktDateString, weekOf } from "@court-booking/types";
+import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
@@ -19,6 +20,9 @@ const OTHER_STATUS_LABEL: Record<string, string> = {
   booked: "Booked",
   blocked: "Unavailable",
 };
+
+// Day-state dot colours for the week strip (match the calendar + the approved mockup).
+const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "#1E9E5A", few: "#D6900A", full: "#C43A3A" };
 
 /**
  * The popup a tapped calendar date opens (Section 32 Part 4b UPDATE), scoped to ONE court: a centered dialog on
@@ -70,6 +74,14 @@ export function CourtDayPopup({
     queryFn: () => api.availability.forCourtOnDate(courtId, date),
   });
   const slots = dayQuery.data?.slots ?? [];
+
+  // Drives the small availability dot on each week-strip pill. Shares the calendar's query key, so it's already
+  // cached from the month view and adds no extra fetch in the common case.
+  const monthSummaryQuery = useQuery({
+    queryKey: ["court-month-summary", courtId, monthOf(date)],
+    queryFn: () => api.availability.monthSummary(courtId, monthOf(date)),
+  });
+  const stateByDate = new Map((monthSummaryQuery.data?.days ?? []).map((d) => [d.date, d.state]));
 
   async function handleJoinWaitlist(slotStartsAt: string) {
     if (status !== "signedIn") {
@@ -172,34 +184,43 @@ export function CourtDayPopup({
             </div>
           ) : (
             <>
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
                 {week.map((d) => {
                   const isPast = d < today;
+                  const selected = d === date;
+                  const dot = DOW_DOT[stateByDate.get(d) ?? "closed"];
                   return (
                     <button
                       key={d}
                       type="button"
                       disabled={isPast}
                       onClick={() => setDate(d)}
-                      className="shrink-0 px-3.5 py-2.5 rounded-xl flex flex-col items-center gap-0.5 min-w-[60px]"
+                      aria-pressed={selected}
+                      className="flex-1 min-w-[46px] flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors"
                       style={{
-                        background: d === date ? "#EF5A2C" : "#F4EFEC",
+                        background: selected ? "#EF5A2C" : "#FFFFFF",
+                        border: `1px solid ${selected ? "#EF5A2C" : "#E5DED8"}`,
                         opacity: isPast ? 0.4 : 1,
                         cursor: isPast ? "default" : "pointer",
                       }}
                     >
-                      <span className="text-[10px] font-semibold tracking-wider" style={{ color: d === date ? "rgba(255,255,255,0.85)" : "#5C544D" }}>
+                      <span className="text-[10.5px] font-bold tracking-wide" style={{ color: selected ? "rgba(255,255,255,0.9)" : "#5C544D" }}>
                         {tabLabel(d)}
                       </span>
-                      <span className="font-mono text-[15px] font-semibold" style={{ color: d === date ? "#FFFFFF" : "#5C544D" }}>
+                      <span className="font-mono text-[15px] font-extrabold" style={{ color: selected ? "#FFFFFF" : "#141A1D" }}>
                         {String(Number(d.slice(8))).padStart(2, "0")}
                       </span>
+                      <span
+                        className="w-[5px] h-[5px] rounded-full"
+                        style={{ background: selected ? (dot ? "#FFFFFF" : "transparent") : (dot ?? "transparent") }}
+                        aria-hidden
+                      />
                     </button>
                   );
                 })}
               </div>
 
-              <div className="overflow-y-auto flex flex-col gap-2.5">
+              <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#E5DED8] [&::-webkit-scrollbar-track]:bg-transparent">
                 {dayQuery.isLoading ? (
                   <p className="text-center py-10 text-player-ink-faint">Loading…</p>
                 ) : slots.length === 0 ? (
@@ -219,11 +240,11 @@ export function CourtDayPopup({
                           {divider}
                           <button
                             onClick={() => handleTapSlot(index, slot.booking_id)}
-                            className="flex items-center justify-between px-4 py-3 rounded-xl text-left"
+                            className="flex items-center justify-between px-3.5 py-3 rounded-xl text-left"
                             style={{ background: pending ? "#FFF6E5" : "#EAF5EF", border: pending ? "1px solid #F3DDAE" : "1px solid #BFE0CE" }}
                           >
-                            <span className="font-mono text-[13.5px] font-semibold">{formatSlotTimes(slot)}</span>
-                            <span className="text-[11px] font-bold" style={{ color: pending ? "#9A6208" : "#1F7A52" }}>
+                            <span className="font-mono text-[13px] font-semibold text-player-ink">{formatSlotTimes(slot)}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: pending ? "#F7E4BE" : "#D6EDDE", color: pending ? "#9A6208" : "#1F7A52" }}>
                               {pending ? "PAYMENT PENDING" : "YOUR BOOKING"}
                             </span>
                           </button>
@@ -240,16 +261,21 @@ export function CourtDayPopup({
                           onClick={() => handleTapSlot(index, null)}
                           disabled={!isOpen}
                           title={slot.status === "blocked" && slot.reason ? slot.reason : undefined}
-                          className="flex items-center justify-between px-4 py-3 rounded-xl text-left"
+                          className="flex items-center justify-between px-3.5 py-3 rounded-xl text-left"
                           style={{
-                            background: isOpen ? "#FFFFFF" : "#F4EFEC",
-                            border: isOpen ? "1.5px solid #E5DED8" : "1.5px solid transparent",
+                            background: isOpen ? "#FFFFFF" : "#F3EEE9",
+                            border: `1px solid ${isOpen ? "#cfe9d9" : "#E5DED8"}`,
                             opacity: slot.status === "blocked" ? 0.6 : 1,
                             cursor: isOpen ? "pointer" : "default",
                           }}
                         >
-                          <span className="font-mono text-[13.5px] font-semibold text-player-ink">{formatSlotTimes(slot)}</span>
-                          <span className="flex items-center gap-2.5">
+                          <span
+                            className="font-mono text-[13px] font-semibold"
+                            style={{ color: isOpen ? "#141A1D" : "#9A9791", textDecoration: isBooked ? "line-through" : "none" }}
+                          >
+                            {formatSlotTimes(slot)}
+                          </span>
+                          <span className="flex items-center gap-2">
                             {isBooked ? (
                               <button
                                 onClick={(e) => {
@@ -257,15 +283,22 @@ export function CourtDayPopup({
                                   if (!onWaitlist) handleJoinWaitlist(slot.starts_at);
                                 }}
                                 disabled={onWaitlist || joining}
-                                className="h-8 px-3 rounded-full text-[11px] font-bold"
+                                className="h-7 px-2.5 rounded-full text-[11px] font-bold"
                                 style={{ background: onWaitlist ? "#F4EFEC" : "#FFF3EE", color: onWaitlist ? "#7A7068" : "#C8431C" }}
                               >
                                 {joining ? "…" : onWaitlist ? "On waitlist" : "Notify me"}
                               </button>
                             ) : null}
-                            <span className="text-[13px] font-bold" style={{ color: isOpen ? "#141A1D" : "#7A7068" }}>
-                              {isOpen ? `PKR ${formatPKR(slot.price)}` : OTHER_STATUS_LABEL[slot.status] ?? slot.status}
-                            </span>
+                            {isOpen ? (
+                              <>
+                                <span className="font-mono text-[12px] font-semibold text-player-ink-faint">PKR {formatPKR(slot.price)}</span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#E3F7EB", color: "#1E9E5A" }}>Open</span>
+                              </>
+                            ) : (
+                              <span className="text-[11px] font-bold" style={{ color: "#9A9791" }}>
+                                {OTHER_STATUS_LABEL[slot.status] ?? slot.status}
+                              </span>
+                            )}
                           </span>
                         </button>
                       </div>
