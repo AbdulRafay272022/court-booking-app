@@ -7,22 +7,32 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTimeRange } from "@/lib/format";
-import { StarIcon } from "@/components/icons";
+import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
+import { BanIcon, CheckIcon, ClockIcon, StarIcon, XIcon } from "@/components/icons";
 import type { Booking, BookingStatus, Review } from "@court-booking/types";
 import { cancellationPolicyText } from "@court-booking/api-client";
 import { EmptyState } from "../_components";
 
 const SEVEN_DAYS_MS = 7 * 24 * 3_600_000;
 
-const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger" }> = {
-  held: { label: "HOLDING", tone: "waiting" },
-  payment_submitted: { label: "WAITING FOR APPROVAL", tone: "waiting" },
-  booked: { label: "CONFIRMED", tone: "confirmed" },
-  completed: { label: "COMPLETED", tone: "neutral" },
-  no_show: { label: "NO-SHOW", tone: "danger" },
-  cancelled: { label: "CANCELLED", tone: "danger" },
+// Backlog #7: every status gets a colored icon matching its label color; no_show's
+// icon (circle + diagonal slash) is deliberately distinct from cancelled's X.
+type StatusIconName = "check" | "clock" | "x" | "ban";
+const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger"; icon: StatusIconName }> = {
+  held: { label: "HOLDING", tone: "waiting", icon: "clock" },
+  payment_submitted: { label: "WAITING FOR APPROVAL", tone: "waiting", icon: "clock" },
+  booked: { label: "CONFIRMED", tone: "confirmed", icon: "check" },
+  completed: { label: "COMPLETED", tone: "neutral", icon: "check" },
+  no_show: { label: "NO-SHOW", tone: "danger", icon: "ban" },
+  cancelled: { label: "CANCELLED", tone: "danger", icon: "x" },
 };
+
+function StatusIcon({ name, color }: { name: StatusIconName; color: string }) {
+  if (name === "check") return <CheckIcon size={13} color={color} strokeWidth={2.6} />;
+  if (name === "clock") return <ClockIcon size={13} color={color} />;
+  if (name === "x") return <XIcon size={13} color={color} />;
+  return <BanIcon size={13} color={color} />;
+}
 
 function BookingCard({ booking, review, onChanged }: { booking: Booking; review?: Review | null; onChanged: () => void }) {
   const courtQuery = useQuery({ queryKey: ["court", booking.court_id], queryFn: () => api.courts.get(booking.court_id) });
@@ -34,6 +44,7 @@ function BookingCard({ booking, review, onChanged }: { booking: Booking; review?
   const [cancelling, setCancelling] = useState(false);
   const meta = STATUS_META[booking.status];
   const isDark = booking.status === "booked" || booking.status === "completed";
+  const statusColor = meta.tone === "waiting" ? "#8A5A0A" : meta.tone === "danger" ? "#A8432C" : isDark ? "#5FBF95" : "#7A7068";
   const canResumePay = booking.status === "held" || booking.status === "payment_submitted";
 
   // Section 29 Part C: a paid (booked) booking is only cancellable if this specific court's
@@ -99,17 +110,18 @@ function BookingCard({ booking, review, onChanged }: { booking: Booking; review?
       }}
     >
       <View className="gap-1">
-        <Text
-          className="font-figtree-bold text-[11px] tracking-[0.11em]"
-          style={{ color: meta.tone === "waiting" ? "#8A5A0A" : meta.tone === "danger" ? "#A8432C" : isDark ? "#5FBF95" : "#7A7068" }}
-        >
-          {meta.label}
-        </Text>
+        <View className="flex-row items-center gap-1.5">
+          <StatusIcon name={meta.icon} color={statusColor} />
+          <Text className="font-figtree-bold text-[11px] tracking-[0.11em]" style={{ color: statusColor }}>
+            {meta.label}
+          </Text>
+        </View>
         <Text className="font-figtree-bold text-[17px] -tracking-[0.2px]" style={{ color: isDark ? "#FFFFFF" : "#141A1D" }}>
           {venueQuery.data?.name ?? "…"}
         </Text>
         <Text className="font-figtree-medium text-[13px]" style={{ color: isDark ? "#9A928B" : "#7A7068" }}>
-          {courtQuery.data?.name ?? ""} · {formatTimeRange(booking.starts_at, booking.ends_at)}
+          {courtQuery.data?.name ? `${courtQuery.data.name} · ` : ""}
+          {formatDate(booking.starts_at)} · {formatTimeRange(booking.starts_at, booking.ends_at)}
         </Text>
       </View>
 

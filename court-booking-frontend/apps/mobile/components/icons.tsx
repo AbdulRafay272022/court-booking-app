@@ -62,6 +62,34 @@ export function CheckIcon({ size = 18, color = "#FFFFFF", strokeWidth = 2 }: Ico
   );
 }
 
+// Booking-status icons (backlog #7). Clock = waiting/holding, X = cancelled,
+// Ban (circle + diagonal slash, distinct from X) = no-show. Check already exists above.
+export function ClockIcon({ size = 13, color = "#8A5A0A", strokeWidth = 2.4 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M12 7.5V12l3 1.8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function XIcon({ size = 13, color = "#A8432C", strokeWidth = 2.4 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function BanIcon({ size = 13, color = "#A8432C", strokeWidth = 2.4 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M5.6 5.6l12.8 12.8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function WhatsAppIcon({ size = 16, color = "#1F7A52", strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

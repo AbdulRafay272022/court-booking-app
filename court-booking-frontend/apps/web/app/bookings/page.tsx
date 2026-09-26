@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTimeRange } from "@/lib/format";
+import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { SiteHeader } from "@/components/nav-auth";
 import type { Booking, BookingStatus, Review } from "@court-booking/types";
@@ -88,14 +88,30 @@ function RateGame({ booking, review, onChanged }: { booking: Booking; review?: R
   );
 }
 
-const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger" }> = {
-  held: { label: "HOLDING", tone: "waiting" },
-  payment_submitted: { label: "WAITING FOR APPROVAL", tone: "waiting" },
-  booked: { label: "CONFIRMED", tone: "confirmed" },
-  completed: { label: "COMPLETED", tone: "neutral" },
-  no_show: { label: "NO-SHOW", tone: "danger" },
-  cancelled: { label: "CANCELLED", tone: "danger" },
+// Backlog #7: every status gets a colored icon matching its label color. The
+// no_show icon (a circle with a diagonal slash -- "didn't show") is deliberately
+// distinct from cancelled's plain X, and is the one flagged for owner approval.
+type StatusIconName = "check" | "clock" | "x" | "ban";
+const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger"; icon: StatusIconName }> = {
+  held: { label: "HOLDING", tone: "waiting", icon: "clock" },
+  payment_submitted: { label: "WAITING FOR APPROVAL", tone: "waiting", icon: "clock" },
+  booked: { label: "CONFIRMED", tone: "confirmed", icon: "check" },
+  completed: { label: "COMPLETED", tone: "neutral", icon: "check" },
+  no_show: { label: "NO-SHOW", tone: "danger", icon: "ban" },
+  cancelled: { label: "CANCELLED", tone: "danger", icon: "x" },
 };
+
+function StatusIcon({ name, color, size = 13 }: { name: StatusIconName; color: string; size?: number }) {
+  const p = {
+    width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color,
+    strokeWidth: 2.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+    style: { flexShrink: 0 },
+  };
+  if (name === "check") return <svg {...p}><polyline points="20 6 9 17 4 12" /></svg>;
+  if (name === "clock") return <svg {...p}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg>;
+  if (name === "x") return <svg {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
+  return <svg {...p}><circle cx="12" cy="12" r="9" /><line x1="6" y1="6" x2="18" y2="18" /></svg>; // ban / no-show
+}
 
 function BookingCard({ booking, review, onChanged }: { booking: Booking; review?: Review; onChanged: () => void }) {
   const router = useRouter();
@@ -107,6 +123,7 @@ function BookingCard({ booking, review, onChanged }: { booking: Booking; review?
   });
   const meta = STATUS_META[booking.status];
   const isDark = booking.status === "booked" || booking.status === "completed";
+  const statusColor = meta.tone === "waiting" ? "#8A5A0A" : meta.tone === "danger" ? "#A8432C" : isDark ? "#5FBF95" : "#7A7068";
   const canResumePay = booking.status === "held" || booking.status === "payment_submitted";
 
   // Section 29 Part C: same client-side eligibility check as mobile -- a cutoff only ever gets
@@ -155,16 +172,18 @@ function BookingCard({ booking, review, onChanged }: { booking: Booking; review?
     >
       <div className="flex flex-col gap-1">
         <span
-          className="text-[11px] font-bold tracking-widest"
-          style={{ color: meta.tone === "waiting" ? "#8A5A0A" : meta.tone === "danger" ? "#A8432C" : isDark ? "#5FBF95" : "#7A7068" }}
+          className="flex items-center gap-1.5 text-[11px] font-bold tracking-widest"
+          style={{ color: statusColor }}
         >
+          <StatusIcon name={meta.icon} color={statusColor} />
           {meta.label}
         </span>
         <span className="font-bold text-[17px]" style={{ color: isDark ? "#FFFFFF" : "#141A1D" }}>
           {venueQuery.data?.name ?? "…"}
         </span>
         <span className="text-[13px]" style={{ color: isDark ? "#9A928B" : "#7A7068" }}>
-          {courtQuery.data?.name ?? ""} · {formatTimeRange(booking.starts_at, booking.ends_at)}
+          {courtQuery.data?.name ? `${courtQuery.data.name} · ` : ""}
+          {formatDate(booking.starts_at)} · {formatTimeRange(booking.starts_at, booking.ends_at)}
         </span>
       </div>
       <div className="h-px" style={{ background: isDark ? "#2A3238" : "#F0EBE7" }} />
