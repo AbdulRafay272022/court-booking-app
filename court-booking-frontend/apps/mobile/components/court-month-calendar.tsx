@@ -134,7 +134,8 @@ export function CourtMonthCalendar({
                       {Number(date.slice(8))}
                     </Text>
                     {isNoHours ? (
-                      <Text className="text-[11px] font-figtree-bold leading-none" style={{ color: NOHOURS_INK }}>—</Text>
+                      // no-hours cells carry the hatch only — no dot or dash under the number
+                      <View style={{ width: 6, height: 6, marginTop: 3 }} />
                     ) : isPast ? (
                       <View style={{ width: 6, height: 6, marginTop: 3 }} />
                     ) : dotColor ? (
@@ -160,7 +161,7 @@ export function CourtMonthCalendar({
               </View>
               <View className="rounded-xl px-4 py-3.5 mt-4" style={{ backgroundColor: "#FDECE5", borderWidth: 1, borderColor: "#f3cdb9" }}>
                 <Text className="text-[13.5px]" style={{ color: "#8a3417" }}>
-                  This court hasn’t set its opening hours yet — check back soon or message the venue.
+                  This court hasn't set its opening hours yet — check back soon or message the venue.
                 </Text>
               </View>
             </>

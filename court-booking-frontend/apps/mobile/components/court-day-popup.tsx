@@ -180,7 +180,7 @@ export function CourtDayPopup({
                         key={d}
                         disabled={isPast}
                         onPress={() => setDate(d)}
-                        className="items-center gap-1 rounded-xl py-2.5"
+                        className="items-center gap-1 rounded-full py-3"
                         style={{
                           minWidth: 50,
                           backgroundColor: selected ? "#EF5A2C" : "#FFFFFF",
@@ -237,7 +237,7 @@ export function CourtDayPopup({
                               style={{
                                 backgroundColor: mineBadge ? (slot.status === "booked" ? "#EAF5EF" : "#FFF6E5") : isOpen ? "#FFFFFF" : "#F3EEE9",
                                 borderWidth: 1,
-                                borderColor: mineBadge ? (slot.status === "booked" ? "#BFE0CE" : "#F3DDAE") : isOpen ? "#cfe9d9" : "transparent",
+                                borderColor: mineBadge ? (slot.status === "booked" ? "#BFE0CE" : "#F3DDAE") : isOpen ? "#cfe9d9" : "#E5DED8",
                                 opacity: slot.status === "blocked" ? 0.6 : 1,
                               }}
                             >

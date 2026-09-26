@@ -121,7 +121,8 @@ export function CourtMonthCalendar({
                 >
                   <span>{num}</span>
                   {isNoHours ? (
-                    <span className="text-[11px] font-bold leading-none" style={{ color: NOHOURS_INK }}>—</span>
+                    // no-hours cells carry the hatch only — no dot or dash under the number
+                    <span className="w-1.5 h-1.5" aria-hidden />
                   ) : isPast ? (
                     <span className="w-1.5 h-1.5" aria-hidden />
                   ) : dotColor ? (
@@ -148,7 +149,7 @@ export function CourtMonthCalendar({
                 style={{ background: "#FDECE5", border: "1px solid #f3cdb9", color: "#8a3417" }}
                 role="status"
               >
-                This court hasn’t set its opening hours yet — check back soon or message the venue.
+                This court hasn't set its opening hours yet — check back soon or message the venue.
               </div>
             </>
           ) : (
