@@ -29,7 +29,12 @@ function ResetForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const flow = useOtpFlow("password_reset", phone, async () => (await api.auth.requestPasswordReset({ phone })).expires_in);
+  const flow = useOtpFlow(
+    "password_reset",
+    phone,
+    async () => (await api.auth.requestPasswordReset({ phone })).expires_in,
+    () => setError(null), // QA #5: clear a stale banner after a successful resend
+  );
   const errors = validateNewPassword({ password, confirmPassword });
   const ready = isValidOtp(code) && !flow.expired && Object.keys(errors).length === 0;
 

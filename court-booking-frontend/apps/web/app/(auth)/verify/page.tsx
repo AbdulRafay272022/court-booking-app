@@ -27,6 +27,7 @@ function VerifyForm() {
   const phone = search.get("phone") ?? "";
   const purpose = search.get("purpose") === "reverify" ? "reverify" : "signup";
   const role = search.get("role") === "owner" ? "owner" : "player";
+  const pending = search.get("pending") === "1"; // arrived here because a signup was already in progress (item E)
   const next = safeNext(search.get("next"));
   const signedIn = useRedirectIfSignedIn();
 
@@ -37,7 +38,16 @@ function VerifyForm() {
   const submitting = useRef(false); // QA #8: block a rapid second submit before state updates
   const lock = useCountdown(); // QA #5: rate-limit retry countdown
 
-  const flow = useOtpFlow(purpose, phone, async () => (await api.auth.requestOtp({ phone })).expires_in);
+  const flow = useOtpFlow(
+    purpose,
+    phone,
+    async () => (await api.auth.requestOtp({ phone })).expires_in,
+    () => {
+      // QA #5: a successful resend clears a stale "too many attempts" banner / lock.
+      setError(null);
+      lock.start(0);
+    },
+  );
   const ready = isValidOtp(code) && !flow.expired && !alreadyVerified && lock.seconds === 0;
 
   useEffect(() => {
@@ -116,6 +126,12 @@ function VerifyForm() {
       }
     >
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
+        {pending ? (
+          <FormMessage kind="info">
+            You already have a signup in progress for this number — check WhatsApp for your code, or tap Resend
+            below. (Any details you just re-entered weren&apos;t saved.)
+          </FormMessage>
+        ) : null}
         <TextField
           label="Verification code"
           mono

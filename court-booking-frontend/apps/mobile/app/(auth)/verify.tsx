@@ -17,8 +17,9 @@ import { AuthScreen, FormMessage, OtpControls, SubmitButton, TextField, toneColo
  *  - purpose=reverify: "Verify your phone" (365 days passed, or signup was never finished; proves
  *                      the phone, then retries the password login with the password just typed) */
 export default function VerifyScreen() {
-  const { phone = "", purpose: rawPurpose, role: rawRole } = useLocalSearchParams<{ phone?: string; purpose?: string; role?: string }>();
+  const { phone = "", purpose: rawPurpose, role: rawRole, pending } = useLocalSearchParams<{ phone?: string; purpose?: string; role?: string; pending?: string }>();
   const purpose = rawPurpose === "reverify" ? "reverify" : "signup";
+  const isPending = pending === "1"; // arrived because a signup was already in progress (item E)
   const tone = purpose === "signup" && rawRole === "owner" ? "owner" : "player";
   const c = toneColors(tone);
 
@@ -29,7 +30,15 @@ export default function VerifyScreen() {
   const submitting = useRef(false); // QA #8: block a rapid double-tap
   const lock = useCountdown(); // QA #5
 
-  const flow = useOtpFlow(purpose, phone, async () => (await api.auth.requestOtp({ phone })).expires_in);
+  const flow = useOtpFlow(
+    purpose,
+    phone,
+    async () => (await api.auth.requestOtp({ phone })).expires_in,
+    () => {
+      setError(null); // QA #5: clear a stale banner after a successful resend
+      lock.start(0);
+    },
+  );
   const ready = isValidOtp(code) && !flow.expired && !alreadyVerified && lock.seconds === 0;
 
   async function handleVerify() {
@@ -104,6 +113,11 @@ export default function VerifyScreen() {
         </Text>
       }
     >
+      {isPending ? (
+        <FormMessage kind="info" tone={tone}>
+          You already have a signup in progress for this number — check WhatsApp for your code, or tap Resend below. (Any details you just re-entered weren&apos;t saved.)
+        </FormMessage>
+      ) : null}
       <TextField
         label="Verification code"
         tone={tone}
