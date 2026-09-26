@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,10 +51,12 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)] = None,
 ) -> User:
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
+        # QA #11: no Authorization header at all is NOT_AUTHENTICATED. SESSION_EXPIRED is
+        # reserved for a token that existed and expired/was revoked (the branch below).
+        raise AppError(
+            status.HTTP_401_UNAUTHORIZED,
+            ErrorCode.NOT_AUTHENTICATED,
+            "Not authenticated",
         )
     auth_service = AuthService(db, settings)
     user = await auth_service.get_user_from_token(credentials.credentials)

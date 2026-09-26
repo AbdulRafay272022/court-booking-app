@@ -17,6 +17,7 @@ import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { rememberOtpExpiry } from "@/lib/pending-auth";
+import { retryAfterSeconds } from "@/lib/use-countdown";
 import { useRedirectIfSignedIn } from "@/lib/use-auth-helpers";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { ChoicePills, FormMessage, PasswordField, SelectField, TextField } from "@/components/auth/fields";
@@ -83,7 +84,17 @@ function SignupForm() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "PHONE_ALREADY_REGISTERED") setPhoneTaken(true);
       else if (err instanceof ApiError && err.code === "EMAIL_ALREADY_IN_USE") setEmailTaken(true);
-      else setFormError(friendlyErrorMessage(err));
+      else if (err instanceof ApiError && err.code === "SIGNUP_ALREADY_PENDING") {
+        // QA #1: a verification is already in progress for this number. Don't overwrite it -- send
+        // the user to the code screen (they can enter the code already sent, or resend). Seed the
+        // countdown from the live code's remaining life (retry_after_seconds).
+        const phone = toE164(f.phone);
+        const remaining = retryAfterSeconds(err.details);
+        if (remaining) rememberOtpExpiry("signup", phone, remaining);
+        const qs = new URLSearchParams({ purpose: "signup", phone, role });
+        if (next) qs.set("next", next);
+        router.push(`/verify?${qs.toString()}`);
+      } else setFormError(friendlyErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -143,7 +154,7 @@ function SignupForm() {
             mono
             inputMode="numeric"
             value={f.phone}
-            onChange={(e) => set("phone", e.target.value)}
+            onChange={(e) => set("phone", e.target.value.replace(/\D/g, ""))}
             onBlur={() => touch("phone")}
             error={phoneTaken ? "This number already has an account." : errors.phone}
             showError={phoneTaken || show("phone")}

@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { formatCountdown } from "@court-booking/types";
+import { api } from "@/lib/api";
 import { ownerColors, playerColors } from "@/lib/colors";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { recallOtpExpiry, usePendingAuth } from "@/lib/pending-auth";
@@ -659,6 +660,26 @@ function useSecondsUntil(targetMs: number | null): number | null {
 export function useOtpFlow(purpose: string, phone: string, requestNewCode: () => Promise<number>) {
   const [expiresAt, setExpiresAt] = useState<number | null>(() => recallOtpExpiry(purpose, phone));
   const secondsLeft = useSecondsUntil(expiresAt);
+
+  // QA #10: a fresh screen mount with no remembered expiry asks the server for the live code's
+  // remaining time, so the countdown is still correct after a cold load.
+  useEffect(() => {
+    if (expiresAt !== null || !phone) return;
+    let cancelled = false;
+    api.auth
+      .otpStatus(phone)
+      .then((s) => {
+        if (cancelled || s.expires_in <= 0) return;
+        usePendingAuth.getState().rememberOtpExpiry(purpose, phone, s.expires_in);
+        setExpiresAt(Date.now() + s.expires_in * 1000);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purpose, phone]);
+
   const [cooldownEndsAt, setCooldownEndsAt] = useState(() => Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
   const resendLeft = useSecondsUntil(cooldownEndsAt) ?? 0;
   const [resending, setResending] = useState(false);

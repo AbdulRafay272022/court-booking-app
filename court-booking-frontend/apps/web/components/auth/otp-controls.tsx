@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatCountdown } from "@court-booking/types";
+import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { recallOtpExpiry, rememberOtpExpiry } from "@/lib/pending-auth";
 import { useCooldown, useSecondsUntil } from "@/lib/use-auth-helpers";
@@ -23,7 +24,26 @@ export function useOtpFlow(purpose: string, phone: string, requestNewCode: () =>
   const [resendError, setResendError] = useState<string | null>(null);
 
   useEffect(() => {
-    setExpiresAt(recallOtpExpiry(purpose, phone));
+    const stored = recallOtpExpiry(purpose, phone);
+    if (stored) {
+      setExpiresAt(stored);
+      return;
+    }
+    // QA #10: a fresh tab/page load has no remembered expiry -- ask the server for the live
+    // code's remaining time so the countdown is still correct.
+    if (!phone) return;
+    let cancelled = false;
+    api.auth
+      .otpStatus(phone)
+      .then((s) => {
+        if (cancelled || s.expires_in <= 0) return;
+        rememberOtpExpiry(purpose, phone, s.expires_in);
+        setExpiresAt(Date.now() + s.expires_in * 1000);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [purpose, phone]);
 
   async function resend() {

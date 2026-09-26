@@ -15,7 +15,12 @@ from app.api.router import api_router
 from app.config import get_settings
 from app.database import engine
 from app.errors import AppError, ErrorCode, fallback_code_for_status
-from app.middleware.rate_limit import FixedWindowCounter, RateLimitMiddleware
+from app.middleware.rate_limit import (
+    DistinctItemWindowCounter,
+    FixedWindowCounter,
+    RateLimitMiddleware,
+    WindowedCounter,
+)
 from app.middleware.request_context import RequestContextMiddleware
 from app.services.feature_flag_service import FeatureFlagCache
 
@@ -60,6 +65,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.state.chat_rate_limiter = FixedWindowCounter()
+    # QA #4: per-IP/device failed-login lockout (fixes the phone-only lock that let
+    # anyone lock a victim out). QA #3: per-IP/device cap on distinct phone numbers
+    # an OTP is sent to. Both in-process, one instance per create_app() so every
+    # test's app fixture starts empty.
+    app.state.login_ip_limiter = WindowedCounter(settings.LOGIN_RATE_LIMIT_WINDOW_MINUTES * 60)
+    app.state.otp_ip_limiter = DistinctItemWindowCounter(
+        settings.OTP_IP_RATE_LIMIT_WINDOW_MINUTES * 60, settings.OTP_IP_MAX_DISTINCT_PHONES
+    )
     # Section 32 Part 12: short-TTL cache of the admin feature flags, read by the
     # require_feature() dependency. An admin toggle busts it (single-worker).
     app.state.feature_flag_cache = FeatureFlagCache()

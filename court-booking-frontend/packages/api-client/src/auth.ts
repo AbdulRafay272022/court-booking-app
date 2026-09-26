@@ -12,6 +12,13 @@ import type { ApiClient } from "./client";
 export interface RequestOtpOut {
   message: string;
   expires_in: number;
+  /** QA #10: absolute server-side expiry for the countdown (survives a fresh tab). */
+  expires_at?: string | null;
+}
+
+export interface OtpStatusOut {
+  expires_at: string | null;
+  expires_in: number;
 }
 
 export interface SignupInput {
@@ -29,6 +36,7 @@ export interface SignupOut {
   message: string;
   phone: string;
   expires_in: number;
+  expires_at?: string | null;
 }
 
 export interface DeviceInfo {
@@ -101,6 +109,11 @@ export function createAuthApi(client: ApiClient) {
 
     requestPasswordReset: (input: { phone: string }) =>
       post<RequestOtpOut>(client, "/auth/request-password-reset", input),
+
+    /** QA #10: the live OTP's remaining time for a phone, so a cold-loaded Verify screen can
+     * show a correct countdown. Returns {expires_at:null, expires_in:0} when there is none. */
+    otpStatus: (phone: string) =>
+      client.request<OtpStatusOut>(`/auth/otp-status?phone=${encodeURIComponent(phone)}`, {}, PUBLIC),
 
     /** Sets the new password and ends every session for the account. Does NOT log in. */
     verifyPasswordReset: (input: PasswordResetInput) =>

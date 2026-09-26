@@ -67,11 +67,17 @@ async def test_abandoned_unverified_signup_does_not_hold_an_email_hostage(client
     assert len(audit) == 1 and audit[0].old_value == {"email": "victim@example.com"}
 
 
-async def test_resubmitting_your_own_pending_signup_keeps_your_own_email(client, otp_box):
+async def test_resubmitting_your_own_pending_signup_is_rejected_while_code_is_live(client, otp_box):
+    """QA #1: a second signup for a number with a live pending code is rejected (the server can't
+    distinguish the real owner from an attacker on an unauthenticated endpoint). The original
+    pending signup -- with its own email -- still verifies."""
     phone = "+923002220009"
-    await client.post("/api/v1/auth/signup", json=signup_body(phone, email="mine@example.com"))
+    first = await client.post("/api/v1/auth/signup", json=signup_body(phone, email="mine@example.com"))
+    assert first.status_code == 201
     resp = await client.post("/api/v1/auth/signup", json=signup_body(phone, email="mine@example.com", name="Retry Name"))
-    assert resp.status_code == 201
+    assert resp.status_code == 409 and resp.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
+    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": otp_box.code})
+    assert verify.status_code == 200 and verify.json()["user"]["email"] == "mine@example.com"
 
 
 # ------------------------------------------------------------ profile editing
@@ -174,8 +180,9 @@ async def test_phone_change_full_flow(client, db_session, otp_box):
     for t in (token, second):
         assert (await client.get("/api/v1/auth/me", headers=bearer(t))).status_code == 401
 
-    # Old number no longer logs in; the new number + the SAME password does.
-    assert (await login(client, old)).status_code == 401
+    # Old number no longer logs in -- its account moved, so it's now USER_NOT_FOUND (QA #12);
+    # the new number + the SAME password does.
+    assert (await login(client, old)).status_code == 404
     ok = await login(client, NEW)
     assert ok.status_code == 200 and ok.json()["user"]["phone"] == NEW
     assert ok.json()["user"]["phone_verified_at"] is not None

@@ -17,6 +17,7 @@ import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { usePendingAuth } from "@/lib/pending-auth";
+import { retryAfterSeconds } from "@/lib/use-countdown";
 import { openPrivacy, openTerms } from "@/lib/web-links";
 import {
   AuthScreen,
@@ -81,7 +82,15 @@ export default function SignupScreen() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "PHONE_ALREADY_REGISTERED") setPhoneTaken(true);
       else if (err instanceof ApiError && err.code === "EMAIL_ALREADY_IN_USE") setEmailTaken(true);
-      else setFormError(friendlyErrorMessage(err));
+      else if (err instanceof ApiError && err.code === "SIGNUP_ALREADY_PENDING") {
+        // QA #1: a verification is already in progress for this number -- don't overwrite it; send
+        // the user to the code screen (enter the sent code or resend). Seed the countdown from the
+        // live code's remaining life (retry_after_seconds).
+        const phone = toE164(f.phone);
+        const remaining = retryAfterSeconds(err.details);
+        if (remaining) usePendingAuth.getState().rememberOtpExpiry("signup", phone, remaining);
+        router.push({ pathname: "/(auth)/verify", params: { purpose: "signup", phone, role } });
+      } else setFormError(friendlyErrorMessage(err));
     } finally {
       setBusy(false);
     }

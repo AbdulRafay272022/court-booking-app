@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     OTP_EXPIRE_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RATE_LIMIT_WINDOW_MINUTES: int = 15
+    # QA #3: a per-IP/device cap ON TOP OF the per-phone limit above. At most this
+    # many DISTINCT phone numbers may be sent an OTP from one source in the rolling
+    # window, so a single attacker can't spray codes at many victims' numbers.
+    # In-process (like the other rate limiters here) -- fine for the single-worker
+    # pilot; needs a shared store if this ever goes multi-worker (AUDIT #25).
+    OTP_IP_MAX_DISTINCT_PHONES: int = 5
+    OTP_IP_RATE_LIMIT_WINDOW_MINUTES: int = 60
     # Local-dev convenience only: when set (and DEBUG is true), every OTP request
     # returns this code instead of a random one, so login doesn't need WhatsApp
     # delivery or a DB brute-force. Must stay unset in any shared/staging env --

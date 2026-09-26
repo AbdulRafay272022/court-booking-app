@@ -8,6 +8,10 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 from app.models.user import City, Gender, UserRole
 
 _E164 = re.compile(r"^\+[1-9]\d{7,14}$")
+# QA #9: a Pakistani mobile in E.164 is +92 followed by a leading 3 and 9 more digits
+# (national 03XXXXXXXXX). Enforced on the numbers a NEW verification can be started for
+# (signup, request-otp), not on login/phone-change (login answers USER_NOT_FOUND anyway).
+_PK_MOBILE = re.compile(r"^\+923\d{9}$")
 
 
 def _normalize_phone(v: str) -> str:
@@ -16,6 +20,13 @@ def _normalize_phone(v: str) -> str:
         raise ValueError("phone must be in E.164 format, e.g. +923001234567")
     if not _E164.match(v):
         raise ValueError("phone must be in E.164 format, e.g. +923001234567")
+    return v
+
+
+def _normalize_pk_phone(v: str) -> str:
+    v = _normalize_phone(v)
+    if not _PK_MOBILE.match(v):
+        raise ValueError("Enter a valid Pakistani mobile number, e.g. +923001234567")
     return v
 
 
@@ -33,12 +44,26 @@ class PhoneIn(BaseModel):
 # Kept under its old name: request-otp is now the "resend"/re-verification
 # endpoint (see AuthService.request_reverification_otp), same request shape.
 class OtpRequestIn(PhoneIn):
-    pass
+    @field_validator("phone")
+    @classmethod
+    def normalize_pk(cls, v: str) -> str:  # QA #9: PK mobile format
+        return _normalize_pk_phone(v)
 
 
 class OtpRequestOut(BaseModel):
     message: str = "OTP sent via WhatsApp"
     expires_in: int
+    # QA #10: absolute server-side expiry so a fresh tab/page load can compute the remaining
+    # countdown without relying on client sessionStorage.
+    expires_at: datetime | None = None
+
+
+class OtpStatusOut(BaseModel):
+    """QA #10: lets the Verify screen show a correct countdown on a cold load. Reports the
+    live OTP's expiry for a phone (null when there is none), computed server-side."""
+
+    expires_at: datetime | None = None
+    expires_in: int = 0
 
 
 class DeviceInfoIn(BaseModel):
@@ -58,6 +83,11 @@ class SignupIn(PhoneIn):
     password: str = Field(min_length=8, max_length=128)
     confirm_password: str = Field(max_length=128)
     role: Literal["player", "owner"] = "player"
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_pk(cls, v: str) -> str:  # QA #9: PK mobile format
+        return _normalize_pk_phone(v)
 
     @field_validator("name")
     @classmethod
@@ -87,6 +117,7 @@ class SignupOut(BaseModel):
     message: str = "Account created. We sent a verification code on WhatsApp."
     phone: str
     expires_in: int
+    expires_at: datetime | None = None  # QA #10: absolute server-side expiry for the countdown
 
 
 class VerifyOtpIn(PhoneIn, DeviceInfoIn):

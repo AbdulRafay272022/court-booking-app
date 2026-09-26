@@ -10,6 +10,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { webDeviceInfo } from "@/lib/device";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { rememberOtpExpiry, usePendingAuth } from "@/lib/pending-auth";
+import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
 import { homeForRole, safeNext, useRedirectIfSignedIn } from "@/lib/use-auth-helpers";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { FormMessage, PasswordField, TextField } from "@/components/auth/fields";
@@ -35,22 +36,32 @@ function LoginForm() {
   const [touched, setTouched] = useState({ phone: false, password: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noAccount, setNoAccount] = useState(false); // QA #12: show a Sign up CTA, no OTP flow
+  const lock = useCountdown(); // QA #5: LOGIN_RATE_LIMITED retry countdown
 
   const errors = validateLogin({ phone, password });
   const valid = Object.keys(errors).length === 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid || busy) return;
+    if (!valid || busy || lock.seconds > 0) return;
     setBusy(true);
     setError(null);
+    setNoAccount(false);
     const e164 = toE164(phone);
     try {
       const res = await api.auth.login({ phone: e164, password, ...webDeviceInfo() });
       useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
       router.replace(next ?? homeForRole(res.user.role));
     } catch (err) {
-      if (err instanceof ApiError && err.code === "PHONE_REVERIFICATION_REQUIRED") {
+      if (err instanceof ApiError && err.code === "USER_NOT_FOUND") {
+        // QA #12: no account for this number -> tell them to sign up; never start an OTP/reset flow.
+        setNoAccount(true);
+        setError("No account found for this number. Please sign up.");
+      } else if (err instanceof ApiError && err.code === "LOGIN_RATE_LIMITED") {
+        lock.start(retryAfterSeconds(err.details) || 60);
+        setError(null);
+      } else if (err instanceof ApiError && err.code === "PHONE_REVERIFICATION_REQUIRED") {
         // Not a wrong password: the phone needs proving again (never verified, or >365 days).
         // Send a code, keep the password in memory for the retry, and go to the OTP screen.
         try {
@@ -99,7 +110,7 @@ function LoginForm() {
           mono
           inputMode="numeric"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
           onBlur={() => setTouched((p) => ({ ...p, phone: true }))}
           error={errors.phone}
           showError={touched.phone}
@@ -131,10 +142,26 @@ function LoginForm() {
           </Link>
         </div>
 
-        {error ? <FormMessage kind="error">{error}</FormMessage> : null}
+        {lock.seconds > 0 ? (
+          <FormMessage kind="error">
+            Too many failed attempts. Try again in {lock.seconds}s, or reset your password.
+          </FormMessage>
+        ) : error ? (
+          <FormMessage kind="error">
+            {error}
+            {noAccount ? (
+              <>
+                {" "}
+                <Link href={`/signup?phone=${encodeURIComponent(toE164(phone))}`} className="font-bold underline" style={{ color: t.accent }}>
+                  Sign up
+                </Link>
+              </>
+            ) : null}
+          </FormMessage>
+        ) : null}
 
-        <SubmitButton ready={valid} busy={busy} busyLabel="Logging in…">
-          Log in
+        <SubmitButton ready={valid && lock.seconds === 0} busy={busy} busyLabel="Logging in…">
+          {lock.seconds > 0 ? `Try again in ${lock.seconds}s` : "Log in"}
         </SubmitButton>
       </form>
     </AuthShell>

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Text } from "react-native";
+import { useRef, useState } from "react";
+import { Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { isValidOtp } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
@@ -9,6 +9,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { getDeviceName, getOrCreateDeviceId, getPlatform } from "@/lib/device";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { usePendingAuth } from "@/lib/pending-auth";
+import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
 import { AuthScreen, FormMessage, OtpControls, SubmitButton, TextField, toneColors, useOtpFlow } from "@/components/auth/kit";
 
 /** One OTP screen, two purposes -- and the copy says which:
@@ -24,11 +25,16 @@ export default function VerifyScreen() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [alreadyVerified, setAlreadyVerified] = useState(false); // QA #2
+  const submitting = useRef(false); // QA #8: block a rapid double-tap
+  const lock = useCountdown(); // QA #5
 
   const flow = useOtpFlow(purpose, phone, async () => (await api.auth.requestOtp({ phone })).expires_in);
-  const ready = isValidOtp(code) && !flow.expired;
+  const ready = isValidOtp(code) && !flow.expired && !alreadyVerified && lock.seconds === 0;
 
   async function handleVerify() {
+    if (submitting.current) return; // QA #8
+    submitting.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -54,9 +60,20 @@ export default function VerifyScreen() {
       const res = await api.auth.login({ phone, password, ...device });
       await useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
     } catch (err) {
-      setError(friendlyErrorMessage(err));
-      if (err instanceof ApiError && (err.code === "INVALID_OTP" || err.code === "OTP_EXPIRED")) setCode("");
+      if (err instanceof ApiError && err.code === "ALREADY_VERIFIED") {
+        setAlreadyVerified(true); // QA #2: offer Log in, not a dead-end expired error
+        setError("This number is already verified — please log in.");
+      } else if (
+        err instanceof ApiError &&
+        (err.code === "OTP_RATE_LIMITED" || err.code === "LOGIN_RATE_LIMITED" || err.code === "OTP_IP_RATE_LIMITED")
+      ) {
+        lock.start(retryAfterSeconds(err.details) || 60); // QA #5
+      } else {
+        setError(friendlyErrorMessage(err));
+        if (err instanceof ApiError && ["INVALID_OTP", "OTP_EXPIRED", "OTP_SUPERSEDED"].includes(err.code)) setCode("");
+      }
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -105,16 +122,34 @@ export default function VerifyScreen() {
 
       <OtpControls flow={flow} tone={tone} />
 
-      {error ? <FormMessage kind="error" tone={tone}>{error}</FormMessage> : null}
+      {/* QA #8: reserve the banner's space so it never shifts the button below it. */}
+      <View style={{ minHeight: 44, justifyContent: "center" }}>
+        {lock.seconds > 0 ? (
+          <FormMessage kind="error" tone={tone}>{`Too many attempts. Please try again in ${lock.seconds}s.`}</FormMessage>
+        ) : error ? (
+          <FormMessage kind="error" tone={tone}>{error}</FormMessage>
+        ) : null}
+      </View>
 
-      <SubmitButton
-        tone={tone}
-        ready={ready}
-        busy={busy}
-        label={purpose === "signup" ? "Verify and continue" : "Verify"}
-        busyLabel="Verifying…"
-        onPress={handleVerify}
-      />
+      {alreadyVerified ? (
+        <SubmitButton
+          tone={tone}
+          ready
+          busy={false}
+          label="Log in"
+          busyLabel=""
+          onPress={() => router.replace({ pathname: "/(auth)/login", params: { phone, notice: "phone-verified" } })}
+        />
+      ) : (
+        <SubmitButton
+          tone={tone}
+          ready={ready}
+          busy={busy}
+          label={lock.seconds > 0 ? `Try again in ${lock.seconds}s` : purpose === "signup" ? "Verify and continue" : "Verify"}
+          busyLabel="Verifying…"
+          onPress={handleVerify}
+        />
+      )}
     </AuthScreen>
   );
 }

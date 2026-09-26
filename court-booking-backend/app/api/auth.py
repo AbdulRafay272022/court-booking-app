@@ -1,15 +1,18 @@
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.dependencies import AppSettings, CurrentUser, DbSession
+from app.errors import AppError, ErrorCode
 from app.schemas.auth import (
     LoginIn,
     MeOut,
     MessageOut,
     OtpRequestIn,
     OtpRequestOut,
+    OtpStatusOut,
     PasswordResetIn,
     PasswordResetRequestIn,
     PhoneChangeOut,
@@ -35,23 +38,40 @@ def _require_credentials(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> HTTPAuthorizationCredentials:
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # QA #11: no Authorization header -> NOT_AUTHENTICATED (not SESSION_EXPIRED).
+        raise AppError(status.HTTP_401_UNAUTHORIZED, ErrorCode.NOT_AUTHENTICATED, "Not authenticated")
     return credentials
+
+
+def _service_with_ip(request: Request, db: DbSession, settings: AppSettings) -> AuthService:
+    """AuthService carrying the caller's IP + the app.state per-IP throttles, for the
+    endpoints that send OTPs (QA #3) or check the password (QA #4)."""
+    return AuthService(
+        db,
+        settings,
+        client_ip=request.client.host if request.client else None,
+        login_ip_limiter=request.app.state.login_ip_limiter,
+        otp_ip_limiter=request.app.state.otp_ip_limiter,
+    )
+
+
+def _otp_expires_at(settings: AppSettings) -> datetime:
+    return datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES)
 
 
 # ---- Signup ---------------------------------------------------------------
 
 
 @router.post("/signup", response_model=SignupOut, status_code=status.HTTP_201_CREATED)
-async def signup(payload: SignupIn, db: DbSession, settings: AppSettings) -> SignupOut:
+async def signup(payload: SignupIn, request: Request, db: DbSession, settings: AppSettings) -> SignupOut:
     """Creates the account (unverified) and sends the verification OTP. The
     account can't log in until `verify-signup-otp` succeeds."""
-    await AuthService(db, settings).signup(payload)
-    return SignupOut(phone=payload.phone, expires_in=settings.OTP_EXPIRE_MINUTES * 60)
+    await _service_with_ip(request, db, settings).signup(payload)
+    return SignupOut(
+        phone=payload.phone,
+        expires_in=settings.OTP_EXPIRE_MINUTES * 60,
+        expires_at=_otp_expires_at(settings),
+    )
 
 
 @router.post("/verify-signup-otp", response_model=TokenResponse)
@@ -70,8 +90,8 @@ async def verify_signup_otp(payload: VerifyOtpIn, db: DbSession, settings: AppSe
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginIn, db: DbSession, settings: AppSettings) -> TokenResponse:
-    user, token, expires_at = await AuthService(db, settings).login(
+async def login(payload: LoginIn, request: Request, db: DbSession, settings: AppSettings) -> TokenResponse:
+    user, token, expires_at = await _service_with_ip(request, db, settings).login(
         payload.phone,
         payload.password,
         device_id=payload.device_id,
@@ -85,12 +105,26 @@ async def login(payload: LoginIn, db: DbSession, settings: AppSettings) -> Token
 
 
 @router.post("/request-otp", response_model=OtpRequestOut)
-async def request_otp(payload: OtpRequestIn, db: DbSession, settings: AppSettings) -> OtpRequestOut:
+async def request_otp(payload: OtpRequestIn, request: Request, db: DbSession, settings: AppSettings) -> OtpRequestOut:
     """Sends a re-verification OTP (also the "resend code" endpoint for a
     signup that hasn't been verified yet). Always answers 200 for a well-formed
-    phone, whether or not an account exists."""
-    await AuthService(db, settings).request_reverification_otp(payload.phone)
-    return OtpRequestOut(expires_in=settings.OTP_EXPIRE_MINUTES * 60)
+    phone, whether or not an account exists (this endpoint stays non-enumerating;
+    login/reset are the ones that reveal existence per QA #12 / NEW BUG 1)."""
+    await _service_with_ip(request, db, settings).request_reverification_otp(payload.phone)
+    return OtpRequestOut(expires_in=settings.OTP_EXPIRE_MINUTES * 60, expires_at=_otp_expires_at(settings))
+
+
+@router.get("/otp-status", response_model=OtpStatusOut)
+async def otp_status(phone: str, request: Request, db: DbSession, settings: AppSettings) -> OtpStatusOut:
+    """QA #10: the live OTP's expiry for a phone, so a cold-loaded Verify screen shows a
+    correct countdown. Returns nulls/0 when there is no live code."""
+    from app.schemas.auth import _normalize_phone  # local: reuse the same normalizer
+
+    expires_at = await _service_with_ip(request, db, settings).otp_status(_normalize_phone(phone))
+    if expires_at is None:
+        return OtpStatusOut(expires_at=None, expires_in=0)
+    remaining = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+    return OtpStatusOut(expires_at=expires_at, expires_in=remaining)
 
 
 @router.post("/reverify-phone", response_model=MessageOut)
@@ -106,17 +140,19 @@ async def reverify_phone(payload: ReverifyIn, db: DbSession, settings: AppSettin
 
 @router.post("/request-password-reset", response_model=OtpRequestOut)
 async def request_password_reset(
-    payload: PasswordResetRequestIn, db: DbSession, settings: AppSettings
+    payload: PasswordResetRequestIn, request: Request, db: DbSession, settings: AppSettings
 ) -> OtpRequestOut:
-    await AuthService(db, settings).request_password_reset(payload.phone)
-    return OtpRequestOut(expires_in=settings.OTP_EXPIRE_MINUTES * 60)
+    await _service_with_ip(request, db, settings).request_password_reset(payload.phone)
+    return OtpRequestOut(expires_in=settings.OTP_EXPIRE_MINUTES * 60, expires_at=_otp_expires_at(settings))
 
 
 @router.post("/verify-password-reset", response_model=MessageOut)
-async def verify_password_reset(payload: PasswordResetIn, db: DbSession, settings: AppSettings) -> MessageOut:
+async def verify_password_reset(
+    payload: PasswordResetIn, request: Request, db: DbSession, settings: AppSettings
+) -> MessageOut:
     """Sets the new password, ends every existing session for the account
     (other devices are logged out), and does not itself log anyone in."""
-    await AuthService(db, settings).reset_password(payload.phone, payload.otp, payload.new_password)
+    await _service_with_ip(request, db, settings).reset_password(payload.phone, payload.otp, payload.new_password)
     return MessageOut(message="Password updated. Please log in with your new password.")
 
 
@@ -167,12 +203,12 @@ async def update_me(payload: UserUpdateIn, user: CurrentUser, db: DbSession, set
 
 @router.post("/request-phone-change", response_model=OtpRequestOut)
 async def request_phone_change(
-    payload: PhoneChangeRequestIn, user: CurrentUser, db: DbSession, settings: AppSettings
+    payload: PhoneChangeRequestIn, request: Request, user: CurrentUser, db: DbSession, settings: AppSettings
 ) -> OtpRequestOut:
     """Re-authenticates with the current password and sends a code to the NEW number. The account
     is not touched until `verify-phone-change` succeeds."""
-    await AuthService(db, settings).request_phone_change(user, payload.new_phone, payload.password)
-    return OtpRequestOut(expires_in=settings.OTP_EXPIRE_MINUTES * 60)
+    await _service_with_ip(request, db, settings).request_phone_change(user, payload.new_phone, payload.password)
+    return OtpRequestOut(expires_in=settings.OTP_EXPIRE_MINUTES * 60, expires_at=_otp_expires_at(settings))
 
 
 @router.post("/verify-phone-change", response_model=PhoneChangeOut)

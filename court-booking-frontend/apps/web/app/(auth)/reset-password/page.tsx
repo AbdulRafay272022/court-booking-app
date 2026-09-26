@@ -54,7 +54,7 @@ function ResetForm() {
       router.replace(`/login?phone=${encodeURIComponent(phone)}&notice=password-updated`);
     } catch (err) {
       setError(friendlyErrorMessage(err));
-      if (err instanceof ApiError && (err.code === "INVALID_OTP" || err.code === "OTP_EXPIRED")) setCode("");
+      if (err instanceof ApiError && ["INVALID_OTP", "OTP_EXPIRED", "OTP_SUPERSEDED"].includes(err.code)) setCode("");
     } finally {
       setBusy(false);
     }

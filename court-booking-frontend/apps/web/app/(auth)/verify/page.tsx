@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isValidOtp } from "@court-booking/types";
@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { webDeviceInfo } from "@/lib/device";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
 import { usePendingAuth } from "@/lib/pending-auth";
 import { homeForRole, safeNext, useRedirectIfSignedIn } from "@/lib/use-auth-helpers";
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -32,9 +33,12 @@ function VerifyForm() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [alreadyVerified, setAlreadyVerified] = useState(false); // QA #2: show a Log in button
+  const submitting = useRef(false); // QA #8: block a rapid second submit before state updates
+  const lock = useCountdown(); // QA #5: rate-limit retry countdown
 
   const flow = useOtpFlow(purpose, phone, async () => (await api.auth.requestOtp({ phone })).expires_in);
-  const ready = isValidOtp(code) && !flow.expired;
+  const ready = isValidOtp(code) && !flow.expired && !alreadyVerified && lock.seconds === 0;
 
   useEffect(() => {
     if (!phone) router.replace("/login");
@@ -42,7 +46,9 @@ function VerifyForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!ready || busy) return;
+    // QA #8: a ref (not state) guards against a double-tap firing two requests before re-render.
+    if (!ready || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -66,9 +72,25 @@ function VerifyForm() {
       useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
       router.replace(next ?? homeForRole(res.user.role));
     } catch (err) {
-      setError(friendlyErrorMessage(err));
-      if (err instanceof ApiError && (err.code === "INVALID_OTP" || err.code === "OTP_EXPIRED")) setCode("");
+      if (err instanceof ApiError && err.code === "ALREADY_VERIFIED") {
+        // QA #2: a dropped-response retry after verify already succeeded -> offer Log in, not a
+        // dead-end expired-code error.
+        setAlreadyVerified(true);
+        setError("This number is already verified — please log in.");
+      } else if (
+        err instanceof ApiError &&
+        (err.code === "OTP_RATE_LIMITED" || err.code === "LOGIN_RATE_LIMITED" || err.code === "OTP_IP_RATE_LIMITED")
+      ) {
+        // QA #5: live countdown with the request-rate message.
+        lock.start(retryAfterSeconds(err.details) || 60);
+        setError(null);
+      } else {
+        setError(friendlyErrorMessage(err));
+        // Clear the field for a fresh entry on a wrong/expired/superseded code (QA #10).
+        if (err instanceof ApiError && ["INVALID_OTP", "OTP_EXPIRED", "OTP_SUPERSEDED"].includes(err.code)) setCode("");
+      }
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -110,11 +132,27 @@ function VerifyForm() {
 
         <OtpControls flow={flow} />
 
-        {error ? <FormMessage kind="error">{error}</FormMessage> : null}
+        {/* QA #8: reserve the banner's space so showing/hiding it never shifts the button below. */}
+        <div className="min-h-[44px]">
+          {lock.seconds > 0 ? (
+            <FormMessage kind="error">Too many attempts. Please try again in {lock.seconds}s.</FormMessage>
+          ) : error ? (
+            <FormMessage kind="error">{error}</FormMessage>
+          ) : null}
+        </div>
 
-        <SubmitButton ready={ready} busy={busy} busyLabel="Verifying…">
-          {purpose === "signup" ? "Verify and continue" : "Verify"}
-        </SubmitButton>
+        {alreadyVerified ? (
+          <Link
+            href={`/login?phone=${encodeURIComponent(phone)}&notice=phone-verified`}
+            className="flex h-14 items-center justify-center rounded-2xl bg-player-accent text-white text-[16px] font-bold"
+          >
+            Log in
+          </Link>
+        ) : (
+          <SubmitButton ready={ready} busy={busy} busyLabel="Verifying…">
+            {lock.seconds > 0 ? `Try again in ${lock.seconds}s` : purpose === "signup" ? "Verify and continue" : "Verify"}
+          </SubmitButton>
+        )}
       </form>
     </AuthShell>
   );

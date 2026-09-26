@@ -14,9 +14,11 @@ class ErrorCode:
     INVALID_OTP = "INVALID_OTP"
     OTP_EXPIRED = "OTP_EXPIRED"
     OTP_RATE_LIMITED = "OTP_RATE_LIMITED"
-    SESSION_EXPIRED = "SESSION_EXPIRED"
+    SESSION_EXPIRED = "SESSION_EXPIRED"  # a token that existed and expired/was revoked
     SESSION_REVOKED = "SESSION_REVOKED"
+    NOT_AUTHENTICATED = "NOT_AUTHENTICATED"  # QA #11: no Authorization header at all (vs. a stale token)
     OTP_DELIVERY_FAILED = "OTP_DELIVERY_FAILED"
+    OTP_SUPERSEDED = "OTP_SUPERSEDED"  # QA #10: a newer code was sent; this older one is no longer valid
     # Section 26 (password auth)
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"  # deliberately doesn't say which half was wrong
     LOGIN_RATE_LIMITED = "LOGIN_RATE_LIMITED"
@@ -24,6 +26,11 @@ class ErrorCode:
     PASSWORD_NOT_SET = "PASSWORD_NOT_SET"  # pre-Section-26 account: use the reset flow to set one
     PHONE_ALREADY_REGISTERED = "PHONE_ALREADY_REGISTERED"
     EMAIL_ALREADY_IN_USE = "EMAIL_ALREADY_IN_USE"
+    # QA fixes (post-batch auth hardening)
+    SIGNUP_ALREADY_PENDING = "SIGNUP_ALREADY_PENDING"  # QA #1: a verification is already in progress for this number
+    ALREADY_VERIFIED = "ALREADY_VERIFIED"  # QA #2: phone already verified -> log in instead
+    USER_NOT_FOUND = "USER_NOT_FOUND"  # NEW BUG 1 & 2: login/reset for a number with no account
+    OTP_IP_RATE_LIMITED = "OTP_IP_RATE_LIMITED"  # QA #3: too many distinct numbers OTP'd from one IP/device
 
     # Booking
     SLOT_ALREADY_TAKEN = "SLOT_ALREADY_TAKEN"
