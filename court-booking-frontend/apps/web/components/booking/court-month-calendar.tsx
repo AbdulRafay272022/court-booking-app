@@ -78,9 +78,13 @@ export function CourtMonthCalendar({
         <NavButton dir="next" disabled={nextDisabled} onClick={() => setMonth((m) => addMonths(m, 1))} />
       </div>
 
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-7 gap-1 mb-0.5">
         {WEEKDAY_HEADERS.map((h, i) => (
-          <span key={i} className="text-center font-bold text-[10px] tracking-wide text-player-ink-fainter pt-0.5 pb-2">
+          <span
+            key={i}
+            className="mx-auto w-6 h-5 rounded-md flex items-center justify-center font-bold text-[10px] text-player-ink-faint"
+            style={{ background: "#F3EEE9" }}
+          >
             {h}
           </span>
         ))}

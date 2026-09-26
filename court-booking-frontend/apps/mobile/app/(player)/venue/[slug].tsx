@@ -120,7 +120,7 @@ export default function VenueDetailScreen() {
             const price = prices[court.id];
             return (
               <View key={court.id} className="bg-player-surface border border-player-border-light rounded-[18px] p-4 gap-3.5">
-                <View className="items-center gap-0.5">
+                <View className="items-center gap-0.5 rounded-xl px-4 py-3" style={{ backgroundColor: "#F3EEE9" }}>
                   <Text className="font-figtree-bold text-player-ink text-[16px] -tracking-[0.2px]">{court.name}</Text>
                   <Text className="font-figtree-medium text-player-ink-faint text-[12.5px]">
                     {formatDuration(court.slot_minutes)} slots{price != null ? ` · From PKR ${formatPKR(price)}` : ""}

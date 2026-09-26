@@ -196,7 +196,7 @@ export function CourtDayPopup({
                       disabled={isPast}
                       onClick={() => setDate(d)}
                       aria-pressed={selected}
-                      className="flex-1 min-w-[46px] flex flex-col items-center gap-1 py-2.5 rounded-full transition-colors"
+                      className="flex-1 min-w-[46px] flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors"
                       style={{
                         background: selected ? "#EF5A2C" : "#FFFFFF",
                         border: `1px solid ${selected ? "#EF5A2C" : "#E5DED8"}`,

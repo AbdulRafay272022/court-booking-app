@@ -63,7 +63,7 @@ export function VenueScheduleClient({
             const price = prices[court.id];
             return (
               <section key={court.id} className="bg-player-surface border border-player-border-light rounded-2xl p-4 flex flex-col gap-3.5" data-testid={`court-card-${court.name}`}>
-                <div className="flex flex-col items-center gap-0.5">
+                <div className="flex flex-col items-center gap-0.5 rounded-xl px-4 py-3" style={{ background: "#F3EEE9" }}>
                   <h3 className="text-[15px] font-bold text-player-ink">{court.name}</h3>
                   <span className="text-[12.5px] font-medium text-player-ink-faint">
                     {formatDuration(court.slot_minutes)} slots{price != null ? ` · From PKR ${formatPKR(price)}` : ""}

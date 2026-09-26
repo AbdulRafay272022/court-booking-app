@@ -180,7 +180,7 @@ export function CourtDayPopup({
                         key={d}
                         disabled={isPast}
                         onPress={() => setDate(d)}
-                        className="items-center gap-1 rounded-full py-3"
+                        className="items-center gap-1 rounded-xl py-2.5"
                         style={{
                           minWidth: 50,
                           backgroundColor: selected ? "#EF5A2C" : "#FFFFFF",

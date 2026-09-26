@@ -87,10 +87,12 @@ export function CourtMonthCalendar({
         <NavButton dir="next" disabled={nextDisabled} onPress={() => setMonth((m) => addMonths(m, 1))} />
       </View>
 
-      <View className="flex-row">
+      <View className="flex-row mb-1">
         {WEEKDAY_HEADERS.map((h, i) => (
-          <View key={i} style={{ width: "14.28%" }} className="items-center pt-0.5 pb-2">
-            <Text className="font-figtree-bold text-player-ink-fainter text-[10px]">{h}</Text>
+          <View key={i} style={{ width: "14.28%" }} className="items-center">
+            <View className="rounded-md items-center justify-center" style={{ width: 24, height: 20, backgroundColor: "#F3EEE9" }}>
+              <Text className="font-figtree-bold text-player-ink-faint text-[10px]">{h}</Text>
+            </View>
           </View>
         ))}
       </View>
