@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, pktDateString, weekOf } from "@court-booking/types";
+import { addDays, monthOf, pktDateString, weekOf } from "@court-booking/types";
+import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
@@ -18,6 +19,9 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
   booked: { label: "BOOKED", color: "#7A7068" },
   blocked: { label: "UNAVAILABLE", color: "#7A7068" },
 };
+
+// Day-state dot colours for the week strip (match the calendar + the approved mockup).
+const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "#1E9E5A", few: "#D6900A", full: "#C43A3A" };
 
 /**
  * The popup a tapped calendar date opens (Section 32 Part 4b UPDATE), scoped to ONE court: a Monday-first week
@@ -67,6 +71,13 @@ export function CourtDayPopup({
     queryFn: () => api.availability.forCourtOnDate(courtId, date),
   });
   const slots = dayQuery.data?.slots ?? [];
+
+  // Drives the availability dot on each week-strip pill; shares the calendar's query key so it's already cached.
+  const monthSummaryQuery = useQuery({
+    queryKey: ["court-month-summary", courtId, monthOf(date)],
+    queryFn: () => api.availability.monthSummary(courtId, monthOf(date)),
+  });
+  const stateByDate = new Map((monthSummaryQuery.data?.days ?? []).map((d) => [d.date, d.state]));
 
   async function handleJoinWaitlist(slotStartsAt: string) {
     const key = `${courtId}|${slotStartsAt}`;
@@ -159,31 +170,32 @@ export function CourtDayPopup({
               </ScrollView>
             ) : (
               <>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-1.5">
                   {week.map((d) => {
                     const isPast = d < today;
                     const selected = d === date;
-                    const isToday = d === today;
+                    const dot = DOW_DOT[stateByDate.get(d) ?? "closed"];
                     return (
                       <Pressable
                         key={d}
                         disabled={isPast}
                         onPress={() => setDate(d)}
-                        className="items-center gap-0.5 rounded-2xl py-2.5"
+                        className="items-center gap-1 rounded-xl py-2.5"
                         style={{
-                          minWidth: 52,
-                          backgroundColor: selected ? "#EF5A2C" : "#F4EFEC",
-                          borderWidth: 1.5,
-                          borderColor: !selected && isToday ? "#EF5A2C" : "transparent",
+                          minWidth: 50,
+                          backgroundColor: selected ? "#EF5A2C" : "#FFFFFF",
+                          borderWidth: 1,
+                          borderColor: selected ? "#EF5A2C" : "#E5DED8",
                           opacity: isPast ? 0.4 : 1,
                         }}
                       >
-                        <Text className="font-figtree-bold text-[10px] tracking-[0.06em] uppercase" style={{ color: selected ? "rgba(255,255,255,0.85)" : "#8A8079" }}>
+                        <Text className="font-figtree-bold text-[10px] tracking-[0.06em] uppercase" style={{ color: selected ? "rgba(255,255,255,0.9)" : "#5C544D" }}>
                           {tabLabel(d)}
                         </Text>
-                        <Text className="font-mono-semibold text-[17px]" style={{ color: selected ? "#FFFFFF" : "#141A1D" }}>
+                        <Text className="font-mono-semibold text-[16px]" style={{ color: selected ? "#FFFFFF" : "#141A1D" }}>
                           {String(Number(d.slice(8))).padStart(2, "0")}
                         </Text>
+                        <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: selected ? (dot ? "#FFFFFF" : "transparent") : (dot ?? "transparent") }} />
                       </Pressable>
                     );
                   })}
@@ -203,11 +215,13 @@ export function CourtDayPopup({
                           slot.is_mine && slot.booking_id && (slot.status === "booked" || slot.status === "held" || slot.status === "payment_submitted")
                             ? slot.booking_id
                             : null;
-                        const meta = mineBookingId
+                        const isOpen = slot.status === "available";
+                        const isBooked = slot.status === "booked" && !mineBookingId;
+                        const mineBadge = mineBookingId
                           ? slot.status === "booked"
-                            ? { label: "YOUR BOOKING", color: "#1F7A52" }
-                            : { label: "PAYMENT PENDING", color: "#B5730B" }
-                          : STATUS_META[slot.status] ?? STATUS_META.blocked;
+                            ? { label: "YOUR BOOKING", bg: "#D6EDDE", color: "#1F7A52" }
+                            : { label: "PAYMENT PENDING", bg: "#F7E4BE", color: "#9A6208" }
+                          : null;
                         const waitlistKey = `${courtId}|${slot.starts_at}`;
                         const isOnWaitlist = joinedKeys.has(waitlistKey);
                         const isJoining = joiningKey === waitlistKey;
@@ -219,29 +233,29 @@ export function CourtDayPopup({
                             ) : null}
                             <Pressable
                               onPress={() => handleTapSlot(slotIndex, mineBookingId)}
-                              className="flex-row items-center justify-between px-4 py-3.5 rounded-[14px]"
+                              className="flex-row items-center justify-between px-3.5 py-3 rounded-xl"
                               style={{
-                                backgroundColor: mineBookingId ? "#EAF5EF" : slot.status === "available" ? "#FFFFFF" : "#F4EFEC",
-                                borderWidth: 1.5,
-                                borderColor: slot.status === "available" ? "#E5DED8" : "transparent",
+                                backgroundColor: mineBadge ? (slot.status === "booked" ? "#EAF5EF" : "#FFF6E5") : isOpen ? "#FFFFFF" : "#F3EEE9",
+                                borderWidth: 1,
+                                borderColor: mineBadge ? (slot.status === "booked" ? "#BFE0CE" : "#F3DDAE") : isOpen ? "#cfe9d9" : "transparent",
                                 opacity: slot.status === "blocked" ? 0.6 : 1,
                               }}
                             >
-                              <View className="gap-0.5">
-                                <Text className="font-mono-semibold text-player-ink text-[15px] -tracking-[0.1px]">{formatSlotTimes(slot)}</Text>
-                                <Text className="font-figtree-semibold text-[11px] tracking-[0.04em]" style={{ color: meta.color }}>
-                                  {meta.label}
-                                </Text>
-                              </View>
-                              <View className="flex-row items-center gap-2.5">
-                                {slot.status === "booked" && !mineBookingId ? (
+                              <Text
+                                className="font-mono-semibold text-[14px]"
+                                style={{ color: isOpen || mineBadge ? "#141A1D" : "#9A9791", textDecorationLine: isBooked ? "line-through" : "none" }}
+                              >
+                                {formatSlotTimes(slot)}
+                              </Text>
+                              <View className="flex-row items-center" style={{ gap: 8 }}>
+                                {isBooked ? (
                                   <Pressable
                                     disabled={isOnWaitlist || isJoining}
                                     onPress={(e) => {
                                       e.stopPropagation?.();
                                       handleJoinWaitlist(slot.starts_at);
                                     }}
-                                    className="px-3 h-8 rounded-full items-center justify-center"
+                                    className="px-2.5 h-7 rounded-full items-center justify-center"
                                     style={{ backgroundColor: isOnWaitlist ? "#F4EFEC" : "#FFF3EE" }}
                                   >
                                     <Text className="font-figtree-bold text-[11px]" style={{ color: isOnWaitlist ? "#7A7068" : "#C8431C" }}>
@@ -249,8 +263,21 @@ export function CourtDayPopup({
                                     </Text>
                                   </Pressable>
                                 ) : null}
-                                {slot.status === "available" ? (
-                                  <Text className="font-mono-semibold text-player-ink text-[15px]">PKR {formatPKR(slot.price)}</Text>
+                                {mineBadge ? (
+                                  <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: mineBadge.bg }}>
+                                    <Text className="font-figtree-bold text-[10px]" style={{ color: mineBadge.color }}>{mineBadge.label}</Text>
+                                  </View>
+                                ) : isOpen ? (
+                                  <>
+                                    <Text className="font-mono-semibold text-[12px]" style={{ color: "#9A9791" }}>PKR {formatPKR(slot.price)}</Text>
+                                    <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: "#E3F7EB" }}>
+                                      <Text className="font-figtree-bold text-[10px]" style={{ color: "#1E9E5A" }}>Open</Text>
+                                    </View>
+                                  </>
+                                ) : !isBooked ? (
+                                  <Text className="font-figtree-bold text-[11px]" style={{ color: "#9A9791" }}>
+                                    {(STATUS_META[slot.status] ?? STATUS_META.blocked).label}
+                                  </Text>
                                 ) : null}
                               </View>
                             </Pressable>

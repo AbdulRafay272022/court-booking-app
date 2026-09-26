@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Defs, Pattern, Rect } from "react-native-svg";
 import { useQuery } from "@tanstack/react-query";
 import { addMonths, daysOfMonth, formatMonth, mondayFirstWeekdayOf, monthOf, pktDateString } from "@court-booking/types";
 import type { CourtMonthSummary, DaySummaryState } from "@court-booking/types";
@@ -8,28 +9,43 @@ import { api } from "@/lib/api";
 
 const WEEKDAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
 
-// Day-state colours. open/few/full are filled dots; closed is a filled grey dot (an intentional "no play this
-// day" marker, not the old hollow ring that read as a loading glitch). past/beyond draw no dot at all.
-const DOT_COLOR: Partial<Record<DaySummaryState, string>> = {
-  open: "#1F7A52",
-  few: "#B5730B",
-  full: "#B3261E",
-  closed: "#CDC6BF",
-};
+// Palette from the approved mockup (calendar-redesign-mockup.html).
+const OPEN = "#1E9E5A";
+const LIMITED = "#D6900A";
+const FULL = "#C43A3A";
+const CLOSED_RING = "#B9B2AA";
+const NOHOURS_INK = "#9A9791";
+const ACCENT = "#EF5A2C";
+const CELL_BG: Partial<Record<DaySummaryState, string>> = { open: "#E3F7EB", few: "#FBEED9", full: "#FBE6E6" };
+const DOT_COLOR: Partial<Record<DaySummaryState, string>> = { open: OPEN, few: LIMITED, full: FULL };
 
-// The legend that makes the dots self-explanatory (post-batch #5).
 const LEGEND: { state: DaySummaryState; label: string }[] = [
   { state: "open", label: "Open" },
-  { state: "few", label: "Few left" },
-  { state: "full", label: "Full" },
-  { state: "closed", label: "Closed" },
+  { state: "few", label: "Filling up" },
+  { state: "full", label: "Fully booked" },
+  { state: "closed", label: "Closed that day" },
 ];
 
+/** Diagonal-hatch fill for a no-hours day, matching the web CSS repeating-linear-gradient (RN has no CSS
+ * gradients, so we draw it with an SVG pattern). Clipped to the cell's rounded corners by the parent's overflow. */
+function HatchFill() {
+  return (
+    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+      <Defs>
+        <Pattern id="nohours-hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(135)">
+          <Rect width="8" height="8" fill="#F3EEE9" />
+          <Rect width="4" height="8" fill="#EDE7E1" />
+        </Pattern>
+      </Defs>
+      <Rect width="100%" height="100%" fill="url(#nohours-hatch)" />
+    </Svg>
+  );
+}
+
 /**
- * A single court's month calendar (Section 32 Part 4b; visual pass post-batch #5): every day of the shown month
- * gets a dot for its availability state, with a legend and a clear empty state when the court has no opening
- * hours yet. Each instance owns its own month/navigation state. Reused inline on the venue page (the default
- * view) and inside the day popup's "back to month" view. The calendar-first interaction is unchanged.
+ * A single court's month calendar (Section 32 Part 4b; visual redesign post-batch #5, matching the owner's
+ * approved mockup): soft-tinted state cells, a hollow ring for "closed", and a diagonal-hatch "no hours set"
+ * state with a callout when a court has no schedule. The calendar-first interaction is unchanged.
  */
 export function CourtMonthCalendar({
   courtId,
@@ -60,38 +76,20 @@ export function CourtMonthCalendar({
   const prevDisabled = month <= todayMonth;
   const nextDisabled = summary ? addMonths(month, 1) > monthOf(summary.last_bookable_date) : true;
 
-  // A court with no active schedule returns every future day as "closed"; there is nothing to book, so we say
-  // so plainly rather than filling the grid with markers that look broken.
   const hasBookable = (summary?.days ?? []).some((d) => d.state === "open" || d.state === "few" || d.state === "full");
   const noHours = !!summary && !hasBookable;
 
   return (
-    <View className="gap-3">
+    <View className="gap-2.5">
       <View className="flex-row items-center justify-between">
-        <Pressable
-          disabled={prevDisabled}
-          onPress={() => setMonth((m) => addMonths(m, -1))}
-          accessibilityLabel="Previous month"
-          className="w-9 h-9 rounded-xl items-center justify-center"
-          style={{ opacity: prevDisabled ? 0.3 : 1, backgroundColor: "#F4EFEC" }}
-        >
-          <Text className="font-figtree-bold text-player-ink text-[16px]">‹</Text>
-        </Pressable>
-        <Text className="font-figtree-bold text-player-ink text-[14px]">{formatMonth(month)}</Text>
-        <Pressable
-          disabled={nextDisabled}
-          onPress={() => setMonth((m) => addMonths(m, 1))}
-          accessibilityLabel="Next month"
-          className="w-9 h-9 rounded-xl items-center justify-center"
-          style={{ opacity: nextDisabled ? 0.3 : 1, backgroundColor: "#F4EFEC" }}
-        >
-          <Text className="font-figtree-bold text-player-ink text-[16px]">›</Text>
-        </Pressable>
+        <NavButton dir="prev" disabled={prevDisabled} onPress={() => setMonth((m) => addMonths(m, -1))} />
+        <Text className="font-figtree-extrabold text-player-ink text-[16px]">{formatMonth(month)}</Text>
+        <NavButton dir="next" disabled={nextDisabled} onPress={() => setMonth((m) => addMonths(m, 1))} />
       </View>
 
       <View className="flex-row">
         {WEEKDAY_HEADERS.map((h, i) => (
-          <View key={i} style={{ width: "14.28%" }} className="items-center pb-1">
+          <View key={i} style={{ width: "14.28%" }} className="items-center pt-0.5 pb-2">
             <Text className="font-figtree-bold text-player-ink-fainter text-[10px]">{h}</Text>
           </View>
         ))}
@@ -99,7 +97,7 @@ export function CourtMonthCalendar({
 
       {summaryQuery.isLoading ? (
         <View className="py-10 items-center">
-          <ActivityIndicator color="#EF5A2C" />
+          <ActivityIndicator color={ACCENT} />
         </View>
       ) : (
         <>
@@ -109,51 +107,73 @@ export function CourtMonthCalendar({
             ))}
             {dates.map((date) => {
               const state = dayByDate.get(date)?.state ?? "closed";
-              const tappable = state !== "past" && state !== "beyond";
+              const isPast = state === "past" || state === "beyond";
+              const isNoHours = noHours && !isPast;
+              const tappable = !isPast && !isNoHours;
               const isToday = date === today;
               const dotColor = DOT_COLOR[state];
               return (
-                <Pressable
-                  key={date}
-                  disabled={!tappable}
-                  onPress={() => onSelectDate(date)}
-                  accessibilityLabel={`${date}, ${state}`}
-                  style={{ width: "14.28%" }}
-                  className="aspect-square items-center justify-center gap-1"
-                >
-                  <View
-                    className="w-8 h-8 rounded-full items-center justify-center"
-                    style={{ backgroundColor: isToday ? "#141A1D" : "transparent" }}
+                <View key={date} style={{ width: "14.28%" }} className="aspect-square p-0.5">
+                  <Pressable
+                    disabled={!tappable}
+                    onPress={() => onSelectDate(date)}
+                    accessibilityLabel={`${date}, ${isNoHours ? "no hours set" : state}`}
+                    className="flex-1 rounded-[10px] items-center justify-center overflow-hidden"
+                    style={{
+                      backgroundColor: isNoHours ? "transparent" : CELL_BG[state] ?? "transparent",
+                      borderWidth: 2,
+                      borderColor: isToday ? ACCENT : "transparent",
+                      opacity: isPast ? 0.45 : 1,
+                    }}
                   >
+                    {isNoHours ? <HatchFill /> : null}
                     <Text
-                      className="font-mono-semibold text-[12.5px]"
-                      style={{ color: isToday ? "#FFFFFF" : tappable ? "#141A1D" : "#C2BAB2" }}
+                      className="font-figtree-semibold text-[12.5px]"
+                      style={{ color: isPast || isNoHours ? NOHOURS_INK : "#141A1D" }}
                     >
                       {Number(date.slice(8))}
                     </Text>
-                  </View>
-                  <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dotColor ?? "transparent" }} />
-                </Pressable>
+                    {isNoHours ? (
+                      <Text className="text-[11px] font-figtree-bold leading-none" style={{ color: NOHOURS_INK }}>—</Text>
+                    ) : isPast ? (
+                      <View style={{ width: 6, height: 6, marginTop: 3 }} />
+                    ) : dotColor ? (
+                      <View style={{ width: 6, height: 6, borderRadius: 3, marginTop: 3, backgroundColor: dotColor }} />
+                    ) : state === "closed" ? (
+                      <View style={{ width: 6, height: 6, borderRadius: 3, marginTop: 3, borderWidth: 1.5, borderColor: CLOSED_RING }} />
+                    ) : (
+                      <View style={{ width: 6, height: 6, marginTop: 3 }} />
+                    )}
+                  </Pressable>
+                </View>
               );
             })}
           </View>
 
           {noHours ? (
-            <View
-              className="mt-1 rounded-xl px-3.5 py-3 flex-row items-start gap-2.5"
-              style={{ backgroundColor: "#FBF5F1", borderWidth: 1, borderColor: "#F0E6DE" }}
-            >
-              <Text className="text-[15px] mt-0.5">🕓</Text>
-              <Text className="flex-1 text-[12.5px] leading-snug text-player-ink-faint font-figtree">
-                This court hasn’t set its opening hours yet, so there are no times to book here.
-              </Text>
-            </View>
+            <>
+              <View className="flex-row flex-wrap mt-4 pt-3.5" style={{ borderTopWidth: 1, borderTopColor: "#E5DED8", borderStyle: "dashed" }}>
+                <View className="flex-row items-center" style={{ gap: 6 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#EDE7E1", borderWidth: 1, borderColor: NOHOURS_INK }} />
+                  <Text className="text-[12px] font-figtree-semibold text-player-ink-faint">No hours set for this court</Text>
+                </View>
+              </View>
+              <View className="rounded-xl px-4 py-3.5 mt-4" style={{ backgroundColor: "#FDECE5", borderWidth: 1, borderColor: "#f3cdb9" }}>
+                <Text className="text-[13.5px]" style={{ color: "#8a3417" }}>
+                  This court hasn’t set its opening hours yet — check back soon or message the venue.
+                </Text>
+              </View>
+            </>
           ) : (
-            <View className="mt-0.5 flex-row flex-wrap" style={{ columnGap: 14, rowGap: 6 }}>
+            <View className="flex-row flex-wrap mt-4 pt-3.5" style={{ borderTopWidth: 1, borderTopColor: "#E5DED8", borderStyle: "dashed", columnGap: 14, rowGap: 8 }}>
               {LEGEND.map(({ state, label }) => (
                 <View key={state} className="flex-row items-center" style={{ gap: 6 }}>
-                  <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: DOT_COLOR[state] }} />
-                  <Text className="text-[10.5px] font-figtree-semibold text-player-ink-fainter">{label}</Text>
+                  {state === "closed" ? (
+                    <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: CLOSED_RING }} />
+                  ) : (
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: DOT_COLOR[state] }} />
+                  )}
+                  <Text className="text-[12px] font-figtree-semibold text-player-ink-faint">{label}</Text>
                 </View>
               ))}
             </View>
@@ -161,5 +181,19 @@ export function CourtMonthCalendar({
         </>
       )}
     </View>
+  );
+}
+
+function NavButton({ dir, disabled, onPress }: { dir: "prev" | "next"; disabled: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      accessibilityLabel={dir === "prev" ? "Previous month" : "Next month"}
+      className="w-7 h-7 rounded-lg items-center justify-center"
+      style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5DED8", opacity: disabled ? 0.35 : 1 }}
+    >
+      <Text className="text-[13px]" style={{ color: "#5C544D" }}>{dir === "prev" ? "‹" : "›"}</Text>
+    </Pressable>
   );
 }

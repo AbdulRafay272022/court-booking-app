@@ -9,28 +9,32 @@ import { api } from "@/lib/api";
 
 const WEEKDAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
 
-// Day-state colours. open/few/full are filled dots; closed is a filled grey dot (an intentional "no play this
-// day" marker, not the old hollow ring that read as a loading glitch). past/beyond draw no dot at all.
-const DOT_COLOR: Partial<Record<DaySummaryState, string>> = {
-  open: "#1F7A52",
-  few: "#B5730B",
-  full: "#B3261E",
-  closed: "#CDC6BF",
-};
+// Palette from the approved mockup (calendar-redesign-mockup.html). Day-state colours are calendar-only tokens.
+const OPEN = "#1E9E5A";
+const LIMITED = "#D6900A";
+const FULL = "#C43A3A";
+const CLOSED_RING = "#B9B2AA";
+const NOHOURS_INK = "#9A9791";
+const ACCENT = "#EF5A2C";
+// A soft tint fills the whole cell; a dot beneath the number carries the same colour.
+const CELL_BG: Partial<Record<DaySummaryState, string>> = { open: "#E3F7EB", few: "#FBEED9", full: "#FBE6E6" };
+const DOT_COLOR: Partial<Record<DaySummaryState, string>> = { open: OPEN, few: LIMITED, full: FULL };
+// Diagonal hatch for a court with no schedule set — reads as "not set up", not "broken".
+const HATCH = "repeating-linear-gradient(135deg, #F3EEE9, #F3EEE9 4px, #EDE7E1 4px, #EDE7E1 8px)";
+const HATCH_LEGEND = "repeating-linear-gradient(135deg, #F3EEE9, #F3EEE9 2px, #cfc7bd 2px, #cfc7bd 4px)";
 
-// The legend that makes the dots self-explanatory (post-batch #5).
 const LEGEND: { state: DaySummaryState; label: string }[] = [
   { state: "open", label: "Open" },
-  { state: "few", label: "Few left" },
-  { state: "full", label: "Full" },
-  { state: "closed", label: "Closed" },
+  { state: "few", label: "Filling up" },
+  { state: "full", label: "Fully booked" },
+  { state: "closed", label: "Closed that day" },
 ];
 
 /**
- * A single court's month calendar (Section 32 Part 4b; visual pass post-batch #5): every day of the shown month
- * gets a dot for its availability state, with a legend and a clear empty state when the court has no opening
- * hours yet. Each instance owns its own month/navigation state. Reused inline on the venue page (the default
- * view) and inside the day popup's "back to month" view. The calendar-first interaction is unchanged.
+ * A single court's month calendar (Section 32 Part 4b; visual redesign post-batch #5, matching the owner's
+ * approved mockup): each day is a soft-tinted cell with a state dot, "closed" is a hollow ring, and a court with
+ * no schedule shows a diagonal-hatch state plus a plain-language callout instead of a grid that looks broken.
+ * The calendar-first interaction is unchanged. Each instance owns its own month/navigation state.
  */
 export function CourtMonthCalendar({
   courtId,
@@ -61,22 +65,22 @@ export function CourtMonthCalendar({
   const prevDisabled = month <= todayMonth;
   const nextDisabled = summary ? addMonths(month, 1) > monthOf(summary.last_bookable_date) : true;
 
-  // A court with no active schedule returns every future day as "closed"; there is nothing to book, so we say
-  // so plainly rather than filling the grid with markers that look broken.
+  // A court with no active schedule returns every future day as "closed"; render the whole month as the
+  // hatched "no hours set" state (not per-day hollow rings, which read as broken) plus a callout.
   const hasBookable = (summary?.days ?? []).some((d) => d.state === "open" || d.state === "few" || d.state === "full");
   const noHours = !!summary && !hasBookable;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <NavButton dir="prev" disabled={prevDisabled} onClick={() => setMonth((m) => addMonths(m, -1))} />
-        <span className="font-bold text-[14px] text-player-ink tracking-tight">{formatMonth(month)}</span>
+        <span className="text-[16px] font-extrabold tracking-tight text-player-ink">{formatMonth(month)}</span>
         <NavButton dir="next" disabled={nextDisabled} onClick={() => setMonth((m) => addMonths(m, 1))} />
       </div>
 
       <div className="grid grid-cols-7">
         {WEEKDAY_HEADERS.map((h, i) => (
-          <span key={i} className="text-center font-bold text-[10px] tracking-wide text-player-ink-fainter uppercase pb-1">
+          <span key={i} className="text-center font-bold text-[10px] tracking-wide text-player-ink-fainter pt-0.5 pb-2">
             {h}
           </span>
         ))}
@@ -86,69 +90,92 @@ export function CourtMonthCalendar({
         <p className="py-10 text-center text-player-ink-faint text-sm">Loading…</p>
       ) : (
         <>
-          <div className="grid grid-cols-7 gap-y-0.5">
+          <div className="grid grid-cols-7 gap-1">
             {Array.from({ length: leadingBlanks }).map((_, i) => (
               <div key={`b${i}`} />
             ))}
             {dates.map((date) => {
               const state = dayByDate.get(date)?.state ?? "closed";
-              const tappable = state !== "past" && state !== "beyond";
+              const isPast = state === "past" || state === "beyond";
+              const isNoHours = noHours && !isPast;
+              const tappable = !isPast && !isNoHours;
               const isToday = date === today;
               const dotColor = DOT_COLOR[state];
+              const num = Number(date.slice(8));
               return (
                 <button
                   key={date}
                   type="button"
                   disabled={!tappable}
                   onClick={() => onSelectDate(date)}
-                  aria-label={`${date}${state ? `, ${state}` : ""}`}
-                  className={`group aspect-square flex flex-col items-center justify-center gap-1 rounded-xl transition-colors ${
-                    tappable ? "cursor-pointer hover:bg-[#F7F2EE]" : "cursor-default"
+                  aria-label={`${date}, ${isNoHours ? "no hours set" : state}`}
+                  className={`aspect-square rounded-[10px] flex flex-col items-center justify-center gap-[3px] text-[12.5px] font-semibold transition-transform ${
+                    tappable ? "cursor-pointer hover:-translate-y-px" : "cursor-default"
                   }`}
+                  style={{
+                    background: isNoHours ? HATCH : CELL_BG[state] ?? "transparent",
+                    color: isPast ? NOHOURS_INK : isNoHours ? NOHOURS_INK : "#141A1D",
+                    opacity: isPast ? 0.45 : 1,
+                    border: `2px solid ${isToday ? ACCENT : "transparent"}`,
+                  }}
                 >
-                  <span
-                    className="w-8 h-8 rounded-full flex items-center justify-center font-mono text-[12.5px] font-semibold transition-colors"
-                    style={{
-                      background: isToday ? "#141A1D" : "transparent",
-                      color: isToday ? "#FFFFFF" : tappable ? "#141A1D" : "#C2BAB2",
-                    }}
-                  >
-                    {Number(date.slice(8))}
-                  </span>
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ background: dotColor ?? "transparent" }}
-                    aria-hidden
-                  />
+                  <span>{num}</span>
+                  {isNoHours ? (
+                    <span className="text-[11px] font-bold leading-none" style={{ color: NOHOURS_INK }}>—</span>
+                  ) : isPast ? (
+                    <span className="w-1.5 h-1.5" aria-hidden />
+                  ) : dotColor ? (
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} aria-hidden />
+                  ) : state === "closed" ? (
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ border: `1.5px solid ${CLOSED_RING}` }} aria-hidden />
+                  ) : (
+                    <span className="w-1.5 h-1.5" aria-hidden />
+                  )}
                 </button>
               );
             })}
           </div>
 
           {noHours ? (
-            <div
-              className="mt-1 rounded-xl px-3.5 py-3 flex items-start gap-2.5"
-              style={{ background: "#FBF5F1", border: "1px solid #F0E6DE" }}
-              role="status"
-            >
-              <span aria-hidden className="text-[15px] leading-none mt-0.5">🕓</span>
-              <p className="text-[12.5px] leading-snug text-player-ink-faint">
-                This court hasn’t set its opening hours yet, so there are no times to book here.
-              </p>
-            </div>
+            <>
+              <div className="flex flex-wrap gap-3.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed #E5DED8" }}>
+                <LegendItem label="No hours set for this court">
+                  <span className="w-2 h-2 rounded-full" style={{ background: HATCH_LEGEND, border: `1px solid ${NOHOURS_INK}` }} />
+                </LegendItem>
+              </div>
+              <div
+                className="rounded-xl px-4 py-3.5 mt-4 text-[13.5px]"
+                style={{ background: "#FDECE5", border: "1px solid #f3cdb9", color: "#8a3417" }}
+                role="status"
+              >
+                This court hasn’t set its opening hours yet — check back soon or message the venue.
+              </div>
+            </>
           ) : (
-            <div className="mt-0.5 flex flex-wrap gap-x-3.5 gap-y-1.5">
+            <div className="flex flex-wrap gap-3.5 mt-4 pt-3.5" style={{ borderTop: "1px dashed #E5DED8" }}>
               {LEGEND.map(({ state, label }) => (
-                <span key={state} className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: DOT_COLOR[state] }} />
-                  <span className="text-[10.5px] font-semibold text-player-ink-fainter">{label}</span>
-                </span>
+                <LegendItem key={state} label={label}>
+                  {state === "closed" ? (
+                    <span className="w-2 h-2 rounded-full" style={{ border: `1.5px solid ${CLOSED_RING}` }} />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full" style={{ background: DOT_COLOR[state] }} />
+                  )}
+                </LegendItem>
               ))}
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+function LegendItem({ children, label }: { children: React.ReactNode; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-player-ink-faint">
+      {children}
+      {label}
+    </span>
   );
 }
 
@@ -159,8 +186,8 @@ function NavButton({ dir, disabled, onClick }: { dir: "prev" | "next"; disabled:
       disabled={disabled}
       onClick={onClick}
       aria-label={dir === "prev" ? "Previous month" : "Next month"}
-      className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-[16px] text-player-ink transition-colors hover:bg-[#EDE6E0]"
-      style={{ background: "#F4EFEC", opacity: disabled ? 0.3 : 1, cursor: disabled ? "default" : "pointer" }}
+      className="w-7 h-7 rounded-lg flex items-center justify-center text-[13px] text-player-ink-faint transition-colors hover:bg-[#F3EEE9]"
+      style={{ background: "#FFFFFF", border: "1px solid #E5DED8", opacity: disabled ? 0.35 : 1, cursor: disabled ? "default" : "pointer" }}
     >
       {dir === "prev" ? "‹" : "›"}
     </button>
