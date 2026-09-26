@@ -133,9 +133,17 @@ class LoginIn(PhoneIn, DeviceInfoIn):
     # (INVALID_CREDENTIALS), not a 422 that tells an attacker the length rule.
     password: str = Field(min_length=1, max_length=128)
 
+    @field_validator("phone")
+    @classmethod
+    def normalize_pk(cls, v: str) -> str:  # QA round 4 item 4: consistent PK-format validation
+        return _normalize_pk_phone(v)
+
 
 class PasswordResetRequestIn(PhoneIn):
-    pass
+    @field_validator("phone")
+    @classmethod
+    def normalize_pk(cls, v: str) -> str:  # QA round 4 item 4: consistent PK-format validation
+        return _normalize_pk_phone(v)
 
 
 class PasswordResetIn(PhoneIn):

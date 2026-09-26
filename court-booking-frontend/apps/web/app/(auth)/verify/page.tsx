@@ -148,8 +148,12 @@ function VerifyForm() {
 
         <OtpControls flow={flow} />
 
-        {/* QA #8: reserve the banner's space so showing/hiding it never shifts the button below. */}
-        <div className="min-h-[44px]">
+        {/* QA #8 / QA round 4 item 3: reserve the banner's space so showing/hiding it never shifts
+            the button below. Sized to comfortably fit a rendered FormMessage on one line
+            (~46-48px including its 1px border and py-3 padding) plus a few px of headroom for
+            browser line-height variance -- the earlier 44px reservation still left a ~19px
+            shift when the banner actually rendered. */}
+        <div className="min-h-[60px]">
           {lock.seconds > 0 ? (
             <FormMessage kind="error">Too many attempts. Please try again in {lock.seconds}s.</FormMessage>
           ) : error ? (

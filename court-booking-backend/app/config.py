@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     # before the retention purge clears it. Until then the number can only be claimed by verifying
     # the pending signup (its owner) -- closing the "wait for the OTP to expire, then hijack" gap.
     PENDING_SIGNUP_RETENTION_MINUTES: int = 60
+    # QA new #1: password reset used to inherit OTP_MAX_ATTEMPTS (5) as its per-phone hard gate for
+    # BOTH request-count and wrong-code-guess-count. Five requests or five wrong guesses spread across
+    # different IPs would then lock the real owner out of their own reset. Parity with login means:
+    # per-IP is the actual hard gate (an attacker's IP tops out; the owner's IP is unaffected), and
+    # per-phone/per-code stay only as a much higher rolling soft cap that a distributed attack could
+    # still hit but individual IPs can't cheaply drive. 20 mirrors LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS's
+    # "distributed lockout still possible, but no longer trivial" trade-off.
+    PASSWORD_RESET_IP_MAX_ATTEMPTS: int = 5
+    PASSWORD_RESET_PHONE_SOFT_CAP: int = 20
+    PASSWORD_RESET_CODE_ATTEMPTS_MAX: int = 20
     OTP_EXPIRE_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RATE_LIMIT_WINDOW_MINUTES: int = 15

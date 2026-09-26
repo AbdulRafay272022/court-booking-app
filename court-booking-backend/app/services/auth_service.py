@@ -51,15 +51,18 @@ class AuthService:
         client_ip: str | None = None,
         login_ip_limiter=None,
         otp_ip_limiter=None,
+        password_reset_ip_limiter=None,
     ) -> None:
         self.db = db
         self.settings = settings
         self.whatsapp = WhatsAppService(settings)
-        # Per-IP/device throttles (QA #3 OTP spam, QA #4 login lockout). Threaded from the
-        # endpoint via app.state; None in direct service calls (unit tests), which skips them.
+        # Per-IP/device throttles (QA #3 OTP spam, QA #4 login lockout, QA new #1 password reset).
+        # Threaded from the endpoint via app.state; None in direct service calls (unit tests), which
+        # skips them.
         self._client_ip = client_ip
         self._login_ip_limiter = login_ip_limiter
         self._otp_ip_limiter = otp_ip_limiter
+        self._password_reset_ip_limiter = password_reset_ip_limiter
 
     # ------------------------------------------------------------------ OTP
 
@@ -92,15 +95,21 @@ class AuthService:
         free_at = oldest + timedelta(minutes=self.settings.OTP_RATE_LIMIT_WINDOW_MINUTES)
         return max(1, int((free_at - utcnow()).total_seconds()) + 1)
 
-    async def _issue_otp(self, phone: str, purpose: OtpPurpose, *, user_id=None) -> None:
+    async def _issue_otp(
+        self, phone: str, purpose: OtpPurpose, *, user_id=None, phone_soft_cap: int | None = None
+    ) -> None:
+        # `phone_soft_cap` (QA new #1): password reset overrides the default OTP_MAX_ATTEMPTS with a
+        # much higher rolling cap so a distributed attacker can't cheaply lock the real owner out;
+        # the actual gate for reset lives on the per-IP limiter (see `request_password_reset`).
         await self._enforce_otp_ip_limit(phone)
+        cap = phone_soft_cap if phone_soft_cap is not None else self.settings.OTP_MAX_ATTEMPTS
         window_start = utcnow() - timedelta(minutes=self.settings.OTP_RATE_LIMIT_WINDOW_MINUTES)
         count = await self.db.scalar(
             select(func.count()).select_from(OtpRequest).where(
                 OtpRequest.phone == phone, OtpRequest.created_at >= window_start
             )
         )
-        if (count or 0) >= self.settings.OTP_MAX_ATTEMPTS:
+        if (count or 0) >= cap:
             raise AppError(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 ErrorCode.OTP_RATE_LIMITED,
@@ -148,11 +157,22 @@ class AuthService:
         )
 
     async def _consume_otp(
-        self, phone: str, code: str, purposes: tuple[OtpPurpose, ...], *, user_id=None
+        self,
+        phone: str,
+        code: str,
+        purposes: tuple[OtpPurpose, ...],
+        *,
+        user_id=None,
+        max_code_attempts: int | None = None,
     ) -> None:
         """Validates the latest live OTP for this phone+purpose and marks it
         used. Raises OTP_EXPIRED / OTP_RATE_LIMITED / INVALID_OTP; the caller
-        commits."""
+        commits.
+
+        `max_code_attempts` (QA new #1): password reset raises the per-code hard gate above the
+        default OTP_MAX_ATTEMPTS so a distributed attacker can't burn the owner's own reset code
+        with wrong guesses from a handful of IPs before the owner gets to use it. The per-IP
+        limiter is still the actual hard gate."""
         conditions = [
             OtpRequest.phone == phone,
             OtpRequest.purpose.in_(purposes),
@@ -167,7 +187,8 @@ class AuthService:
         otp = result.scalar_one_or_none()
         if otp is None:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.OTP_EXPIRED, "OTP expired or not found")
-        if otp.attempts >= self.settings.OTP_MAX_ATTEMPTS:
+        code_cap = max_code_attempts if max_code_attempts is not None else self.settings.OTP_MAX_ATTEMPTS
+        if otp.attempts >= code_cap:
             raise AppError(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 ErrorCode.OTP_RATE_LIMITED,
@@ -614,12 +635,35 @@ class AuthService:
 
     # ------------------------------------------------------- password reset
 
+    def _enforce_password_reset_ip_gate(self) -> None:
+        """QA new #1: per-IP hard gate on password-reset activity (requests + wrong-code guesses
+        combined). Parity with login: an attacker's IP tops out at PASSWORD_RESET_IP_MAX_ATTEMPTS
+        in the window, but the real owner from a different IP is unaffected. Skipped when no IP
+        context was threaded through (direct service calls in unit tests)."""
+        limiter = self._password_reset_ip_limiter
+        ip = self._client_ip
+        if limiter is None or ip is None:
+            return
+        if limiter.count(ip) >= self.settings.PASSWORD_RESET_IP_MAX_ATTEMPTS:
+            raise AppError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                ErrorCode.OTP_RATE_LIMITED,
+                "Too many password reset attempts from this device. Please try again in a few minutes.",
+                details={"retry_after_seconds": limiter.retry_after_seconds(ip)},
+            )
+
     async def request_password_reset(self, phone: str) -> None:
         """Also the path for pre-Section-26 accounts to SET their first password
         (PASSWORD_NOT_SET). NEW BUG 1: an unknown phone is REJECTED (no OTP is sent and
         the UI must not advance to the code screen), rather than the old silent no-op that
         still told the user 'code sent'. Consistent with login's own existence check (QA #12);
-        the small enumeration tradeoff is the owner's explicit choice -- see report."""
+        the small enumeration tradeoff is the owner's explicit choice -- see report.
+
+        QA new #1: the per-phone OTP request cap used to be OTP_MAX_ATTEMPTS (5), so five requests
+        from any mix of IPs would 429 the real owner. The gate is now per IP (blocks a single-IP
+        attacker), with the per-phone count kept as a much higher rolling soft cap
+        (PASSWORD_RESET_PHONE_SOFT_CAP) that a distributed attack could still hit but individual
+        IPs can't cheaply drive."""
         user = await self.db.scalar(select(User).where(User.phone == phone))
         if user is None:
             raise AppError(
@@ -627,13 +671,41 @@ class AuthService:
                 ErrorCode.USER_NOT_FOUND,
                 "No account found for this number — please sign up.",
             )
-        await self._issue_otp(phone, OtpPurpose.PASSWORD_RESET)
+        self._enforce_password_reset_ip_gate()
+        await self._issue_otp(
+            phone,
+            OtpPurpose.PASSWORD_RESET,
+            phone_soft_cap=self.settings.PASSWORD_RESET_PHONE_SOFT_CAP,
+        )
+        if self._password_reset_ip_limiter is not None and self._client_ip is not None:
+            self._password_reset_ip_limiter.hit(self._client_ip)
 
     async def reset_password(self, phone: str, code: str, new_password: str) -> None:
+        """QA new #1: wrong-code guesses used to bump the OTP row's global `attempts` field only,
+        capped at OTP_MAX_ATTEMPTS (5) -- six wrong guesses from six IPs would then burn the real
+        owner's own reset code. The gate is now per IP (each attacker IP tops out at
+        PASSWORD_RESET_IP_MAX_ATTEMPTS), and the per-code cap is raised to
+        PASSWORD_RESET_CODE_ATTEMPTS_MAX as a rolling soft cap for the distributed case (same
+        trade-off login accepted). A successful reset resets the requester's per-IP counter."""
         user = await self.db.scalar(select(User).where(User.phone == phone))
         if user is None:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.OTP_EXPIRED, "OTP expired or not found")
-        await self._consume_otp(phone, code, (OtpPurpose.PASSWORD_RESET,))
+        self._enforce_password_reset_ip_gate()
+        try:
+            await self._consume_otp(
+                phone,
+                code,
+                (OtpPurpose.PASSWORD_RESET,),
+                max_code_attempts=self.settings.PASSWORD_RESET_CODE_ATTEMPTS_MAX,
+            )
+        except AppError as exc:
+            # Every failure mode of _consume_otp (INVALID_OTP, OTP_EXPIRED, OTP_SUPERSEDED,
+            # OTP_RATE_LIMITED) is a wrong / stale / brute-force attempt from THIS IP -- charge it
+            # to the per-IP counter so an attacker's IP locks itself out even when they never see
+            # the code, and the real owner from a different IP is unaffected.
+            if self._password_reset_ip_limiter is not None and self._client_ip is not None:
+                self._password_reset_ip_limiter.hit(self._client_ip)
+            raise
 
         user.password_hash = await hash_password(new_password)
         # Passing the reset OTP proves possession of the phone just as well as
@@ -643,11 +715,14 @@ class AuthService:
         user.phone_verified_at = utcnow()
         await self._revoke_all_sessions(user.id, reason="password_reset")
         await self._clear_failed_logins(phone)
-        # Resetting the password proves identity, so lift the per-IP login lockout for THIS
-        # requester's device (QA #4/#5). An attacker who locked their OWN ip by hammering the
-        # victim's number is unaffected -- their IP isn't the one resetting.
+        # Resetting the password proves identity, so lift the per-IP login lockout AND the
+        # password-reset lockout for THIS requester's device (QA #4/#5, QA new #1). An attacker
+        # who locked their OWN IP by hammering the victim's number is unaffected -- their IP isn't
+        # the one that just successfully reset.
         if self._login_ip_limiter is not None and self._client_ip is not None:
             self._login_ip_limiter.reset(self._client_ip)
+        if self._password_reset_ip_limiter is not None and self._client_ip is not None:
+            self._password_reset_ip_limiter.reset(self._client_ip)
         await self.db.commit()
 
     # ------------------------------------------------------------- sessions

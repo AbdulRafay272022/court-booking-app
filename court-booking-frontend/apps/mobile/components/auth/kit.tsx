@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
+  AppState,
   Easing,
   Image,
   Pressable,
@@ -676,21 +677,44 @@ export function useOtpFlow(
   const secondsLeft = useSecondsUntil(expiresAt);
   const rateLock = useCountdown(); // QA #5: a rate-limited (429) resend shows a real countdown
 
-  // QA #10: a fresh screen mount with no remembered expiry asks the server for the live code's
-  // remaining time, so the countdown is still correct after a cold load.
+  // QA round 4 item 2: a mounted screen must not go stale when the user resends elsewhere. Poll
+  // /auth/otp-status on mount, on foreground (AppState -> active), and every ~25s while mounted.
+  // If the server reports a longer-lived code than we know about (a resend), adopt it so an
+  // inaccurate "Code expired" state clears on its own within one polling interval or the next
+  // foreground. Errors are swallowed -- the countdown keeps running from its last known value.
   useEffect(() => {
-    if (expiresAt !== null || !phone) return;
+    if (!phone) return;
     let cancelled = false;
-    api.auth
-      .otpStatus(phone)
-      .then((s) => {
-        if (cancelled || s.expires_in <= 0) return;
-        usePendingAuth.getState().rememberOtpExpiry(purpose, phone, s.expires_in);
-        setExpiresAt(Date.now() + s.expires_in * 1000);
-      })
-      .catch(() => {});
+
+    async function refresh() {
+      try {
+        const s = await api.auth.otpStatus(phone);
+        if (cancelled) return;
+        if (s.expires_in <= 0) return; // no live code -- leave the current state alone
+        const nextExpiresAt = Date.now() + s.expires_in * 1000;
+        setExpiresAt((prev) => {
+          // Only adopt if it lives longer than what we knew, or we didn't know about a live code
+          // at all. Tolerate 3s of clock skew so we don't churn against our own recent resend.
+          if (prev === null || nextExpiresAt > prev + 3_000) {
+            usePendingAuth.getState().rememberOtpExpiry(purpose, phone, s.expires_in);
+            return nextExpiresAt;
+          }
+          return prev;
+        });
+      } catch {
+        // ignored
+      }
+    }
+
+    void refresh();
+    const interval = setInterval(refresh, 25_000);
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refresh();
+    });
     return () => {
       cancelled = true;
+      clearInterval(interval);
+      sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [purpose, phone]);

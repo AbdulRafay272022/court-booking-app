@@ -73,6 +73,11 @@ def create_app() -> FastAPI:
     app.state.otp_ip_limiter = DistinctItemWindowCounter(
         settings.OTP_IP_RATE_LIMIT_WINDOW_MINUTES * 60, settings.OTP_IP_MAX_DISTINCT_PHONES
     )
+    # QA new #1: per-IP counter for password-reset activity (requests + wrong-code guesses combined).
+    # Same shape as `login_ip_limiter`: a single WindowedCounter, `.hit(ip)` on every request or wrong
+    # guess, `.reset(ip)` on a successful reset. The window matches the OTP window so a locked IP
+    # frees up on the same clock as the OTP itself.
+    app.state.password_reset_ip_limiter = WindowedCounter(settings.OTP_RATE_LIMIT_WINDOW_MINUTES * 60)
     # Section 32 Part 12: short-TTL cache of the admin feature flags, read by the
     # require_feature() dependency. An admin toggle busts it (single-worker).
     app.state.feature_flag_cache = FeatureFlagCache()

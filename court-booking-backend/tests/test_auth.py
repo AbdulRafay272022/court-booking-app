@@ -803,6 +803,119 @@ async def test_qa9_signup_and_request_otp_require_pakistani_mobile_format(client
     assert ok.status_code == 201
 
 
+# =========================================== QA round 4 (post-6568e9c fix pass)
+
+
+async def test_qa_r4_password_reset_request_lockout_is_per_ip_not_per_phone(app, otp_box):
+    """QA round 4 item 1: five reset requests from ONE attacker IP locks THAT IP, but the real
+    account owner from a different IP is unaffected. Under the old code five requests from any mix
+    of IPs would 429 everyone including the owner (per-phone OTP_MAX_ATTEMPTS gate)."""
+    phone = "+923001180001"
+    async with client_from(app, "198.51.100.10") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+
+    async with client_from(app, "9.9.9.10") as attacker:
+        for i in range(get_settings().PASSWORD_RESET_IP_MAX_ATTEMPTS):
+            r = await attacker.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+            assert r.status_code == 200, (i, r.text)
+        locked = await attacker.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+        assert locked.status_code == 429
+        assert locked.json()["error"]["code"] == "OTP_RATE_LIMITED"
+        assert locked.json()["error"]["details"]["retry_after_seconds"] > 0
+
+    # The real owner from their own IP is untouched.
+    async with client_from(app, "1.1.1.2") as victim:
+        allowed = await victim.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+        assert allowed.status_code == 200, allowed.text
+
+
+async def test_qa_r4_password_reset_wrong_code_lockout_is_per_ip_not_per_code(app, otp_box):
+    """QA round 4 item 1: wrong-code guesses spread across many IPs no longer burn the real code
+    before the owner can use it. Each attacker IP tops out at PASSWORD_RESET_IP_MAX_ATTEMPTS; the
+    per-code cap is raised to PASSWORD_RESET_CODE_ATTEMPTS_MAX as a rolling soft cap."""
+    phone = "+923001180002"
+    async with client_from(app, "198.51.100.11") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+        otp_box.sent.clear()
+        await setup.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+    real_code = otp_box.code
+
+    # Six wrong guesses from six different IPs -- fewer than PASSWORD_RESET_CODE_ATTEMPTS_MAX (20)
+    # so the code itself isn't burned; each attacker's IP is charged one hit, well under the per-IP
+    # cap. Under the OLD code, otp.attempts would hit OTP_MAX_ATTEMPTS (5) here and lock the code.
+    wrong = "000000" if real_code != "000000" else "111111"
+    for i in range(6):
+        async with client_from(app, f"9.9.9.{20 + i}") as attacker:
+            r = await attacker.post(
+                "/api/v1/auth/verify-password-reset",
+                json={"phone": phone, "otp": wrong, "new_password": "longenough-1", "confirm_password": "longenough-1"},
+            )
+            assert r.status_code == 400 and r.json()["error"]["code"] == "INVALID_OTP", (i, r.text)
+
+    # The real owner, from their own IP, can still use the code.
+    new_pw = "brand-new-password-9"
+    async with client_from(app, "1.1.1.3") as victim:
+        done = await victim.post(
+            "/api/v1/auth/verify-password-reset",
+            json={"phone": phone, "otp": real_code, "new_password": new_pw, "confirm_password": new_pw},
+        )
+        assert done.status_code == 200, done.text
+        assert (await login(victim, phone, new_pw)).status_code == 200
+
+
+async def test_qa_r4_login_and_forgot_password_reject_non_pk_numbers(client, otp_box):
+    """QA round 4 item 4: login and forgot-password now enforce the same PK-mobile format as
+    signup/request-otp, rejecting a non-Pakistani E.164 number with 422 before any DB lookup.
+    A well-formed PK number that has no account still returns 404 (USER_NOT_FOUND), unchanged."""
+    for bad_phone in ("+14155551234", "+92300123", "+9231234567890"):
+        r = await client.post("/api/v1/auth/login", json={"phone": bad_phone, "password": "anything"})
+        assert r.status_code == 422, (bad_phone, r.text)
+        rp = await client.post("/api/v1/auth/request-password-reset", json={"phone": bad_phone})
+        assert rp.status_code == 422, (bad_phone, rp.text)
+
+    # A valid PK number with no account still returns 404, unchanged.
+    unknown = await client.post("/api/v1/auth/login", json={"phone": "+923001188888", "password": "anything"})
+    assert unknown.status_code == 404 and unknown.json()["error"]["code"] == "USER_NOT_FOUND"
+    unknown_reset = await client.post("/api/v1/auth/request-password-reset", json={"phone": "+923001188888"})
+    assert unknown_reset.status_code == 404 and unknown_reset.json()["error"]["code"] == "USER_NOT_FOUND"
+
+
+async def test_qa_r4_password_reset_attacker_ip_locks_itself_out_on_wrong_guesses(app, otp_box):
+    """QA round 4 item 1: an attacker hammering the reset code from ONE IP tops out at
+    PASSWORD_RESET_IP_MAX_ATTEMPTS wrong guesses on that IP. The owner's own IP is unaffected."""
+    phone = "+923001180003"
+    async with client_from(app, "198.51.100.12") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+        otp_box.sent.clear()
+        await setup.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+    real_code = otp_box.code
+
+    wrong = "000000" if real_code != "000000" else "111111"
+    async with client_from(app, "9.9.9.30") as attacker:
+        for i in range(get_settings().PASSWORD_RESET_IP_MAX_ATTEMPTS):
+            r = await attacker.post(
+                "/api/v1/auth/verify-password-reset",
+                json={"phone": phone, "otp": wrong, "new_password": "longenough-1", "confirm_password": "longenough-1"},
+            )
+            assert r.status_code == 400, (i, r.text)
+        locked = await attacker.post(
+            "/api/v1/auth/verify-password-reset",
+            json={"phone": phone, "otp": wrong, "new_password": "longenough-1", "confirm_password": "longenough-1"},
+        )
+        assert locked.status_code == 429
+        assert locked.json()["error"]["code"] == "OTP_RATE_LIMITED"
+        assert locked.json()["error"]["details"]["retry_after_seconds"] > 0
+
+    # Owner from their own IP: reset still succeeds with the real code.
+    new_pw = "brand-new-password-9"
+    async with client_from(app, "1.1.1.4") as victim:
+        done = await victim.post(
+            "/api/v1/auth/verify-password-reset",
+            json={"phone": phone, "otp": real_code, "new_password": new_pw, "confirm_password": new_pw},
+        )
+        assert done.status_code == 200, done.text
+
+
 # ------------------------------------------------------- session lifecycle
 
 

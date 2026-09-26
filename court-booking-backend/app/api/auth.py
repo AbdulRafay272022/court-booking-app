@@ -46,13 +46,15 @@ def _require_credentials(
 
 def _service_with_ip(request: Request, db: DbSession, settings: AppSettings) -> AuthService:
     """AuthService carrying the caller's IP + the app.state per-IP throttles, for the
-    endpoints that send OTPs (QA #3) or check the password (QA #4)."""
+    endpoints that send OTPs (QA #3), check the password (QA #4), or run password reset
+    (QA new #1)."""
     return AuthService(
         db,
         settings,
         client_ip=client_ip(request),
         login_ip_limiter=request.app.state.login_ip_limiter,
         otp_ip_limiter=request.app.state.otp_ip_limiter,
+        password_reset_ip_limiter=request.app.state.password_reset_ip_limiter,
     )
 
 

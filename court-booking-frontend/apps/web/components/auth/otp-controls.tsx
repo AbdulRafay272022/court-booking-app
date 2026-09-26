@@ -33,25 +33,54 @@ export function useOtpFlow(
   const [resendError, setResendError] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = recallOtpExpiry(purpose, phone);
-    if (stored) {
-      setExpiresAt(stored);
-      return;
-    }
-    // QA #10: a fresh tab/page load has no remembered expiry -- ask the server for the live
-    // code's remaining time so the countdown is still correct.
     if (!phone) return;
     let cancelled = false;
-    api.auth
-      .otpStatus(phone)
-      .then((s) => {
-        if (cancelled || s.expires_in <= 0) return;
-        rememberOtpExpiry(purpose, phone, s.expires_in);
-        setExpiresAt(Date.now() + s.expires_in * 1000);
-      })
-      .catch(() => {});
+
+    // Seed from the tab's own sessionStorage if we set an expiry there earlier -- the same-tab
+    // fast path when the screen was just opened from signup/reset via a client-side navigation.
+    const stored = recallOtpExpiry(purpose, phone);
+    if (stored) setExpiresAt(stored);
+
+    // QA round 4 item 2: an already-open tab must not go stale when the user resends (or a
+    // second tab / device resends) elsewhere. Poll /auth/otp-status on mount, on window focus,
+    // on `visibilitychange`, and every ~25s while mounted; when the server says a newer code is
+    // live, adopt its expiry so an inaccurate "Code expired" state clears on its own within
+    // one polling interval or the next focus. Errors are swallowed (offline / transient) --
+    // the countdown then keeps running against whatever it last knew about.
+    async function refresh() {
+      try {
+        const s = await api.auth.otpStatus(phone);
+        if (cancelled) return;
+        if (s.expires_in <= 0) return; // no live code -- leave the current state alone
+        const nextExpiresAt = Date.now() + s.expires_in * 1000;
+        setExpiresAt((prev) => {
+          // Only adopt if the server says the code lives longer than we thought (a resend), or we
+          // didn't know about a live code at all. Tolerate 3s of clock skew so we don't churn.
+          if (prev === null || nextExpiresAt > prev + 3_000) {
+            rememberOtpExpiry(purpose, phone, s.expires_in);
+            return nextExpiresAt;
+          }
+          return prev;
+        });
+      } catch {
+        // ignored -- the countdown keeps running from its last known value
+      }
+    }
+
+    // First live check happens right after mount so a cold tab (no stored expiry) still gets a
+    // real countdown.
+    void refresh();
+    const interval = setInterval(refresh, 25_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", refresh);
     return () => {
       cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", refresh);
     };
   }, [purpose, phone]);
 

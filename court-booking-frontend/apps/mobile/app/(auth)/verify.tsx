@@ -136,8 +136,10 @@ export default function VerifyScreen() {
 
       <OtpControls flow={flow} tone={tone} />
 
-      {/* QA #8: reserve the banner's space so it never shifts the button below it. */}
-      <View style={{ minHeight: 44, justifyContent: "center" }}>
+      {/* QA #8 / QA round 4 item 3: reserve the banner's space so it never shifts the button below.
+          Sized to comfortably fit a rendered FormMessage on one line -- the earlier 44 still let a
+          ~19px shift through when the banner actually rendered. */}
+      <View style={{ minHeight: 60, justifyContent: "center" }}>
         {lock.seconds > 0 ? (
           <FormMessage kind="error" tone={tone}>{`Too many attempts. Please try again in ${lock.seconds}s.`}</FormMessage>
         ) : error ? (
