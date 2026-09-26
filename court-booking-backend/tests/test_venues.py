@@ -83,6 +83,20 @@ async def test_sport_filter(client, make_user, make_venue):
     assert names == {"Padel Only"}
 
 
+async def test_sport_filter_is_case_insensitive(client, make_user, make_venue):
+    """Post-batch backlog #3: venues store a sport as the owner cased it ("Padel"),
+    but the apps filter with a lowercased value ("padel"). The search must still find
+    the venue -- a case-sensitive match silently showed players a "no courts" empty
+    state for a live venue (reproduced on production: /venues?sport=padel -> 0)."""
+    owner = await make_user("+923001000066", role=UserRole.OWNER)
+    await make_venue(owner, name="Capital Padel", sports=["Padel"])  # stored capitalized, like prod
+
+    for q in ("padel", "Padel", "PADEL"):
+        resp = await client.get("/api/v1/venues", params={"sport": q})
+        names = {v["name"] for v in resp.json()["venues"]}
+        assert "Capital Padel" in names, f"sport={q!r} should match the 'Padel' venue, got {names}"
+
+
 async def test_geo_search_radius_and_distance(client, make_user, make_venue):
     owner = await make_user("+923001000007", role=UserRole.OWNER)
     # DHA Phase 6 (near), Clifton (~5.6km away), a venue in Islamabad (~1100km away)

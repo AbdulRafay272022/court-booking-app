@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -192,7 +192,14 @@ class VenueService:
         if city:
             base_query = base_query.where(func.lower(Venue.city) == city.lower())
         if sport:
-            base_query = base_query.where(Venue.sports.any(sport))
+            # Case-insensitive sport match. Venues store a sport as the owner cased
+            # it ("Padel"), but the apps filter with a lowercased value ("padel"), so
+            # a plain exact `.any(sport)` returned ZERO venues for a live venue and the
+            # player saw a stale "no courts" empty state (post-batch backlog #3).
+            # Mirror the city filter above and match on lower(). Bound param -> no injection.
+            base_query = base_query.where(
+                text("EXISTS (SELECT 1 FROM unnest(venues.sports) AS s WHERE lower(s) = lower(:sport))").bindparams(sport=sport)
+            )
         if latitude is not None and longitude is not None:
             base_query = base_query.where(within_radius(Venue.location, latitude, longitude, radius_meters))
 

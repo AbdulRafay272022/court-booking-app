@@ -104,7 +104,13 @@ async def test_states_open_few_full_closed_past_and_the_cache_header(
     owner, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923100000003",
                                     open_=time(8, 0), close=time(18, 0))  # 10 one-hour slots a day
     today = pkt_today()
-    d_open, d_few, d_full, d_closed = (today + timedelta(days=n) for n in (2, 3, 4, 5))
+    # The open/few/full/closed days are the first FOUR days of next month: always in a
+    # single month and always in the future (well within the 90-day booking horizon), so
+    # this test is robust to when it runs. (It previously used today+2..+5 and broke near
+    # month-end, when today+5 crossed into the next month -> the requested month's summary
+    # didn't contain that day and the lookup KeyError'd.)
+    first_next = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    d_open, d_few, d_full, d_closed = (first_next + timedelta(days=n) for n in (0, 1, 2, 3))
     for h in (8, 9):                       # 8 of 10 left = open (>20%)
         await _book(db_session_factory, court, _at(d_open, h))
     for h in range(8, 16):                 # 2 of 10 left = 20% -> few
@@ -122,8 +128,10 @@ async def test_states_open_few_full_closed_past_and_the_cache_header(
     assert by[d_few.isoformat()]["state"] == "few" and by[d_few.isoformat()]["open_slots"] == 2
     assert by[d_full.isoformat()]["state"] == "full" and by[d_full.isoformat()]["open_slots"] == 0 and by[d_full.isoformat()]["total_slots"] == 10
     assert by[d_closed.isoformat()]["state"] == "closed"
+    # "past" state: yesterday, checked in THIS month's summary (guarded against month-start).
     if today.day > 1:
-        assert by[(today - timedelta(days=1)).isoformat()]["state"] == "past"
+        this_month = {r["date"]: r for r in (await _summary(client, court, _month(today))).json()["days"]}
+        assert this_month[(today - timedelta(days=1)).isoformat()]["state"] == "past"
 
 
 async def test_a_day_with_no_schedule_is_closed(
