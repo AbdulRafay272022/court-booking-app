@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     # the OTP limit below (derived from rows, not a counter to keep in sync).
     LOGIN_MAX_FAILED_ATTEMPTS: int = 5
     LOGIN_RATE_LIMIT_WINDOW_MINUTES: int = 15
+    # QA re-test B: an account-level (phone-keyed) cap ALONGSIDE the per-IP one, so a distributed
+    # brute force (many IPs, one account) is still capped. Deliberately high + rolling (auto-clears,
+    # and a correct login clears it) so it can't be abused to hard-lock a victim the way a low
+    # phone-only lock could -- a soft rolling cap, not the original harassment lockout.
+    LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS: int = 20
+    # QA re-test A: how long an unverified (pending) signup row blocks a re-signup on that number
+    # before the retention purge clears it. Until then the number can only be claimed by verifying
+    # the pending signup (its owner) -- closing the "wait for the OTP to expire, then hijack" gap.
+    PENDING_SIGNUP_RETENTION_MINUTES: int = 60
     OTP_EXPIRE_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RATE_LIMIT_WINDOW_MINUTES: int = 15

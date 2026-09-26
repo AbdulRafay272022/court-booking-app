@@ -56,6 +56,13 @@ async def test_every_day_of_the_summary_matches_the_day_view(
 ):
     _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923100000001")
     d = pkt_today() + timedelta(days=3)
+    # Near month-end the current month has too few future days to make the >=5 check meaningful
+    # (e.g. run on the 27th of a 30-day month). Anchor to a month with a full future runway so this
+    # test isn't calendar-position dependent -- it's about summary-vs-day-view agreement, not the date.
+    from calendar import monthrange
+
+    if monthrange(d.year, d.month)[1] - d.day < 5:
+        d = (d.replace(day=1) + timedelta(days=32)).replace(day=5)
     await _book(db_session_factory, court, _at(d, 10), hours=2)
     await _book(db_session_factory, court, _at(d + timedelta(days=1), 18))
     async with db_session_factory() as s:

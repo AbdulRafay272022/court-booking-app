@@ -6,6 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.dependencies import AppSettings, CurrentUser, DbSession
 from app.errors import AppError, ErrorCode
+from app.utils.client_ip import client_ip
 from app.schemas.auth import (
     LoginIn,
     MeOut,
@@ -49,7 +50,7 @@ def _service_with_ip(request: Request, db: DbSession, settings: AppSettings) -> 
     return AuthService(
         db,
         settings,
-        client_ip=request.client.host if request.client else None,
+        client_ip=client_ip(request),
         login_ip_limiter=request.app.state.login_ip_limiter,
         otp_ip_limiter=request.app.state.otp_ip_limiter,
     )

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import get_settings
@@ -114,6 +114,30 @@ async def cleanup_waitlist(session_factory: async_sessionmaker = AsyncSessionLoc
         return deactivated
 
 
+async def purge_stale_unverified_signups(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
+    """QA re-test A: delete abandoned pending signups -- rows that set a password but never verified
+    their phone -- once they are older than PENDING_SIGNUP_RETENTION_MINUTES. This is what makes the
+    "block a re-signup while an unverified row exists" rule self-healing: an abandoned squat on a
+    number is cleared here so the number can be signed up for again, while a real pending signup is
+    protected until it verifies. A never-verified row can never have a session, so it owns no venues
+    or bookings -- deleting it is safe. Pre-Section-26 rows (password_hash NULL, or already verified)
+    are excluded."""
+    settings = get_settings()
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.PENDING_SIGNUP_RETENTION_MINUTES)
+    async with session_factory() as db:
+        result = await db.execute(
+            delete(User).where(
+                User.phone_verified_at.is_(None),
+                User.password_hash.is_not(None),
+                User.created_at < cutoff,
+            )
+        )
+        await db.commit()
+        purged = result.rowcount or 0
+        logger.info("unverified_signup_purge.completed", purged=purged)
+        return purged
+
+
 async def run_expiry_job(session_factory: async_sessionmaker = AsyncSessionLocal) -> dict:
     """The single cron entrypoint (EventBridge -> Lambda in production, or an
     in-process scheduler for development) run every ~60 seconds. Each step
@@ -125,12 +149,14 @@ async def run_expiry_job(session_factory: async_sessionmaker = AsyncSessionLocal
     no_shows = await mark_overdue_no_shows(session_factory)
     escalated = await escalate_pending_payment_reviews(session_factory)
     waitlist_deactivated = await cleanup_waitlist(session_factory)
+    unverified_purged = await purge_stale_unverified_signups(session_factory)
 
     result = {
         "expired_bookings": expired,
         "no_shows": no_shows,
         "escalations_sent": escalated,
         "waitlist_entries_deactivated": waitlist_deactivated,
+        "unverified_signups_purged": unverified_purged,
     }
     logger.info("run_expiry_job.completed", **result)
     return result

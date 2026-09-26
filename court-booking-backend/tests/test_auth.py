@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.models.user import LoginAttempt, OtpPurpose, OtpRequest, Session as SessionModel, User
@@ -201,12 +201,10 @@ async def test_signup_for_verified_phone_is_refused_and_changes_nothing(client, 
     assert (await login(client, phone)).status_code == 200
 
 
-async def test_pending_signup_is_not_overwritten_while_its_code_is_live_then_can_be_after_expiry(
-    client, otp_box, db_session_factory
-):
-    """QA #1: while a signup's verification code is still live, a SECOND signup for the same
-    number is rejected (no overwrite of the pending name/email/password). Once the code's TTL
-    lapses without verification, a fresh signup is allowed again."""
+async def test_pending_signup_blocks_resignup_until_the_row_is_purged(client, otp_box, db_session_factory):
+    """QA re-test A: a second signup is rejected while ANY unverified row exists for the number --
+    even after its OTP has expired (that's the hijack gap the re-test found). It's allowed again
+    only once the retention purge removes the abandoned row."""
     phone = "+923001110006"
     first = await client.post(
         "/api/v1/auth/signup",
@@ -214,24 +212,24 @@ async def test_pending_signup_is_not_overwritten_while_its_code_is_live_then_can
     )
     assert first.status_code == 201
 
-    # A second signup while the first code is live is refused (this is the anti-hijack rule).
-    second = await client.post(
-        "/api/v1/auth/signup",
-        json=signup_body(phone, name="Second", password="second-pass-1", confirm_password="second-pass-1"),
-    )
-    assert second.status_code == 409
-    assert second.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
-    assert second.json()["error"]["details"]["retry_after_seconds"] > 0
-
-    # Expire the pending code, then a fresh signup IS allowed and can be verified.
+    # Expire the pending code -- the block must STILL hold (this is the fix vs. the earlier version).
     async with db_session_factory() as s:
         otp = await s.scalar(select(OtpRequest).where(OtpRequest.phone == phone).order_by(OtpRequest.created_at.desc()))
         otp.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         await s.commit()
 
+    second = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Second", password="second-pass-1", confirm_password="second-pass-1"),
+    )
+    assert second.status_code == 409 and second.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
+
+    # Simulate the retention purge removing the abandoned row -> a fresh signup is allowed again.
+    async with db_session_factory() as s:
+        await s.execute(delete(User).where(User.phone == phone))
+        await s.commit()
     body = await signup_and_verify(client, otp_box, phone, name="Real Owner")
     assert body["user"]["name"] == "Real Owner"
-    assert (await login(client, phone, "first-pass-1")).status_code == 401
     assert (await login(client, phone, PASSWORD)).status_code == 200
 
 
@@ -677,6 +675,119 @@ async def test_qa11_missing_token_is_not_authenticated_bad_token_is_session_expi
     assert none.status_code == 401 and none.json()["error"]["code"] == "NOT_AUTHENTICATED"
     bad = await client.get("/api/v1/auth/me", headers=bearer("not-a-real-token"))
     assert bad.status_code == 401 and bad.json()["error"]["code"] == "SESSION_EXPIRED"
+
+
+async def test_qa_retest_A_hijack_blocked_even_after_the_victims_code_expires(client, otp_box, db_session_factory):
+    """QA re-test repro A: victim signs up; the victim's code expires before they verify; the
+    attacker signs up again on the same number -> STILL rejected; the victim resends and verifies
+    into the victim's own account."""
+    phone = "+923001170001"
+    victim = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Victim", email="v170001@example.com", password="victim-pass-1", confirm_password="victim-pass-1"),
+    )
+    assert victim.status_code == 201
+
+    async with db_session_factory() as s:
+        otp = await s.scalar(select(OtpRequest).where(OtpRequest.phone == phone).order_by(OtpRequest.created_at.desc()))
+        otp.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await s.commit()
+
+    attacker = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Attacker", email="a170001@example.com", password="attacker-pass-1", confirm_password="attacker-pass-1"),
+    )
+    assert attacker.status_code == 409 and attacker.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
+
+    # Victim resends and verifies into their OWN account.
+    await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": otp_box.code})
+    assert verify.status_code == 200 and verify.json()["user"]["name"] == "Victim"
+    assert (await login(client, phone, "attacker-pass-1")).status_code == 401
+    assert (await login(client, phone, "victim-pass-1")).status_code == 200
+
+
+async def test_qa_retest_A_retention_purge_clears_abandoned_unverified_signups(client, otp_box, db_session_factory, make_user):
+    """The retention purge lifts the block: an abandoned unverified row older than the window is
+    deleted; a verified account and a recent pending signup are kept."""
+    from app.jobs.expiry_job import purge_stale_unverified_signups
+
+    old_abandoned = "+923001170002"
+    await client.post("/api/v1/auth/signup", json=signup_body(old_abandoned))
+    verified = await make_user("+923001170003")  # verified account, must survive
+    recent_pending = "+923001170004"
+    await client.post("/api/v1/auth/signup", json=signup_body(recent_pending))
+
+    # Age the abandoned row past the retention window.
+    async with db_session_factory() as s:
+        u = await s.scalar(select(User).where(User.phone == old_abandoned))
+        u.created_at = datetime.now(timezone.utc) - timedelta(minutes=get_settings().PENDING_SIGNUP_RETENTION_MINUTES + 5)
+        await s.commit()
+
+    purged = await purge_stale_unverified_signups(db_session_factory)
+    assert purged == 1
+    async with db_session_factory() as s:
+        assert await s.scalar(select(User).where(User.phone == old_abandoned)) is None  # purged
+        assert await s.scalar(select(User).where(User.phone == verified.phone)) is not None  # kept
+        assert await s.scalar(select(User).where(User.phone == recent_pending)) is not None  # kept (too recent)
+
+    # After the purge, the number can be signed up for again.
+    assert (await client.post("/api/v1/auth/signup", json=signup_body(old_abandoned))).status_code == 201
+
+
+async def test_qa_retest_B_account_level_cap_kicks_in_across_many_ips(app, otp_box, monkeypatch):
+    """QA re-test B: many wrong-password guesses spread across MANY IPs at one account are now
+    capped by a per-account (phone-keyed) limit, in addition to the per-IP one."""
+    monkeypatch.setattr(get_settings(), "LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS", 6)
+    phone = "+923001170005"
+    async with client_from(app, "10.0.0.1") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+
+    # One wrong guess each from 6 different IPs -> per-IP never trips (1 each < 5), but the account
+    # cap (6) does.
+    for i in range(6):
+        async with client_from(app, f"10.9.9.{i}") as attacker:
+            r = await login(attacker, phone, "wrong-pass")
+            assert r.status_code == 401, (i, r.text)
+    async with client_from(app, "10.9.9.99") as attacker:
+        capped = await login(attacker, phone, "wrong-pass")
+    assert capped.status_code == 429 and capped.json()["error"]["code"] == "LOGIN_RATE_LIMITED"
+    assert capped.json()["error"]["details"]["retry_after_seconds"] > 0
+
+
+async def test_qa_retest_D_ip_blocked_signup_creates_no_user_row(app, db_session_factory):
+    """QA re-test D: a signup rejected by the per-IP OTP cap must not leave an unverified user row."""
+    app.state.otp_ip_limiter.limit = 1
+    async with client_from(app, "203.0.113.50") as c:
+        ok = await c.post("/api/v1/auth/signup", json=signup_body("+923001170006"))
+        assert ok.status_code == 201
+        blocked = await c.post("/api/v1/auth/signup", json=signup_body("+923001170007"))
+    assert blocked.status_code == 429 and blocked.json()["error"]["code"] == "OTP_IP_RATE_LIMITED"
+    async with db_session_factory() as s:
+        assert await s.scalar(select(User).where(User.phone == "+923001170007")) is None, "blocked signup left a row"
+
+
+def test_qa_retest_C_client_ip_prefers_nginx_headers():
+    """QA re-test C (unit): the throttle IP comes from nginx's X-Real-IP / the last X-Forwarded-For
+    hop, not the proxy's socket address -- so users don't share one bucket behind the proxy, and a
+    client-supplied X-Forwarded-For can't spoof it."""
+    from starlette.requests import Request
+    from app.utils.client_ip import client_ip
+
+    def req(headers, peer):
+        scope = {
+            "type": "http",
+            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+            "client": (peer, 12345),
+        }
+        return Request(scope)
+
+    # peer is the docker gateway; X-Real-IP is the real client (nginx overwrites it) -> use it
+    assert client_ip(req({"x-real-ip": "203.0.113.9"}, "172.17.0.1")) == "203.0.113.9"
+    # spoofed leading XFF hop is ignored; the last (nginx-appended) hop wins
+    assert client_ip(req({"x-forwarded-for": "1.2.3.4, 203.0.113.9"}, "172.17.0.1")) == "203.0.113.9"
+    # no proxy headers (local dev / test client) -> fall back to the socket peer
+    assert client_ip(req({}, "198.51.100.7")) == "198.51.100.7"
 
 
 async def test_qa9_signup_and_request_otp_require_pakistani_mobile_format(client, otp_box):

@@ -214,7 +214,11 @@ class AuthService:
 
     async def signup(self, payload: SignupIn) -> None:
         user = await self.db.scalar(select(User).where(User.phone == payload.phone))
-        password_hash = await hash_password(payload.password)
+
+        # QA re-test D: enforce the per-IP/device OTP cap BEFORE creating (or hashing for) any
+        # user row, so a signup that is blocked by the IP limit never leaves an unverified row
+        # behind in the DB.
+        await self._enforce_otp_ip_limit(payload.phone)
 
         if user is not None and user.phone_verified_at is not None:
             # A verified (or pre-Section-26) account owns this number. Never
@@ -226,47 +230,35 @@ class AuthService:
             )
 
         if user is not None and user.phone_verified_at is None:
-            # QA #1 (signup-hijack): a pending, never-verified signup already exists for this
-            # number. While its verification code is still live, REFUSE to accept a second
-            # signup -- otherwise an attacker could overwrite the victim's pending name/email/
-            # password by signing up over it. The legitimate owner's original code still
-            # verifies into their original account. "Resend code" (request-otp) is unaffected:
-            # it only re-sends the SAME pending signup's OTP, it never changes the account.
-            # Once the code's TTL lapses without verification, a fresh signup is allowed again.
-            live_otp = await self.db.scalar(
-                select(OtpRequest)
-                .where(
-                    OtpRequest.phone == payload.phone,
-                    OtpRequest.purpose == OtpPurpose.SIGNUP,
-                    OtpRequest.is_used.is_(False),
-                    OtpRequest.expires_at > utcnow(),
-                )
-                .order_by(OtpRequest.created_at.desc())
-                .limit(1)
+            # QA re-test A (signup-hijack, hardened): block a second signup while ANY unverified
+            # row exists for this number -- NOT just while its OTP is still live. Otherwise an
+            # attacker could wait for the victim's code to expire and then overwrite the pending
+            # name/email/password. The block lifts only when the row verifies (its real owner) or
+            # the retention purge clears it (`purge_stale_unverified_signups`, after
+            # PENDING_SIGNUP_RETENTION_MINUTES). "Resend code" (request-otp) still works and never
+            # changes the account.
+            retention = timedelta(minutes=self.settings.PENDING_SIGNUP_RETENTION_MINUTES)
+            free_at = (user.created_at or utcnow()) + retention
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.SIGNUP_ALREADY_PENDING,
+                "A verification is already in progress for this number. Check WhatsApp for the code "
+                "(or tap Resend) to finish signing up.",
+                details={"retry_after_seconds": max(1, int((free_at - utcnow()).total_seconds()) + 1)},
             )
-            if live_otp is not None:
-                raise AppError(
-                    status.HTTP_409_CONFLICT,
-                    ErrorCode.SIGNUP_ALREADY_PENDING,
-                    "A verification is already in progress for this number. Check WhatsApp for the "
-                    "code, or wait for it to expire before signing up again.",
-                    details={"retry_after_seconds": max(1, int((live_otp.expires_at - utcnow()).total_seconds()) + 1)},
-                )
 
         await self._claim_email(payload.email, for_user=user)
 
-        if user is None:
-            user = User(phone=payload.phone)
-            self.db.add(user)
-        # else: an abandoned, never-verified signup for this number. Whoever
-        # finishes the OTP owns it, so let a retry overwrite it rather than
-        # letting a stranger squat on someone else's number by signing up first.
+        # Only reached for a number with no existing user row (the two branches above return for
+        # verified and unverified rows), so this always creates a fresh account.
+        user = User(phone=payload.phone)
+        self.db.add(user)
         user.name = payload.name
         user.email = payload.email
         user.city = payload.city
         user.gender = payload.gender
         user.role = payload.user_role
-        user.password_hash = password_hash
+        user.password_hash = await hash_password(payload.password)
         user.phone_verified_at = None
         await self._commit_unique_email()
 
@@ -522,6 +514,19 @@ class AuthService:
     async def _clear_failed_logins(self, phone: str) -> None:
         await self.db.execute(delete(LoginAttempt).where(LoginAttempt.phone == phone))
 
+    async def _login_account_retry_after(self, phone: str) -> int:
+        """Seconds until the oldest failed-login row for this account ages out of the window (QA re-test B)."""
+        window_start = utcnow() - timedelta(minutes=self.settings.LOGIN_RATE_LIMIT_WINDOW_MINUTES)
+        oldest = await self.db.scalar(
+            select(func.min(LoginAttempt.created_at)).where(
+                LoginAttempt.phone == phone, LoginAttempt.created_at >= window_start
+            )
+        )
+        if oldest is None:
+            return self.settings.LOGIN_RATE_LIMIT_WINDOW_MINUTES * 60
+        free_at = oldest + timedelta(minutes=self.settings.LOGIN_RATE_LIMIT_WINDOW_MINUTES)
+        return max(1, int((free_at - utcnow()).total_seconds()) + 1)
+
     async def login(
         self,
         phone: str,
@@ -558,6 +563,18 @@ class AuthService:
                 status.HTTP_404_NOT_FOUND,
                 ErrorCode.USER_NOT_FOUND,
                 "No account found for this number — please sign up.",
+            )
+
+        # QA re-test B: a per-ACCOUNT (phone-keyed) cap ALONGSIDE the per-IP one above, so a
+        # distributed brute force (many IPs, one account) is still capped. Deliberately high and
+        # rolling -- it auto-clears as attempts age out and a correct login clears it -- so it can't
+        # be abused to hard-lock a victim the way the original low phone-only lock could.
+        if await self._failed_login_count(phone) >= self.settings.LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS:
+            raise AppError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                ErrorCode.LOGIN_RATE_LIMITED,
+                "Too many failed login attempts on this account. Please try again later, or reset your password.",
+                details={"retry_after_seconds": await self._login_account_retry_after(phone)},
             )
 
         # Phone-verification gate (spec): a stale/unverified EXISTING account routes to OTP,
