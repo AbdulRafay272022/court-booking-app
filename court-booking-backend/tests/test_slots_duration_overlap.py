@@ -112,14 +112,66 @@ async def test_a_duration_that_runs_past_closing_time_is_refused(
     assert (await _hold(client, court, headers, _at(2, 22), slot_count=1)).status_code == 201
 
 
-async def test_a_duration_over_four_hours_is_refused(
+async def test_a_duration_over_six_hours_is_refused(
     client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
 ):
+    """post-batch #8: the cap is 6 hours now. Exactly 6 hours (six 60-min slots) is allowed; 7 hours is refused."""
     _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000007")
     player = await make_user("+923070000008", role=UserRole.PLAYER)
     headers = await make_auth_headers(player)
-    resp = await _hold(client, court, headers, _at(2, 8), slot_count=5)  # 5 x 60 min
+    # 8 AM x 7 = 8 AM-3 PM, all within the 6 AM-11 PM hours but 420 min > the 360-min cap
+    too_long = await _hold(client, court, headers, _at(2, 8), slot_count=7)
+    assert too_long.status_code == 400 and too_long.json()["error"]["code"] == "INVALID_DURATION"
+    assert "6 hours" in too_long.json()["error"]["message"]
+    # exactly 6 hours (six slots, 8 AM-2 PM) is now allowed
+    ok = await _hold(client, court, headers, _at(2, 8), slot_count=6)
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["booking"]["ends_at"] == _iso(_at(2, 8) + timedelta(hours=6))
+
+
+async def test_a_six_hour_booking_blocks_every_slot_it_covers(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    """post-batch #8: a 6-hour booking is one row spanning six slots; the overlap constraint must block any other
+    live booking that touches any of those six, and the grid must show all six as the player's own."""
+    _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000021")
+    a = await make_user("+923070000022", role=UserRole.PLAYER)
+    b = await make_user("+923070000023", role=UserRole.PLAYER)
+    ha, hb = await make_auth_headers(a), await make_auth_headers(b)
+
+    held = await _hold(client, court, ha, _at(2, 8), slot_count=6)  # A holds 8 AM-2 PM
+    assert held.status_code == 201, held.text
+
+    # every hour inside the 6-hour span is taken for anyone else, incl. the first, a middle one, and the last
+    for hh in (8, 11, 13):
+        clash = await _hold(client, court, hb, _at(2, hh), slot_count=1)
+        assert clash.status_code == 409 and clash.json()["error"]["code"] == "SLOT_ALREADY_TAKEN", (hh, clash.text)
+    # a booking that starts before and runs into the span is refused too
+    overlap = await _hold(client, court, hb, _at(2, 7), slot_count=2)  # 7-9 AM runs into 8 AM
+    assert overlap.status_code == 409 and overlap.json()["error"]["code"] == "SLOT_ALREADY_TAKEN"
+    # the slot right after the span (2 PM) is still free
+    assert (await _hold(client, court, hb, _at(2, 14), slot_count=1)).status_code == 201
+
+    # the grid shows all six covered cells as A's own held slots
+    day = pkt_today() + timedelta(days=2)
+    grid = (await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()}, headers=ha)).json()
+    covered = {_iso(_at(2, 8) + timedelta(hours=i)) for i in range(6)}
+    cells = [s for s in grid["slots"] if s["starts_at"] in covered]
+    assert len(cells) == 6
+    assert all(c["status"] == "held" and c["is_mine"] for c in cells)
+
+
+async def test_a_six_hour_booking_that_runs_past_closing_time_is_refused(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    """post-batch #8: the longer cap must not let a booking spill past closing time (or across midnight on a
+    same-day court -- overnight belongs to Part 3). Court closes 11 PM; 6 PM + 6 h would end at midnight."""
+    _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000024")
+    player = await make_user("+923070000025", role=UserRole.PLAYER)
+    headers = await make_auth_headers(player)
+    resp = await _hold(client, court, headers, _at(2, 18), slot_count=6)  # 6 PM-12 AM, past the 11 PM close
     assert resp.status_code == 400 and resp.json()["error"]["code"] == "INVALID_DURATION"
+    assert "closing" in resp.json()["error"]["message"].lower()
 
 
 async def test_a_duration_touching_a_booked_or_blocked_slot_is_refused_with_a_clear_reason(

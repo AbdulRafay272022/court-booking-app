@@ -45,8 +45,9 @@ async def test_get_venue_courts_lists_the_durations_each_court_offers(
     service = AIChatService(db_session, get_settings())
     out = await service._execute_tool(_p, "get_venue_courts", {"venue_id": str(venue.id)}, [])
     durations = out["courts"][0]["durations"]
-    assert [d["minutes"] for d in durations] == [90, 180]
-    assert [d["label"] for d in durations] == ["1.5 hours", "3 hours"]
+    # post-batch #8: the cap is 6 hours, so a 90-min court offers 1.5h/3h/4.5h/6h
+    assert [d["minutes"] for d in durations] == [90, 180, 270, 360]
+    assert [d["label"] for d in durations] == ["1.5 hours", "3 hours", "4.5 hours", "6 hours"]
 
 
 async def test_quote_booking_returns_ready_made_text_priced_across_the_range(
