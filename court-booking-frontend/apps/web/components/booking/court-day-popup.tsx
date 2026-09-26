@@ -172,26 +172,30 @@ export function CourtDayPopup({
             </div>
           ) : (
             <>
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                 {week.map((d) => {
                   const isPast = d < today;
+                  const selected = d === date;
+                  const isToday = d === today;
                   return (
                     <button
                       key={d}
                       type="button"
                       disabled={isPast}
                       onClick={() => setDate(d)}
-                      className="shrink-0 px-3.5 py-2.5 rounded-xl flex flex-col items-center gap-0.5 min-w-[60px]"
+                      aria-pressed={selected}
+                      className="shrink-0 px-3.5 py-2.5 rounded-2xl flex flex-col items-center gap-0.5 min-w-[60px] transition-colors"
                       style={{
-                        background: d === date ? "#EF5A2C" : "#F4EFEC",
+                        background: selected ? "#EF5A2C" : "#F4EFEC",
+                        border: !selected && isToday ? "1.5px solid #EF5A2C" : "1.5px solid transparent",
                         opacity: isPast ? 0.4 : 1,
                         cursor: isPast ? "default" : "pointer",
                       }}
                     >
-                      <span className="text-[10px] font-semibold tracking-wider" style={{ color: d === date ? "rgba(255,255,255,0.85)" : "#5C544D" }}>
+                      <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: selected ? "rgba(255,255,255,0.85)" : "#8A8079" }}>
                         {tabLabel(d)}
                       </span>
-                      <span className="font-mono text-[15px] font-semibold" style={{ color: d === date ? "#FFFFFF" : "#5C544D" }}>
+                      <span className="font-mono text-[15px] font-semibold" style={{ color: selected ? "#FFFFFF" : "#141A1D" }}>
                         {String(Number(d.slice(8))).padStart(2, "0")}
                       </span>
                     </button>
@@ -199,7 +203,7 @@ export function CourtDayPopup({
                 })}
               </div>
 
-              <div className="overflow-y-auto flex flex-col gap-2.5">
+              <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#E0D9D4] [&::-webkit-scrollbar-track]:bg-transparent">
                 {dayQuery.isLoading ? (
                   <p className="text-center py-10 text-player-ink-faint">Loading…</p>
                 ) : slots.length === 0 ? (

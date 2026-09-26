@@ -162,18 +162,26 @@ export function CourtDayPopup({
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
                   {week.map((d) => {
                     const isPast = d < today;
+                    const selected = d === date;
+                    const isToday = d === today;
                     return (
                       <Pressable
                         key={d}
                         disabled={isPast}
                         onPress={() => setDate(d)}
-                        className="items-center gap-0.5 rounded-xl py-2.5"
-                        style={{ minWidth: 52, backgroundColor: d === date ? "#EF5A2C" : "#F4EFEC", opacity: isPast ? 0.4 : 1 }}
+                        className="items-center gap-0.5 rounded-2xl py-2.5"
+                        style={{
+                          minWidth: 52,
+                          backgroundColor: selected ? "#EF5A2C" : "#F4EFEC",
+                          borderWidth: 1.5,
+                          borderColor: !selected && isToday ? "#EF5A2C" : "transparent",
+                          opacity: isPast ? 0.4 : 1,
+                        }}
                       >
-                        <Text className="font-figtree-semibold text-[10px] tracking-[0.06em]" style={{ color: d === date ? "rgba(255,255,255,0.85)" : "#5C544D" }}>
+                        <Text className="font-figtree-bold text-[10px] tracking-[0.06em] uppercase" style={{ color: selected ? "rgba(255,255,255,0.85)" : "#8A8079" }}>
                           {tabLabel(d)}
                         </Text>
-                        <Text className="font-mono-semibold text-[17px]" style={{ color: d === date ? "#FFFFFF" : "#5C544D" }}>
+                        <Text className="font-mono-semibold text-[17px]" style={{ color: selected ? "#FFFFFF" : "#141A1D" }}>
                           {String(Number(d.slice(8))).padStart(2, "0")}
                         </Text>
                       </Pressable>
