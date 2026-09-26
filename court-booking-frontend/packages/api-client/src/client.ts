@@ -7,6 +7,22 @@ const API_PREFIX = "/api/v1";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 45_000;
 
+/** Upload progress as a 0..1 fraction of bytes sent.
+ *
+ * The denominator is the total bytes to send. On web that's the XHR
+ * ProgressEvent's `total` (the full multipart body), and `loaded <= total`
+ * always. But React Native's FormData can't stat a file passed as a `{uri}`
+ * descriptor (how native uploads a picked image), so it reports a `total` that
+ * EXCLUDES the file's bytes -- `loaded` then races past it and the progress bar
+ * showed >100% (e.g. "173%"). The true total can never be less than the bytes
+ * already sent, so the correct denominator is `max(total, loaded)`. This fixes
+ * the wrong denominator, not the displayed number -- on web (correct `total`)
+ * it's a no-op. */
+export function uploadProgressFraction(loaded: number, total: number): number {
+  if (!(loaded > 0) || !(total > 0)) return 0;
+  return loaded / Math.max(total, loaded);
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -158,7 +174,7 @@ export function createApiClient(config: ApiClientConfig) {
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         if (xhr.upload && onProgress) {
           xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) onProgress(e.loaded / e.total);
+            if (e.lengthComputable) onProgress(uploadProgressFraction(e.loaded, e.total));
           };
         }
         xhr.onerror = () => reject(new ApiError("UNKNOWN_ERROR", "Network request failed", 0));
