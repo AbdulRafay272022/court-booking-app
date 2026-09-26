@@ -8,9 +8,11 @@ import {
   buildSchedules,
   courtSetupFromCourt,
   courtSetupProblem,
+  defaultCourtSetup,
   pktInstant,
   type Court,
   type CourtSetup,
+  type Venue,
 } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -22,14 +24,17 @@ import { ErrorState } from "@/components/error-state";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
 import { AdvanceRuleFields, CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
 import { PhotoManager } from "@/components/photo-manager";
-import { FieldLabel, PrimaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
+import { Chip, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
 import { Tab } from "./_dashboard-components";
 
 export default function VenueSettingsScreen() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
-  const courts = activeVenue?.courts ?? [];
+  // Only ACTIVE courts are editable here -- a deactivated ("deleted") court shouldn't be a
+  // tab in the settings editor. Its history still lives in the ledger (post-batch #2).
+  const courts = (activeVenue?.courts ?? []).filter((c) => c.is_active);
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
-  const activeCourtId = courtId ?? courts[0]?.id;
+  // If the selected court is no longer in the active list (e.g. just deleted), fall back to the first.
+  const activeCourtId = (courtId && courts.some((c) => c.id === courtId) ? courtId : undefined) ?? courts[0]?.id;
 
   const courtQuery = useQuery({
     queryKey: ["court-settings", activeCourtId],
@@ -86,15 +91,17 @@ export default function VenueSettingsScreen() {
         ) : courtQuery.isError ? (
           <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
         ) : !activeCourtId || !court ? (
-          <Text className="font-plex-medium text-owner-ink-faint text-center py-10">No courts yet — add one from venue setup first.</Text>
+          <Text className="font-plex-medium text-owner-ink-faint text-center py-10">No courts yet — add your first court below.</Text>
         ) : (
           <>
             {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
-            <CourtSettingsForm key={court.id} court={court} />
+            <CourtSettingsForm key={court.id} court={court} canDelete={courts.length > 1} onDeleted={() => setCourtId(undefined)} />
             <CourtPhotosCard key={`court-photos-${court.id}`} court={court} />
             <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
           </>
         )}
+
+        {activeVenue ? <AddCourtCard venue={activeVenue} onAdded={(id) => setCourtId(id)} /> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -133,14 +140,43 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
 
 /** Slot length, hours and prices for ONE court. Seeded once from the court it is mounted for (the parent keys it by
  * court id), so it holds its own edits and never needs an effect to copy server data into state. */
-function CourtSettingsForm({ court }: { court: Court }) {
+function CourtSettingsForm({ court, canDelete, onDeleted }: { court: Court; canDelete: boolean; onDeleted: () => void }) {
   const queryClient = useQueryClient();
   const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
   const [advanceType, setAdvanceType] = useState<"" | "fixed" | "percent">(court.advance_type ?? "");
   const [advanceValue, setAdvanceValue] = useState(court.advance_value != null ? String(court.advance_value) : "");
   const [advanceMinimum, setAdvanceMinimum] = useState(court.advance_minimum != null ? String(court.advance_minimum) : "");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const problem = courtSetupProblem(setup);
+
+  function confirmDelete() {
+    // Soft-delete: the backend deactivates the court (is_active=false). Existing bookings and
+    // their payments are untouched and stay in the ledger (post-batch #2) -- say so in the confirm.
+    Alert.alert(
+      `Delete "${court.name}"?`,
+      `It will stop taking new bookings and disappear from the player app. ` +
+        `Its past bookings and payments stay in your ledger.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await api.courts.deactivate(court.id);
+              await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+              onDeleted();
+            } catch (e) {
+              Alert.alert("Couldn't delete", friendlyErrorMessage(e));
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  }
   const advanceProblem =
     advanceType !== "" && !advanceValue.trim() ? "Enter an advance amount or percentage, or switch back to Default." : null;
 
@@ -189,7 +225,82 @@ function CourtSettingsForm({ court }: { court: Court }) {
         }}
       />
       <PrimaryButton label="Save changes" onPress={save} loading={saving} />
+      {canDelete ? (
+        <Pressable
+          onPress={confirmDelete}
+          disabled={deleting || saving}
+          className="min-h-11 items-center justify-center"
+          style={{ opacity: deleting || saving ? 0.5 : 1 }}
+        >
+          <Text className="font-plex-semibold text-owner-danger text-[13.5px]">
+            {deleting ? "Deleting…" : "Delete this court"}
+          </Text>
+        </Pressable>
+      ) : null}
     </>
+  );
+}
+
+/** Add a new court to this venue -- reuses the venue-setup wizard's court fields, and the same
+ * create -> setSchedule -> setPricing sequence. Sport is chosen from the venue's existing sports
+ * (chips, so casing always matches -- see post-batch #3), never free text. */
+function AddCourtCard({ venue, onAdded }: { venue: Venue; onAdded: (courtId: string) => void }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [sport, setSport] = useState(venue.sports[0] ?? "");
+  const [setup, setSetup] = useState<CourtSetup>(() => defaultCourtSetup());
+  const [saving, setSaving] = useState(false);
+  const problem = courtSetupProblem(setup);
+  const valid = name.trim().length > 0 && sport.trim().length > 0 && !problem;
+
+  async function create() {
+    if (!name.trim()) {
+      Alert.alert("Name your court", "Give the court a name.");
+      return;
+    }
+    if (problem) {
+      Alert.alert("Check this court", problem);
+      return;
+    }
+    setSaving(true);
+    try {
+      const { court } = await api.courts.create(venue.id, { name: name.trim(), sport, slot_minutes: setup.slotMinutes });
+      await api.courts.setSchedule(court.id, buildSchedules(setup));
+      await api.courts.setPricing(court.id, buildPricingRules(setup));
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setName("");
+      setSport(venue.sports[0] ?? "");
+      setSetup(defaultCourtSetup());
+      setOpen(false);
+      onAdded(court.id);
+    } catch (e) {
+      Alert.alert("Couldn't add court", friendlyErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return <PrimaryButton label="+ Add court" onPress={() => setOpen(true)} />;
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>Add a court</SectionLabel>
+      <TextField label="Court name" value={name} onChangeText={setName} placeholder="Court 2" />
+      <View className="gap-2">
+        <FieldLabel>Sport</FieldLabel>
+        <View className="flex-row flex-wrap gap-2">
+          {venue.sports.map((s) => (
+            <Chip key={s} label={s} selected={sport === s} onPress={() => setSport(s)} />
+          ))}
+        </View>
+      </View>
+      <CourtSetupFields value={setup} onChange={(patch) => setSetup((cur) => ({ ...cur, ...patch }))} />
+      <PrimaryButton label="Add court" onPress={create} disabled={!valid} loading={saving} />
+      <SecondaryButton label="Cancel" onPress={() => setOpen(false)} />
+    </SectionCard>
   );
 }
 
