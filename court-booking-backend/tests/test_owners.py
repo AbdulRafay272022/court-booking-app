@@ -279,6 +279,48 @@ async def test_ledger_accuracy(client, db_session_factory, make_user, make_venue
     assert body["summary"]["by_court"]["Court B"] == 5000
 
 
+async def test_ledger_includes_deactivated_courts(client, db_session_factory, make_user, make_venue, make_court, make_auth_headers):
+    """Post-batch backlog #2: a court that was later DEACTIVATED still collected real
+    money, so its past payments must stay in the ledger AND remain selectable by the
+    per-court filter. Before the fix the ledger used the active-only court list, so
+    picking the deactivated court showed zero while "All courts" also silently dropped
+    its money."""
+    owner = await make_user("+923011000040", role=UserRole.OWNER)
+    customer = await make_user("+923011000041", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court_a = await make_court(venue, name="Court A")
+    court_b = await make_court(venue, name="Court B", is_active=False)  # deactivated, but has history
+
+    async with db_session_factory() as session:
+        for court in (court_a, court_b):
+            starts_at = datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc)
+            booking = Booking(
+                court_id=court.id, player_id=customer.id, starts_at=starts_at,
+                ends_at=starts_at + timedelta(hours=1), price=1000, amount_paid=1000, balance_due=0,
+                status=BookingStatus.COMPLETED,
+            )
+            session.add(booking)
+            await session.flush()
+            session.add(PaymentEntry(booking_id=booking.id, amount_pkr=1000, method=PaymentMethod.CASH_AT_VENUE, created_at=starts_at))
+        await session.commit()
+
+    owner_headers = await make_auth_headers(owner)
+    params = {"start_date": "2026-10-01", "end_date": "2026-10-31"}
+
+    # "All courts" includes the deactivated court's money.
+    all_resp = await client.get("/api/v1/owners/ledger", headers=owner_headers, params=params)
+    all_body = all_resp.json()
+    assert len(all_body["entries"]) == 2
+    assert all_body["summary"]["total_in_range"] == 2000
+    assert all_body["summary"]["by_court"].get("Court B") == 1000
+
+    # Filtering to the deactivated court shows its payment (was zero before the fix).
+    b_resp = await client.get("/api/v1/owners/ledger", headers=owner_headers, params={**params, "court_id": str(court_b.id)})
+    b_body = b_resp.json()
+    assert len(b_body["entries"]) == 1
+    assert b_body["summary"]["by_court"] == {"Court B": 1000}
+
+
 async def test_ledger_csv_export(client, db_session_factory, make_user, make_venue, make_court, make_auth_headers):
     owner = await make_user("+923011000030", role=UserRole.OWNER)
     customer = await make_user("+923011000031", role=UserRole.PLAYER)

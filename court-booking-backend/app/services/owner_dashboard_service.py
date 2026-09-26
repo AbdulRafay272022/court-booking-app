@@ -49,10 +49,18 @@ class OwnerDashboardService:
         self.settings = settings
         self.availability = AvailabilityService(db)
 
-    async def _owner_courts(self, owner: User, venue_id: uuid.UUID | None = None) -> list[Court]:
-        query = select(Court).join(Venue, Venue.id == Court.venue_id).where(
-            Venue.owner_id == owner.id, Court.is_active.is_(True)
-        )
+    async def _owner_courts(
+        self, owner: User, venue_id: uuid.UUID | None = None, include_inactive: bool = False
+    ) -> list[Court]:
+        # `include_inactive` is for the historical financial views (the ledger): a
+        # court that was deactivated still collected real money, so its payments
+        # must stay in the ledger and remain selectable by the per-court filter --
+        # otherwise picking that court showed zero while "All courts" also silently
+        # dropped its money (post-batch backlog #2). Live views (Today, pending
+        # approvals) keep the active-only default.
+        query = select(Court).join(Venue, Venue.id == Court.venue_id).where(Venue.owner_id == owner.id)
+        if not include_inactive:
+            query = query.where(Court.is_active.is_(True))
         if venue_id is not None:
             venue = await self.db.get(Venue, venue_id)
             if venue is None or venue.owner_id != owner.id:
@@ -308,7 +316,9 @@ class OwnerDashboardService:
     ) -> LedgerOut:
         if end_date < start_date:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "end_date must be >= start_date")
-        courts = await self._owner_courts(owner, venue_id)
+        # Ledger is a historical money record: include deactivated courts so their
+        # past payments still show and the per-court filter works for them (#2).
+        courts = await self._owner_courts(owner, venue_id, include_inactive=True)
         if court_id is not None:
             courts = [c for c in courts if c.id == court_id]
         court_ids = [c.id for c in courts]
