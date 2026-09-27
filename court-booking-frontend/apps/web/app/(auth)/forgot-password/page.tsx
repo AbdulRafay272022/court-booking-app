@@ -4,9 +4,11 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isValidPkMobile, toE164 } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { rememberOtpExpiry } from "@/lib/pending-auth";
+import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { FormMessage, TextField } from "@/components/auth/fields";
 import { SubmitButton } from "@/components/auth/submit-button";
@@ -25,21 +27,36 @@ function ForgotForm() {
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noAccount, setNoAccount] = useState(false); // NEW BUG 1: show Sign up, don't proceed
+  const lock = useCountdown(); // QA #5
 
   const valid = isValidPkMobile(phone);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid || busy) return;
+    if (!valid || busy || lock.seconds > 0) return;
     setBusy(true);
     setError(null);
+    setNoAccount(false);
     try {
       const e164 = toE164(phone);
       const res = await api.auth.requestPasswordReset({ phone: e164 });
       rememberOtpExpiry("password_reset", e164, res.expires_in);
       router.push(`/reset-password?phone=${encodeURIComponent(e164)}${setMode ? "&mode=set" : ""}`);
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      // NEW BUG 1: no account -> tell them to sign up; never advance to the code screen (we only
+      // navigate on a successful send above).
+      if (err instanceof ApiError && err.code === "USER_NOT_FOUND") {
+        setNoAccount(true);
+        setError("No account found for this number. Please sign up.");
+      } else if (
+        err instanceof ApiError &&
+        (err.code === "OTP_RATE_LIMITED" || err.code === "OTP_IP_RATE_LIMITED")
+      ) {
+        lock.start(retryAfterSeconds(err.details) || 60);
+      } else {
+        setError(friendlyErrorMessage(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -66,7 +83,7 @@ function ForgotForm() {
           inputMode="numeric"
           autoFocus
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
           onBlur={() => setTouched(true)}
           error={valid ? null : "Enter a valid mobile number, e.g. 300 1234567"}
           showError={touched}
@@ -78,9 +95,23 @@ function ForgotForm() {
             </span>
           }
         />
-        {error ? <FormMessage kind="error">{error}</FormMessage> : null}
-        <SubmitButton ready={valid} busy={busy} busyLabel="Sending code…">
-          Send code
+        {lock.seconds > 0 ? (
+          <FormMessage kind="error">Too many code requests. Please try again in {lock.seconds}s.</FormMessage>
+        ) : error ? (
+          <FormMessage kind="error">
+            {error}
+            {noAccount ? (
+              <>
+                {" "}
+                <Link href={`/signup?phone=${encodeURIComponent(toE164(phone))}`} className="font-bold underline" style={{ color: t.accent }}>
+                  Sign up
+                </Link>
+              </>
+            ) : null}
+          </FormMessage>
+        ) : null}
+        <SubmitButton ready={valid && lock.seconds === 0} busy={busy} busyLabel="Sending code…">
+          {lock.seconds > 0 ? `Try again in ${lock.seconds}s` : "Send code"}
         </SubmitButton>
       </form>
     </AuthShell>

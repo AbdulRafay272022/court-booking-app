@@ -17,6 +17,68 @@ This file is different: it's the build history and the working conventions —
 read it to pick up where things left off and to work the way this project has
 been worked so far.
 
+## START HERE -- post-Section-32 auth hardening (2026-09-27, branch `post-qa-auth-fixes`)
+
+> Read this before the older 2026-09-23 handoff below. Section 32 (Parts 1-12) and the 8-item
+> post-batch UI backlog are on production (`main` = `9d2f233`, mirrors prod; see MEMORY.md).
+> `post-qa-auth-fixes` (unmerged, tip `04d3c00` after this doc-update commit) hardens the
+> Section 26 auth flow against a QA sweep of the login / signup / OTP paths. Four QA rounds
+> stacked on the same branch (`de136ed` -> `857e963` -> `6568e9c` -> `04d3c00`), each pushed to
+> the QA session between rounds:
+>
+> - **Round 1 (de136ed).** QA #1-#11 plus 2 new bugs. Signup-hijack guard, per-IP OTP-spray cap,
+>   per-IP login lockout (`login_ip_limiter` on `app.state`), OTP superseded-code detection,
+>   `otp-status` endpoint, `NOT_AUTHENTICATED` vs `SESSION_EXPIRED`, `USER_NOT_FOUND` on login
+>   and on password-reset for unknown numbers, PK-mobile format required on signup +
+>   request-otp, retry_after_seconds on every 429.
+> - **Round 2 (857e963).** Four QA re-test findings: hijack blocked even after the victim's code
+>   expires (pending-signup retention), per-account cap alongside per-IP for login, per-IP
+>   OTP-blocked signup no longer leaves a user row, `X-Real-IP` / last-hop XFF plumbing
+>   (`app/utils/client_ip.py`) so the box uses the real client IP behind nginx.
+> - **Round 3 (6568e9c).** SIGNUP_ALREADY_PENDING UI is honest (routes to Verify with an
+>   accurate notice, no fake countdown from `retry_after`), and rate-limited resend shows a
+>   live "resend in Ns" countdown. Backend-neutral. Item F (per-account cap can also affect the
+>   real owner) accepted as a known trade-off.
+> - **Round 4 (04d3c00).** The four items in this document-update commit's parent:
+>   1. Password-reset lockout is per-IP (matches login), not per-phone.
+>      `app.state.password_reset_ip_limiter` (WindowedCounter, OTP-window-sized); `.hit(ip)` on
+>      every reset request AND every wrong-code guess, `.reset(ip)` on a successful reset.
+>      `_issue_otp` / `_consume_otp` accept optional `phone_soft_cap` / `max_code_attempts`
+>      overrides; the reset flow uses PASSWORD_RESET_PHONE_SOFT_CAP=20 and
+>      PASSWORD_RESET_CODE_ATTEMPTS_MAX=20 (mirrors LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS's
+>      accepted distributed-lockout trade-off).
+>   2. Verify screen re-polls `/auth/otp-status` while mounted (web + mobile) so an already-
+>      open tab reflects a resend from elsewhere, no longer stuck on "Code expired".
+>   3. Verify button no longer shifts when the error banner appears (reserved slot bumped from
+>      44px to 60px so a rendered one-line FormMessage fits without growing the container).
+>   4. Login and Forgot Password now enforce the PK-mobile format (422), same as signup /
+>      request-otp; a well-formed PK number with no account still returns 404, unchanged.
+>
+> All 4 round-4 items were independently QA re-tested and passed, including a mobile-specific
+> Expo-web spot-check for the two mobile-touched fixes. Full test suite: **606/606 passing**
+> (Section 32 Part 12 baseline 584 + auth-hardening rounds added the delta). **No migration in
+> this branch** (no files under `alembic/versions/` changed, no `Migration-Go: owner-approved`
+> line needed). Frontend apps and packages typecheck clean.
+>
+> **Two items remain open, neither blocking this push:**
+> 1. **Session length** (8-hour token vs. "1-year session" wording in the product brief) --
+>    flagged as a pending product decision, not a code bug. Deliberately not touched in any
+>    round.
+> 2. **Real native device / emulator testing** (WhatsApp deep-link, push notifications) --
+>    still not done; Expo web can't exercise these. Same standing limit as every other native
+>    feature in this project.
+>
+> **Item C (on-box nginx / client-IP verification) still needs a real deploy-time check**
+> before this branch is merged and deployed. The Dockerfile change (`--proxy-headers
+> --forwarded-allow-ips *` + `app/utils/client_ip.py` reading `X-Real-IP` / last-hop XFF) has
+> unit-test coverage but has not been exercised against the real nginx / EC2 setup. See the
+> Round 2 commit body and `test_qa_retest_C_client_ip_prefers_nginx_headers` for what to
+> confirm on the box after deploy: two clients on different real IPs must land on different
+> `request.client.host` values inside the container.
+>
+> Frontend half of the same rounds lives in the frontend `CLAUDE.md` under the matching
+> "Post-Section-32 auth hardening" heading.
+
 ## START HERE -- handoff as of 2026-09-23 (read this first)
 
 > **UPDATE 2026-09-24: read `docs/SECTION_32_PLAN.md`'s "SESSION HANDOFF (2026-09-24)" section FIRST, before

@@ -9,6 +9,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { getDeviceName, getOrCreateDeviceId, getPlatform } from "@/lib/device";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { usePendingAuth } from "@/lib/pending-auth";
+import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
 import { playerColors } from "@/lib/colors";
 import { AuthScreen, FormMessage, PasswordField, SubmitButton, TextField } from "@/components/auth/kit";
 
@@ -25,12 +26,14 @@ export default function LoginScreen() {
   const [touched, setTouched] = useState({ phone: false, password: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lock = useCountdown(); // QA #5: LOGIN_RATE_LIMITED retry countdown
 
   const errors = validateLogin({ phone, password });
   const valid = Object.keys(errors).length === 0;
   const notice = NOTICES[params.notice ?? ""] ?? null;
 
   async function handleLogin() {
+    if (lock.seconds > 0) return;
     setBusy(true);
     setError(null);
     const e164 = toE164(phone);
@@ -60,7 +63,11 @@ export default function LoginScreen() {
       } else if (err instanceof ApiError && err.code === "PASSWORD_NOT_SET") {
         // Account from before passwords existed: set one through the reset flow.
         router.push({ pathname: "/(auth)/forgot-password", params: { phone: e164, mode: "set" } });
+      } else if (err instanceof ApiError && err.code === "LOGIN_RATE_LIMITED") {
+        lock.start(retryAfterSeconds(err.details) || 60); // QA #5
       } else {
+        // QA #12: USER_NOT_FOUND falls here -> "No account found. Please sign up." (message map),
+        // and we never enter an OTP flow (only PHONE_REVERIFICATION_REQUIRED above does).
         setError(friendlyErrorMessage(err));
       }
     } finally {
@@ -127,9 +134,19 @@ export default function LoginScreen() {
         </Pressable>
       </View>
 
-      {error ? <FormMessage kind="error">{error}</FormMessage> : null}
+      {lock.seconds > 0 ? (
+        <FormMessage kind="error">{`Too many failed attempts. Try again in ${lock.seconds}s, or reset your password.`}</FormMessage>
+      ) : error ? (
+        <FormMessage kind="error">{error}</FormMessage>
+      ) : null}
 
-      <SubmitButton ready={valid} busy={busy} label="Log in" busyLabel="Logging in…" onPress={handleLogin} />
+      <SubmitButton
+        ready={valid && lock.seconds === 0}
+        busy={busy}
+        label={lock.seconds > 0 ? `Try again in ${lock.seconds}s` : "Log in"}
+        busyLabel="Logging in…"
+        onPress={handleLogin}
+      />
     </AuthScreen>
   );
 }

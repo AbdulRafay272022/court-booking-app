@@ -10,11 +10,18 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.config import get_settings
-from app.models.user import LoginAttempt, OtpRequest, Session as SessionModel, User
-from app.utils.security import hash_password, verify_password
+from app.models.user import LoginAttempt, OtpPurpose, OtpRequest, Session as SessionModel, User
+from app.utils.security import hash_otp, hash_password, verify_password
+
+
+def client_from(app, ip: str) -> httpx.AsyncClient:
+    """A test client whose requests appear to come from `ip` (for the per-IP QA tests)."""
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, client=(ip, 12345)), base_url="http://test"
+    )
 
 PASSWORD = "correct-horse-battery"
 
@@ -194,18 +201,35 @@ async def test_signup_for_verified_phone_is_refused_and_changes_nothing(client, 
     assert (await login(client, phone)).status_code == 200
 
 
-async def test_abandoned_unverified_signup_can_be_retried_and_overwritten(client, otp_box):
-    """A stranger must not be able to squat on someone else's number by
-    signing up first and never verifying."""
+async def test_pending_signup_blocks_resignup_until_the_row_is_purged(client, otp_box, db_session_factory):
+    """QA re-test A: a second signup is rejected while ANY unverified row exists for the number --
+    even after its OTP has expired (that's the hijack gap the re-test found). It's allowed again
+    only once the retention purge removes the abandoned row."""
     phone = "+923001110006"
-    await client.post(
+    first = await client.post(
         "/api/v1/auth/signup",
-        json=signup_body(phone, password="squatter-pass-1", confirm_password="squatter-pass-1"),
+        json=signup_body(phone, name="First", password="first-pass-1", confirm_password="first-pass-1"),
     )
+    assert first.status_code == 201
+
+    # Expire the pending code -- the block must STILL hold (this is the fix vs. the earlier version).
+    async with db_session_factory() as s:
+        otp = await s.scalar(select(OtpRequest).where(OtpRequest.phone == phone).order_by(OtpRequest.created_at.desc()))
+        otp.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await s.commit()
+
+    second = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Second", password="second-pass-1", confirm_password="second-pass-1"),
+    )
+    assert second.status_code == 409 and second.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
+
+    # Simulate the retention purge removing the abandoned row -> a fresh signup is allowed again.
+    async with db_session_factory() as s:
+        await s.execute(delete(User).where(User.phone == phone))
+        await s.commit()
     body = await signup_and_verify(client, otp_box, phone, name="Real Owner")
     assert body["user"]["name"] == "Real Owner"
-
-    assert (await login(client, phone, "squatter-pass-1")).status_code == 401
     assert (await login(client, phone, PASSWORD)).status_code == 200
 
 
@@ -237,7 +261,9 @@ async def test_a_reverify_otp_cannot_complete_signup_or_mint_a_session(client, o
 
     await client.post("/api/v1/auth/request-otp", json={"phone": phone})
     r = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": otp_box.code})
-    assert r.status_code == 400 and r.json()["error"]["code"] == "OTP_EXPIRED"
+    # Already verified -> ALREADY_VERIFIED (QA #2). Still no session minted, which is the point.
+    assert r.status_code == 409 and r.json()["error"]["code"] == "ALREADY_VERIFIED"
+    assert "token" not in r.json()
 
 
 async def test_signup_otp_delivery_failure_returns_clean_error(client, db_session, monkeypatch):
@@ -269,15 +295,19 @@ async def test_login_success_issues_8_hour_session(client, otp_box):
     assert (await client.get("/api/v1/auth/me", headers=bearer(body["token"]))).status_code == 200
 
 
-async def test_wrong_password_and_unknown_phone_are_indistinguishable(client, otp_box):
+async def test_login_distinguishes_wrong_password_from_unknown_number(client, otp_box):
+    """NEW BUG 2 / QA #12 deliberately REVERSES the old anti-enumeration behaviour on login:
+    an unknown number gets USER_NOT_FOUND (so the UI can say 'sign up' and never start an OTP
+    flow), while a wrong password on a real account stays INVALID_CREDENTIALS. The small
+    enumeration tradeoff is the owner's explicit choice for fixing the account-bypass bug."""
     phone = "+923001120002"
     await signup_and_verify(client, otp_box, phone)
 
     wrong_pw = await login(client, phone, "not-the-password")
+    assert wrong_pw.status_code == 401 and wrong_pw.json()["error"]["code"] == "INVALID_CREDENTIALS"
+
     unknown = await login(client, "+923001129999", "not-the-password")
-    assert wrong_pw.status_code == unknown.status_code == 401
-    assert wrong_pw.json()["error"] == unknown.json()["error"], "must not reveal which half was wrong"
-    assert wrong_pw.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    assert unknown.status_code == 404 and unknown.json()["error"]["code"] == "USER_NOT_FOUND"
 
 
 async def test_login_rate_limit_after_five_failures_blocks_even_the_right_password(client, otp_box):
@@ -291,12 +321,14 @@ async def test_login_rate_limit_after_five_failures_blocks_even_the_right_passwo
     assert blocked.json()["error"]["code"] == "LOGIN_RATE_LIMITED"
 
 
-async def test_unknown_phones_are_rate_limited_too(client):
-    """Otherwise the limiter itself would reveal which numbers exist."""
+async def test_login_for_unknown_number_says_no_account(client):
+    """NEW BUG 2 / QA #12: login for a number with no account returns USER_NOT_FOUND on the
+    FIRST attempt (so the UI says 'sign up' and never starts an OTP/reset flow), instead of
+    the old ambiguous rate-limited INVALID_CREDENTIALS."""
     phone = "+923001129998"
-    for _ in range(5):
-        assert (await login(client, phone, "x")).status_code == 401
-    assert (await login(client, phone, "x")).status_code == 429
+    resp = await login(client, phone, "whatever")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "USER_NOT_FOUND"
 
 
 async def test_successful_login_clears_earlier_typos(client, db_session, otp_box):
@@ -496,9 +528,12 @@ async def test_password_reset_validation_and_wrong_code(client, otp_box):
     assert (await login(client, phone)).status_code == 200, "a failed reset must not change the password"
 
 
-async def test_password_reset_request_for_unknown_phone_is_silent(client, otp_box):
+async def test_password_reset_request_for_unknown_phone_is_rejected(client, otp_box):
+    """NEW BUG 1: forgot-password for a number with no account returns USER_NOT_FOUND and sends
+    no OTP (was a silent no-op that still claimed 'code sent')."""
     resp = await client.post("/api/v1/auth/request-password-reset", json={"phone": "+923001149999"})
-    assert resp.status_code == 200
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "USER_NOT_FOUND"
     assert otp_box.sent == []
 
 
@@ -511,6 +546,374 @@ async def test_a_signup_otp_cannot_reset_a_password(client, otp_box):
         json={"phone": phone, "otp": otp_box.code, "new_password": "longenough-1", "confirm_password": "longenough-1"},
     )
     assert r.status_code == 400 and r.json()["error"]["code"] == "OTP_EXPIRED"
+
+
+# =================================================================== QA FIXES
+
+
+async def test_qa1_attacker_cannot_hijack_a_pending_signup(client, otp_box, db_session_factory):
+    """QA #1 canonical repro: victim starts a signup; attacker re-signs-up on the same number
+    while the code is live; the attacker's call is rejected and the victim's ORIGINAL code still
+    verifies into the VICTIM's account with the VICTIM's password."""
+    phone = "+923001160001"
+    victim = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Victim", email="victim@example.com", password="victim-pass-1", confirm_password="victim-pass-1"),
+    )
+    assert victim.status_code == 201
+    victim_code = otp_box.code
+
+    attack = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Attacker", email="attacker@example.com", password="attacker-pass-1", confirm_password="attacker-pass-1"),
+    )
+    assert attack.status_code == 409 and attack.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
+
+    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": victim_code})
+    assert verify.status_code == 200
+    assert verify.json()["user"]["name"] == "Victim"
+    assert (await login(client, phone, "attacker-pass-1")).status_code == 401
+    assert (await login(client, phone, "victim-pass-1")).status_code == 200
+
+
+async def test_qa2_verify_signup_for_already_verified_number_says_log_in(client, otp_box):
+    """QA #2: a retry of verify-signup after it already succeeded (dropped response) returns
+    ALREADY_VERIFIED so the UI shows 'Log in', not a dead-end expired-code error."""
+    phone = "+923001160002"
+    await signup_and_verify(client, otp_box, phone)
+    retry = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": otp_box.code})
+    assert retry.status_code == 409 and retry.json()["error"]["code"] == "ALREADY_VERIFIED"
+
+
+async def test_qa3_otp_capped_per_ip_across_distinct_numbers(app, otp_box):
+    """QA #3: beyond N distinct numbers from one IP/device, further OTP sends are blocked
+    regardless of the per-number limit."""
+    app.state.otp_ip_limiter.limit = 3
+    async with client_from(app, "203.0.113.7") as c:
+        for i in range(3):
+            r = await c.post("/api/v1/auth/signup", json=signup_body(f"+92300116100{i}"))
+            assert r.status_code == 201, r.text
+        blocked = await c.post("/api/v1/auth/signup", json=signup_body("+923001161009"))
+    assert blocked.status_code == 429
+    assert blocked.json()["error"]["code"] == "OTP_IP_RATE_LIMITED"
+    assert blocked.json()["error"]["details"]["retry_after_seconds"] > 0
+
+
+async def test_qa4_lockout_is_per_ip_so_a_victim_is_not_locked_from_their_own_device(app, otp_box):
+    """QA #4: an attacker failing logins on a victim's number only locks the ATTACKER's IP; the
+    victim can still log in from their own device."""
+    phone = "+923001160004"
+    async with client_from(app, "198.51.100.1") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+
+    async with client_from(app, "9.9.9.9") as attacker:
+        for _ in range(5):
+            assert (await login(attacker, phone, "wrong")).status_code == 401
+        locked = await login(attacker, phone, "wrong")
+        assert locked.status_code == 429 and locked.json()["error"]["code"] == "LOGIN_RATE_LIMITED"
+        assert locked.json()["error"]["details"]["retry_after_seconds"] > 0
+
+    async with client_from(app, "1.1.1.1") as victim:
+        assert (await login(victim, phone, PASSWORD)).status_code == 200
+
+
+async def test_qa5_otp_request_rate_limit_carries_retry_after(client, otp_box, make_user):
+    """QA #5: the per-phone OTP 429 carries retry_after_seconds too."""
+    user = await make_user("+923001160005", phone_verified_at=None, password_hash=await hash_password(PASSWORD))
+    for _ in range(get_settings().OTP_MAX_ATTEMPTS):
+        await client.post("/api/v1/auth/request-otp", json={"phone": user.phone})
+    blocked = await client.post("/api/v1/auth/request-otp", json={"phone": user.phone})
+    assert blocked.status_code == 429 and blocked.json()["error"]["code"] == "OTP_RATE_LIMITED"
+    assert blocked.json()["error"]["details"]["retry_after_seconds"] > 0
+
+
+async def test_qa10_superseded_code_is_reported_and_does_not_burn_the_active_attempt(
+    client, db_session_factory
+):
+    """QA #10: submitting an OLDER code once a newer one was sent returns OTP_SUPERSEDED and does
+    NOT count against the current active code's attempts."""
+    phone = "+923001160010"
+    async with db_session_factory() as s:
+        s.add(User(phone=phone, password_hash=await hash_password(PASSWORD), phone_verified_at=None))
+        await s.flush()
+        now = datetime.now(timezone.utc)
+        s.add(OtpRequest(phone=phone, purpose=OtpPurpose.SIGNUP, otp_hash=hash_otp("222222"),
+                         expires_at=now + timedelta(minutes=5), created_at=now - timedelta(minutes=1)))
+        s.add(OtpRequest(phone=phone, purpose=OtpPurpose.SIGNUP, otp_hash=hash_otp("333333"),
+                         expires_at=now + timedelta(minutes=5), created_at=now))
+        await s.commit()
+
+    old = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": "222222"})
+    assert old.status_code == 400 and old.json()["error"]["code"] == "OTP_SUPERSEDED"
+
+    async with db_session_factory() as s:
+        active = await s.scalar(
+            select(OtpRequest).where(OtpRequest.phone == phone).order_by(OtpRequest.created_at.desc())
+        )
+        assert active.attempts == 0, "a superseded-code submission must not burn the active code's attempt"
+
+    good = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": "333333"})
+    assert good.status_code == 200
+
+
+async def test_qa10_otp_status_endpoint_reports_remaining_time(client, otp_box):
+    """QA #10: a cold Verify screen can read the live code's remaining time server-side."""
+    phone = "+923001160011"
+    await client.post("/api/v1/auth/signup", json=signup_body(phone))
+    status_resp = await client.get("/api/v1/auth/otp-status", params={"phone": phone})
+    assert status_resp.status_code == 200
+    body = status_resp.json()
+    assert body["expires_at"] is not None and body["expires_in"] > 0
+    none_resp = await client.get("/api/v1/auth/otp-status", params={"phone": "+923001169999"})
+    assert none_resp.json()["expires_in"] == 0
+
+
+async def test_qa11_missing_token_is_not_authenticated_bad_token_is_session_expired(client):
+    """QA #11: no Authorization header -> NOT_AUTHENTICATED; a present-but-invalid token ->
+    SESSION_EXPIRED."""
+    none = await client.get("/api/v1/auth/me")
+    assert none.status_code == 401 and none.json()["error"]["code"] == "NOT_AUTHENTICATED"
+    bad = await client.get("/api/v1/auth/me", headers=bearer("not-a-real-token"))
+    assert bad.status_code == 401 and bad.json()["error"]["code"] == "SESSION_EXPIRED"
+
+
+async def test_qa_retest_A_hijack_blocked_even_after_the_victims_code_expires(client, otp_box, db_session_factory):
+    """QA re-test repro A: victim signs up; the victim's code expires before they verify; the
+    attacker signs up again on the same number -> STILL rejected; the victim resends and verifies
+    into the victim's own account."""
+    phone = "+923001170001"
+    victim = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Victim", email="v170001@example.com", password="victim-pass-1", confirm_password="victim-pass-1"),
+    )
+    assert victim.status_code == 201
+
+    async with db_session_factory() as s:
+        otp = await s.scalar(select(OtpRequest).where(OtpRequest.phone == phone).order_by(OtpRequest.created_at.desc()))
+        otp.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await s.commit()
+
+    attacker = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, name="Attacker", email="a170001@example.com", password="attacker-pass-1", confirm_password="attacker-pass-1"),
+    )
+    assert attacker.status_code == 409 and attacker.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
+
+    # Victim resends and verifies into their OWN account.
+    await client.post("/api/v1/auth/request-otp", json={"phone": phone})
+    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": otp_box.code})
+    assert verify.status_code == 200 and verify.json()["user"]["name"] == "Victim"
+    assert (await login(client, phone, "attacker-pass-1")).status_code == 401
+    assert (await login(client, phone, "victim-pass-1")).status_code == 200
+
+
+async def test_qa_retest_A_retention_purge_clears_abandoned_unverified_signups(client, otp_box, db_session_factory, make_user):
+    """The retention purge lifts the block: an abandoned unverified row older than the window is
+    deleted; a verified account and a recent pending signup are kept."""
+    from app.jobs.expiry_job import purge_stale_unverified_signups
+
+    old_abandoned = "+923001170002"
+    await client.post("/api/v1/auth/signup", json=signup_body(old_abandoned))
+    verified = await make_user("+923001170003")  # verified account, must survive
+    recent_pending = "+923001170004"
+    await client.post("/api/v1/auth/signup", json=signup_body(recent_pending))
+
+    # Age the abandoned row past the retention window.
+    async with db_session_factory() as s:
+        u = await s.scalar(select(User).where(User.phone == old_abandoned))
+        u.created_at = datetime.now(timezone.utc) - timedelta(minutes=get_settings().PENDING_SIGNUP_RETENTION_MINUTES + 5)
+        await s.commit()
+
+    purged = await purge_stale_unverified_signups(db_session_factory)
+    assert purged == 1
+    async with db_session_factory() as s:
+        assert await s.scalar(select(User).where(User.phone == old_abandoned)) is None  # purged
+        assert await s.scalar(select(User).where(User.phone == verified.phone)) is not None  # kept
+        assert await s.scalar(select(User).where(User.phone == recent_pending)) is not None  # kept (too recent)
+
+    # After the purge, the number can be signed up for again.
+    assert (await client.post("/api/v1/auth/signup", json=signup_body(old_abandoned))).status_code == 201
+
+
+async def test_qa_retest_B_account_level_cap_kicks_in_across_many_ips(app, otp_box, monkeypatch):
+    """QA re-test B: many wrong-password guesses spread across MANY IPs at one account are now
+    capped by a per-account (phone-keyed) limit, in addition to the per-IP one."""
+    monkeypatch.setattr(get_settings(), "LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS", 6)
+    phone = "+923001170005"
+    async with client_from(app, "10.0.0.1") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+
+    # One wrong guess each from 6 different IPs -> per-IP never trips (1 each < 5), but the account
+    # cap (6) does.
+    for i in range(6):
+        async with client_from(app, f"10.9.9.{i}") as attacker:
+            r = await login(attacker, phone, "wrong-pass")
+            assert r.status_code == 401, (i, r.text)
+    async with client_from(app, "10.9.9.99") as attacker:
+        capped = await login(attacker, phone, "wrong-pass")
+    assert capped.status_code == 429 and capped.json()["error"]["code"] == "LOGIN_RATE_LIMITED"
+    assert capped.json()["error"]["details"]["retry_after_seconds"] > 0
+
+
+async def test_qa_retest_D_ip_blocked_signup_creates_no_user_row(app, db_session_factory):
+    """QA re-test D: a signup rejected by the per-IP OTP cap must not leave an unverified user row."""
+    app.state.otp_ip_limiter.limit = 1
+    async with client_from(app, "203.0.113.50") as c:
+        ok = await c.post("/api/v1/auth/signup", json=signup_body("+923001170006"))
+        assert ok.status_code == 201
+        blocked = await c.post("/api/v1/auth/signup", json=signup_body("+923001170007"))
+    assert blocked.status_code == 429 and blocked.json()["error"]["code"] == "OTP_IP_RATE_LIMITED"
+    async with db_session_factory() as s:
+        assert await s.scalar(select(User).where(User.phone == "+923001170007")) is None, "blocked signup left a row"
+
+
+def test_qa_retest_C_client_ip_prefers_nginx_headers():
+    """QA re-test C (unit): the throttle IP comes from nginx's X-Real-IP / the last X-Forwarded-For
+    hop, not the proxy's socket address -- so users don't share one bucket behind the proxy, and a
+    client-supplied X-Forwarded-For can't spoof it."""
+    from starlette.requests import Request
+    from app.utils.client_ip import client_ip
+
+    def req(headers, peer):
+        scope = {
+            "type": "http",
+            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+            "client": (peer, 12345),
+        }
+        return Request(scope)
+
+    # peer is the docker gateway; X-Real-IP is the real client (nginx overwrites it) -> use it
+    assert client_ip(req({"x-real-ip": "203.0.113.9"}, "172.17.0.1")) == "203.0.113.9"
+    # spoofed leading XFF hop is ignored; the last (nginx-appended) hop wins
+    assert client_ip(req({"x-forwarded-for": "1.2.3.4, 203.0.113.9"}, "172.17.0.1")) == "203.0.113.9"
+    # no proxy headers (local dev / test client) -> fall back to the socket peer
+    assert client_ip(req({}, "198.51.100.7")) == "198.51.100.7"
+
+
+async def test_qa9_signup_and_request_otp_require_pakistani_mobile_format(client, otp_box):
+    """QA #9: request-otp and signup reject numbers that aren't valid PK mobiles (correct
+    prefix/length), not just any E.164 shape."""
+    for bad_phone in ("+14155551234", "+92300123", "+9231234567890"):
+        s = await client.post("/api/v1/auth/signup", json=signup_body(bad_phone))
+        assert s.status_code == 422, (bad_phone, s.text)
+        r = await client.post("/api/v1/auth/request-otp", json={"phone": bad_phone})
+        assert r.status_code == 422, (bad_phone, r.text)
+    # a valid PK mobile still works
+    ok = await client.post("/api/v1/auth/signup", json=signup_body("+923001160009"))
+    assert ok.status_code == 201
+
+
+# =========================================== QA round 4 (post-6568e9c fix pass)
+
+
+async def test_qa_r4_password_reset_request_lockout_is_per_ip_not_per_phone(app, otp_box):
+    """QA round 4 item 1: five reset requests from ONE attacker IP locks THAT IP, but the real
+    account owner from a different IP is unaffected. Under the old code five requests from any mix
+    of IPs would 429 everyone including the owner (per-phone OTP_MAX_ATTEMPTS gate)."""
+    phone = "+923001180001"
+    async with client_from(app, "198.51.100.10") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+
+    async with client_from(app, "9.9.9.10") as attacker:
+        for i in range(get_settings().PASSWORD_RESET_IP_MAX_ATTEMPTS):
+            r = await attacker.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+            assert r.status_code == 200, (i, r.text)
+        locked = await attacker.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+        assert locked.status_code == 429
+        assert locked.json()["error"]["code"] == "OTP_RATE_LIMITED"
+        assert locked.json()["error"]["details"]["retry_after_seconds"] > 0
+
+    # The real owner from their own IP is untouched.
+    async with client_from(app, "1.1.1.2") as victim:
+        allowed = await victim.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+        assert allowed.status_code == 200, allowed.text
+
+
+async def test_qa_r4_password_reset_wrong_code_lockout_is_per_ip_not_per_code(app, otp_box):
+    """QA round 4 item 1: wrong-code guesses spread across many IPs no longer burn the real code
+    before the owner can use it. Each attacker IP tops out at PASSWORD_RESET_IP_MAX_ATTEMPTS; the
+    per-code cap is raised to PASSWORD_RESET_CODE_ATTEMPTS_MAX as a rolling soft cap."""
+    phone = "+923001180002"
+    async with client_from(app, "198.51.100.11") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+        otp_box.sent.clear()
+        await setup.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+    real_code = otp_box.code
+
+    # Six wrong guesses from six different IPs -- fewer than PASSWORD_RESET_CODE_ATTEMPTS_MAX (20)
+    # so the code itself isn't burned; each attacker's IP is charged one hit, well under the per-IP
+    # cap. Under the OLD code, otp.attempts would hit OTP_MAX_ATTEMPTS (5) here and lock the code.
+    wrong = "000000" if real_code != "000000" else "111111"
+    for i in range(6):
+        async with client_from(app, f"9.9.9.{20 + i}") as attacker:
+            r = await attacker.post(
+                "/api/v1/auth/verify-password-reset",
+                json={"phone": phone, "otp": wrong, "new_password": "longenough-1", "confirm_password": "longenough-1"},
+            )
+            assert r.status_code == 400 and r.json()["error"]["code"] == "INVALID_OTP", (i, r.text)
+
+    # The real owner, from their own IP, can still use the code.
+    new_pw = "brand-new-password-9"
+    async with client_from(app, "1.1.1.3") as victim:
+        done = await victim.post(
+            "/api/v1/auth/verify-password-reset",
+            json={"phone": phone, "otp": real_code, "new_password": new_pw, "confirm_password": new_pw},
+        )
+        assert done.status_code == 200, done.text
+        assert (await login(victim, phone, new_pw)).status_code == 200
+
+
+async def test_qa_r4_login_and_forgot_password_reject_non_pk_numbers(client, otp_box):
+    """QA round 4 item 4: login and forgot-password now enforce the same PK-mobile format as
+    signup/request-otp, rejecting a non-Pakistani E.164 number with 422 before any DB lookup.
+    A well-formed PK number that has no account still returns 404 (USER_NOT_FOUND), unchanged."""
+    for bad_phone in ("+14155551234", "+92300123", "+9231234567890"):
+        r = await client.post("/api/v1/auth/login", json={"phone": bad_phone, "password": "anything"})
+        assert r.status_code == 422, (bad_phone, r.text)
+        rp = await client.post("/api/v1/auth/request-password-reset", json={"phone": bad_phone})
+        assert rp.status_code == 422, (bad_phone, rp.text)
+
+    # A valid PK number with no account still returns 404, unchanged.
+    unknown = await client.post("/api/v1/auth/login", json={"phone": "+923001188888", "password": "anything"})
+    assert unknown.status_code == 404 and unknown.json()["error"]["code"] == "USER_NOT_FOUND"
+    unknown_reset = await client.post("/api/v1/auth/request-password-reset", json={"phone": "+923001188888"})
+    assert unknown_reset.status_code == 404 and unknown_reset.json()["error"]["code"] == "USER_NOT_FOUND"
+
+
+async def test_qa_r4_password_reset_attacker_ip_locks_itself_out_on_wrong_guesses(app, otp_box):
+    """QA round 4 item 1: an attacker hammering the reset code from ONE IP tops out at
+    PASSWORD_RESET_IP_MAX_ATTEMPTS wrong guesses on that IP. The owner's own IP is unaffected."""
+    phone = "+923001180003"
+    async with client_from(app, "198.51.100.12") as setup:
+        await signup_and_verify(setup, otp_box, phone)
+        otp_box.sent.clear()
+        await setup.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+    real_code = otp_box.code
+
+    wrong = "000000" if real_code != "000000" else "111111"
+    async with client_from(app, "9.9.9.30") as attacker:
+        for i in range(get_settings().PASSWORD_RESET_IP_MAX_ATTEMPTS):
+            r = await attacker.post(
+                "/api/v1/auth/verify-password-reset",
+                json={"phone": phone, "otp": wrong, "new_password": "longenough-1", "confirm_password": "longenough-1"},
+            )
+            assert r.status_code == 400, (i, r.text)
+        locked = await attacker.post(
+            "/api/v1/auth/verify-password-reset",
+            json={"phone": phone, "otp": wrong, "new_password": "longenough-1", "confirm_password": "longenough-1"},
+        )
+        assert locked.status_code == 429
+        assert locked.json()["error"]["code"] == "OTP_RATE_LIMITED"
+        assert locked.json()["error"]["details"]["retry_after_seconds"] > 0
+
+    # Owner from their own IP: reset still succeeds with the real code.
+    new_pw = "brand-new-password-9"
+    async with client_from(app, "1.1.1.4") as victim:
+        done = await victim.post(
+            "/api/v1/auth/verify-password-reset",
+            json={"phone": phone, "otp": real_code, "new_password": new_pw, "confirm_password": new_pw},
+        )
+        assert done.status_code == 200, done.text
 
 
 # ------------------------------------------------------- session lifecycle

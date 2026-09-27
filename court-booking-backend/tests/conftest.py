@@ -79,6 +79,10 @@ async def db_session(db_session_factory) -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 def app(db_session_factory):
     application = create_app()
+    # QA #3 per-IP OTP cap is real, but the ASGI test client makes every request look like one
+    # IP, so a test that legitimately signs up many numbers would trip it. Relax it here for the
+    # general suite; the dedicated per-IP tests set `app.state.otp_ip_limiter.limit` back down.
+    application.state.otp_ip_limiter.limit = 10_000
 
     async def _get_db_override() -> AsyncGenerator[AsyncSession, None]:
         async with db_session_factory() as session:

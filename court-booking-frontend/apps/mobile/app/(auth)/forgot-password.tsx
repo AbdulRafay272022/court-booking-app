@@ -3,15 +3,17 @@ import { Text } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { isValidPkMobile, pkNationalDigits, toE164 } from "@court-booking/types";
 
+import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { usePendingAuth } from "@/lib/pending-auth";
+import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
 import { playerColors } from "@/lib/colors";
 import { AuthScreen, FormMessage, SubmitButton, TextField } from "@/components/auth/kit";
 
 /** Step 1 of password reset -- also how a pre-Section-26 account SETS its first password
- * (`mode=set`). The reply is the same whether or not the number has an account, so this
- * screen can't be used to find out who's registered. */
+ * (`mode=set`). NEW BUG 1: an unknown number is rejected (USER_NOT_FOUND) and we don't advance
+ * to the code screen; we only navigate on a successful send. */
 export default function ForgotPasswordScreen() {
   const params = useLocalSearchParams<{ phone?: string; mode?: string }>();
   const setMode = params.mode === "set";
@@ -19,9 +21,11 @@ export default function ForgotPasswordScreen() {
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lock = useCountdown(); // QA #5
   const valid = isValidPkMobile(phone);
 
   async function handleSend() {
+    if (lock.seconds > 0) return;
     setBusy(true);
     setError(null);
     try {
@@ -30,7 +34,12 @@ export default function ForgotPasswordScreen() {
       usePendingAuth.getState().rememberOtpExpiry("password_reset", e164, res.expires_in);
       router.push({ pathname: "/(auth)/reset-password", params: { phone: e164, ...(setMode ? { mode: "set" } : {}) } });
     } catch (err) {
-      setError(friendlyErrorMessage(err));
+      if (err instanceof ApiError && (err.code === "OTP_RATE_LIMITED" || err.code === "OTP_IP_RATE_LIMITED")) {
+        lock.start(retryAfterSeconds(err.details) || 60); // QA #5
+      } else {
+        // NEW BUG 1: USER_NOT_FOUND -> "No account found. Please sign up." (message map); no nav.
+        setError(friendlyErrorMessage(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -71,8 +80,18 @@ export default function ForgotPasswordScreen() {
           </Text>
         }
       />
-      {error ? <FormMessage kind="error">{error}</FormMessage> : null}
-      <SubmitButton ready={valid} busy={busy} label="Send code" busyLabel="Sending code…" onPress={handleSend} />
+      {lock.seconds > 0 ? (
+        <FormMessage kind="error">{`Too many code requests. Please try again in ${lock.seconds}s.`}</FormMessage>
+      ) : error ? (
+        <FormMessage kind="error">{error}</FormMessage>
+      ) : null}
+      <SubmitButton
+        ready={valid && lock.seconds === 0}
+        busy={busy}
+        label={lock.seconds > 0 ? `Try again in ${lock.seconds}s` : "Send code"}
+        busyLabel="Sending code…"
+        onPress={handleSend}
+      />
     </AuthScreen>
   );
 }

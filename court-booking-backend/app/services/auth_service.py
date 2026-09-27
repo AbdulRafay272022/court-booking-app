@@ -43,25 +43,78 @@ class AuthService:
     - Sessions last SESSION_TOKEN_EXPIRE_HOURS and are kept alive by /auth/refresh.
     """
 
-    def __init__(self, db: AsyncSession, settings: Settings) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        settings: Settings,
+        *,
+        client_ip: str | None = None,
+        login_ip_limiter=None,
+        otp_ip_limiter=None,
+        password_reset_ip_limiter=None,
+    ) -> None:
         self.db = db
         self.settings = settings
         self.whatsapp = WhatsAppService(settings)
+        # Per-IP/device throttles (QA #3 OTP spam, QA #4 login lockout, QA new #1 password reset).
+        # Threaded from the endpoint via app.state; None in direct service calls (unit tests), which
+        # skips them.
+        self._client_ip = client_ip
+        self._login_ip_limiter = login_ip_limiter
+        self._otp_ip_limiter = otp_ip_limiter
+        self._password_reset_ip_limiter = password_reset_ip_limiter
 
     # ------------------------------------------------------------------ OTP
 
-    async def _issue_otp(self, phone: str, purpose: OtpPurpose, *, user_id=None) -> None:
+    async def _enforce_otp_ip_limit(self, phone: str) -> None:
+        """QA #3: a per-IP/device cap ON TOP OF the per-phone limit -- at most
+        OTP_IP_MAX_DISTINCT_PHONES distinct numbers may be OTP'd from one source in the
+        window, so one attacker can't spray codes at many victims' numbers. A resend to
+        the SAME number never counts as a new number. Skipped when no IP context was
+        threaded through (e.g. a direct service call in a unit test)."""
+        if self._otp_ip_limiter is None or self._client_ip is None:
+            return
+        if self._otp_ip_limiter.would_exceed(self._client_ip, phone):
+            raise AppError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                ErrorCode.OTP_IP_RATE_LIMITED,
+                "Too many verification codes requested from this device. Please try again later.",
+                details={"retry_after_seconds": self._otp_ip_limiter.retry_after_seconds(self._client_ip)},
+            )
+        self._otp_ip_limiter.record(self._client_ip, phone)
+
+    async def _otp_phone_retry_after(self, phone: str, window_start: datetime) -> int:
+        """Seconds until the oldest OTP request in the window ages out (QA #5)."""
+        oldest = await self.db.scalar(
+            select(func.min(OtpRequest.created_at)).where(
+                OtpRequest.phone == phone, OtpRequest.created_at >= window_start
+            )
+        )
+        if oldest is None:
+            return self.settings.OTP_RATE_LIMIT_WINDOW_MINUTES * 60
+        free_at = oldest + timedelta(minutes=self.settings.OTP_RATE_LIMIT_WINDOW_MINUTES)
+        return max(1, int((free_at - utcnow()).total_seconds()) + 1)
+
+    async def _issue_otp(
+        self, phone: str, purpose: OtpPurpose, *, user_id=None, phone_soft_cap: int | None = None
+    ) -> None:
+        # `phone_soft_cap` (QA new #1): password reset overrides the default OTP_MAX_ATTEMPTS with a
+        # much higher rolling cap so a distributed attacker can't cheaply lock the real owner out;
+        # the actual gate for reset lives on the per-IP limiter (see `request_password_reset`).
+        await self._enforce_otp_ip_limit(phone)
+        cap = phone_soft_cap if phone_soft_cap is not None else self.settings.OTP_MAX_ATTEMPTS
         window_start = utcnow() - timedelta(minutes=self.settings.OTP_RATE_LIMIT_WINDOW_MINUTES)
         count = await self.db.scalar(
             select(func.count()).select_from(OtpRequest).where(
                 OtpRequest.phone == phone, OtpRequest.created_at >= window_start
             )
         )
-        if (count or 0) >= self.settings.OTP_MAX_ATTEMPTS:
+        if (count or 0) >= cap:
             raise AppError(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 ErrorCode.OTP_RATE_LIMITED,
                 "Too many OTP requests. Please try again later.",
+                details={"retry_after_seconds": await self._otp_phone_retry_after(phone, window_start)},
             )
 
         code = self.settings.DEV_FIXED_OTP if (self.settings.DEBUG and self.settings.DEV_FIXED_OTP) else generate_otp()
@@ -93,12 +146,33 @@ class AuthService:
                 "Couldn't send the verification code right now. Please try again in a moment.",
             ) from exc
 
+    async def otp_status(self, phone: str) -> datetime | None:
+        """QA #10: the expiry of the latest live (unused, unexpired) OTP for this phone, so a
+        cold-loaded Verify screen can render a correct countdown. None when there is none."""
+        return await self.db.scalar(
+            select(OtpRequest.expires_at)
+            .where(OtpRequest.phone == phone, OtpRequest.is_used.is_(False), OtpRequest.expires_at > utcnow())
+            .order_by(OtpRequest.created_at.desc())
+            .limit(1)
+        )
+
     async def _consume_otp(
-        self, phone: str, code: str, purposes: tuple[OtpPurpose, ...], *, user_id=None
+        self,
+        phone: str,
+        code: str,
+        purposes: tuple[OtpPurpose, ...],
+        *,
+        user_id=None,
+        max_code_attempts: int | None = None,
     ) -> None:
         """Validates the latest live OTP for this phone+purpose and marks it
         used. Raises OTP_EXPIRED / OTP_RATE_LIMITED / INVALID_OTP; the caller
-        commits."""
+        commits.
+
+        `max_code_attempts` (QA new #1): password reset raises the per-code hard gate above the
+        default OTP_MAX_ATTEMPTS so a distributed attacker can't burn the owner's own reset code
+        with wrong guesses from a handful of IPs before the owner gets to use it. The per-IP
+        limiter is still the actual hard gate."""
         conditions = [
             OtpRequest.phone == phone,
             OtpRequest.purpose.in_(purposes),
@@ -113,21 +187,59 @@ class AuthService:
         otp = result.scalar_one_or_none()
         if otp is None:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.OTP_EXPIRED, "OTP expired or not found")
-        if otp.attempts >= self.settings.OTP_MAX_ATTEMPTS:
+        code_cap = max_code_attempts if max_code_attempts is not None else self.settings.OTP_MAX_ATTEMPTS
+        if otp.attempts >= code_cap:
             raise AppError(
-                status.HTTP_429_TOO_MANY_REQUESTS, ErrorCode.OTP_RATE_LIMITED, "Too many failed attempts"
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                ErrorCode.OTP_RATE_LIMITED,
+                "Too many failed attempts. Please request a new code.",
+                details={"retry_after_seconds": max(1, int((otp.expires_at - utcnow()).total_seconds()) + 1)},
             )
         if not verify_otp(code, otp.otp_hash):
+            # QA #10: if the code the user typed is actually an OLDER code that a newer one
+            # has since superseded (common when they had two tabs, or resent), tell them so
+            # and do NOT burn an attempt against the current active code.
+            if await self._matches_superseded_otp(phone, code, purposes, user_id, otp.created_at):
+                raise AppError(
+                    status.HTTP_400_BAD_REQUEST,
+                    ErrorCode.OTP_SUPERSEDED,
+                    "This code is no longer valid — a newer code was sent. Please use the latest one.",
+                )
             otp.attempts += 1
             await self.db.commit()
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_OTP, "Invalid OTP")
         otp.is_used = True
 
+    async def _matches_superseded_otp(
+        self, phone: str, code: str, purposes: tuple[OtpPurpose, ...], user_id, active_created_at: datetime
+    ) -> bool:
+        """True if `code` matches an unused OTP for this phone+purpose that predates the
+        current active one (i.e. a code superseded by a newer send). Bounded to the few most
+        recent older codes so the extra verify() work stays cheap."""
+        conditions = [
+            OtpRequest.phone == phone,
+            OtpRequest.purpose.in_(purposes),
+            OtpRequest.is_used.is_(False),
+            OtpRequest.created_at < active_created_at,
+        ]
+        if user_id is not None:
+            conditions.append(OtpRequest.user_id == user_id)
+        older = (
+            await self.db.execute(
+                select(OtpRequest).where(*conditions).order_by(OtpRequest.created_at.desc()).limit(5)
+            )
+        ).scalars().all()
+        return any(verify_otp(code, o.otp_hash) for o in older)
+
     # --------------------------------------------------------------- signup
 
     async def signup(self, payload: SignupIn) -> None:
         user = await self.db.scalar(select(User).where(User.phone == payload.phone))
-        password_hash = await hash_password(payload.password)
+
+        # QA re-test D: enforce the per-IP/device OTP cap BEFORE creating (or hashing for) any
+        # user row, so a signup that is blocked by the IP limit never leaves an unverified row
+        # behind in the DB.
+        await self._enforce_otp_ip_limit(payload.phone)
 
         if user is not None and user.phone_verified_at is not None:
             # A verified (or pre-Section-26) account owns this number. Never
@@ -138,20 +250,36 @@ class AuthService:
                 "An account with this phone number already exists. Log in, or reset your password.",
             )
 
+        if user is not None and user.phone_verified_at is None:
+            # QA re-test A (signup-hijack, hardened): block a second signup while ANY unverified
+            # row exists for this number -- NOT just while its OTP is still live. Otherwise an
+            # attacker could wait for the victim's code to expire and then overwrite the pending
+            # name/email/password. The block lifts only when the row verifies (its real owner) or
+            # the retention purge clears it (`purge_stale_unverified_signups`, after
+            # PENDING_SIGNUP_RETENTION_MINUTES). "Resend code" (request-otp) still works and never
+            # changes the account.
+            retention = timedelta(minutes=self.settings.PENDING_SIGNUP_RETENTION_MINUTES)
+            free_at = (user.created_at or utcnow()) + retention
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.SIGNUP_ALREADY_PENDING,
+                "A verification is already in progress for this number. Check WhatsApp for the code "
+                "(or tap Resend) to finish signing up.",
+                details={"retry_after_seconds": max(1, int((free_at - utcnow()).total_seconds()) + 1)},
+            )
+
         await self._claim_email(payload.email, for_user=user)
 
-        if user is None:
-            user = User(phone=payload.phone)
-            self.db.add(user)
-        # else: an abandoned, never-verified signup for this number. Whoever
-        # finishes the OTP owns it, so let a retry overwrite it rather than
-        # letting a stranger squat on someone else's number by signing up first.
+        # Only reached for a number with no existing user row (the two branches above return for
+        # verified and unverified rows), so this always creates a fresh account.
+        user = User(phone=payload.phone)
+        self.db.add(user)
         user.name = payload.name
         user.email = payload.email
         user.city = payload.city
         user.gender = payload.gender
         user.role = payload.user_role
-        user.password_hash = password_hash
+        user.password_hash = await hash_password(payload.password)
         user.phone_verified_at = None
         await self._commit_unique_email()
 
@@ -167,10 +295,20 @@ class AuthService:
         platform: str | None = None,
     ) -> tuple[User, str, datetime]:
         user = await self.db.scalar(select(User).where(User.phone == phone))
+        # QA #2 (dropped-connection loop): if this number is ALREADY verified, the most
+        # likely cause is that a previous verify succeeded server-side but the client never
+        # saw the response and is now retrying. Say so plainly so the UI can offer "Log in"
+        # instead of the dead-end "code expired".
+        if user is not None and user.phone_verified_at is not None:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.ALREADY_VERIFIED,
+                "This number is already verified — please log in.",
+            )
         # Only a pending signup (password set, phone never verified) can be
         # completed here. Without this, an OTP alone -- which never checks a
         # password -- would be a way to mint a session for any account.
-        if user is None or user.phone_verified_at is not None or user.password_hash is None:
+        if user is None or user.password_hash is None:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.OTP_EXPIRED, "OTP expired or not found")
 
         await self._consume_otp(phone, code, (OtpPurpose.SIGNUP,))
@@ -250,20 +388,28 @@ class AuthService:
             raise AppError(
                 status.HTTP_403_FORBIDDEN, ErrorCode.PASSWORD_NOT_SET, "Set a password before changing your number."
             )
-        # Wrong passwords here count toward the same lockout as login, so a stolen session can't
-        # be used to guess the password through this endpoint.
-        if await self._failed_login_count(user.phone) >= self.settings.LOGIN_MAX_FAILED_ATTEMPTS:
+        # Wrong passwords here count toward the SAME per-IP lockout as login (QA #4), so a
+        # stolen session can't be used to bypass the login lock by guessing the password
+        # through this endpoint instead.
+        limiter = self._login_ip_limiter
+        ip = self._client_ip
+        if limiter is not None and ip is not None and limiter.count(ip) >= self.settings.LOGIN_MAX_FAILED_ATTEMPTS:
             raise AppError(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 ErrorCode.LOGIN_RATE_LIMITED,
                 "Too many failed attempts. Please try again in a few minutes.",
+                details={"retry_after_seconds": limiter.retry_after_seconds(ip)},
             )
         if not await verify_password(password, user.password_hash):
-            self.db.add(LoginAttempt(phone=user.phone))
+            self.db.add(LoginAttempt(phone=user.phone))  # audit trail
             await self.db.commit()
+            if limiter is not None and ip is not None:
+                limiter.hit(ip)
             # 403, not 401: a 401 on an authenticated call reads as "session expired" to the clients.
             raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.INVALID_CREDENTIALS, "Incorrect password.")
         await self._clear_failed_logins(user.phone)
+        if limiter is not None and ip is not None:
+            limiter.reset(ip)
 
         if new_phone == user.phone:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "That is already your number.")
@@ -389,6 +535,19 @@ class AuthService:
     async def _clear_failed_logins(self, phone: str) -> None:
         await self.db.execute(delete(LoginAttempt).where(LoginAttempt.phone == phone))
 
+    async def _login_account_retry_after(self, phone: str) -> int:
+        """Seconds until the oldest failed-login row for this account ages out of the window (QA re-test B)."""
+        window_start = utcnow() - timedelta(minutes=self.settings.LOGIN_RATE_LIMIT_WINDOW_MINUTES)
+        oldest = await self.db.scalar(
+            select(func.min(LoginAttempt.created_at)).where(
+                LoginAttempt.phone == phone, LoginAttempt.created_at >= window_start
+            )
+        )
+        if oldest is None:
+            return self.settings.LOGIN_RATE_LIMIT_WINDOW_MINUTES * 60
+        free_at = oldest + timedelta(minutes=self.settings.LOGIN_RATE_LIMIT_WINDOW_MINUTES)
+        return max(1, int((free_at - utcnow()).total_seconds()) + 1)
+
     async def login(
         self,
         phone: str,
@@ -398,38 +557,68 @@ class AuthService:
         device_name: str | None = None,
         platform: str | None = None,
     ) -> tuple[User, str, datetime]:
-        if await self._failed_login_count(phone) >= self.settings.LOGIN_MAX_FAILED_ATTEMPTS:
+        # QA #4: the lockout is keyed on the requester's IP/device, NOT purely on the phone
+        # number. (Chosen option (a) from the ticket.) The old phone-only hard lock let anyone
+        # lock a victim out of their own account just by failing a few logins on their number;
+        # now a victim on their own device is never blocked by an attacker failing elsewhere.
+        # LoginAttempt rows are still written per phone (audit + the authenticated phone-change
+        # lock), but they no longer drive this gate. QA #5: the 429 carries retry_after_seconds.
+        limiter = self._login_ip_limiter
+        ip = self._client_ip
+        if limiter is not None and ip is not None and limiter.count(ip) >= self.settings.LOGIN_MAX_FAILED_ATTEMPTS:
             raise AppError(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 ErrorCode.LOGIN_RATE_LIMITED,
                 "Too many failed login attempts. Please try again in a few minutes, or reset your password.",
+                details={"retry_after_seconds": limiter.retry_after_seconds(ip)},
             )
 
         user = await self.db.scalar(select(User).where(User.phone == phone))
 
-        if user is not None:
-            # Phone-verification gate FIRST (spec): a stale/unverified phone
-            # must route to OTP, not be told "wrong password".
-            if not self._phone_trusted(user):
-                raise AppError(
-                    status.HTTP_403_FORBIDDEN,
-                    ErrorCode.PHONE_REVERIFICATION_REQUIRED,
-                    "Please verify your phone number to continue.",
-                )
-            if user.password_hash is None:
-                # Pre-Section-26 account: there is nothing to check yet.
-                raise AppError(
-                    status.HTTP_403_FORBIDDEN,
-                    ErrorCode.PASSWORD_NOT_SET,
-                    "Set a password for your account to continue.",
-                )
+        # QA #12 (login must not create/activate an account for a non-existent number): check
+        # existence FIRST, before any reverification/OTP path. No row = the UI shows "sign up"
+        # and never enters an OTP/password-reset flow. (Deliberately reveals existence on login,
+        # accepted by the owner as the fix for the account-bypass bug -- see report.)
+        if user is None:
+            raise AppError(
+                status.HTTP_404_NOT_FOUND,
+                ErrorCode.USER_NOT_FOUND,
+                "No account found for this number — please sign up.",
+            )
 
-        # An unknown phone still pays for one hash check (verify_password does
-        # a dummy verify for None) so the two failure modes take the same time.
-        ok = await verify_password(password, user.password_hash if user is not None else None)
-        if user is None or not ok:
-            self.db.add(LoginAttempt(phone=phone))
+        # QA re-test B: a per-ACCOUNT (phone-keyed) cap ALONGSIDE the per-IP one above, so a
+        # distributed brute force (many IPs, one account) is still capped. Deliberately high and
+        # rolling -- it auto-clears as attempts age out and a correct login clears it -- so it can't
+        # be abused to hard-lock a victim the way the original low phone-only lock could.
+        if await self._failed_login_count(phone) >= self.settings.LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS:
+            raise AppError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                ErrorCode.LOGIN_RATE_LIMITED,
+                "Too many failed login attempts on this account. Please try again later, or reset your password.",
+                details={"retry_after_seconds": await self._login_account_retry_after(phone)},
+            )
+
+        # Phone-verification gate (spec): a stale/unverified EXISTING account routes to OTP,
+        # not "wrong password". Only ever reached for a number that has a user row (QA #12).
+        if not self._phone_trusted(user):
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.PHONE_REVERIFICATION_REQUIRED,
+                "Please verify your phone number to continue.",
+            )
+        if user.password_hash is None:
+            # Pre-Section-26 account: there is nothing to check yet.
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.PASSWORD_NOT_SET,
+                "Set a password for your account to continue.",
+            )
+
+        if not await verify_password(password, user.password_hash):
+            self.db.add(LoginAttempt(phone=phone))  # audit trail (not the lock)
             await self.db.commit()
+            if limiter is not None and ip is not None:
+                limiter.hit(ip)
             raise AppError(
                 status.HTTP_401_UNAUTHORIZED, ErrorCode.INVALID_CREDENTIALS, "Invalid phone or password."
             )
@@ -437,6 +626,8 @@ class AuthService:
             raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.FORBIDDEN, "This account has been suspended.")
 
         await self._clear_failed_logins(phone)
+        if limiter is not None and ip is not None:
+            limiter.reset(ip)
         token, expires_at = await self._create_session(user, device_id, device_name, platform)
         await self.db.commit()
         await self.db.refresh(user)
@@ -444,19 +635,77 @@ class AuthService:
 
     # ------------------------------------------------------- password reset
 
+    def _enforce_password_reset_ip_gate(self) -> None:
+        """QA new #1: per-IP hard gate on password-reset activity (requests + wrong-code guesses
+        combined). Parity with login: an attacker's IP tops out at PASSWORD_RESET_IP_MAX_ATTEMPTS
+        in the window, but the real owner from a different IP is unaffected. Skipped when no IP
+        context was threaded through (direct service calls in unit tests)."""
+        limiter = self._password_reset_ip_limiter
+        ip = self._client_ip
+        if limiter is None or ip is None:
+            return
+        if limiter.count(ip) >= self.settings.PASSWORD_RESET_IP_MAX_ATTEMPTS:
+            raise AppError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                ErrorCode.OTP_RATE_LIMITED,
+                "Too many password reset attempts from this device. Please try again in a few minutes.",
+                details={"retry_after_seconds": limiter.retry_after_seconds(ip)},
+            )
+
     async def request_password_reset(self, phone: str) -> None:
         """Also the path for pre-Section-26 accounts to SET their first password
-        (PASSWORD_NOT_SET). Silent for an unknown phone (no enumeration)."""
+        (PASSWORD_NOT_SET). NEW BUG 1: an unknown phone is REJECTED (no OTP is sent and
+        the UI must not advance to the code screen), rather than the old silent no-op that
+        still told the user 'code sent'. Consistent with login's own existence check (QA #12);
+        the small enumeration tradeoff is the owner's explicit choice -- see report.
+
+        QA new #1: the per-phone OTP request cap used to be OTP_MAX_ATTEMPTS (5), so five requests
+        from any mix of IPs would 429 the real owner. The gate is now per IP (blocks a single-IP
+        attacker), with the per-phone count kept as a much higher rolling soft cap
+        (PASSWORD_RESET_PHONE_SOFT_CAP) that a distributed attack could still hit but individual
+        IPs can't cheaply drive."""
         user = await self.db.scalar(select(User).where(User.phone == phone))
         if user is None:
-            return
-        await self._issue_otp(phone, OtpPurpose.PASSWORD_RESET)
+            raise AppError(
+                status.HTTP_404_NOT_FOUND,
+                ErrorCode.USER_NOT_FOUND,
+                "No account found for this number — please sign up.",
+            )
+        self._enforce_password_reset_ip_gate()
+        await self._issue_otp(
+            phone,
+            OtpPurpose.PASSWORD_RESET,
+            phone_soft_cap=self.settings.PASSWORD_RESET_PHONE_SOFT_CAP,
+        )
+        if self._password_reset_ip_limiter is not None and self._client_ip is not None:
+            self._password_reset_ip_limiter.hit(self._client_ip)
 
     async def reset_password(self, phone: str, code: str, new_password: str) -> None:
+        """QA new #1: wrong-code guesses used to bump the OTP row's global `attempts` field only,
+        capped at OTP_MAX_ATTEMPTS (5) -- six wrong guesses from six IPs would then burn the real
+        owner's own reset code. The gate is now per IP (each attacker IP tops out at
+        PASSWORD_RESET_IP_MAX_ATTEMPTS), and the per-code cap is raised to
+        PASSWORD_RESET_CODE_ATTEMPTS_MAX as a rolling soft cap for the distributed case (same
+        trade-off login accepted). A successful reset resets the requester's per-IP counter."""
         user = await self.db.scalar(select(User).where(User.phone == phone))
         if user is None:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.OTP_EXPIRED, "OTP expired or not found")
-        await self._consume_otp(phone, code, (OtpPurpose.PASSWORD_RESET,))
+        self._enforce_password_reset_ip_gate()
+        try:
+            await self._consume_otp(
+                phone,
+                code,
+                (OtpPurpose.PASSWORD_RESET,),
+                max_code_attempts=self.settings.PASSWORD_RESET_CODE_ATTEMPTS_MAX,
+            )
+        except AppError as exc:
+            # Every failure mode of _consume_otp (INVALID_OTP, OTP_EXPIRED, OTP_SUPERSEDED,
+            # OTP_RATE_LIMITED) is a wrong / stale / brute-force attempt from THIS IP -- charge it
+            # to the per-IP counter so an attacker's IP locks itself out even when they never see
+            # the code, and the real owner from a different IP is unaffected.
+            if self._password_reset_ip_limiter is not None and self._client_ip is not None:
+                self._password_reset_ip_limiter.hit(self._client_ip)
+            raise
 
         user.password_hash = await hash_password(new_password)
         # Passing the reset OTP proves possession of the phone just as well as
@@ -466,6 +715,14 @@ class AuthService:
         user.phone_verified_at = utcnow()
         await self._revoke_all_sessions(user.id, reason="password_reset")
         await self._clear_failed_logins(phone)
+        # Resetting the password proves identity, so lift the per-IP login lockout AND the
+        # password-reset lockout for THIS requester's device (QA #4/#5, QA new #1). An attacker
+        # who locked their OWN IP by hammering the victim's number is unaffected -- their IP isn't
+        # the one that just successfully reset.
+        if self._login_ip_limiter is not None and self._client_ip is not None:
+            self._login_ip_limiter.reset(self._client_ip)
+        if self._password_reset_ip_limiter is not None and self._client_ip is not None:
+            self._password_reset_ip_limiter.reset(self._client_ip)
         await self.db.commit()
 
     # ------------------------------------------------------------- sessions

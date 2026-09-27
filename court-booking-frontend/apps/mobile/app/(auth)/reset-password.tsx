@@ -22,7 +22,12 @@ export default function ResetPasswordScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const flow = useOtpFlow("password_reset", phone, async () => (await api.auth.requestPasswordReset({ phone })).expires_in);
+  const flow = useOtpFlow(
+    "password_reset",
+    phone,
+    async () => (await api.auth.requestPasswordReset({ phone })).expires_in,
+    () => setError(null), // QA #5: clear a stale banner after a successful resend
+  );
   const errors = validateNewPassword({ password, confirmPassword });
   const ready = isValidOtp(code) && !flow.expired && Object.keys(errors).length === 0;
 
@@ -34,7 +39,7 @@ export default function ResetPasswordScreen() {
       router.replace({ pathname: "/(auth)/login", params: { phone, notice: "password-updated" } });
     } catch (err) {
       setError(friendlyErrorMessage(err));
-      if (err instanceof ApiError && (err.code === "INVALID_OTP" || err.code === "OTP_EXPIRED")) setCode("");
+      if (err instanceof ApiError && ["INVALID_OTP", "OTP_EXPIRED", "OTP_SUPERSEDED"].includes(err.code)) setCode("");
     } finally {
       setBusy(false);
     }

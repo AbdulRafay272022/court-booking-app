@@ -34,9 +34,35 @@ class Settings(BaseSettings):
     # the OTP limit below (derived from rows, not a counter to keep in sync).
     LOGIN_MAX_FAILED_ATTEMPTS: int = 5
     LOGIN_RATE_LIMIT_WINDOW_MINUTES: int = 15
+    # QA re-test B: an account-level (phone-keyed) cap ALONGSIDE the per-IP one, so a distributed
+    # brute force (many IPs, one account) is still capped. Deliberately high + rolling (auto-clears,
+    # and a correct login clears it) so it can't be abused to hard-lock a victim the way a low
+    # phone-only lock could -- a soft rolling cap, not the original harassment lockout.
+    LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS: int = 20
+    # QA re-test A: how long an unverified (pending) signup row blocks a re-signup on that number
+    # before the retention purge clears it. Until then the number can only be claimed by verifying
+    # the pending signup (its owner) -- closing the "wait for the OTP to expire, then hijack" gap.
+    PENDING_SIGNUP_RETENTION_MINUTES: int = 60
+    # QA new #1: password reset used to inherit OTP_MAX_ATTEMPTS (5) as its per-phone hard gate for
+    # BOTH request-count and wrong-code-guess-count. Five requests or five wrong guesses spread across
+    # different IPs would then lock the real owner out of their own reset. Parity with login means:
+    # per-IP is the actual hard gate (an attacker's IP tops out; the owner's IP is unaffected), and
+    # per-phone/per-code stay only as a much higher rolling soft cap that a distributed attack could
+    # still hit but individual IPs can't cheaply drive. 20 mirrors LOGIN_ACCOUNT_MAX_FAILED_ATTEMPTS's
+    # "distributed lockout still possible, but no longer trivial" trade-off.
+    PASSWORD_RESET_IP_MAX_ATTEMPTS: int = 5
+    PASSWORD_RESET_PHONE_SOFT_CAP: int = 20
+    PASSWORD_RESET_CODE_ATTEMPTS_MAX: int = 20
     OTP_EXPIRE_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RATE_LIMIT_WINDOW_MINUTES: int = 15
+    # QA #3: a per-IP/device cap ON TOP OF the per-phone limit above. At most this
+    # many DISTINCT phone numbers may be sent an OTP from one source in the rolling
+    # window, so a single attacker can't spray codes at many victims' numbers.
+    # In-process (like the other rate limiters here) -- fine for the single-worker
+    # pilot; needs a shared store if this ever goes multi-worker (AUDIT #25).
+    OTP_IP_MAX_DISTINCT_PHONES: int = 5
+    OTP_IP_RATE_LIMIT_WINDOW_MINUTES: int = 60
     # Local-dev convenience only: when set (and DEBUG is true), every OTP request
     # returns this code instead of a random one, so login doesn't need WhatsApp
     # delivery or a DB brute-force. Must stay unset in any shared/staging env --

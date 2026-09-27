@@ -940,6 +940,45 @@ this part found and fixed).
   -- no physical device or emulator in this environment, same limitation as every other camera/native
   feature in this project.
 
+## Post-Section-32 auth hardening (2026-09-26/27, branch `post-qa-auth-fixes`, not merged)
+
+Four QA rounds against the Section 26 login / signup / OTP flow, stacked on the same feature branch off
+`main` (`de136ed` -> `857e963` -> `6568e9c` -> `04d3c00`). Backend half and the full round-by-round breakdown
+are in the backend `CLAUDE.md`'s matching "Post-Section-32 auth hardening" block at the top. Frontend-side
+summary, in the order the rounds fixed each concern:
+
+- **Signup / login / verify / reset screens** (`apps/{web,mobile}/app/(auth)/*`) rewritten across the rounds
+  to close the QA sweep's UX issues: SIGNUP_ALREADY_PENDING routes to Verify with an accurate `pending=1`
+  notice (not a fake "code sent" from the retention `retry_after`), a rate-limited resend shows a live
+  "resend in Ns" countdown, wrong-code / expired / superseded errors clear the field for a fresh entry,
+  `ALREADY_VERIFIED` (dropped-response retry after verify succeeded) offers a Log in button instead of a
+  dead-end "code expired", the shared `useOtpFlow` remembers per-phone+purpose expiry so a resend from
+  another tab / device doesn't churn the countdown, and the reset flow's forgot-password screen shows
+  `USER_NOT_FOUND` for unknown numbers (no more silent "code sent" for a mistyped one).
+- **Round 4's four items, this session:**
+  1. Backend-only (password-reset IP-aware lockout, mirrors login) -- see the backend CLAUDE.md entry.
+  2. **`useOtpFlow` re-polls `/auth/otp-status` while mounted** (`components/auth/otp-controls.tsx` on web,
+     `components/auth/kit.tsx` on mobile): on mount, every 25s, and on `visibilitychange` / `focus` (web)
+     or `AppState` "active" (mobile). Adopts a longer-lived expiry (a resend from elsewhere) with a 3s
+     skew tolerance so it never churns against its own resend. Stops on unmount. Fixes: an already-open
+     Verify tab going stale to "Code expired" when a code was resent from a second tab / device.
+  3. **Verify button no longer shifts when the error banner appears** (`app/(auth)/verify/page.tsx` web,
+     `app/(auth)/verify.tsx` mobile): the reserved banner slot was 44px but a rendered one-line
+     `FormMessage` takes ~46-48px (py-3 padding + 13.5px text + 2px border), so the container grew by a
+     couple of pixels when the banner showed. Bumped to `min-h-[60px]` (web) / `minHeight: 60` (mobile)
+     with a few px of headroom for browser line-height variance.
+  4. Backend-only (PK-mobile validation now enforced on Login and Forgot Password too).
+
+- **Verified this round:** both apps `tsc --noEmit` clean; both shared packages typecheck clean;
+  `packages/types` datetime tests 9/9 (run under UTC and PKT). **All 4 round-4 items were independently
+  QA re-tested and passed, including a mobile-specific Expo-web spot-check** for the two mobile-touched
+  fixes (items 2 and 3). The rest of the auth-hardening series was QA'd round by round before this one.
+- **Two items remain open, neither blocking the push to origin:**
+  1. **Session length** (8-hour token vs. "1-year session" wording in the product brief) -- flagged as a
+     pending product decision, not a code bug. Deliberately not touched in any round.
+  2. **Real native device / emulator testing** (WhatsApp deep-link, push notifications) -- still not done;
+     Expo web can't exercise these. Same standing limit as every other native feature in this project.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

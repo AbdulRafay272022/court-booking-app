@@ -81,7 +81,14 @@ export default function SignupScreen() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "PHONE_ALREADY_REGISTERED") setPhoneTaken(true);
       else if (err instanceof ApiError && err.code === "EMAIL_ALREADY_IN_USE") setEmailTaken(true);
-      else setFormError(friendlyErrorMessage(err));
+      else if (err instanceof ApiError && err.code === "SIGNUP_ALREADY_PENDING") {
+        // Item E: a signup is already in progress for this number. Do NOT seed a countdown from
+        // retry_after (that's the retention window, not a fresh code) and do NOT imply the re-entered
+        // details were saved -- they weren't. Route to Verify for the ORIGINAL pending signup with an
+        // honest notice; the Verify screen fetches the real code status via otp-status.
+        const phone = toE164(f.phone);
+        router.push({ pathname: "/(auth)/verify", params: { purpose: "signup", phone, role, pending: "1" } });
+      } else setFormError(friendlyErrorMessage(err));
     } finally {
       setBusy(false);
     }

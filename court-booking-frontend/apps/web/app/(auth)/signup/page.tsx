@@ -83,7 +83,16 @@ function SignupForm() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "PHONE_ALREADY_REGISTERED") setPhoneTaken(true);
       else if (err instanceof ApiError && err.code === "EMAIL_ALREADY_IN_USE") setEmailTaken(true);
-      else setFormError(friendlyErrorMessage(err));
+      else if (err instanceof ApiError && err.code === "SIGNUP_ALREADY_PENDING") {
+        // Item E: a signup is already in progress for this number. Do NOT seed a countdown from
+        // retry_after (that's the retention window, not a freshly-sent code) and do NOT imply the
+        // re-entered details were saved -- they weren't. Route to Verify for the ORIGINAL pending
+        // signup with an honest notice; the Verify screen fetches the real code status via otp-status.
+        const phone = toE164(f.phone);
+        const qs = new URLSearchParams({ purpose: "signup", phone, role, pending: "1" });
+        if (next) qs.set("next", next);
+        router.push(`/verify?${qs.toString()}`);
+      } else setFormError(friendlyErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -143,7 +152,7 @@ function SignupForm() {
             mono
             inputMode="numeric"
             value={f.phone}
-            onChange={(e) => set("phone", e.target.value)}
+            onChange={(e) => set("phone", e.target.value.replace(/\D/g, ""))}
             onBlur={() => touch("phone")}
             error={phoneTaken ? "This number already has an account." : errors.phone}
             showError={phoneTaken || show("phone")}

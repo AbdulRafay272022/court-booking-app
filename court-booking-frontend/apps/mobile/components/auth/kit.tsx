@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated,
+  AppState,
   Easing,
   Image,
   Pressable,
@@ -13,9 +14,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { formatCountdown } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
+import { api } from "@/lib/api";
 import { ownerColors, playerColors } from "@/lib/colors";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { recallOtpExpiry, usePendingAuth } from "@/lib/pending-auth";
+import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
+
+const RATE_LIMIT_CODES = new Set(["OTP_RATE_LIMITED", "OTP_IP_RATE_LIMITED"]);
 
 /**
  * One UI kit for every signup / login / verify / reset screen, so labels, focus and error
@@ -576,9 +582,14 @@ export function ChoicePills({
   );
 }
 
-export function FormMessage({ kind, tone = "player", children }: { kind: "error" | "success"; tone?: Tone; children: string }) {
+export function FormMessage({ kind, tone = "player", children }: { kind: "error" | "success" | "info"; tone?: Tone; children: string }) {
   const c = toneColors(tone);
-  const p = kind === "error" ? { bg: c.dangerSoft, border: c.dangerSoftBorder, color: c.danger } : { bg: c.successSoft, border: c.successSoftBorder, color: c.success };
+  const p =
+    kind === "error"
+      ? { bg: c.dangerSoft, border: c.dangerSoftBorder, color: c.danger }
+      : kind === "success"
+        ? { bg: c.successSoft, border: c.successSoftBorder, color: c.success }
+        : { bg: c.accentSoft, border: c.accentSoftBorder, color: c.inkMuted };
   return (
     <View
       accessibilityRole={kind === "error" ? "alert" : undefined}
@@ -656,16 +667,65 @@ function useSecondsUntil(targetMs: number | null): number | null {
  *  1. the code's own expiry (backend `expires_in`, 300s) as MM:SS; at zero the field is
  *     disabled and "Code expired" shows;
  *  2. a short resend cooldown (30s) so "Resend code" can't be hammered. */
-export function useOtpFlow(purpose: string, phone: string, requestNewCode: () => Promise<number>) {
+export function useOtpFlow(
+  purpose: string,
+  phone: string,
+  requestNewCode: () => Promise<number>,
+  onResendSuccess?: () => void,
+) {
   const [expiresAt, setExpiresAt] = useState<number | null>(() => recallOtpExpiry(purpose, phone));
   const secondsLeft = useSecondsUntil(expiresAt);
+  const rateLock = useCountdown(); // QA #5: a rate-limited (429) resend shows a real countdown
+
+  // QA round 4 item 2: a mounted screen must not go stale when the user resends elsewhere. Poll
+  // /auth/otp-status on mount, on foreground (AppState -> active), and every ~25s while mounted.
+  // If the server reports a longer-lived code than we know about (a resend), adopt it so an
+  // inaccurate "Code expired" state clears on its own within one polling interval or the next
+  // foreground. Errors are swallowed -- the countdown keeps running from its last known value.
+  useEffect(() => {
+    if (!phone) return;
+    let cancelled = false;
+
+    async function refresh() {
+      try {
+        const s = await api.auth.otpStatus(phone);
+        if (cancelled) return;
+        if (s.expires_in <= 0) return; // no live code -- leave the current state alone
+        const nextExpiresAt = Date.now() + s.expires_in * 1000;
+        setExpiresAt((prev) => {
+          // Only adopt if it lives longer than what we knew, or we didn't know about a live code
+          // at all. Tolerate 3s of clock skew so we don't churn against our own recent resend.
+          if (prev === null || nextExpiresAt > prev + 3_000) {
+            usePendingAuth.getState().rememberOtpExpiry(purpose, phone, s.expires_in);
+            return nextExpiresAt;
+          }
+          return prev;
+        });
+      } catch {
+        // ignored
+      }
+    }
+
+    void refresh();
+    const interval = setInterval(refresh, 25_000);
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refresh();
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      sub.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purpose, phone]);
+
   const [cooldownEndsAt, setCooldownEndsAt] = useState(() => Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
   const resendLeft = useSecondsUntil(cooldownEndsAt) ?? 0;
   const [resending, setResending] = useState(false);
   const [resendError, setResendError] = useState<string | null>(null);
 
   async function resend() {
-    if (resending || resendLeft > 0) return;
+    if (resending || resendLeft > 0 || rateLock.seconds > 0) return;
     setResending(true);
     setResendError(null);
     try {
@@ -673,20 +733,33 @@ export function useOtpFlow(purpose: string, phone: string, requestNewCode: () =>
       usePendingAuth.getState().rememberOtpExpiry(purpose, phone, expiresIn);
       setExpiresAt(Date.now() + expiresIn * 1000);
       setCooldownEndsAt(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
+      onResendSuccess?.(); // QA #5: clear a stale "too many attempts" banner
     } catch (e) {
-      setResendError(friendlyErrorMessage(e));
+      if (e instanceof ApiError && RATE_LIMIT_CODES.has(e.code)) {
+        rateLock.start(retryAfterSeconds(e.details) || 60);
+      } else {
+        setResendError(friendlyErrorMessage(e));
+      }
     } finally {
       setResending(false);
     }
   }
 
-  return { secondsLeft, expired: secondsLeft === 0, resendLeft, resending, resendError, resend };
+  return {
+    secondsLeft,
+    expired: secondsLeft === 0,
+    resendLeft,
+    resendLockSeconds: rateLock.seconds,
+    resending,
+    resendError,
+    resend,
+  };
 }
 
 export function OtpControls({ flow, tone = "player" }: { flow: ReturnType<typeof useOtpFlow>; tone?: Tone }) {
   const c = toneColors(tone);
-  const { secondsLeft, expired, resendLeft, resending, resendError, resend } = flow;
-  const canResend = resendLeft === 0 && !resending;
+  const { secondsLeft, expired, resendLeft, resendLockSeconds, resending, resendError, resend } = flow;
+  const canResend = resendLeft === 0 && resendLockSeconds === 0 && !resending;
   return (
     <View style={{ alignItems: "center", gap: 10 }}>
       {secondsLeft === null ? null : expired ? (
@@ -707,6 +780,13 @@ export function OtpControls({ flow, tone = "player" }: { flow: ReturnType<typeof
             Resend code
           </Text>
         </Pressable>
+      ) : resendLockSeconds > 0 ? (
+        <Text accessibilityRole="alert" className={fontFor(tone, "medium")} style={{ minHeight: 44, textAlignVertical: "center", fontSize: 13.5, color: c.danger }}>
+          Too many code requests — resend in{" "}
+          <Text className="font-mono-semibold" style={{ color: c.danger }}>
+            {formatCountdown(resendLockSeconds)}
+          </Text>
+        </Text>
       ) : (
         <Text className={fontFor(tone, "medium")} style={{ minHeight: 44, textAlignVertical: "center", fontSize: 14, color: c.inkFainter }}>
           {resending ? "Sending…" : "Resend in "}
