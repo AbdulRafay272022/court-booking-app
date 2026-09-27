@@ -246,6 +246,10 @@ class VenueService:
         return [public_url(key) for key in (venue.photos or [])]
 
     async def to_out(self, venue: Venue, *, requesting_user: User | None = None, distance: float | None = None):
+        """Owner/admin shape (VenueOut). Kept for endpoints where the caller is guaranteed to
+        be the owner or an admin (e.g. /owners/venues, admin surfaces). Public / mixed-audience
+        endpoints should use `to_out_for` instead, which returns a shape structurally incapable
+        of leaking bank_details / checkin_qr_token to anyone but the owner."""
         from app.schemas.venue import VenueOut
 
         out = VenueOut.model_validate(venue)
@@ -263,4 +267,27 @@ class VenueService:
         # field that defaults to populated.
         if not can_see_bank_details:
             out.checkin_qr_token = None
+        return out
+
+    async def to_out_for(
+        self, venue: Venue, *, requesting_user: User | None = None, distance: float | None = None
+    ):
+        """QA signup-venue round item 10: returns VenueOut (with bank_details / checkin_qr_token)
+        only when the caller is the venue's own owner or an admin. Otherwise returns
+        VenuePublicOut, which does NOT have those fields at all -- so a future code path that
+        forgets to null them can't leak them. This is the "structural split" the round asked for
+        as defense-in-depth on top of the field-level nulling already in `to_out`."""
+        from app.schemas.venue import VenuePublicOut
+
+        is_owner_or_admin = requesting_user is not None and (
+            requesting_user.role == UserRole.ADMIN or requesting_user.id == venue.owner_id
+        )
+        if is_owner_or_admin:
+            return await self.to_out(venue, requesting_user=requesting_user, distance=distance)
+        # Public shape: build directly, never touch bank_details / checkin_qr_token on the wire.
+        out = VenuePublicOut.model_validate(venue)
+        out.photo_urls = self.photo_urls(venue)
+        out.photo_keys = list(venue.photos or [])
+        out.average_rating, out.review_count = await self.rating_summary(venue.id)
+        out.distance_meters = distance
         return out

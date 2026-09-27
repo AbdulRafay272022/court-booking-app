@@ -43,13 +43,15 @@ function SignupForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [phoneTaken, setPhoneTaken] = useState(false);
   const [emailTaken, setEmailTaken] = useState(false);
+  // QA signup-venue round item 9: acceptance is a real gate now, not just a static footer.
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Owner signup uses the same form; only the palette changes (teal, owner system).
   const tone = role === "owner" ? "owner" : "player";
   const t = TONES[tone];
 
   const errors = validateSignup(f);
-  const valid = Object.keys(errors).length === 0;
+  const valid = Object.keys(errors).length === 0 && termsAccepted;
 
   const set = <K extends keyof SignupFields>(key: K, value: SignupFields[K]) => {
     setF((prev) => ({ ...prev, [key]: value }));
@@ -75,6 +77,7 @@ function SignupForm() {
         password: f.password,
         confirm_password: f.confirmPassword,
         role,
+        terms_accepted: termsAccepted,
       });
       rememberOtpExpiry("signup", phone, res.expires_in);
       const qs = new URLSearchParams({ purpose: "signup", phone, role });
@@ -228,21 +231,34 @@ function SignupForm() {
 
         {formError ? <FormMessage kind="error" tone={tone}>{formError}</FormMessage> : null}
 
+        {/* QA signup-venue round item 9: real checkbox that gates the submit and drives the
+            server's terms_accepted body field. The old static footer under the button did not
+            require the user to interact with it, and nothing was recorded server-side. */}
+        <label className="flex items-start gap-3 text-[13.5px] font-medium leading-relaxed" style={{ color: t.muted }}>
+          <input
+            type="checkbox"
+            checked={termsAccepted}
+            onChange={(e) => setTermsAccepted(e.target.checked)}
+            className="mt-[3px] w-4 h-4 shrink-0 accent-[var(--accent)]"
+            style={{ ["--accent" as never]: t.accent }}
+            aria-label="Accept Terms of Service and Privacy Policy"
+          />
+          <span>
+            I agree to the{" "}
+            <Link href="/terms" target="_blank" className="underline font-semibold" style={{ color: t.accent }}>
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" target="_blank" className="underline font-semibold" style={{ color: t.accent }}>
+              Privacy Policy
+            </Link>
+            .
+          </span>
+        </label>
+
         <SubmitButton tone={tone} ready={valid} busy={busy} busyLabel="Creating account…">
           {role === "owner" ? "Create owner account" : "Create account"}
         </SubmitButton>
-
-        <p className="text-[12.5px] font-medium leading-relaxed text-center" style={{ color: t.faint }}>
-          By continuing you agree to our{" "}
-          <Link href="/terms" target="_blank" className="underline font-semibold" style={{ color: t.accent }}>
-            Terms
-          </Link>{" "}
-          and{" "}
-          <Link href="/privacy" target="_blank" className="underline font-semibold" style={{ color: t.accent }}>
-            Privacy Policy
-          </Link>
-          .
-        </p>
       </form>
     </AuthShell>
   );

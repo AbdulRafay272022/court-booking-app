@@ -69,6 +69,10 @@ def signup_body(phone: str, **over) -> dict:
         "password": PASSWORD,
         "confirm_password": PASSWORD,
         "role": "player",
+        # QA signup-venue round item 9: signup requires the Terms/Privacy acceptance box. Tests
+        # default to true so they exercise a successful signup path; the dedicated
+        # test_qa_r5_terms_acceptance_is_required test flips this off to prove the gate.
+        "terms_accepted": True,
     }
     body.update(over)
     return body
@@ -861,6 +865,36 @@ async def test_qa_r4_password_reset_wrong_code_lockout_is_per_ip_not_per_code(ap
         )
         assert done.status_code == 200, done.text
         assert (await login(victim, phone, new_pw)).status_code == 200
+
+
+async def test_qa_sv_signup_requires_terms_acceptance_and_records_timestamp(
+    client, otp_box, db_session_factory
+):
+    """QA signup-venue round item 9: signup refuses without terms_accepted; when accepted,
+    users.terms_accepted_at is stamped at signup time (not at OTP verify) so it survives
+    even if the user abandons before verifying, and it goes away with the row on the
+    retention purge."""
+    from sqlalchemy import select as _select
+
+    from app.models.user import User
+
+    phone = "+923001210001"
+
+    # Refused: no acceptance
+    refused = await client.post(
+        "/api/v1/auth/signup", json=signup_body(phone, terms_accepted=False)
+    )
+    assert refused.status_code == 422, refused.text
+    async with db_session_factory() as s:
+        assert await s.scalar(_select(User).where(User.phone == phone)) is None, "no row must be created"
+
+    # Accepted: stamped at signup time
+    ok = await client.post("/api/v1/auth/signup", json=signup_body(phone))
+    assert ok.status_code == 201, ok.text
+    async with db_session_factory() as s:
+        row = await s.scalar(_select(User).where(User.phone == phone))
+        assert row is not None
+        assert row.terms_accepted_at is not None, "signup must stamp terms_accepted_at"
 
 
 async def test_qa_r4_login_and_forgot_password_reject_non_pk_numbers(client, otp_box):

@@ -83,6 +83,12 @@ class SignupIn(PhoneIn):
     password: str = Field(min_length=8, max_length=128)
     confirm_password: str = Field(max_length=128)
     role: Literal["player", "owner"] = "player"
+    # QA signup-venue round item 9: acceptance of Terms of Service and Privacy Policy is
+    # required on every new signup. Client-side checkbox is only advisory; this Boolean gate is
+    # the real requirement. Server stamps `users.terms_accepted_at` on verify-signup-otp (i.e.
+    # only when the account actually completes), so an abandoned signup doesn't leave a
+    # misleading acceptance timestamp behind.
+    terms_accepted: bool = False
 
     @field_validator("phone")
     @classmethod
@@ -106,6 +112,15 @@ class SignupIn(PhoneIn):
     def passwords_match(self) -> "SignupIn":
         if self.password != self.confirm_password:
             raise ValueError("Passwords don't match")
+        return self
+
+    @model_validator(mode="after")
+    def terms_accepted_required(self) -> "SignupIn":
+        # Server-side gate for QA signup-venue round item 9. The client-side checkbox can be
+        # bypassed by any tool that talks straight to the API; this makes the acceptance
+        # non-negotiable at the source of truth.
+        if not self.terms_accepted:
+            raise ValueError("You must accept the Terms of Service and Privacy Policy to sign up.")
         return self
 
     @property

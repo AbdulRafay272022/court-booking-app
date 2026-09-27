@@ -12,7 +12,7 @@ from app.models.court import Court
 from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
 from app.models.payment_entry import PaymentEntry, PaymentMethod
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.venue import Venue, VenueStatus
 from app.schemas.admin import (
     AdminBookingOut,
@@ -427,6 +427,68 @@ class AdminService:
             action="user.unsuspended",
             entity_type="user",
             entity_id=user.id,
+        )
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def change_user_role(self, user: User, new_role: UserRole, admin: User) -> User:
+        """QA signup-venue round item 6: role is locked at signup by design (one phone = one
+        account), so there is no self-service player -> owner path. This is the admin-mediated
+        alternative -- an admin explicitly changes another account's role. Every change is a
+        real audit row with actor + old / new value, so a compliance reviewer sees who did what
+        and when. `admin` is never allowed to demote themselves (the whole admin surface would
+        then be locked out of their own account); `admin` cannot change ANOTHER admin's role
+        here either (an admin who lost access to their own account would otherwise have to
+        walk over to someone else's session for the fix, which is what promote_admin.sh over
+        SSM is for)."""
+        if new_role == UserRole.ADMIN:
+            # Promoting to admin still goes through infra/scripts/promote_admin.sh (SSM Run
+            # Command against the running container), same as the first admin was made. That
+            # keeps admin promotion off any HTTP surface, where a stolen session or misused
+            # role would otherwise be one click away from full platform access.
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.VALIDATION_ERROR,
+                "Promoting a user to admin is not available here. Use infra/scripts/promote_admin.sh on the instance.",
+            )
+        if user.id == admin.id:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.VALIDATION_ERROR,
+                "You can't change your own role from this endpoint.",
+            )
+        if user.role == UserRole.ADMIN:
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.FORBIDDEN,
+                "Admins can't be demoted from this endpoint. Use infra/scripts/promote_admin.sh on the instance instead.",
+            )
+        if user.role == new_role:
+            return user  # idempotent
+
+        old_role = user.role
+        user.role = new_role
+        # Revoke every session for the affected user so their NEXT request re-authenticates
+        # under the new role. Otherwise a live player token could keep hitting player-scoped
+        # endpoints for hours after the promotion, until it happened to refresh.
+        from sqlalchemy import update as sa_update
+
+        from app.models.user import Session as SessionModel
+
+        await self.db.execute(
+            sa_update(SessionModel)
+            .where(SessionModel.user_id == user.id, SessionModel.is_revoked.is_(False))
+            .values(is_revoked=True, revoked_reason="role_changed")
+        )
+        await self.audit.log(
+            actor_user_id=admin.id,
+            actor_type="admin",
+            action="user.role_changed",
+            entity_type="user",
+            entity_id=user.id,
+            old_value={"role": old_role.value if hasattr(old_role, "value") else str(old_role)},
+            new_value={"role": new_role.value},
         )
         await self.db.commit()
         await self.db.refresh(user)

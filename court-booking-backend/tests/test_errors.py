@@ -204,6 +204,8 @@ async def test_invalid_otp_error_code(client, monkeypatch):
         json={
             "name": "Test User", "email": "t@example.com", "phone": phone, "city": "lahore",
             "gender": "male", "password": "longenough-1", "confirm_password": "longenough-1",
+            # QA signup-venue round item 9: signup now requires this acceptance flag.
+            "terms_accepted": True,
         },
     )
     resp = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": "000000"})

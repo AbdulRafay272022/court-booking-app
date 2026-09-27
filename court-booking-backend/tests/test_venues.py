@@ -172,9 +172,14 @@ async def test_bank_details_encrypted_and_visible_only_to_owner(
     admin_read = await client.get(f"/api/v1/venues/{venue_id}", headers=admin_headers)
     assert admin_read.json()["bank_details"]["bank"] == "HBL"
 
+    # QA signup-venue round item 10: the public read shape is now structurally split -- an
+    # anonymous or other-player caller gets VenuePublicOut, which has NO bank_details or
+    # checkin_qr_token fields at all. The key is ABSENT, not null.
     other_headers = await make_auth_headers(other_owner)
     other_read = await client.get(f"/api/v1/venues/{venue_id}", headers=other_headers)
-    assert other_read.json()["bank_details"] is None
+    assert "bank_details" not in other_read.json()
+    assert "checkin_qr_token" not in other_read.json()
 
     public_read = await client.get(f"/api/v1/venues/{venue_id}")
-    assert public_read.json()["bank_details"] is None
+    assert "bank_details" not in public_read.json()
+    assert "checkin_qr_token" not in public_read.json()

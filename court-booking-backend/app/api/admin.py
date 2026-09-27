@@ -8,10 +8,12 @@ from app.dependencies import AppSettings, DbSession, FeatureFlags, PageParams, R
 from app.models.booking import BookingStatus
 from app.models.user import User
 from app.models.venue import Venue, VenueStatus
+from app.models.user import UserRole
 from app.schemas.admin import (
     AdminBookingOut,
     AdminDashboardOut,
     AdminUserOut,
+    ChangeUserRoleIn,
     DisputeOut,
     FlaggedCheckinOut,
     PassiveOwnerVenueOut,
@@ -230,6 +232,24 @@ async def unsuspend_user(
     service = AdminService(db, settings)
     user = await service.get_user(user_id)
     user = await service.unsuspend_user(user, admin)
+    return AdminUserOut.model_validate(user)
+
+
+@router.post("/users/{user_id}/role", response_model=AdminUserOut)
+async def change_user_role(
+    user_id: uuid.UUID, payload: ChangeUserRoleIn, db: DbSession, settings: AppSettings, admin: RequireAdmin
+) -> AdminUserOut:
+    """QA signup-venue round item 6: admin-mediated role change. Role at signup is intentionally
+    locked (one phone = one account, no self-service player -> owner), so this is the ONLY path
+    to change a user's role. Every change is an audit row and revokes every existing session
+    for the affected user so their next request re-authenticates under the new role.
+
+    Promoting to admin is still done via infra/scripts/promote_admin.sh on the instance and is
+    rejected here, so an admin surface exposed accidentally can't be one click away from full
+    platform access."""
+    service = AdminService(db, settings)
+    user = await service.get_user(user_id)
+    user = await service.change_user_role(user, UserRole(payload.role), admin)
     return AdminUserOut.model_validate(user)
 
 

@@ -30,6 +30,10 @@ export interface SignupInput {
   password: string;
   confirm_password: string;
   role: SignupRole;
+  /** QA signup-venue round item 9: server-side gate on Terms/Privacy acceptance. The
+   * client-side checkbox is only advisory; the API refuses a signup with terms_accepted=false
+   * with a 422 (validation error) and does NOT create a user row. */
+  terms_accepted: boolean;
 }
 
 export interface SignupOut {

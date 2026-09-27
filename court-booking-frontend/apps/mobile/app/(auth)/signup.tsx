@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import {
   CITY_OPTIONS,
@@ -45,11 +45,13 @@ export default function SignupScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [phoneTaken, setPhoneTaken] = useState(false);
   const [emailTaken, setEmailTaken] = useState(false);
+  // QA signup-venue round item 9: real gate + server-recorded acceptance.
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const tone = role === "owner" ? "owner" : "player";
   const c = toneColors(tone);
   const errors = validateSignup(f);
-  const valid = Object.keys(errors).length === 0;
+  const valid = Object.keys(errors).length === 0 && termsAccepted;
 
   const set = <K extends keyof SignupFields>(key: K, value: SignupFields[K]) => {
     setF((p) => ({ ...p, [key]: value }));
@@ -75,6 +77,7 @@ export default function SignupScreen() {
         password: f.password,
         confirm_password: f.confirmPassword,
         role,
+        terms_accepted: termsAccepted,
       });
       usePendingAuth.getState().rememberOtpExpiry("signup", phone, res.expires_in);
       router.push({ pathname: "/(auth)/verify", params: { purpose: "signup", phone, role } });
@@ -225,6 +228,45 @@ export default function SignupScreen() {
 
       {formError ? <FormMessage kind="error" tone={tone}>{formError}</FormMessage> : null}
 
+      {/* QA signup-venue round item 9: real checkbox that gates submit and drives the server's
+          terms_accepted field. Uses a Pressable-styled box because React Native has no native
+          <input type="checkbox">. */}
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: termsAccepted }}
+        onPress={() => setTermsAccepted((v) => !v)}
+        style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}
+      >
+        <View
+          style={{
+            width: 20,
+            height: 20,
+            marginTop: 2,
+            borderRadius: 4,
+            borderWidth: 1.5,
+            borderColor: termsAccepted ? c.accent : c.inkFainter,
+            backgroundColor: termsAccepted ? c.accent : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {termsAccepted ? (
+            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "800" }}>✓</Text>
+          ) : null}
+        </View>
+        <Text className={font} style={{ fontSize: 13.5, lineHeight: 20, color: c.inkMuted, flex: 1 }}>
+          I agree to the{" "}
+          <Text onPress={openTerms} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
+            Terms of Service
+          </Text>{" "}
+          and{" "}
+          <Text onPress={openPrivacy} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
+            Privacy Policy
+          </Text>
+          .
+        </Text>
+      </Pressable>
+
       <SubmitButton
         tone={tone}
         ready={valid}
@@ -233,18 +275,6 @@ export default function SignupScreen() {
         busyLabel="Creating account…"
         onPress={handleSubmit}
       />
-
-      <Text className={font} style={{ fontSize: 12.5, lineHeight: 18, color: c.inkFainter, textAlign: "center" }}>
-        By continuing you agree to our{" "}
-        <Text onPress={openTerms} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
-          Terms
-        </Text>{" "}
-        and{" "}
-        <Text onPress={openPrivacy} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
-          Privacy Policy
-        </Text>
-        .
-      </Text>
     </AuthScreen>
   );
 }
