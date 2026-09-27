@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -163,3 +164,12 @@ class OwnerRefundOut(BaseModel):
 
 class SuspendUserIn(BaseModel):
     reason: str
+
+
+class ChangeUserRoleIn(BaseModel):
+    """Admin-mediated role change (QA signup-venue round item 6). Player <-> owner is
+    permitted; admin is deliberately NOT accepted here (that still goes through
+    infra/scripts/promote_admin.sh on the instance, off any HTTP surface)."""
+
+    role: Literal["player", "owner", "staff"]
+    reason: str | None = None

@@ -281,6 +281,12 @@ class AuthService:
         user.role = payload.user_role
         user.password_hash = await hash_password(payload.password)
         user.phone_verified_at = None
+        # QA signup-venue round item 9: SignupIn's validator has already refused a signup where
+        # terms_accepted is false, so if we're here they DID accept. Stamp the moment now
+        # (payload received = the click), not later when OTP verifies -- so a purged unverified
+        # signup takes its own acceptance record with it, and a legit signup keeps the exact
+        # click timestamp for compliance purposes.
+        user.terms_accepted_at = utcnow()
         await self._commit_unique_email()
 
         await self._issue_otp(payload.phone, OtpPurpose.SIGNUP)

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { serverApi } from "@/lib/server-api";
 import { capitalize } from "@/lib/format";
+import { safeJsonLd } from "@/lib/safe-json";
 import { VenueScheduleClient } from "./venue-schedule-client";
 import { VenueReviews } from "@/components/venue-reviews";
 
@@ -46,12 +47,23 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
         : undefined,
   };
 
+  // Escape characters that would otherwise let owner-controlled fields (name, description,
+  // address) break out of the enclosing <script> tag and inject executable HTML on the public,
+  // unauthenticated page. JSON.stringify itself does NOT escape <, >, / or & -- a venue name
+  // containing `</script><script>alert(1)</script>` closes the JSON-LD script tag and executes
+  // the second one; live-confirmed by QA. Escaping < to < is enough to make an early tag
+  // close impossible while keeping the JSON-LD structurally identical for legitimate content.
+  // Also escape > and & to defuse `<!--`/`-->` HTML-comment tricks and ampersand-based hex
+  // entities. See safeJsonLd() in @/lib/safe-json below (kept as a shared util so any future
+  // dangerouslySetInnerHTML-with-JSON site goes through the same escape).
+  const jsonLdHtml = safeJsonLd(jsonLd);
+
   return (
     <>
     <SiteHeader />
     <main className="pb-16">
       {/* eslint-disable-next-line react/no-danger */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdHtml }} />
 
       <div className="px-6 md:px-14 py-3 text-[13px] text-player-ink-fainter bg-player-surface border-b border-player-border-light">
         {venue.city} &nbsp;›&nbsp; {venue.area ?? venue.city} &nbsp;›&nbsp; {venue.sports.map(capitalize).join(", ")} &nbsp;›&nbsp;{" "}

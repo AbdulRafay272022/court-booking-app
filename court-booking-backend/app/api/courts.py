@@ -72,6 +72,17 @@ async def create_court(
         is_indoor=payload.is_indoor,
         has_floodlights=payload.has_floodlights,
         capacity=payload.capacity,
+        # QA signup-venue round item 3: CourtCreateIn accepts advance_type / advance_value /
+        # advance_minimum, but create_court used to silently drop them -- every new court then
+        # defaulted to "pay 100% in full" until the owner opened Venue Settings after approval
+        # and re-entered the values. Wired through now so the wizard's choice actually takes
+        # effect on first save. CourtCreateIn.model_validator already refuses an invalid pair
+        # (type set without value, out-of-range percent, etc.), so nothing extra to enforce here.
+        # Cancellation policy is per-venue (Section 32 Part 4) and the court's own columns are
+        # a derived read-only column_property, so they're deliberately NOT set here.
+        advance_type=payload.advance_type,
+        advance_value=payload.advance_value,
+        advance_minimum=payload.advance_minimum,
     )
     db.add(court)
 

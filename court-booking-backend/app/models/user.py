@@ -71,6 +71,13 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # PHONE_VERIFICATION_TRUST_DAYS window is measured from this, not from
     # any session.
     phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # QA signup-venue round item 9: stamped at signup when the user checks the "I agree to the
+    # Terms of Service and Privacy Policy" box. NULL = accepted before this field existed
+    # (pre-Section-26 or pre-item-9 rows -- grandfathered so we don't force every legacy user
+    # through a re-consent flow) OR the account still hasn't finished signup. The client-side
+    # gate is only advisory; the server writes this timestamp on successful signup, and every
+    # new signup must have it non-null once the migration is deployed.
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     role: Mapped[UserRole] = mapped_column(
         pg_enum(UserRole, "user_role"),
         default=UserRole.PLAYER,

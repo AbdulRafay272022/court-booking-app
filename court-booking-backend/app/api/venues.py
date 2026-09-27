@@ -23,6 +23,7 @@ from app.schemas.venue import (
     VenueListItemOut,
     VenueListResponse,
     VenueOut,
+    VenuePublicOut,
     VenueUpdateIn,
 )
 from app.services.availability_service import AvailabilityService
@@ -88,22 +89,27 @@ async def create_venue(payload: VenueCreateIn, db: DbSession, settings: AppSetti
     return VenueDetailResponse(venue=await service.to_out(venue, requesting_user=owner))
 
 
-@router.get("/{venue_id}", response_model=VenueOut)
+@router.get("/{venue_id}", response_model=VenueOut | VenuePublicOut, response_model_exclude_none=False)
 async def get_venue(
     venue_id: uuid.UUID, db: DbSession, settings: AppSettings, user: OptionalCurrentUser
-) -> VenueOut:
+) -> VenueOut | VenuePublicOut:
+    """Public read of a venue. Anonymous / other-player callers get a shape (VenuePublicOut)
+    that STRUCTURALLY cannot carry bank_details or checkin_qr_token -- the fields don't exist
+    on that model (QA signup-venue round item 10). The venue's own owner (or an admin) still
+    gets the full VenueOut with those fields populated."""
     service = VenueService(db, settings)
     venue = await service.get_venue(venue_id)
-    return await service.to_out(venue, requesting_user=user)
+    return await service.to_out_for(venue, requesting_user=user)
 
 
-@router.get("/by-slug/{slug}", response_model=VenueOut)
+@router.get("/by-slug/{slug}", response_model=VenueOut | VenuePublicOut, response_model_exclude_none=False)
 async def get_venue_by_slug(
     slug: str, db: DbSession, settings: AppSettings, user: OptionalCurrentUser
-) -> VenueOut:
+) -> VenueOut | VenuePublicOut:
+    """Public read by slug. Same public-vs-owner shape split as GET /venues/{id}."""
     service = VenueService(db, settings)
     venue = await service.get_venue_by_slug(slug)
-    out = await service.to_out(venue, requesting_user=user)
+    out = await service.to_out_for(venue, requesting_user=user)
 
     availability = AvailabilityService(db)
     today = pkt_today()

@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  accountNumberError,
+  accountTitleError,
+  bankNameError,
   buildPricingRules,
   buildSchedules,
   courtSetupFromCourt,
@@ -13,12 +16,13 @@ import {
   type CourtSetup,
   type Venue,
 } from "@court-booking/types";
+import { SPORT_OPTIONS } from "@/lib/venue-setup-store";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { formatWhen } from "@/lib/format";
-import { Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
+import { Chip, Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
 import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
 import { CourtSetupFields } from "@/components/setup/court-setup-fields";
 import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
@@ -64,6 +68,13 @@ export default function VenueSettingsPage() {
   return (
     <div className="p-8 max-w-3xl flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Venue settings</h1>
+
+      {/* QA signup-venue round item 3: post-approval editing for the fields the wizard's own
+          copy already promised are editable -- name, WhatsApp, sports, address, area, location
+          pin, bank details. Backend PATCH /venues/{id} accepted them all already; nothing was
+          wiring the UI. Sits above the cancellation policy so an owner who came in to fix a
+          typo doesn't miss it. */}
+      {activeVenue ? <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} /> : null}
 
       {/* ONE cancellation policy for the whole venue (Section 32 Part 4), so it sits above the per-court settings. */}
       {activeVenue ? (
@@ -228,6 +239,159 @@ function AddCourtCard({ venue, onAdded }: { venue: Venue; onAdded: (courtId: str
           Cancel
         </button>
       </div>
+    </SectionCard>
+  );
+}
+
+function VenueBasicsCard({ venue }: { venue: Venue }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(venue.name);
+  const [description, setDescription] = useState(venue.description ?? "");
+  const [address, setAddress] = useState(venue.address);
+  const [area, setArea] = useState(venue.area ?? "");
+  const [whatsapp, setWhatsapp] = useState(venue.whatsapp ?? "");
+  const [sports, setSports] = useState<string[]>(venue.sports);
+  // Latitude/longitude are write-only on the backend read schema (VenueOut), so we can't seed
+  // from the current pin; we just let the owner set new coordinates if they want to move it.
+  // Empty string in either box = "don't touch the pin on this save".
+  const [lat, setLat] = useState<string>("");
+  const [lon, setLon] = useState<string>("");
+  const [pinning, setPinning] = useState(false);
+  const [bankName, setBankName] = useState(venue.bank_details?.bank ?? "");
+  const [accountTitle, setAccountTitle] = useState(venue.bank_details?.account_title ?? "");
+  const [accountNumber, setAccountNumber] = useState(venue.bank_details?.account_number ?? "");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+
+  function updatePin() {
+    if (!("geolocation" in navigator)) {
+      setMessage({ kind: "error", text: "This browser can't share a location." });
+      return;
+    }
+    setPinning(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLat(String(pos.coords.latitude));
+        setLon(String(pos.coords.longitude));
+        setPinning(false);
+      },
+      () => {
+        setPinning(false);
+        setMessage({ kind: "error", text: "Couldn't get your location — you can type the coordinates manually below." });
+      },
+      { enableHighAccuracy: true, timeout: 15_000 },
+    );
+  }
+
+  // Bank details are optional but must be all-or-nothing valid (matches BankDetailsIn's server-side
+  // check; see QA signup-venue round item 5). Blanking all three clears them.
+  const bankTouched = !!(bankName || accountTitle || accountNumber);
+  const bErrors = bankTouched
+    ? { bank: bankNameError(bankName), title: accountTitleError(accountTitle), num: accountNumberError(accountNumber) }
+    : { bank: null, title: null, num: null };
+  const bankOk = !bankTouched || (!bErrors.bank && !bErrors.title && !bErrors.num);
+
+  const nameOk = name.trim().length > 0;
+  const addressOk = address.trim().length > 0;
+  const sportsOk = sports.length > 0;
+  const canSave = nameOk && addressOk && sportsOk && bankOk;
+
+  function toggleSport(s: string) {
+    setSports((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  }
+
+  async function save() {
+    if (!canSave) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const latN = lat.trim() ? Number(lat) : NaN;
+      const lonN = lon.trim() ? Number(lon) : NaN;
+      // Partial<CreateVenueInput> uses `undefined` for optional keys and the backend's
+      // VenueUpdateIn treats them the same way (exclude_unset). We deliberately do NOT send
+      // an explicit null to CLEAR an optional field here (there is no product need to remove
+      // area / description / WhatsApp after approval yet; when the need arises we'll extend
+      // the input type to nullable and revisit -- flagged in the round's report).
+      const patch: Parameters<typeof api.venues.update>[1] = {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        address: address.trim(),
+        area: area.trim() || undefined,
+        whatsapp: whatsapp.trim() || undefined,
+        sports,
+        ...(bankTouched
+          ? { bank_details: { bank: bankName, account_title: accountTitle, account_number: accountNumber } }
+          : {}),
+      };
+      if (Number.isFinite(latN) && Number.isFinite(lonN)) {
+        patch.latitude = latN;
+        patch.longitude = lonN;
+      }
+      await api.venues.update(venue.id, patch);
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ kind: "ok", text: "Saved. Players see the new details right away." });
+    } catch (e) {
+      setMessage({ kind: "error", text: friendlyErrorMessage(e) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>Venue basics</SectionLabel>
+      <Field label="Venue name" value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+      <Field label="Street address" value={address} onChange={(e) => setAddress(e.target.value)} />
+      <Field label="Area" value={area} onChange={(e) => setArea(e.target.value)} placeholder="DHA Phase 6" />
+      <Field label="WhatsApp number for bookings" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+923001234567" mono />
+
+      <div className="flex flex-col gap-2">
+        <FieldLabel>Sports you offer</FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          {SPORT_OPTIONS.map((s) => (
+            <Chip key={s} label={s} selected={sports.includes(s)} onClick={() => toggleSport(s)} />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <FieldLabel>Location pin (players use this to find the gate)</FieldLabel>
+        <button
+          type="button"
+          onClick={updatePin}
+          disabled={pinning}
+          className="self-start h-10 px-4 rounded-lg border border-owner-border bg-owner-surface text-[13.5px] font-semibold text-owner-ink-muted disabled:opacity-60"
+        >
+          {pinning ? "Locating…" : "Update pin from my current location"}
+        </button>
+        <div className="flex gap-3">
+          <Field label="Latitude" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Leave blank to keep current pin" mono />
+          <Field label="Longitude" value={lon} onChange={(e) => setLon(e.target.value)} placeholder="Leave blank to keep current pin" mono />
+        </div>
+        <p className="text-[12px] text-owner-ink-faint">
+          Leave both boxes blank to keep the current pin. Fill both to move it (e.g. after using the button above).
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3 pt-2 border-t border-owner-border-light">
+        <SectionLabel>Bank details (players see these on the pay screen)</SectionLabel>
+        <Field label="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Meezan Bank" error={bankName ? bErrors.bank : null} />
+        <Field label="Account title" value={accountTitle} onChange={(e) => setAccountTitle(e.target.value)} placeholder="Padel Republic" error={accountTitle ? bErrors.title : null} />
+        <Field label="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="03445551234 or 12345678901234" mono error={accountNumber ? bErrors.num : null} />
+        {/* Bank changes are the highest-risk edit here (money goes where these fields say it goes).
+            Show a plain-text nudge so an owner doesn't mistake this for a low-stakes change. This is the
+            "extra safeguard" for bank_details per the round's flag-back: an inline warning, not a
+            re-verification wall, since the pilot has no email/2FA and the owner is already
+            authenticated. If a fuller ceremony is wanted later (admin notice / OTP re-verify), it goes
+            here. */}
+        <p className="text-[12.5px] font-medium text-owner-warn">
+          These fields decide where players send their money. Update carefully.
+        </p>
+      </div>
+
+      <SaveMessage message={message} />
+      <PrimaryButton label="Save venue details" onClick={save} busy={saving} ready={canSave} />
     </SectionCard>
   );
 }

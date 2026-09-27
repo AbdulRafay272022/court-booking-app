@@ -25,10 +25,14 @@ export function FieldLabel({ children }: { children: string }) {
 interface TextFieldProps extends TextInputProps {
   label: string;
   mono?: boolean;
+  /** Inline validation error to render under the input (accepts null so callers can pass a
+   * validator's return value directly without a ternary). Red border + red hint below. */
+  error?: string | null;
 }
 
-export function TextField({ label, mono, style, ...props }: TextFieldProps) {
+export function TextField({ label, mono, style, error, ...props }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
+  const borderColor = error ? "#C13525" : focused ? "#0E6274" : "#DCE3E6";
   return (
     <View className="gap-2 flex-1">
       <FieldLabel>{label}</FieldLabel>
@@ -50,14 +54,19 @@ export function TextField({ label, mono, style, ...props }: TextFieldProps) {
             paddingHorizontal: 14,
             borderRadius: 9,
             backgroundColor: "#FFFFFF",
-            borderWidth: focused ? 1.5 : 1,
-            borderColor: focused ? "#0E6274" : "#DCE3E6",
+            borderWidth: focused || error ? 1.5 : 1,
+            borderColor,
             fontSize: 15,
             color: "#101C21",
           },
           style,
         ]}
       />
+      {error ? (
+        <Text accessibilityRole="alert" className="font-plex-medium text-[12.5px]" style={{ color: "#C13525" }}>
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

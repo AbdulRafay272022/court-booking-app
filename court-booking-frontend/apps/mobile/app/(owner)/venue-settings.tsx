@@ -4,6 +4,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  accountNumberError,
+  accountTitleError,
+  bankNameError,
   buildPricingRules,
   buildSchedules,
   courtSetupFromCourt,
@@ -65,6 +68,11 @@ export default function VenueSettingsScreen() {
       ) : null}
 
       <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-4">
+        {/* QA signup-venue round item 3: post-approval editing for the fields the wizard's own
+            copy already promised are editable (name / WhatsApp / bank details). Sits above the
+            cancellation policy so a typo fix is not missed. */}
+        {activeVenue ? <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} /> : null}
+
         {/* ONE cancellation policy for the whole venue (Section 32 Part 4), so it sits above the per-court settings. */}
         {activeVenue ? (
           <VenueCancellationCard
@@ -104,6 +112,74 @@ export default function VenueSettingsScreen() {
         {activeVenue ? <AddCourtCard venue={activeVenue} onAdded={(id) => setCourtId(id)} /> : null}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function VenueBasicsCard({ venue }: { venue: Venue }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(venue.name);
+  const [whatsapp, setWhatsapp] = useState(venue.whatsapp ?? "");
+  const [address, setAddress] = useState(venue.address);
+  const [bankName, setBankName] = useState(venue.bank_details?.bank ?? "");
+  const [accountTitle, setAccountTitle] = useState(venue.bank_details?.account_title ?? "");
+  const [accountNumber, setAccountNumber] = useState(venue.bank_details?.account_number ?? "");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const bankTouched = !!(bankName || accountTitle || accountNumber);
+  const bErrors = bankTouched
+    ? { bank: bankNameError(bankName), title: accountTitleError(accountTitle), num: accountNumberError(accountNumber) }
+    : { bank: null, title: null, num: null };
+  const bankOk = !bankTouched || (!bErrors.bank && !bErrors.title && !bErrors.num);
+  const canSave = name.trim().length > 0 && address.trim().length > 0 && bankOk;
+
+  async function save() {
+    if (!canSave) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const patch: Parameters<typeof api.venues.update>[1] = {
+        name: name.trim(),
+        address: address.trim(),
+        whatsapp: whatsapp.trim() || undefined,
+      };
+      if (bankTouched) patch.bank_details = { bank: bankName, account_title: accountTitle, account_number: accountNumber };
+      await api.venues.update(venue.id, patch);
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ ok: true, text: "Saved." });
+    } catch (e) {
+      setMessage({ ok: false, text: friendlyErrorMessage(e) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>Venue basics</SectionLabel>
+      <TextField label="Venue name" value={name} onChangeText={setName} />
+      <TextField label="Street address" value={address} onChangeText={setAddress} />
+      <TextField label="WhatsApp for bookings" value={whatsapp} onChangeText={setWhatsapp} placeholder="+923001234567" keyboardType="phone-pad" mono />
+      <SectionLabel>Bank details (players see these on the pay screen)</SectionLabel>
+      <TextField label="Bank name" value={bankName} onChangeText={setBankName} placeholder="Meezan Bank" error={bankName ? bErrors.bank : null} />
+      <TextField label="Account title" value={accountTitle} onChangeText={setAccountTitle} placeholder="Padel Republic" error={accountTitle ? bErrors.title : null} />
+      <TextField label="Account number" value={accountNumber} onChangeText={setAccountNumber} placeholder="03445551234 or 12345678901234" keyboardType="number-pad" mono error={accountNumber ? bErrors.num : null} />
+      {/* Bank changes are the highest-risk edit on this screen. Inline nudge, no re-verification
+          wall -- see the web mirror for the trade-off note. */}
+      <Text className="font-plex-medium text-owner-warn text-[12.5px]">
+        These fields decide where players send their money. Update carefully.
+      </Text>
+      {message ? (
+        <Text
+          accessibilityRole="alert"
+          className="font-plex-semibold text-[13.5px]"
+          style={{ color: message.ok ? "#0E6274" : "#C13525" }}
+        >
+          {message.text}
+        </Text>
+      ) : null}
+      <PrimaryButton label="Save venue details" onPress={save} disabled={!canSave || saving} loading={saving} />
+    </SectionCard>
   );
 }
 

@@ -475,3 +475,85 @@ async def test_admin_bookings_filter_by_status_and_venue(
     by_status = await client.get("/api/v1/admin/bookings", headers=headers, params={"status": "held"})
     assert len(by_status.json()) == 1
     assert by_status.json()[0]["status"] == "held"
+
+
+# ============================== QA signup-venue round item 6 (admin role change)
+
+
+async def test_admin_can_change_a_players_role_to_owner(client, make_user, make_auth_headers, db_session_factory):
+    """QA signup-venue round item 6: role is locked at signup; admin-mediated change is the
+    only path. The affected user's sessions are revoked so their next request re-authenticates
+    under the new role."""
+    from sqlalchemy import select as sa_select
+
+    from app.models.user import Session as SessionModel
+
+    admin = await make_user("+923009000001", role=UserRole.ADMIN)
+    player = await make_user("+923009000002", role=UserRole.PLAYER)
+    admin_headers = await make_auth_headers(admin)
+    player_headers = await make_auth_headers(player)
+
+    # The player has a live session before the change.
+    assert (await client.get("/api/v1/auth/me", headers=player_headers)).status_code == 200
+
+    resp = await client.post(
+        f"/api/v1/admin/users/{player.id}/role",
+        headers=admin_headers,
+        json={"role": "owner", "reason": "verified pilot owner"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "owner"
+
+    # The old player token no longer works -- revoked with reason=role_changed.
+    blocked = await client.get("/api/v1/auth/me", headers=player_headers)
+    assert blocked.status_code == 401
+    async with db_session_factory() as s:
+        session = (await s.execute(sa_select(SessionModel).where(SessionModel.user_id == player.id))).scalar_one()
+        assert session.revoked_reason == "role_changed"
+
+
+async def test_admin_role_change_refuses_admin_promotion_via_http(client, make_user, make_auth_headers):
+    """Promoting to admin is deliberately off the HTTP surface -- goes through
+    infra/scripts/promote_admin.sh on the instance instead. Endpoint refuses cleanly."""
+    admin = await make_user("+923009000003", role=UserRole.ADMIN)
+    player = await make_user("+923009000004", role=UserRole.PLAYER)
+    headers = await make_auth_headers(admin)
+    resp = await client.post(
+        f"/api/v1/admin/users/{player.id}/role", headers=headers, json={"role": "admin"}
+    )
+    # Literal["player","owner","staff"] rejects "admin" at the Pydantic layer with 422.
+    assert resp.status_code == 422
+
+
+async def test_admin_cannot_change_their_own_role(client, make_user, make_auth_headers):
+    """Guards against an admin locking themselves out of the admin surface with one bad click."""
+    admin = await make_user("+923009000005", role=UserRole.ADMIN)
+    headers = await make_auth_headers(admin)
+    resp = await client.post(
+        f"/api/v1/admin/users/{admin.id}/role", headers=headers, json={"role": "player"}
+    )
+    assert resp.status_code == 400
+
+
+async def test_admin_role_change_is_idempotent(client, make_user, make_auth_headers):
+    """Same role in, same 200 out, no audit row for a no-op (best-effort, like suspend)."""
+    admin = await make_user("+923009000006", role=UserRole.ADMIN)
+    player = await make_user("+923009000007", role=UserRole.PLAYER)
+    headers = await make_auth_headers(admin)
+    resp = await client.post(
+        f"/api/v1/admin/users/{player.id}/role", headers=headers, json={"role": "player"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "player"
+
+
+async def test_admin_role_change_refuses_demoting_another_admin(client, make_user, make_auth_headers):
+    """Demoting another admin via HTTP is also deliberately off the surface. Same reasoning as
+    the promotion refusal: admin membership is managed on the instance, not through the API."""
+    admin = await make_user("+923009000008", role=UserRole.ADMIN)
+    second_admin = await make_user("+923009000009", role=UserRole.ADMIN)
+    headers = await make_auth_headers(admin)
+    resp = await client.post(
+        f"/api/v1/admin/users/{second_admin.id}/role", headers=headers, json={"role": "player"}
+    )
+    assert resp.status_code == 403

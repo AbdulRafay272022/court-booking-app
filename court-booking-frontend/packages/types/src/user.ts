@@ -31,6 +31,24 @@ export const CITY_OPTIONS: { value: City; label: string }[] = [
   { value: "hyderabad", label: "Hyderabad (Sindh)" },
 ];
 
+/** Approximate city-centre coordinates for each pilot city. Used as a fallback pin when the
+ * owner's browser refuses geolocation and the wizard's "Next" would otherwise dead-end (QA
+ * signup-venue round item 2). The player search endpoint still filters by geo radius, so
+ * these need to be at least in the right city -- centroid of the built-up area is fine. Owner
+ * refines it later from Venue Settings' map pin (added post-approval; see item 3). */
+export const CITY_CENTRES: Record<City, { latitude: number; longitude: number }> = {
+  karachi:     { latitude: 24.8607, longitude: 67.0011 },
+  lahore:      { latitude: 31.5204, longitude: 74.3587 },
+  islamabad:   { latitude: 33.6844, longitude: 73.0479 },
+  rawalpindi:  { latitude: 33.5651, longitude: 73.0169 },
+  faisalabad:  { latitude: 31.4504, longitude: 73.1350 },
+  multan:      { latitude: 30.1575, longitude: 71.5249 },
+  gujranwala:  { latitude: 32.1877, longitude: 74.1945 },
+  peshawar:    { latitude: 34.0151, longitude: 71.5249 },
+  kohat:       { latitude: 33.5871, longitude: 71.4432 },
+  hyderabad:   { latitude: 25.3960, longitude: 68.3578 },
+};
+
 export const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: "male", label: "Male" },
   { value: "female", label: "Female" },

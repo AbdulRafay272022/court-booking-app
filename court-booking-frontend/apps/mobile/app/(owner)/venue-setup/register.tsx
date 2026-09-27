@@ -9,6 +9,7 @@ import { SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
 import { CheckIcon } from "@/components/icons";
 import { Chip, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./_components";
 import { CancellationPolicyFields } from "@/components/court-setup-fields";
+import { CITY_CENTRES, accountNumberError, accountTitleError, bankNameError, type City } from "@court-booking/types";
 
 function Stepper({ current }: { current: 1 | 2 | 3 }) {
   const steps = ["Your venue", "Courts & pricing", "We review it"];
@@ -52,18 +53,21 @@ export default function VenueRegisterScreen() {
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
+  const [usingCityCentre, setUsingCityCentre] = useState(false);
+
   async function handleUseLocation() {
     setLocationError(null);
     setLocating(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setLocationError("Location permission denied — you can still enter the address manually below.");
+        setLocationError("Location permission denied — tap \"Use city centre for now\" below and refine the pin from Venue Settings once you're approved.");
         return;
       }
       const position = await Location.getCurrentPositionAsync({});
       store.setField("latitude", position.coords.latitude);
       store.setField("longitude", position.coords.longitude);
+      setUsingCityCentre(false);
       const places = await Location.reverseGeocodeAsync({
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
@@ -75,11 +79,35 @@ export default function VenueRegisterScreen() {
         if (place.district && !store.area) store.setField("area", place.district);
       }
     } catch {
-      setLocationError("Couldn't get your location — you can still enter the address manually below.");
+      setLocationError("Couldn't get your location — tap \"Use city centre for now\" below and refine the pin from Venue Settings once you're approved.");
     } finally {
       setLocating(false);
     }
   }
+
+  // QA signup-venue round item 2 -- mirror of the web fix. Mobile's real-device flow uses
+  // expo-location + reverse-geocode; a denied permission previously left the owner with the
+  // same dead-end "Next" gate. City-centre fallback matches web exactly (same CITY_CENTRES).
+  function handleUseCityCentre() {
+    setLocationError(null);
+    const cityKey = (user?.city as City | undefined) ?? "karachi";
+    const centre = CITY_CENTRES[cityKey] ?? CITY_CENTRES.karachi;
+    store.setField("latitude", centre.latitude);
+    store.setField("longitude", centre.longitude);
+    setUsingCityCentre(true);
+  }
+
+  // Bank details are optional -- but if any bank field is filled, ALL required bank fields
+  // must be valid (matches BankDetailsIn's server-side check; see QA signup-venue round item 5).
+  const bankTouched = !!(store.bankName || store.accountTitle || store.accountNumber);
+  const bankErrors = bankTouched
+    ? {
+        bank: bankNameError(store.bankName),
+        title: accountTitleError(store.accountTitle),
+        number: accountNumberError(store.accountNumber),
+      }
+    : { bank: null, title: null, number: null };
+  const bankValid = !bankTouched || (!bankErrors.bank && !bankErrors.title && !bankErrors.number);
 
   const isValid =
     store.name.trim().length > 0 &&
@@ -87,13 +115,14 @@ export default function VenueRegisterScreen() {
     store.area.trim().length > 0 &&
     store.sports.length > 0 &&
     store.latitude !== null &&
-    store.longitude !== null;
+    store.longitude !== null &&
+    bankValid;
 
   function handleNext() {
     if (!isValid) {
       Alert.alert(
         "A few things are missing",
-        "Venue name, address, area, at least one sport, and a location pin are needed before continuing.",
+        "Venue name, address, area, at least one sport, and a location pin are needed before continuing. If you started entering bank details, complete them too or clear all three fields.",
       );
       return;
     }
@@ -181,16 +210,29 @@ export default function VenueRegisterScreen() {
               Pin your location so players can find the gate
             </Text>
             <SecondaryButton
-              label={locating ? "Locating…" : store.latitude ? "Update my location" : "Use my current location"}
+              label={locating ? "Locating…" : store.latitude && !usingCityCentre ? "Update my location" : "Use my current location"}
               onPress={handleUseLocation}
             />
             {store.latitude !== null && store.longitude !== null ? (
-              <Text className="font-mono-medium text-owner-success-dark text-[12.5px]">
+              <Text
+                className="font-mono-medium text-[12.5px]"
+                style={{ color: usingCityCentre ? "#B8531E" : "#1F7A52" }}
+              >
                 Pinned · {store.latitude.toFixed(5)}, {store.longitude.toFixed(5)}
+                {usingCityCentre ? " (city centre — refine later)" : ""}
               </Text>
             ) : null}
             {locationError ? (
               <Text className="font-plex-medium text-owner-warn text-[12.5px]">{locationError}</Text>
+            ) : null}
+            {store.latitude === null || locationError ? (
+              <Text
+                onPress={handleUseCityCentre}
+                className="font-plex-semibold text-[13px]"
+                style={{ color: "#0E6274", textDecorationLine: "underline" }}
+              >
+                Use city centre for now — refine from Venue Settings
+              </Text>
             ) : null}
           </View>
         </SectionCard>
@@ -206,19 +248,23 @@ export default function VenueRegisterScreen() {
             value={store.bankName}
             onChangeText={(v) => store.setField("bankName", v)}
             placeholder="Meezan Bank"
+            error={bankTouched && store.bankName ? bankErrors.bank : null}
           />
           <TextField
             label="Account title"
             value={store.accountTitle}
             onChangeText={(v) => store.setField("accountTitle", v)}
             placeholder="Padel Republic"
+            error={bankTouched && store.accountTitle ? bankErrors.title : null}
           />
           <TextField
             label="Account number"
             value={store.accountNumber}
             onChangeText={(v) => store.setField("accountNumber", v)}
-            placeholder="PK00 MEZN 0000 0000 0000"
+            placeholder="03445551234 or 12345678901234"
+            keyboardType="number-pad"
             mono
+            error={bankTouched && store.accountNumber ? bankErrors.number : null}
           />
         </SectionCard>
 
