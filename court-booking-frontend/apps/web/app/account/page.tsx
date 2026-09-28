@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CITY_OPTIONS, GENDER_OPTIONS, validateProfile, type City, type Gender } from "@court-booking/types";
@@ -12,6 +12,9 @@ import { formatShortDate, formatTime } from "@/lib/format";
 import { ChoicePills, FormMessage, SelectField, TextField } from "@/components/auth/fields";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { TONES } from "@/components/auth/tone";
+
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+const AVATAR_ACCEPT = "image/jpeg,image/png,image/webp";
 
 /** Edit profile (both roles): name, email, city, gender. Phone and password are deliberately NOT
  * inputs here -- phone has its own OTP-verified flow, and the password goes through forgot-password
@@ -46,6 +49,45 @@ export default function AccountPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailTaken, setEmailTaken] = useState(false);
+
+  // Avatar upload (QA signup-venue round item 7). Preview is a local blob URL so the user
+  // sees the picked file before the upload finishes; on success we swap to the real S3 URL
+  // the backend returns and revoke the blob. Any error during pick or upload sets avatarError.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  async function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be re-picked after an error
+    if (!file) return;
+    setAvatarError(null);
+    if (!AVATAR_ACCEPT.split(",").includes(file.type)) {
+      setAvatarError("Pick a JPEG, PNG or WebP image.");
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      setAvatarError("That image is over 5 MB.");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setAvatarPreview(objectUrl);
+    setAvatarUploading(true);
+    try {
+      const updated = await api.users.uploadAvatar(file, file.name, file.type);
+      useAuthStore.getState().setUser(updated, useAuthStore.getState().session ?? undefined);
+    } catch (err) {
+      setAvatarError(friendlyErrorMessage(err));
+      setAvatarPreview(null); // fall back to whatever avatar_url was
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+      setAvatarUploading(false);
+    }
+  }
+
+  const displayedAvatarUrl = avatarPreview ?? user.avatar_url ?? null;
+  const avatarInitial = (user.name ?? user.phone ?? "?").trim().charAt(0).toUpperCase();
 
   const errors = validateProfile(f);
   const valid = Object.keys(errors).length === 0;
@@ -115,6 +157,61 @@ export default function AccountPage() {
           ))}
         </section>
       ) : null}
+
+      <section
+        className="flex items-center gap-5 rounded-3xl p-6"
+        style={{ background: t.surface, border: `1px solid ${t.border}` }}
+      >
+        {/* Avatar circle: shows the current avatar_url (or preview during an in-flight upload),
+            falls back to the first letter of the user's name on a tinted circle. */}
+        {displayedAvatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={displayedAvatarUrl}
+            alt="Your avatar"
+            width={72}
+            height={72}
+            className="w-[72px] h-[72px] rounded-full object-cover"
+            style={{ border: `1px solid ${t.border}` }}
+          />
+        ) : (
+          <div
+            aria-hidden
+            className="w-[72px] h-[72px] rounded-full flex items-center justify-center text-[26px] font-extrabold"
+            style={{ background: t.accentSoft, color: t.accent, border: `1px solid ${t.border}` }}
+          >
+            {avatarInitial}
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={avatarUploading}
+              className="h-10 px-4 rounded-full text-[13.5px] font-bold border transition-colors disabled:opacity-60"
+              style={{ background: t.surface, borderColor: t.border, color: t.ink }}
+            >
+              {avatarUploading ? "Uploading…" : displayedAvatarUrl ? "Change photo" : "Add a photo"}
+            </button>
+            <span className="text-[12px] font-medium" style={{ color: t.faint }}>
+              JPEG, PNG or WebP · up to 5 MB
+            </span>
+          </div>
+          {avatarError ? (
+            <FormMessage kind="error" tone={tone}>
+              {avatarError}
+            </FormMessage>
+          ) : null}
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={AVATAR_ACCEPT}
+          onChange={handleAvatarPick}
+          className="hidden"
+        />
+      </section>
 
       <form onSubmit={handleSave} noValidate className="flex flex-col gap-5 rounded-3xl p-6" style={{ background: t.surface, border: `1px solid ${t.border}` }}>
         <h2 className="text-[11px] font-bold uppercase tracking-[0.11em]" style={{ color: t.faint }}>

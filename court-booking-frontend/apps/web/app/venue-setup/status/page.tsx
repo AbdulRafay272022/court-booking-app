@@ -10,6 +10,7 @@ import { useVenueSetupStore } from "@/lib/venue-setup-store";
 import { supportWhatsAppUrl } from "@/lib/support";
 import { ErrorState } from "@/components/error-state";
 import { PrimaryButton, SecondaryButton, Stepper } from "@/components/setup/ui";
+import { PhotoManager } from "@/components/setup/photo-manager";
 
 function Timeline({ rows }: { rows: { state: "done" | "active" | "upcoming"; title: string; subtitle: string }[] }) {
   return (
@@ -146,6 +147,38 @@ function StatusView() {
           { state: "upcoming", title: "You go live", subtitle: "Players nearby can find and book you" },
         ]}
       />
+
+      {/* QA signup-venue round item 8: photo upload on the WEB wizard's post-submit page,
+          mirroring what mobile's `pending` screen already offers. Same PhotoManager component
+          Venue Settings uses (with the same 8-photo cap and same POST /venues/{id}/photos +
+          PUT reorder-keys endpoints); using it here means a web owner can add photos in the
+          same window before approval that mobile owners can, instead of "photos only appear
+          after approval" as the QA report flagged. Persists straight to Venue.photos via the
+          existing endpoint -- no wizard-draft state needed since the venue row already
+          exists at this point. */}
+      <div className="bg-owner-surface border border-owner-border rounded-2xl p-5 flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <p className="font-bold text-[15px]">Add photos while we check it</p>
+          <p className="text-[12.5px] leading-[18px] font-medium text-owner-ink-faint">
+            Good photos help players choose you. You can add more or reorder them anytime in Venue
+            settings, and any photos you add now show the moment you go live.
+          </p>
+        </div>
+        <PhotoManager
+          label="Venue photos"
+          photoUrls={venue.photo_urls}
+          photoKeys={venue.photo_keys}
+          max={8}
+          onUpload={async (blob) => {
+            await api.venues.uploadPhoto(venue.id, blob);
+            await query.refetch();
+          }}
+          onReorder={async (keys) => {
+            await api.venues.reorderPhotos(venue.id, keys);
+            await query.refetch();
+          }}
+        />
+      </div>
 
       <div className="bg-owner-accent-soft border border-owner-accent-soft-border rounded-2xl p-5 flex flex-col gap-3">
         <p className="font-bold text-owner-accent-hover text-[15px]">You don&apos;t have to wait to start</p>

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Alert, Image, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import {
   CITY_OPTIONS,
   GENDER_OPTIONS,
@@ -32,6 +33,109 @@ import {
   useOtpFlow,
   type Tone,
 } from "@/components/auth/kit";
+
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+const AVATAR_MIME_ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+/** QA signup-venue round item 7: avatar picker on the profile screen. Uses the same
+ * expo-image-picker + api.users.uploadAvatar path as the payment-proof upload's picker, and the
+ * same 5 MB / JPEG-PNG-WebP contract as the backend enforces. Shows a live blob preview while
+ * uploading, falls back to a first-letter tile when the user has no avatar yet. */
+function AvatarPicker({ tone }: { tone: Tone }) {
+  const user = useAuthStore((s) => s.user)!;
+  const c = toneColors(tone);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  async function pick() {
+    setError(null);
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") {
+      Alert.alert("Permission needed", "Allow access so you can pick a profile photo.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const mime = asset.mimeType ?? "image/jpeg";
+    if (!AVATAR_MIME_ALLOWED.has(mime)) {
+      setError("Pick a JPEG, PNG or WebP image.");
+      return;
+    }
+    if (typeof asset.fileSize === "number" && asset.fileSize > AVATAR_MAX_BYTES) {
+      setError("That image is over 5 MB.");
+      return;
+    }
+    setPreview(asset.uri);
+    setUploading(true);
+    try {
+      const updated = await api.users.uploadAvatar(asset.uri, asset.fileName ?? "avatar.jpg", mime);
+      useAuthStore.getState().setUser(updated, useAuthStore.getState().session ?? undefined);
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+      setPreview(null);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const uri = preview ?? user.avatar_url ?? null;
+  const initial = (user.name ?? user.phone ?? "?").trim().charAt(0).toUpperCase();
+  return (
+    <View style={{ gap: 12, flexDirection: "row", alignItems: "center" }}>
+      {uri ? (
+        <Image
+          source={{ uri }}
+          accessibilityLabel="Your avatar"
+          style={{ width: 72, height: 72, borderRadius: 36, borderWidth: 1, borderColor: c.border }}
+        />
+      ) : (
+        <View
+          accessibilityElementsHidden
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.accentSoft,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ fontSize: 26, fontWeight: "800", color: c.accent }}>{initial}</Text>
+        </View>
+      )}
+      <View style={{ flex: 1, gap: 6 }}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={pick}
+          disabled={uploading}
+          style={{
+            alignSelf: "flex-start",
+            height: 40,
+            paddingHorizontal: 16,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.surface,
+            justifyContent: "center",
+            opacity: uploading ? 0.6 : 1,
+          }}
+        >
+          <Text className={fontFor(tone, "bold")} style={{ fontSize: 13.5, color: c.ink }}>
+            {uploading ? "Uploading…" : uri ? "Change photo" : "Add a photo"}
+          </Text>
+        </Pressable>
+        <Text className={fontFor(tone, "medium")} style={{ fontSize: 12, color: c.inkFainter }}>
+          JPEG, PNG or WebP · up to 5 MB
+        </Text>
+        {error ? <FormMessage kind="error" tone={tone}>{error}</FormMessage> : null}
+      </View>
+    </View>
+  );
+}
 
 
 /** After a DELIBERATE sign-out that must land on a specific login screen (phone change, password
@@ -97,6 +201,13 @@ export function ProfileForm({ tone, changePhoneRoute }: { tone: Tone; changePhon
 
   return (
     <View style={{ gap: 22 }}>
+      <View style={{ gap: 12 }}>
+        <Text className={fontFor(tone, "bold")} style={{ fontSize: 11, letterSpacing: 1.2, color: c.inkFainter }}>
+          PROFILE PHOTO
+        </Text>
+        <AvatarPicker tone={tone} />
+      </View>
+
       <View style={{ gap: 18 }}>
         <Text className={fontFor(tone, "bold")} style={{ fontSize: 11, letterSpacing: 1.2, color: c.inkFainter }}>
           EDIT PROFILE
