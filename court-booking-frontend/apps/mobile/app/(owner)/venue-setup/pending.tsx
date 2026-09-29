@@ -107,7 +107,9 @@ export default function VenuePendingScreen() {
   }
 
   const isChangesRequested = venue.status === "changes_requested";
-  const courtCount = venue.courts?.length ?? 0;
+  // A court the owner deleted in the wizard stays on the server as inactive; it is not one of the courts they sent in.
+  const activeCourts = (venue.courts ?? []).filter((c) => c.is_active);
+  const courtCount = activeCourts.length;
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
@@ -184,7 +186,7 @@ export default function VenuePendingScreen() {
             await reloadVenue();
           }}
         />
-        {(venue.courts ?? []).map((c) => (
+        {activeCourts.map((c) => (
           <PhotoManager
             key={`court-photos-${c.id}`}
             title={`${courtLabel(c.name, c.sport)} photos`}

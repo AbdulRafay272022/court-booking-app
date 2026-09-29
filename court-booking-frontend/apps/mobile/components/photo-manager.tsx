@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Platform, Pressable, Text, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 
@@ -73,7 +73,8 @@ type Props = {
   photoUrls: string[];
   photoKeys: string[];
   max: number;
-  onUpload: (uri: string) => Promise<void>;
+  /** A local uri on native; a real Blob on Expo web (RN-web's FormData cannot send a `{ uri }` part, the server saw "[object Object]"). */
+  onUpload: (file: string | Blob) => Promise<void>;
   onReorder: (keys: string[]) => Promise<void>;
 };
 
@@ -97,7 +98,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
           continue;
         }
         try {
-          await onUpload(p.uri);
+          await onUpload(Platform.OS === "web" ? await (await fetch(p.uri)).blob() : p.uri);
           added += 1;
         } catch (e) {
           failures.push(`${p.name}: ${friendlyErrorMessage(e)}`);
