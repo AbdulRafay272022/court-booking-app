@@ -722,10 +722,13 @@ async def test_qa_retest_A_retention_purge_clears_abandoned_unverified_signups(c
     recent_pending = "+923001170004"
     await client.post("/api/v1/auth/signup", json=signup_body(recent_pending))
 
-    # Age the abandoned row past the retention window.
+    # Age the abandoned row past the retention window (age is measured from the signup submission,
+    # terms_accepted_at, falling back to created_at).
     async with db_session_factory() as s:
         u = await s.scalar(select(User).where(User.phone == old_abandoned))
-        u.created_at = datetime.now(timezone.utc) - timedelta(minutes=get_settings().PENDING_SIGNUP_RETENTION_MINUTES + 5)
+        aged = datetime.now(timezone.utc) - timedelta(minutes=get_settings().PENDING_SIGNUP_RETENTION_MINUTES + 5)
+        u.created_at = aged
+        u.terms_accepted_at = aged
         await s.commit()
 
     purged = await purge_stale_unverified_signups(db_session_factory)
@@ -865,6 +868,96 @@ async def test_qa_r4_password_reset_wrong_code_lockout_is_per_ip_not_per_code(ap
         )
         assert done.status_code == 200, done.text
         assert (await login(victim, phone, new_pw)).status_code == 200
+
+
+async def _make_whatsapp_guest_with_history(db_session_factory, phone: str, *, age_minutes: int = 0) -> User:
+    """Exactly what app/api/webhooks.py::_find_or_create_guest leaves behind when a number first
+    messages the business account: a bare User(phone) -- no name, no password, never verified --
+    plus the inbound chat message that references it."""
+    from app.models.message import Message
+
+    async with db_session_factory() as s:
+        guest = User(phone=phone)
+        s.add(guest)
+        await s.flush()
+        if age_minutes:
+            guest.created_at = datetime.now(timezone.utc) - timedelta(minutes=age_minutes)
+        s.add(Message(sender_id=guest.id, sender_type="player", channel="whatsapp", content="hi"))
+        await s.commit()
+        await s.refresh(guest)
+        return guest
+
+
+async def test_signup_adopts_a_whatsapp_guest_row_and_its_code_verifies(client, otp_box, db_session_factory):
+    """Production bug (2026-09-29, +923172629949 and +923353693809): the person messaged the business
+    number on WhatsApp first (required under the temporary free-form OTP send), which created a guest
+    row. Signup then answered 409 SIGNUP_ALREADY_PENDING and sent NO code; Resend sent one, but
+    verify-signup-otp refused every code as OTP_EXPIRED because the guest row had no password.
+    Now signup adopts the guest row, sends the code, and that code verifies into the same account."""
+    phone = "+923001230001"
+    guest = await _make_whatsapp_guest_with_history(db_session_factory, phone, age_minutes=90)
+
+    signup = await client.post("/api/v1/auth/signup", json=signup_body(phone, name="Bilal Guest"))
+    assert signup.status_code == 201, signup.text
+    assert otp_box.sent and otp_box.sent[-1][0] == phone, "the FIRST signup must send a code"
+
+    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": otp_box.code})
+    assert verify.status_code == 200, verify.text
+    assert verify.json()["user"]["id"] == str(guest.id), "must adopt the guest row, not create a second user"
+    assert verify.json()["user"]["name"] == "Bilal Guest"
+    assert (await login(client, phone)).status_code == 200
+
+    from app.models.message import Message
+
+    async with db_session_factory() as s:
+        kept = await s.scalar(select(Message).where(Message.sender_id == guest.id))
+        assert kept is not None, "the guest's WhatsApp chat history must stay attached"
+
+
+async def test_a_real_pending_signup_still_blocks_a_second_signup(client, otp_box):
+    """The hijack guard is unchanged for a pending signup that HAS a password (QA #1 / re-test A)."""
+    phone = "+923001230002"
+    assert (await client.post("/api/v1/auth/signup", json=signup_body(phone))).status_code == 201
+    again = await client.post(
+        "/api/v1/auth/signup",
+        json=signup_body(phone, email="other1230002@example.com", password="attacker-pass-1", confirm_password="attacker-pass-1"),
+    )
+    assert again.status_code == 409 and again.json()["error"]["code"] == "SIGNUP_ALREADY_PENDING"
+
+
+async def test_purge_reverts_an_abandoned_adopted_guest_instead_of_failing(client, otp_box, db_session_factory):
+    """A signup that adopted a WhatsApp guest and was then abandoned: deleting the row would fail on
+    its chat messages (FK) and used to be able to break the whole purge. It is stripped back to a
+    plain guest (history kept), and the number can be signed up for again. A plain abandoned signup
+    in the same run is still deleted."""
+    from app.jobs.expiry_job import purge_stale_unverified_signups
+
+    guest_phone = "+923001230003"
+    plain_phone = "+923001230004"
+    guest = await _make_whatsapp_guest_with_history(db_session_factory, guest_phone, age_minutes=600)
+    assert (await client.post("/api/v1/auth/signup", json=signup_body(guest_phone))).status_code == 201
+    assert (await client.post("/api/v1/auth/signup", json=signup_body(plain_phone))).status_code == 201
+
+    aged = datetime.now(timezone.utc) - timedelta(minutes=get_settings().PENDING_SIGNUP_RETENTION_MINUTES + 5)
+    async with db_session_factory() as s:
+        for p in (guest_phone, plain_phone):
+            u = await s.scalar(select(User).where(User.phone == p))
+            u.terms_accepted_at = aged
+            u.created_at = min(u.created_at, aged)
+        await s.commit()
+
+    assert await purge_stale_unverified_signups(db_session_factory) == 2
+    async with db_session_factory() as s:
+        reverted = await s.scalar(select(User).where(User.phone == guest_phone))
+        assert reverted is not None and reverted.id == guest.id
+        assert reverted.password_hash is None and reverted.name is None and reverted.email is None
+        assert await s.scalar(select(User).where(User.phone == plain_phone)) is None
+
+    # The number is free again: a fresh signup adopts the guest row and works.
+    otp_box.sent.clear()
+    assert (await client.post("/api/v1/auth/signup", json=signup_body(guest_phone))).status_code == 201
+    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": guest_phone, "otp": otp_box.code})
+    assert verify.status_code == 200 and verify.json()["user"]["id"] == str(guest.id)
 
 
 async def test_qa_sv_signup_requires_terms_acceptance_and_records_timestamp(
