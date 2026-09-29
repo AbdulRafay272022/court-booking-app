@@ -23,6 +23,8 @@ export interface VenueSummary {
   /** Section 32 Part 6: number of visible reviews. */
   review_count: number;
   distance_meters: number | null;
+  /** Lowest starting price (PKR per slot) among the venue's active courts (of the requested sport when filtered); null if none priced. */
+  min_price: number | null;
 }
 
 /**

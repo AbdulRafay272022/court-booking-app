@@ -18,7 +18,7 @@ export {
   pktDayTabs,
   weekdayOf,
 } from "@court-booking/types";
-import { formatDate, formatDateString } from "@court-booking/types";
+import { SPORT_OPTIONS, formatDate, formatDateString } from "@court-booking/types";
 
 /** "Wed, 23 Sep" for an instant. */
 export function formatShortDate(iso: string): string {
@@ -52,4 +52,17 @@ export function formatRelativeTime(iso: string): string {
   if (hours < 24) return `${hours} hr ago`;
   const days = Math.round(hours / 24);
   return `${days}d ago`;
+}
+
+/** Canonical spelling of a sport from a free-typed / URL value ("football (full-field)" -> "Football (full-field)").
+ * Matches case-insensitively against the shared SPORT_OPTIONS; unknown values are returned unchanged. */
+export function canonicalSport(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  const v = value.trim().toLowerCase();
+  return SPORT_OPTIONS.find((s) => s.toLowerCase() === v) ?? value.trim();
+}
+
+/** Case-insensitive sport equality (Court.sport / Venue.sports are free strings). */
+export function sameSport(a: string | null | undefined, b: string | null | undefined): boolean {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 }

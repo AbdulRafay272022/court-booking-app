@@ -10,6 +10,8 @@ import {
   type CourtSetup,
 } from "@court-booking/types";
 
+// SPORT_OPTIONS / AMENITY_OPTIONS now live in @court-booking/types (single source of truth shared with web).
+
 // Re-exported so existing imports keep working. The week is Monday-first, matching the backend (see court-setup.ts).
 export { DAY_LABELS, SLOT_MINUTES_OPTIONS };
 
@@ -18,15 +20,18 @@ export { DAY_LABELS, SLOT_MINUTES_OPTIONS };
 export interface CourtDraft extends CourtSetup {
   name: string;
   sport: string;
+  isIndoor: boolean;
 }
 
-export const SPORT_OPTIONS = ["Padel", "Futsal", "Tennis", "Cricket", "Badminton"];
+/** A brand-new EMPTY court (tab): default name/hours/price. "+ Court" adds one of these, not a copy of the previous court. */
+export function makeCourt(index: number, sport = "Padel"): CourtDraft {
+  return { ...defaultCourtSetup(), name: `Court ${index}`, sport, isIndoor: false };
+}
 
-function makeCourt(index: number, from?: CourtDraft): CourtDraft {
-  // A new court starts as a copy of the previous one (same sport, slot length, hours and prices) because most venues'
-  // courts are alike; it is a starting point the owner edits, and every court's card shows its own values.
-  const base: CourtSetup = from ? cloneCourtSetup(from) : defaultCourtSetup();
-  return { ...base, name: `Court ${index}`, sport: from?.sport ?? "Padel" };
+/** True while a court still holds nothing but its defaults (used to skip the "delete this court?" confirmation). */
+export function isCourtPristine(court: CourtDraft, index: number): boolean {
+  const strip = (c: CourtDraft) => JSON.stringify({ ...c, pricingRules: c.pricingRules.map((r) => ({ ...r, id: "" })) });
+  return strip(court) === strip(makeCourt(index + 1, court.sport));
 }
 
 interface VenueSetupState {
@@ -40,6 +45,8 @@ interface VenueSetupState {
   longitude: number | null;
   whatsapp: string;
   sports: string[];
+  /** Amenity keys (AMENITY_OPTIONS) saved as Venue.amenities. */
+  amenities: string[];
   bankName: string;
   accountTitle: string;
   accountNumber: string;
@@ -59,9 +66,13 @@ interface VenueSetupState {
    * succeeded. setSchedule/setPricing are safe to re-run unconditionally (the backend
    * replaces, not appends), so only court creation itself needs this guard. */
   createdCourtIds: Record<number, string>;
+  /** Ids of courts that were already created on the server and THEN removed from the draft (their tab was deleted after a
+   * partial submit). Submit deactivates them so a removed tab never leaves a live court behind. */
+  removedCreatedCourtIds: string[];
 
   setField: <K extends keyof VenueSetupState>(key: K, value: VenueSetupState[K]) => void;
   toggleSport: (sport: string) => void;
+  toggleAmenity: (key: string) => void;
   addCourt: () => void;
   updateCourt: (index: number, patch: Partial<CourtDraft>) => void;
   removeCourt: (index: number) => void;
@@ -79,6 +90,7 @@ const initialState = {
   longitude: null as number | null,
   whatsapp: "",
   sports: [] as string[],
+  amenities: [] as string[],
   bankName: "",
   accountTitle: "",
   accountNumber: "",
@@ -87,6 +99,7 @@ const initialState = {
   courts: [makeCourt(1)],
   createdVenueId: null as string | null,
   createdCourtIds: {} as Record<number, string>,
+  removedCreatedCourtIds: [] as string[],
 };
 
 export const useVenueSetupStore = create<VenueSetupState>()(
@@ -105,24 +118,41 @@ export const useVenueSetupStore = create<VenueSetupState>()(
         });
       },
 
-      // Editing the court list after a failed/partial submit attempt invalidates the
-      // index -> created-court-id correlation below, so each of these clears it -- safer
-      // to redo a cheap idempotent step than to risk a stale index pointing at the wrong
-      // court after a reorder/removal.
+      toggleAmenity: (key) => {
+        const current = get().amenities;
+        set({ amenities: current.includes(key) ? current.filter((k) => k !== key) : [...current, key] });
+      },
+
+      // createdCourtIds maps court-array INDEX -> the id the server gave that court. Editing a court keeps its index, so
+      // updates leave the map alone (submit PATCHes an already-created court instead of re-creating it). Removing a tab
+      // shifts every later index down by one, so the map is re-keyed the same way -- otherwise the court that moved into a
+      // removed court's slot would be treated as "already created" and never created, or PATCHed onto the wrong court.
       addCourt: () => {
-        const courts = get().courts;
-        set({ courts: [...courts, makeCourt(courts.length + 1, courts[courts.length - 1])], createdCourtIds: {} });
+        const { courts, sports } = get();
+        set({ courts: [...courts, makeCourt(courts.length + 1, sports[0] ?? "Padel")] });
       },
 
       updateCourt: (index, patch) => {
         const courts = [...get().courts];
         courts[index] = { ...courts[index], ...patch };
-        set({ courts, createdCourtIds: {} });
+        set({ courts });
       },
 
       removeCourt: (index) => {
-        const courts = get().courts.filter((_, i) => i !== index);
-        set({ courts: courts.length > 0 ? courts : [makeCourt(1)], createdCourtIds: {} });
+        const { courts: before, createdCourtIds, removedCreatedCourtIds, sports } = get();
+        const courts = before.filter((_, i) => i !== index);
+        const remapped: Record<number, string> = {};
+        for (const [k, id] of Object.entries(createdCourtIds)) {
+          const i = Number(k);
+          if (i < index) remapped[i] = id;
+          else if (i > index) remapped[i - 1] = id;
+        }
+        const orphan = createdCourtIds[index];
+        set({
+          courts: courts.length > 0 ? courts : [makeCourt(1, sports[0] ?? "Padel")],
+          createdCourtIds: remapped,
+          removedCreatedCourtIds: orphan ? [...removedCreatedCourtIds, orphan] : removedCreatedCourtIds,
+        });
       },
 
       setCreatedCourtId: (index, courtId) => {
@@ -133,7 +163,7 @@ export const useVenueSetupStore = create<VenueSetupState>()(
     }),
     {
       name: "maidan.venue-setup-draft",
-      version: 3,
+      version: 4,
       // v1 kept ONE shared cancellation setting on the draft; v2 moved it onto each court (Section 31). v3 (Section 32
       // Part 4) makes it ONE per venue again and gives every court its OWN hours and prices instead of one shared set.
       // An owner who is mid-wizard keeps everything they had typed: the shared hours/prices are copied onto each
@@ -180,6 +210,18 @@ export const useVenueSetupStore = create<VenueSetupState>()(
           });
           for (const key of ["sameHoursEveryDay", "defaultOpenTime", "defaultCloseTime", "perDayOverrides", "pricingRules"]) delete state[key];
         }
+        if (version < 4) {
+          // v4: amenities on the venue, isIndoor on each court, removedCreatedCourtIds. Old drafts have none of them.
+          if (!Array.isArray(state.amenities)) state.amenities = [];
+          if (!Array.isArray(state.removedCreatedCourtIds)) state.removedCreatedCourtIds = [];
+          const courts = Array.isArray(state.courts) ? (state.courts as Record<string, unknown>[]) : [];
+          state.courts = courts.map((c) => ({ ...c, isIndoor: typeof c.isIndoor === "boolean" ? c.isIndoor : false }));
+        }
+        // Whatever version it came from, never hand the app a draft missing a field the screens now read.
+        if (!Array.isArray(state.sports)) state.sports = [];
+        if (!Array.isArray(state.amenities)) state.amenities = [];
+        if (!Array.isArray(state.removedCreatedCourtIds)) state.removedCreatedCourtIds = [];
+        if (!Array.isArray(state.courts) || state.courts.length === 0) state.courts = [makeCourt(1)];
         return state as unknown as VenueSetupState;
       },
       storage: createJSONStorage(() => AsyncStorage),

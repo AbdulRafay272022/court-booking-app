@@ -1,4 +1,5 @@
 import uuid
+from datetime import date, time
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, text
@@ -13,6 +14,7 @@ from app.models.schedule import ScheduleTemplate
 from app.models.user import User, UserRole
 from app.models.venue import Venue, VenueStatus
 from app.schemas.venue import VenueCreateIn, VenueUpdateIn
+from app.services.availability_service import AvailabilityService
 from app.services.notification_service import NotificationService
 from app.utils.encryption import decrypt_json, encrypt_json
 from app.utils.geo import distance_meters, within_radius
@@ -185,12 +187,35 @@ class VenueService:
         only_approved: bool = True,
         offset: int = 0,
         limit: int = 20,
+        area: str | None = None,
+        min_price: float | None = None,
+        max_price: float | None = None,
+        indoor: bool | None = None,
+        amenities: list[str] | None = None,
+        on_date: date | None = None,
+        start_time: time | None = None,
+        duration_minutes: int | None = None,
+        sort: str | None = None,
     ) -> tuple[list[tuple[Venue, float | None]], int]:
+        """Filtered venue search. Venue-level filters (city, area, sport, amenities, radius) run in SQL. Court-level
+        filters (indoor, price range, availability at a date/time) must hold for ONE SAME active court -- of the asked
+        sport if `sport` is given -- so they are evaluated per court after the SQL filters, availability through
+        AvailabilityService (the one source of truth for what is bookable). When any of those (or sort="price") is in
+        play the candidates are filtered/sorted in Python and paginated afterwards; otherwise SQL paginates."""
         base_query = select(Venue)
         if only_approved:
             base_query = base_query.where(Venue.status == VenueStatus.APPROVED, Venue.is_active.is_(True))
         if city:
             base_query = base_query.where(func.lower(Venue.city) == city.lower())
+        if area:
+            base_query = base_query.where(func.lower(Venue.area) == area.strip().lower())
+        for i, key in enumerate(amenities or []):
+            # ALL requested amenities must be present (case-insensitive); NULL amenities unnest to no rows.
+            base_query = base_query.where(
+                text(f"EXISTS (SELECT 1 FROM unnest(venues.amenities) AS a WHERE lower(a) = :amenity_{i})").bindparams(
+                    **{f"amenity_{i}": key.strip().lower()}
+                )
+            )
         if sport:
             # Case-insensitive sport match. Venues store a sport as the owner cased
             # it ("Padel"), but the apps filter with a lowercased value ("padel"), so
@@ -203,9 +228,12 @@ class VenueService:
         if latitude is not None and longitude is not None:
             base_query = base_query.where(within_radius(Venue.location, latitude, longitude, radius_meters))
 
-        total = await self.db.scalar(select(func.count()).select_from(base_query.subquery()))
+        court_level = (
+            min_price is not None or max_price is not None or indoor is not None or on_date is not None
+        )
+        in_python = court_level or sort == "price"
 
-        query = base_query.options(selectinload(Venue.courts))
+        query = base_query.options(selectinload(Venue.courts).selectinload(Court.pricing_rules))
         distance_col = None
         if latitude is not None and longitude is not None:
             distance_col = distance_meters(Venue.location, latitude, longitude)
@@ -213,14 +241,91 @@ class VenueService:
         else:
             query = query.order_by(Venue.created_at.desc())
 
-        query = query.offset(offset).limit(limit)
-        result = await self.db.execute(query)
+        if not in_python:
+            total = await self.db.scalar(select(func.count()).select_from(base_query.subquery()))
+            result = await self.db.execute(query.offset(offset).limit(limit))
+            if distance_col is not None:
+                rows = [(row[0], row[1]) for row in result.all()]
+            else:
+                rows = [(row[0], None) for row in result.all()]
+            return rows, total or 0
 
+        result = await self.db.execute(query)
         if distance_col is not None:
-            rows = [(row[0], row[1]) for row in result.all()]
+            candidates = [(row[0], row[1]) for row in result.all()]
         else:
-            rows = [(row[0], None) for row in result.all()]
-        return rows, total or 0
+            candidates = [(row[0], None) for row in result.all()]
+
+        # court-level filters: the courts of each venue that satisfy ALL of them at once
+        eligible: dict[uuid.UUID, list[Court]] = {}
+        for venue, _dist in candidates:
+            courts = []
+            for court in venue.courts:
+                if not court.is_active or not self._sport_matches(court, sport):
+                    continue
+                if indoor is not None and court.is_indoor != indoor:
+                    continue
+                if min_price is not None or max_price is not None:
+                    price = AvailabilityService.starts_from_price(court, list(court.pricing_rules))
+                    if price is None or (min_price is not None and price < min_price):
+                        continue
+                    if max_price is not None and price > max_price:
+                        continue
+                courts.append(court)
+            eligible[venue.id] = courts
+        if court_level:  # sort=price alone must keep court-less / unpriced venues (they sort last)
+            candidates = [(v, d) for v, d in candidates if eligible[v.id]]
+
+        if on_date is not None:
+            all_courts = [c for v, _d in candidates for c in eligible[v.id]]
+            bookable = await AvailabilityService(self.db).courts_bookable_at(
+                all_courts,
+                {v.id: v.booking_horizon_days for v, _d in candidates},
+                on_date,
+                start_time,
+                duration_minutes,
+            )
+            candidates = [(v, d) for v, d in candidates if any(c.id in bookable for c in eligible[v.id])]
+
+        if sort == "price":
+            def price_key(row: tuple[Venue, float | None]) -> tuple[bool, float]:
+                p = self.min_price(row[0], sport)
+                return (p is None, p if p is not None else 0.0)
+
+            candidates.sort(key=price_key)  # stable: ties keep the distance / newest-first order from SQL
+        return candidates[offset : offset + limit], len(candidates)
+
+    @staticmethod
+    def _sport_matches(court: Court, sport: str | None) -> bool:
+        return not sport or court.sport.lower() == sport.lower()
+
+    @staticmethod
+    def min_price(venue: Venue, sport: str | None = None) -> float | None:
+        """Lowest starting price (PKR per slot) among the venue's ACTIVE courts, only courts of `sport` when given.
+        Derived from each court's active pricing rules exactly like the month calendar's `starts_from_price`.
+        Needs `venue.courts[*].pricing_rules` loaded (list_venues does)."""
+        prices = [
+            p
+            for court in venue.courts
+            if court.is_active and VenueService._sport_matches(court, sport)
+            for p in [AvailabilityService.starts_from_price(court, list(court.pricing_rules))]
+            if p is not None
+        ]
+        return min(prices) if prices else None
+
+    async def list_areas(self) -> list[str]:
+        """Distinct non-empty areas of approved, active venues, sorted case-insensitively."""
+        result = await self.db.execute(
+            select(Venue.area)
+            .where(
+                Venue.status == VenueStatus.APPROVED,
+                Venue.is_active.is_(True),
+                Venue.area.is_not(None),
+                func.trim(Venue.area) != "",
+            )
+            .distinct()
+        )
+        return sorted({a.strip() for (a,) in result.all()}, key=lambda a: (a.lower(), a))
 
     async def rating_summary(self, venue_id: uuid.UUID) -> tuple[float | None, int]:
         """(average_rating, review_count) over VISIBLE reviews only -- an admin-hidden

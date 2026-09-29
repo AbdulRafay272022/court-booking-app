@@ -1,5 +1,7 @@
 "use client";
 
+import { courtLabel } from "@/components/court-label";
+
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -91,7 +93,7 @@ export default function OwnerWalkinPage() {
               className="px-4 py-2.5 rounded-lg text-sm font-semibold"
               style={{ background: courtId === c.id ? "#0E6274" : "#FFFFFF", color: courtId === c.id ? "#fff" : "#5B7079", border: courtId === c.id ? "none" : "1px solid #DCE3E6" }}
             >
-              {c.name}
+              {courtLabel(c.name, c.sport)}
             </button>
           ))}
         </div>

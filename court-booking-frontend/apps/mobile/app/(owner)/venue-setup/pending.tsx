@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -186,7 +187,7 @@ export default function VenuePendingScreen() {
         {(venue.courts ?? []).map((c) => (
           <PhotoManager
             key={`court-photos-${c.id}`}
-            title={`${c.name} photos`}
+            title={`${courtLabel(c.name, c.sport)} photos`}
             photoUrls={c.photo_urls}
             photoKeys={c.photo_keys}
             max={5}

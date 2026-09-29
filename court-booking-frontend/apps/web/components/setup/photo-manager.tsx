@@ -4,6 +4,9 @@ import { useRef, useState } from "react";
 import { compressImage } from "@/lib/compress-image";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 
+const MAX_BYTES = 5 * 1024 * 1024;
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
 /** Section 32 Part 6: venue/court photo management -- add (compressed client-side),
  * delete, reorder, set cover (index 0). Presentational; the parent wires onUpload/
  * onReorder to the api-client + query invalidation and passes the fresh urls/keys. */
@@ -25,6 +28,7 @@ export function PhotoManager({
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
   const atLimit = photoKeys.length >= max;
 
   async function run(fn: () => Promise<void>) {
@@ -39,14 +43,47 @@ export function PhotoManager({
     }
   }
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
-    if (!file) return;
-    await run(async () => {
-      const blob = await compressImage(file);
-      await onUpload(blob);
-    });
+  // Several images can be picked at once. Each is checked (type, 5MB after compression) and uploaded on its own, so
+  // one bad file never stops the others; the room left under the photo limit is honoured as files go up.
+  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // allow re-picking the same files
+    if (files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    const problems: string[] = [];
+    let room = max - photoKeys.length;
+    let done = 0;
+    let n = 0;
+    for (const file of files) {
+      n += 1;
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        problems.push(`${file.name}: only JPEG, PNG or WebP images are allowed.`);
+        continue;
+      }
+      if (room <= 0) {
+        problems.push(`${file.name}: skipped, the limit of ${max} photos is reached.`);
+        continue;
+      }
+      setProgress(`Uploading ${n} of ${files.length}…`);
+      try {
+        const blob = await compressImage(file);
+        if (blob.size > MAX_BYTES) {
+          problems.push(`${file.name}: too large (max 5 MB).`);
+          continue;
+        }
+        await onUpload(blob);
+        room -= 1;
+        done += 1;
+      } catch (err) {
+        problems.push(`${file.name}: ${friendlyErrorMessage(err)}`);
+      }
+    }
+    setProgress(null);
+    setBusy(false);
+    if (problems.length > 0) {
+      setError(`${done > 0 ? `${done} of ${files.length} uploaded. ` : ""}${problems.join(" ")}`);
+    }
   }
 
   const move = (from: number, to: number) => {
@@ -102,13 +139,13 @@ export function PhotoManager({
 
       {error ? <p role="alert" className="text-[13px] font-semibold text-owner-danger">{error}</p> : null}
 
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={onFile} />
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={onFiles} />
       <button
         onClick={() => inputRef.current?.click()}
         disabled={busy || atLimit}
         className="self-start px-4 h-10 rounded-xl font-semibold border border-owner-border text-owner-ink disabled:opacity-40"
       >
-        {busy ? "Working…" : atLimit ? `Limit ${max} reached` : "+ Add photo"}
+        {busy ? (progress ?? "Working…") : atLimit ? `Limit ${max} reached` : "+ Add photos"}
       </button>
     </div>
   );

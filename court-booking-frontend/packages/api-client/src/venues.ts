@@ -8,6 +8,18 @@ export interface ListVenuesParams {
   lat?: number;
   lng?: number;
   radius_km?: number;
+  area?: string;
+  min_price?: number;
+  max_price?: number;
+  indoor?: boolean;
+  /** Comma-separated amenity keys; a venue must have ALL of them. */
+  amenities?: string;
+  /** YYYY-MM-DD (PKT). With start_time, only venues with a free court are returned. */
+  date?: string;
+  /** HH:MM (PKT, 24h). Requires date. */
+  start_time?: string;
+  duration_minutes?: number;
+  sort?: "distance" | "price";
   page?: number;
   per_page?: number;
 }
@@ -16,6 +28,9 @@ export function createVenuesApi(client: ApiClient) {
   return {
     list: (params: ListVenuesParams = {}) =>
       client.request<VenueListResponse>(`/venues${toQuery(params)}`),
+
+    /** Distinct areas of approved, active venues, sorted. */
+    areas: () => client.request<{ areas: string[] }>("/venues/areas"),
 
     get: (venueId: string) => client.request<Venue>(`/venues/${venueId}`),
 

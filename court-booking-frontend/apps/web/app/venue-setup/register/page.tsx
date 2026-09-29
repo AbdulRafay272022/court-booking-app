@@ -6,6 +6,7 @@ import { CITY_CENTRES, accountNumberError, accountTitleError, bankNameError, typ
 import { SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
 import { useAuthStore } from "@/lib/auth-store";
 import { Chip, Field, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, Stepper } from "@/components/setup/ui";
+import { AmenitiesPicker } from "@/components/setup/amenities-picker";
 import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
 
 export default function VenueRegisterPage() {
@@ -113,6 +114,8 @@ export default function VenueRegisterPage() {
             ))}
           </div>
         </div>
+
+        <AmenitiesPicker value={store.amenities ?? []} onToggle={store.toggleAmenity} />
 
         <Field label="Street address" value={store.address} onChange={(e) => store.setField("address", e.target.value)} placeholder="Khayaban-e-Shahbaz, DHA Phase 6" />
         <Field label="Area" value={store.area} onChange={(e) => store.setField("area", e.target.value)} placeholder="DHA Phase 6" />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Modal, Pressable, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { durationChoices, formatDuration, type Slot } from "@court-booking/types";
@@ -16,6 +17,7 @@ import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 export function DurationSheet({
   courtId,
   courtName,
+  courtSport,
   slotMinutes,
   slots,
   index,
@@ -24,6 +26,7 @@ export function DurationSheet({
 }: {
   courtId: string;
   courtName: string;
+  courtSport?: string;
   slotMinutes: number;
   slots: Slot[];
   index: number;
@@ -46,7 +49,7 @@ export function DurationSheet({
           <View className="flex-row items-start justify-between gap-3">
             <View className="gap-1 flex-1">
               <Text className="font-figtree-bold text-[11px] tracking-[0.1em]" style={{ color: "#C8431C" }}>
-                {courtName.toUpperCase()}
+                {courtLabel(courtName, courtSport).toUpperCase()}
               </Text>
               <Text className="font-figtree-bold text-player-ink text-[17px]">{formatDate(slot.starts_at)}</Text>
               <Text className="font-mono-semibold text-player-ink text-[14.5px]">

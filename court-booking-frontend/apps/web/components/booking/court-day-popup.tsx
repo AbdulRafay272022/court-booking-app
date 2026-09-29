@@ -9,6 +9,7 @@ import type { DaySummaryState } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { useAuthStore } from "@/lib/auth-store";
+import { CourtLabel } from "@/components/court-label";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDateString, formatPKR, formatSlotTimes } from "@/lib/format";
 import { DurationSheet } from "./duration-sheet";
@@ -32,6 +33,7 @@ const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "#1E9E5A", few
 export function CourtDayPopup({
   courtId,
   courtName,
+  courtSport,
   slotMinutes,
   venueId,
   venueName,
@@ -40,6 +42,7 @@ export function CourtDayPopup({
 }: {
   courtId: string;
   courtName: string;
+  courtSport?: string;
   slotMinutes: number;
   venueId: string;
   venueName: string;
@@ -130,6 +133,7 @@ export function CourtDayPopup({
       venueName,
       courtId,
       courtName,
+      ...(courtSport ? { courtSport } : {}),
       startsAt,
       price: String(choice.price),
       slotCount: String(choice.slotCount),
@@ -160,7 +164,7 @@ export function CourtDayPopup({
             ) : (
               <span className="w-10" />
             )}
-            <span className="font-bold text-[15px] text-player-ink">{courtName}</span>
+            <span className="font-bold text-[15px] text-player-ink"><CourtLabel name={courtName} sport={courtSport} /></span>
             <button
               type="button"
               onClick={onClose}
@@ -315,6 +319,7 @@ export function CourtDayPopup({
         <DurationSheet
           courtId={courtId}
           courtName={courtName}
+          courtSport={courtSport}
           slotMinutes={slotMinutes}
           slots={slots}
           index={pickingIndex}

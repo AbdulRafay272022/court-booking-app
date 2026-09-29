@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
+import { SPORT_OPTIONS } from "@court-booking/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
@@ -6,8 +7,6 @@ import { useAuthStore } from "@/lib/auth-store";
 import { BellIcon, SearchIcon } from "@/components/icons";
 import { Logo } from "@/components/auth/kit";
 import { SportChip } from "../_components";
-
-const SPORTS = ["Padel", "Futsal", "Cricket", "Tennis"];
 
 export default function PlayerHomeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -43,14 +42,16 @@ export default function PlayerHomeScreen() {
         </Pressable>
 
         <View className="flex-row flex-wrap gap-2.5">
-          {SPORTS.map((sport) => (
+          {SPORT_OPTIONS.map((sport) => (
             <SportChip
               key={sport}
               label={sport}
               selected={false}
-              onPress={() => router.push({ pathname: "/(player)/search", params: { sport: sport.toLowerCase() } })}
+              // the exact shared spelling; the search screen and venue page decode/match it case-insensitively
+              onPress={() => router.push({ pathname: "/(player)/search", params: { sport } })}
             />
           ))}
+          <SportChip label="Filters" selected={false} onPress={() => router.push({ pathname: "/(player)/search", params: { open: "1" } })} />
         </View>
       </View>
 

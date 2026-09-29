@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +32,7 @@ const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "#1E9E5A", few
 export function CourtDayPopup({
   courtId,
   courtName,
+  courtSport,
   slotMinutes,
   venueId,
   venueName,
@@ -39,6 +41,8 @@ export function CourtDayPopup({
 }: {
   courtId: string;
   courtName: string;
+  /** Shown next to the name ("Court 1 · Padel"). */
+  courtSport?: string;
   slotMinutes: number;
   venueId: string;
   venueName: string;
@@ -131,6 +135,7 @@ export function CourtDayPopup({
         venueName,
         courtId,
         courtName,
+        courtSport: courtSport ?? "",
         startsAt,
         price: String(choice.price),
         slotCount: String(choice.slotCount),
@@ -152,7 +157,7 @@ export function CourtDayPopup({
               ) : (
                 <View className="w-11" />
               )}
-              <Text className="font-figtree-bold text-player-ink text-[15px]">{courtName}</Text>
+              <Text className="font-figtree-bold text-player-ink text-[15px]">{courtLabel(courtName, courtSport)}</Text>
               <Pressable onPress={onClose} accessibilityLabel="Close" className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
                 <Text className="font-figtree-bold text-player-ink text-base">✕</Text>
               </Pressable>
@@ -297,6 +302,7 @@ export function CourtDayPopup({
         <DurationSheet
           courtId={courtId}
           courtName={courtName}
+          courtSport={courtSport}
           slotMinutes={slotMinutes}
           slots={slots}
           index={pickingIndex}

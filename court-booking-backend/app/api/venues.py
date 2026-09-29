@@ -1,8 +1,12 @@
 import uuid
+from datetime import date as date_type
+from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from sqlalchemy import select
+
+from app.errors import AppError, ErrorCode
 
 from app.dependencies import (
     AppSettings,
@@ -18,6 +22,7 @@ from app.models.user import User
 from app.schemas.marketing import AnnouncementIn, AnnouncementResultOut
 from app.schemas.venue import (
     PhotoOrderIn,
+    VenueAreasOut,
     VenueCreateIn,
     VenueDetailResponse,
     VenueListItemOut,
@@ -48,9 +53,59 @@ async def list_venues(
     radius_km: float = 15,
     page: int = 1,
     per_page: int = 20,
+    area: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    indoor: bool | None = None,
+    amenities: str | None = None,
+    date: str | None = None,
+    start_time: str | None = None,
+    duration_minutes: int | None = None,
+    sort: str | None = None,
 ) -> VenueListResponse:
+    """Public venue search. Every filter is optional and they combine (AND). `date` (YYYY-MM-DD) and `start_time`
+    (HH:MM, 24h) are Pakistan time; with both, a venue is returned only if ONE active court (of `sport`, if given, and
+    passing indoor/price) has that start genuinely bookable. `date` alone = any bookable slot starting that day.
+    `duration_minutes` (needs `start_time`) defaults to the court's slot length."""
     page = max(page, 1)
     per_page = min(max(per_page, 1), 100)
+
+    def bad(message: str) -> AppError:
+        return AppError(422, ErrorCode.VALIDATION_ERROR, message)
+
+    on_date: date_type | None = None
+    start: time | None = None
+    if date is not None:
+        try:
+            on_date = date_type.fromisoformat(date) if len(date) == 10 else None
+        except ValueError:
+            on_date = None
+        if on_date is None:
+            raise bad("date must be a valid YYYY-MM-DD date")
+    if start_time is not None:
+        if on_date is None:
+            raise bad("start_time needs a date")
+        try:
+            start = datetime.strptime(start_time, "%H:%M").time() if len(start_time) == 5 else None
+        except ValueError:
+            start = None
+        if start is None:
+            raise bad("start_time must be HH:MM in 24-hour Pakistan time")
+    if duration_minutes is not None:
+        if start is None:
+            raise bad("duration_minutes needs a date and start_time")
+        if duration_minutes < 1:
+            raise bad("duration_minutes must be positive")
+    if min_price is not None and min_price < 0 or max_price is not None and max_price < 0:
+        raise bad("min_price and max_price must not be negative")
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise bad("min_price must not be greater than max_price")
+    if sort is not None and sort not in ("distance", "price"):
+        raise bad("sort must be 'distance' or 'price'")
+    if sort == "distance" and (lat is None or lng is None):
+        raise bad("sort=distance needs lat and lng")
+    amenity_keys = [a.strip().lower() for a in amenities.split(",") if a.strip()] if amenities else None
+
     service = VenueService(db, settings)
     rows, total = await service.list_venues(
         city=city,
@@ -60,6 +115,15 @@ async def list_venues(
         radius_meters=radius_km * 1000,
         offset=(page - 1) * per_page,
         limit=per_page,
+        area=area,
+        min_price=min_price,
+        max_price=max_price,
+        indoor=indoor,
+        amenities=amenity_keys,
+        on_date=on_date,
+        start_time=start,
+        duration_minutes=duration_minutes,
+        sort=sort,
     )
     venues = []
     for venue, distance in rows:
@@ -77,9 +141,17 @@ async def list_venues(
                 average_rating=avg,
                 review_count=count,
                 distance_meters=distance,
+                min_price=VenueService.min_price(venue, sport),
             )
         )
     return VenueListResponse(venues=venues, total=total, page=page)
+
+
+@router.get("/areas", response_model=VenueAreasOut)
+async def list_venue_areas(db: DbSession, settings: AppSettings) -> VenueAreasOut:
+    """Distinct areas of approved, active venues, for the search screen's area picker. Declared BEFORE
+    `/{venue_id}` so that path parameter does not swallow it."""
+    return VenueAreasOut(areas=await VenueService(db, settings).list_areas())
 
 
 @router.post("", response_model=VenueDetailResponse, status_code=status.HTTP_201_CREATED)

@@ -1,5 +1,7 @@
 "use client";
 
+import { courtLabel } from "@/components/court-label";
+
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
@@ -74,7 +76,7 @@ export default function OwnerGrowthPage() {
       ) : (
         <div className="flex flex-col gap-3.5">
           {suggestions.map((s) => {
-            const courtName = activeVenue?.courts.find((c) => c.id === s.court_id)?.name ?? "Court";
+            const growthCourt = activeVenue?.courts.find((c) => c.id === s.court_id);
             return (
               <div key={`${s.court_id}-${s.day_of_week}-${s.hour}`} className="bg-owner-surface border border-owner-border rounded-xl p-5 flex flex-col gap-4">
                 <div className="flex items-start gap-3">
@@ -89,7 +91,7 @@ export default function OwnerGrowthPage() {
                       {WEEKDAYS[s.day_of_week] ?? "This slot"} {formatHourRange(s.hour)}
                     </p>
                     <p className="text-owner-ink-muted text-sm mt-0.5">
-                      {courtName} · {s.suggestion}
+                      {growthCourt ? courtLabel(growthCourt.name, growthCourt.sport) : "Court"} · {s.suggestion}
                     </p>
                   </div>
                 </div>

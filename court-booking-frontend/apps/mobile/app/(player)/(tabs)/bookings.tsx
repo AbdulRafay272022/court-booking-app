@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -120,7 +121,7 @@ function BookingCard({ booking, review, onChanged }: { booking: Booking; review?
           {venueQuery.data?.name ?? "…"}
         </Text>
         <Text className="font-figtree-medium text-[13px]" style={{ color: isDark ? "#9A928B" : "#7A7068" }}>
-          {courtQuery.data?.name ? `${courtQuery.data.name} · ` : ""}
+          {courtQuery.data?.name ? `${courtLabel(courtQuery.data.name, courtQuery.data.sport)} · ` : ""}
           {formatDate(booking.starts_at)} · {formatTimeRange(booking.starts_at, booking.ends_at)}
         </Text>
       </View>

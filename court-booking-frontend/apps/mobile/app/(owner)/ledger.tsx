@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -134,12 +135,12 @@ export default function LedgerScreen() {
       </View>
 
       {courts.length > 1 ? (
-        <View className="px-4.5 py-3 bg-owner-surface border-b border-owner-border flex-row gap-1.5">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0 bg-owner-surface border-b border-owner-border" contentContainerClassName="px-4.5 py-3 gap-1.5">
           <Tab label="All courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
           {courts.map((c) => (
-            <Tab key={c.id} label={c.name} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
+            <Tab key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
           ))}
-        </View>
+        </ScrollView>
       ) : null}
 
       {venuesLoading || query.isLoading ? (
@@ -176,7 +177,7 @@ export default function LedgerScreen() {
                     <Text className="font-mono-semibold text-sm" style={{ color: isCorrection ? "#8C3823" : "#141A1D" }}>
                       {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
                     </Text>
-                    <Text className="font-mono-medium text-owner-ink-faint text-[11px]">{entry.court}</Text>
+                    <Text className="font-mono-medium text-owner-ink-faint text-[11px]">{courtLabel(entry.court, sportForCourtName(courts, entry.court))}</Text>
                     {!isCorrection ? (
                       <Pressable onPress={() => setCorrecting(entry)} hitSlop={8}>
                         <Text className="font-plex-semibold text-[11px]" style={{ color: "#8C3823" }}>

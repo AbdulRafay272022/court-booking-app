@@ -1,5 +1,9 @@
 "use client";
 
+import { useOwnerCourtSports } from "@/lib/court-sports";
+
+import { courtLabel } from "@/components/court-label";
+
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -13,6 +17,7 @@ import type { OwnerRefund } from "@court-booking/types";
  * OUTSIDE the app (JazzCash/bank) -- there is no payment gateway. This screen only records
  * that it happened, with a reference the owner can point to later if a player disputes it. */
 export default function OwnerRefundsPage() {
+  const sports = useOwnerCourtSports();
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -54,7 +59,7 @@ export default function OwnerRefundsPage() {
               <div className="flex flex-col gap-0.5 min-w-0">
                 <p className="font-bold truncate">{refund.player_name ?? refund.player_phone ?? "Player"}</p>
                 <p className="text-owner-ink-muted text-[13px]">
-                  {refund.court_name} · {formatWhen(refund.starts_at)}
+                  {courtLabel(refund.court_name, sports.byName(refund.court_name, refund.venue_name))} · {formatWhen(refund.starts_at)}
                 </p>
                 {refund.is_overdue ? (
                   <p className="text-[12px] font-semibold" style={{ color: "#A8432C" }}>
@@ -93,6 +98,7 @@ export default function OwnerRefundsPage() {
 }
 
 function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; onClose: () => void; onDone: () => void }) {
+  const sports = useOwnerCourtSports();
   const [reference, setReference] = useState("");
   const [amount, setAmount] = useState(String(Math.round(refund.refund_amount)));
   const [screenshot, setScreenshot] = useState<File | null>(null);
@@ -131,7 +137,7 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
         <div>
           <h2 className="text-lg font-bold">Mark refund as sent</h2>
           <p className="text-owner-ink-faint text-[13px]">
-            {refund.player_name ?? refund.player_phone} · {refund.court_name} · owed PKR {formatPKR(refund.refund_amount)}
+            {refund.player_name ?? refund.player_phone} · {courtLabel(refund.court_name, sports.byName(refund.court_name, refund.venue_name))} · owed PKR {formatPKR(refund.refund_amount)}
           </p>
         </div>
 
