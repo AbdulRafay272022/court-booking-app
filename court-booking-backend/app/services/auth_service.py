@@ -250,16 +250,26 @@ class AuthService:
                 "An account with this phone number already exists. Log in, or reset your password.",
             )
 
-        if user is not None and user.phone_verified_at is None:
-            # QA re-test A (signup-hijack, hardened): block a second signup while ANY unverified
-            # row exists for this number -- NOT just while its OTP is still live. Otherwise an
-            # attacker could wait for the victim's code to expire and then overwrite the pending
-            # name/email/password. The block lifts only when the row verifies (its real owner) or
-            # the retention purge clears it (`purge_stale_unverified_signups`, after
-            # PENDING_SIGNUP_RETENTION_MINUTES). "Resend code" (request-otp) still works and never
-            # changes the account.
+        # A WhatsApp guest: the row `_find_or_create_guest` (app/api/webhooks.py) makes the first
+        # time a number messages the business account -- no name, no password, never verified.
+        # Under the temporary free-form OTP send, a new user MUST message the business number
+        # before signing up, so almost every real signup lands on one of these. It holds no
+        # credentials, so there is nothing to hijack: signup adopts it (same id, so the person's
+        # WhatsApp chat history and any WhatsApp bookings stay attached). Treating it as a pending
+        # signup used to 409 SIGNUP_ALREADY_PENDING with no OTP sent, and verify-signup-otp then
+        # refused every code as OTP_EXPIRED because the row had no password -- a permanent dead end.
+        is_whatsapp_guest = user is not None and user.password_hash is None
+
+        if user is not None and not is_whatsapp_guest:
+            # QA re-test A (signup-hijack, hardened): block a second signup while an unverified
+            # signup (password set) exists for this number -- NOT just while its OTP is still live.
+            # Otherwise an attacker could wait for the victim's code to expire and then overwrite
+            # the pending name/email/password. The block lifts only when the row verifies (its real
+            # owner) or the retention purge clears it (`purge_stale_unverified_signups`, after
+            # PENDING_SIGNUP_RETENTION_MINUTES from when the signup was submitted). "Resend code"
+            # (request-otp) still works and never changes the account.
             retention = timedelta(minutes=self.settings.PENDING_SIGNUP_RETENTION_MINUTES)
-            free_at = (user.created_at or utcnow()) + retention
+            free_at = (user.terms_accepted_at or user.created_at or utcnow()) + retention
             raise AppError(
                 status.HTTP_409_CONFLICT,
                 ErrorCode.SIGNUP_ALREADY_PENDING,
@@ -270,10 +280,10 @@ class AuthService:
 
         await self._claim_email(payload.email, for_user=user)
 
-        # Only reached for a number with no existing user row (the two branches above return for
-        # verified and unverified rows), so this always creates a fresh account.
-        user = User(phone=payload.phone)
-        self.db.add(user)
+        # Either no row exists for this number, or it is a WhatsApp guest being adopted.
+        if user is None:
+            user = User(phone=payload.phone)
+            self.db.add(user)
         user.name = payload.name
         user.email = payload.email
         user.city = payload.city

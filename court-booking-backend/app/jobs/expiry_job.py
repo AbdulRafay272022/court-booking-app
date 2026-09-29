@@ -1,14 +1,15 @@
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.booking import Booking, BookingStatus
 from app.models.court import Court
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
@@ -125,17 +126,49 @@ async def purge_stale_unverified_signups(session_factory: async_sessionmaker = A
     settings = get_settings()
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.PENDING_SIGNUP_RETENTION_MINUTES)
     async with session_factory() as db:
-        result = await db.execute(
-            delete(User).where(
-                User.phone_verified_at.is_(None),
-                User.password_hash.is_not(None),
-                User.created_at < cutoff,
+        # Age is measured from when the signup was SUBMITTED (terms_accepted_at is stamped then),
+        # not from created_at: a signup that adopted an older WhatsApp guest row keeps the guest's
+        # original created_at, which would otherwise make it look stale the minute it's submitted.
+        # Rows from before terms_accepted_at existed fall back to created_at.
+        started = func.coalesce(User.terms_accepted_at, User.created_at)
+        stale_ids = (
+            await db.execute(
+                select(User.id).where(
+                    User.phone_verified_at.is_(None),
+                    User.password_hash.is_not(None),
+                    started < cutoff,
+                )
             )
-        )
+        ).scalars().all()
+
+        deleted = reverted = 0
+        for user_id in stale_ids:
+            try:
+                async with db.begin_nested():
+                    await db.execute(delete(User).where(User.id == user_id))
+                deleted += 1
+            except IntegrityError:
+                # The row has data that references it (typically WhatsApp chat messages, when the
+                # signup adopted a WhatsApp guest). Deleting would lose that history, so strip the
+                # abandoned signup details instead and leave it a plain WhatsApp guest again -- which
+                # no longer blocks a new signup on this number.
+                await db.execute(
+                    update(User)
+                    .where(User.id == user_id)
+                    .values(
+                        password_hash=None,
+                        name=None,
+                        email=None,
+                        city=None,
+                        gender=None,
+                        role=UserRole.PLAYER,
+                        terms_accepted_at=None,
+                    )
+                )
+                reverted += 1
         await db.commit()
-        purged = result.rowcount or 0
-        logger.info("unverified_signup_purge.completed", purged=purged)
-        return purged
+        logger.info("unverified_signup_purge.completed", purged=deleted, reverted_to_guest=reverted)
+        return deleted + reverted
 
 
 async def run_expiry_job(session_factory: async_sessionmaker = AsyncSessionLocal) -> dict:
