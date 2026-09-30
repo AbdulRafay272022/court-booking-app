@@ -1,10 +1,12 @@
 import { SiteHeader } from "@/components/nav-auth";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { amenityLabel } from "@court-booking/types";
 import { serverApi } from "@/lib/server-api";
 import { capitalize } from "@/lib/format";
 import { safeJsonLd } from "@/lib/safe-json";
 import { VenueScheduleClient } from "./venue-schedule-client";
+import { PhotoGallery } from "@/components/photo-gallery";
 import { VenueReviews } from "@/components/venue-reviews";
 
 export async function generateMetadata({ params }: PageProps<"/venues/[slug]">): Promise<Metadata> {
@@ -70,31 +72,10 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
         <span className="text-player-ink-muted font-semibold">{venue.name}</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-2.5 px-6 md:px-14 py-6 bg-player-surface">
-        <PhotoTile
-          className="col-span-2 h-64 rounded-2xl"
-          url={venue.photo_urls?.[0]}
-          alt={venue.name}
-          fallback="linear-gradient(135deg,#12657A,#0A3E4A)"
-        />
-        <div className="grid grid-rows-2 gap-2.5">
-          <PhotoTile
-            className="rounded-2xl"
-            url={venue.photo_urls?.[1]}
-            alt={venue.name}
-            fallback="linear-gradient(135deg,#1F7A52,#14382A)"
-          />
-          <PhotoTile
-            className="rounded-2xl"
-            url={venue.photo_urls?.[2]}
-            alt={venue.name}
-            fallback="linear-gradient(135deg,#3A3532,#211E1C)"
-          />
-        </div>
-      </div>
-
       <div className="grid lg:grid-cols-3 gap-10 px-6 md:px-14 py-9">
-        <div className="lg:col-span-2 flex flex-col gap-8">
+        <div className="lg:col-span-2 flex flex-col gap-8 min-w-0">
+          <PhotoGallery photos={venue.photo_urls ?? []} alt={venue.name} testId="venue-gallery" />
+
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{venue.name}</h1>
@@ -112,7 +93,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
               <div className="flex gap-2 flex-wrap">
                 {venue.amenities.map((a) => (
                   <span key={a} className="px-3 py-1.5 rounded-lg bg-player-surface-2 text-[13.5px] font-semibold text-player-ink-muted">
-                    {capitalize(a)}
+                    {amenityLabel(a)}
                   </span>
                 ))}
               </div>
@@ -146,12 +127,4 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
     </main>
     </>
   );
-}
-
-function PhotoTile({ url, alt, fallback, className }: { url?: string; alt: string; fallback: string; className: string }) {
-  if (url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={alt} className={`${className} object-cover`} />;
-  }
-  return <div className={className} style={{ background: fallback }} />;
 }

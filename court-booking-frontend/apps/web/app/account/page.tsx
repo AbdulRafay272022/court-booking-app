@@ -2,13 +2,14 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CITY_OPTIONS, GENDER_OPTIONS, validateProfile, type City, type Gender } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatShortDate, formatTime } from "@/lib/format";
+import { courtLabel } from "@/components/court-label";
 import { ChoicePills, FormMessage, SelectField, TextField } from "@/components/auth/fields";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { TONES } from "@/components/auth/tone";
@@ -33,6 +34,13 @@ export default function AccountPage() {
     enabled: user.role === "player",
   });
   const activeEntries = (waitlistQuery.data ?? []).filter((e) => e.is_active);
+  // A waitlist entry carries the court's name but not its sport, so read each court (cached, shared with My Bookings).
+  const courtIds = [...new Set(activeEntries.map((e) => e.court_id))];
+  const courtSports = new Map(
+    useQueries({
+      queries: courtIds.map((id) => ({ queryKey: ["court", id], queryFn: () => api.courts.get(id) })),
+    }).flatMap((q) => (q.data ? [[q.data.id, q.data.sport] as const] : [])),
+  );
 
   async function leaveWaitlist(entryId: string) {
     try {
@@ -145,7 +153,7 @@ export default function AccountPage() {
           {activeEntries.map((entry) => (
             <div key={entry.id} className={row} style={{ background: t.surface, border: `1px solid ${t.border}` }}>
               <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-[14.5px] font-semibold">{entry.venue_name} · {entry.court_name}</span>
+                <span className="text-[14.5px] font-semibold">{entry.venue_name} · {courtLabel(entry.court_name, courtSports.get(entry.court_id))}</span>
                 <span className="text-[12px] font-medium" style={{ color: t.muted }}>
                   {formatShortDate(entry.slot_starts_at)} · {formatTime(entry.slot_starts_at)} · #{entry.position} in line
                 </span>

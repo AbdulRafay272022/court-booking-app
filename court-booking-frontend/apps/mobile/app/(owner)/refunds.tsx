@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -16,7 +17,7 @@ import type { OwnerRefund } from "@court-booking/types";
 /** Section 32 Part 10: the owner's "Refunds to pay" screen. A refund here was always sent OUTSIDE
  * the app (JazzCash/bank) -- there is no payment gateway. This just records that it happened. */
 export default function RefundsScreen() {
-  const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
+  const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -54,6 +55,7 @@ export default function RefundsScreen() {
       ) : open ? (
         <MarkRefundedForm
           refund={open}
+          courtSport={sportForCourtName(activeVenue?.courts, open.court_name)}
           onClose={() => setOpenId(null)}
           onDone={async () => {
             setOpenId(null);
@@ -75,7 +77,7 @@ export default function RefundsScreen() {
                   {refund.player_name ?? refund.player_phone ?? "Player"}
                 </Text>
                 <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
-                  {refund.court_name} · {formatWhen(refund.starts_at)}
+                  {courtLabel(refund.court_name, sportForCourtName(activeVenue?.courts, refund.court_name))} · {formatWhen(refund.starts_at)}
                 </Text>
                 {refund.is_overdue ? (
                   <Text className="font-plex-semibold text-[11.5px]" style={{ color: "#A8432C" }}>
@@ -92,7 +94,7 @@ export default function RefundsScreen() {
   );
 }
 
-function MarkRefundedForm({ refund, onClose, onDone }: { refund: OwnerRefund; onClose: () => void; onDone: () => void }) {
+function MarkRefundedForm({ refund, courtSport, onClose, onDone }: { refund: OwnerRefund; courtSport?: string; onClose: () => void; onDone: () => void }) {
   const [reference, setReference] = useState("");
   const [amount, setAmount] = useState(String(Math.round(refund.refund_amount)));
   const [busy, setBusy] = useState(false);
@@ -123,7 +125,7 @@ function MarkRefundedForm({ refund, onClose, onDone }: { refund: OwnerRefund; on
     <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 gap-4">
       <View className="bg-owner-surface border border-owner-border rounded-xl p-4 gap-1">
         <Text className="font-plex-bold text-owner-ink text-[15px]">
-          {refund.player_name ?? refund.player_phone} · {refund.court_name}
+          {refund.player_name ?? refund.player_phone} · {courtLabel(refund.court_name, courtSport)}
         </Text>
         <Text className="font-plex-medium text-owner-ink-muted text-[13px]">Owed PKR {formatPKR(refund.refund_amount)}</Text>
       </View>

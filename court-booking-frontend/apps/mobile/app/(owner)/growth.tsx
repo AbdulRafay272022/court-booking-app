@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -71,7 +72,8 @@ export default function GrowthScreen() {
       ) : (
         <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-6 gap-3">
           {suggestions.map((s) => {
-            const courtName = activeVenue?.courts.find((c) => c.id === s.court_id)?.name ?? "Court";
+            const growthCourt = activeVenue?.courts.find((c) => c.id === s.court_id);
+            const courtName = growthCourt ? courtLabel(growthCourt.name, growthCourt.sport) : "Court";
             return (
               <View
                 key={`${s.court_id}-${s.day_of_week}-${s.hour}`}

@@ -1,5 +1,7 @@
 "use client";
 
+import { courtLabel } from "@/components/court-label";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -182,7 +184,7 @@ function BookingCard({ booking, review, onChanged }: { booking: Booking; review?
           {venueQuery.data?.name ?? "…"}
         </span>
         <span className="text-[13px]" style={{ color: isDark ? "#9A928B" : "#7A7068" }}>
-          {courtQuery.data?.name ? `${courtQuery.data.name} · ` : ""}
+          {courtQuery.data?.name ? `${courtLabel(courtQuery.data.name, courtQuery.data.sport)} · ` : ""}
           {formatDate(booking.starts_at)} · {formatTimeRange(booking.starts_at, booking.ends_at)}
         </span>
       </div>

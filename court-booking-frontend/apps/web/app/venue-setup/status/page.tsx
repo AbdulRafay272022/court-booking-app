@@ -73,7 +73,7 @@ function StatusView() {
   if (!query.data) return <p className="text-owner-ink-faint">Loading…</p>;
 
   const venue = query.data;
-  const courtCount = venue.courts?.length ?? 0;
+  const courtCount = venue.courts?.filter((c) => c.is_active).length ?? 0;
 
   if (venue.status === "approved") return null;
 
@@ -178,6 +178,24 @@ function StatusView() {
             await query.refetch();
           }}
         />
+        {venue.courts.filter((c) => c.is_active).map((c) => (
+          <div key={c.id} className="pt-3 border-t border-owner-border-light">
+            <PhotoManager
+              label={`${c.name} · ${c.sport} photos`}
+              photoUrls={c.photo_urls}
+              photoKeys={c.photo_keys}
+              max={5}
+              onUpload={async (blob) => {
+                await api.courts.uploadPhoto(c.id, blob);
+                await query.refetch();
+              }}
+              onReorder={async (keys) => {
+                await api.courts.reorderPhotos(c.id, keys);
+                await query.refetch();
+              }}
+            />
+          </div>
+        ))}
       </div>
 
       <div className="bg-owner-accent-soft border border-owner-accent-soft-border rounded-2xl p-5 flex flex-col gap-3">

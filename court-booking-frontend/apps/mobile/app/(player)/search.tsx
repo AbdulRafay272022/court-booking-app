@@ -1,59 +1,49 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import * as Location from "expo-location";
+import { SPORT_OPTIONS } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
-import { ChevronLeftIcon, LocationPinIcon } from "@/components/icons";
+import { FilterSheet } from "@/components/filter-sheet";
+import { ChevronLeftIcon } from "@/components/icons";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { capitalize } from "@/lib/format";
+import { EMPTY_FILTERS, activeFilterChips, filtersToParams, filtersToQuery, parseFilters, type VenueFilters } from "@/lib/venue-filters";
 import { EmptyState, SportChip, VenueCard } from "./_components";
 
-const SPORTS = ["padel", "futsal", "cricket", "tennis"];
 const DEFAULT_CITY = "Karachi";
 
 export default function SearchScreen() {
-  const params = useLocalSearchParams<{ sport?: string }>();
-  const [sport, setSport] = useState<string | undefined>(params.sport);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [areaLabel, setAreaLabel] = useState(DEFAULT_CITY);
-  const [locating, setLocating] = useState(false);
+  // ALL filter state lives in the route params, so returning from a venue (or reloading) keeps it.
+  const params = useLocalSearchParams<Record<string, string | string[]>>();
+  const filters = useMemo(() => parseFilters(params), [params]);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const query = useQuery({
-    queryKey: ["venue-search", sport, coords?.lat, coords?.lng],
-    queryFn: () =>
-      api.venues.list({
-        sport,
-        city: coords ? undefined : DEFAULT_CITY,
-        lat: coords?.lat,
-        lng: coords?.lng,
-        radius_km: 15,
-        per_page: 30,
-      }),
-  });
-
-  async function useMyLocation() {
-    setLocating(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-      const position = await Location.getCurrentPositionAsync({});
-      setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
-      const places = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-      const place = places[0];
-      if (place) setAreaLabel([place.district ?? place.subregion, place.city].filter(Boolean).join(", "));
-    } finally {
-      setLocating(false);
-    }
+  function applyFilters(next: VenueFilters) {
+    router.setParams({ ...filtersToParams(next), open: undefined });
   }
 
+  // Home's "Filters" chip opens this screen with ?open=1 so the sheet is already up.
+  const openParam = Array.isArray(params.open) ? params.open[0] : params.open;
+  useEffect(() => {
+    if (openParam === "1") {
+      setSheetOpen(true);
+      router.setParams({ open: undefined });
+    }
+  }, [openParam]);
+
+  const areasQuery = useQuery({ queryKey: ["venue-areas"], queryFn: () => api.venues.areas(), staleTime: 5 * 60_000 });
+  const query = useQuery({
+    queryKey: ["venue-search", filtersToQuery(filters, DEFAULT_CITY)],
+    queryFn: () => api.venues.list(filtersToQuery(filters, DEFAULT_CITY)),
+  });
+
   const venues = query.data?.venues ?? [];
+  const chips = activeFilterChips(filters);
+  const nonSportChips = chips.filter((c) => c.key !== "sport");
+  const areaLabel = filters.near ? "Near your location" : filters.area ?? DEFAULT_CITY;
 
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
@@ -63,30 +53,49 @@ export default function SearchScreen() {
             <ChevronLeftIcon />
           </Pressable>
           <View className="flex-1 gap-0.5">
-            <Text className="font-figtree-bold text-player-ink text-[17px] -tracking-[0.2px]">
-              {sport ? `${capitalize(sport)} · ` : "Courts · "}
+            <Text className="font-figtree-bold text-player-ink text-[17px] -tracking-[0.2px]" accessibilityLabel="Result count">
+              {filters.sport ? `${filters.sport} · ` : "Courts · "}
               {query.isLoading ? "Searching…" : `${venues.length} venue${venues.length === 1 ? "" : "s"}`}
             </Text>
             <Text className="font-figtree-medium text-player-ink-faint text-[13px]">{areaLabel}</Text>
           </View>
+          <Pressable
+            onPress={() => setSheetOpen(true)}
+            accessibilityLabel="Open filters"
+            className="h-11 px-4 rounded-full flex-row items-center gap-1.5"
+            style={{ backgroundColor: nonSportChips.length > 0 ? "#141A1D" : "#F4EFEC" }}
+          >
+            <Text className="font-figtree-bold text-[13px]" style={{ color: nonSportChips.length > 0 ? "#FFFFFF" : "#5C544D" }}>
+              Filters{nonSportChips.length > 0 ? ` (${nonSportChips.length})` : ""}
+            </Text>
+          </Pressable>
         </View>
 
-        <Pressable
-          onPress={useMyLocation}
-          disabled={locating}
-          className="flex-row items-center gap-2 self-start px-3.5 h-9 rounded-full bg-player-surface-2"
-        >
-          <LocationPinIcon size={15} />
-          <Text className="font-figtree-semibold text-player-ink-muted text-[12.5px]">
-            {locating ? "Locating…" : "Use my location"}
-          </Text>
-        </Pressable>
-
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
-          {SPORTS.map((s) => (
-            <SportChip key={s} label={capitalize(s)} selected={sport === s} onPress={() => setSport(sport === s ? undefined : s)} />
+          {SPORT_OPTIONS.map((s) => (
+            <SportChip key={s} label={s} selected={filters.sport === s} onPress={() => applyFilters({ ...filters, sport: filters.sport === s ? undefined : s })} />
           ))}
         </ScrollView>
+
+        {nonSportChips.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 items-center">
+            {nonSportChips.map((c) => (
+              <Pressable
+                key={c.key}
+                onPress={() => applyFilters({ ...filters, ...c.clear })}
+                accessibilityLabel={`Remove filter ${c.label}`}
+                className="flex-row items-center gap-1.5 pl-3 pr-2.5 h-8 rounded-full"
+                style={{ backgroundColor: "#FDEBE4" }}
+              >
+                <Text className="font-figtree-semibold text-[12.5px]" style={{ color: "#C8431C" }}>{c.label}</Text>
+                <Text className="font-figtree-bold text-[12px]" style={{ color: "#C8431C" }}>✕</Text>
+              </Pressable>
+            ))}
+            <Pressable onPress={() => applyFilters({ ...EMPTY_FILTERS, sport: filters.sport })} accessibilityLabel="Clear all filters" className="h-8 px-2 justify-center">
+              <Text className="font-figtree-bold text-player-ink-muted text-[12.5px]">Clear all</Text>
+            </Pressable>
+          </ScrollView>
+        ) : null}
       </View>
 
       {query.isLoading ? (
@@ -97,9 +106,13 @@ export default function SearchScreen() {
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="player" />
       ) : venues.length === 0 ? (
         <EmptyState
-          title={`No ${sport ?? "courts"} in ${areaLabel} yet`}
-          subtitle="We're opening one area at a time so every listing is real. Right now we're live in DHA and Clifton, Karachi."
-          action={sport ? { label: "Show all sports", onPress: () => setSport(undefined) } : undefined}
+          title={chips.length > 0 ? "No venues match these filters" : `No courts in ${areaLabel} yet`}
+          subtitle={
+            chips.length > 0
+              ? "Try removing a filter, or widening the price range or time."
+              : "We're opening one area at a time so every listing is real. Right now we're live in DHA and Clifton, Karachi."
+          }
+          action={chips.length > 0 ? { label: "Clear all filters", onPress: () => applyFilters(EMPTY_FILTERS) } : undefined}
         />
       ) : (
         <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-3">
@@ -107,11 +120,29 @@ export default function SearchScreen() {
             <VenueCard
               key={v.id}
               venue={v}
-              onPress={() => router.push({ pathname: "/(player)/venue/[slug]", params: sport ? { slug: v.slug, sport } : { slug: v.slug } })}
+              onPress={() =>
+                router.push({
+                  pathname: "/(player)/venue/[slug]",
+                  // the sport the player is looking at goes with them, so the venue opens on that sport's courts
+                  params: filters.sport ? { slug: v.slug, sport: filters.sport } : { slug: v.slug },
+                })
+              }
             />
           ))}
         </ScrollView>
       )}
+
+      {sheetOpen ? (
+        <FilterSheet
+          initial={filters}
+          areas={areasQuery.data?.areas ?? []}
+          onClose={() => setSheetOpen(false)}
+          onApply={(next) => {
+            setSheetOpen(false);
+            applyFilters(next);
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

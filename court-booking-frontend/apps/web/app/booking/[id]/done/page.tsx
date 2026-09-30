@@ -1,5 +1,7 @@
 "use client";
 
+import { courtLabel } from "@/components/court-label";
+
 import { use } from "react";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
@@ -59,7 +61,7 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
       <div className="w-full max-w-md bg-white rounded-3xl p-7 flex flex-col gap-5">
         <div className="flex flex-col gap-1">
           <span className="font-bold text-[19px]">
-            {venueQuery.data?.name ?? "Venue"} · {courtQuery.data?.name ?? "Court"}
+            {venueQuery.data?.name ?? "Venue"} · {courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : "Court"}
           </span>
           <span className="text-player-ink-faint text-sm">{venueQuery.data ? venueQuery.data.area ?? venueQuery.data.city : ""}</span>
         </div>

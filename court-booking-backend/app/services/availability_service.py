@@ -21,7 +21,7 @@ from app.utils.schedule import (
     rule_matches_window,
     schedule_window,
 )
-from app.utils.timezone import PKT_OFFSET, utc_to_pkt_naive
+from app.utils.timezone import PKT_OFFSET, pkt_time_to_utc, utc_to_pkt_naive
 
 MAX_RANGE_DAYS = 28
 # Longest single booking a player can make, whatever the court's slot length (Section 32 Part 4).
@@ -89,6 +89,17 @@ class AvailabilityService:
         if court.has_floodlights:
             price += float(rule.floodlight_surcharge)
         return price
+
+    @staticmethod
+    def starts_from_price(court: Court, rules: list[PricingRule]) -> float | None:
+        """The cheapest per-slot price a court advertises: the lowest ACTIVE pricing rule (plus the floodlight surcharge
+        when the court has floodlights, exactly as price_for_rule charges it). None when no active rule exists. The month
+        calendar's `starts_from_price` and the venue-list price filter/`min_price` both come from here."""
+        prices = [
+            AvailabilityService.price_for_rule(r, court) for r in rules if r.is_active
+        ]
+        prices = [p for p in prices if p is not None]
+        return round(min(prices), 2) if prices else None
 
     @staticmethod
     def compute_advance(price: float, court: Court, rule: PricingRule) -> float:
@@ -296,16 +307,11 @@ class AvailabilityService:
                 days.append(DaySummaryOut(date=d, state=state, open_slots=open_slots, total_slots=total))
             d += timedelta(days=1)
 
-        prices = [
-            float(r.price_per_slot) + (float(r.floodlight_surcharge) if court.has_floodlights else 0.0)
-            for r in rules
-            if r.is_active
-        ]
         return CourtMonthSummaryOut(
             court_id=str(court.id),
             month=month_first.strftime("%Y-%m"),
             slot_minutes=court.slot_minutes,
-            starts_from_price=round(min(prices), 2) if prices else None,
+            starts_from_price=self.starts_from_price(court, rules),
             booking_horizon_days=booking_horizon_days,
             last_bookable_date=last_bookable,
             days=days,
@@ -320,6 +326,111 @@ class AvailabilityService:
         previous = await self.get_day_slots(court, calendar_date - timedelta(days=1), viewer_id=viewer_id)
         today = await self.get_day_slots(court, calendar_date, viewer_id=viewer_id)
         return [s for s in previous if s.after_midnight] + [s for s in today if not s.after_midnight]
+
+    async def courts_bookable_at(
+        self,
+        courts: list[Court],
+        horizon_days: dict[uuid.UUID, int],
+        calendar_date: date,
+        start_local: time | None = None,
+        duration_minutes: int | None = None,
+        now_utc: datetime | None = None,
+    ) -> set[uuid.UUID]:
+        """Which of `courts` a player could genuinely book on the Pakistan calendar date `calendar_date`.
+
+        With `start_local` (naive PKT wall-clock) the booking must begin exactly then, for `duration_minutes` (default:
+        the court's own slot length; it must be a whole number of that court's slots, the only lengths quote_range can
+        book). Without it, any slot that starts on the date counts. "Bookable" is judged by the SAME grid code the day
+        view uses (build_day_slots: schedule, closes_next_day, blackouts, live held/payment_submitted/booked bookings),
+        plus what quote_range/create_hold enforce: the slot has not started, the start is inside the venue's booking
+        horizon (`horizon_days`, by venue id), every slot of a multi-slot range exists and is free with a price, and the
+        length is within MAX_BOOKING_MINUTES. Data for all courts is read in four queries, not per court."""
+        if not courts:
+            return set()
+        now = now_utc or datetime.now(timezone.utc)
+        today = utc_to_pkt_naive(now).date()
+        court_ids = [c.id for c in courts]
+        window_start = pkt_time_to_utc(calendar_date - timedelta(days=1), time.min)
+        window_end = pkt_time_to_utc(calendar_date + timedelta(days=3), time.min)
+
+        templates: dict[uuid.UUID, dict[int, ScheduleTemplate]] = {cid: {} for cid in court_ids}
+        for t in (
+            await self.db.execute(
+                select(ScheduleTemplate).where(
+                    ScheduleTemplate.court_id.in_(court_ids), ScheduleTemplate.is_active.is_(True)
+                )
+            )
+        ).scalars():
+            templates[t.court_id][t.day_of_week] = t
+        rules: dict[uuid.UUID, list[PricingRule]] = {cid: [] for cid in court_ids}
+        for r in (await self.db.execute(select(PricingRule).where(PricingRule.court_id.in_(court_ids)))).scalars():
+            rules[r.court_id].append(r)
+        blackouts: dict[uuid.UUID, list[Blackout]] = {cid: [] for cid in court_ids}
+        for bl in (
+            await self.db.execute(
+                select(Blackout).where(
+                    Blackout.court_id.in_(court_ids), Blackout.starts_at < window_end, Blackout.ends_at > window_start
+                )
+            )
+        ).scalars():
+            blackouts[bl.court_id].append(bl)
+        bookings: dict[uuid.UUID, list[Booking]] = {cid: [] for cid in court_ids}
+        for b in (
+            await self.db.execute(
+                select(Booking).where(
+                    Booking.court_id.in_(court_ids),
+                    Booking.status.in_(LIVE_BOOKING_STATUSES),
+                    Booking.starts_at < window_end,
+                    Booking.ends_at > window_start,
+                )
+            )
+        ).scalars():
+            bookings[b.court_id].append(b)
+
+        start_utc = pkt_time_to_utc(calendar_date, start_local) if start_local is not None else None
+        matched: set[uuid.UUID] = set()
+        for court in courts:
+            slot_count = 1
+            if duration_minutes is not None:
+                if duration_minutes % court.slot_minutes != 0:
+                    continue
+                slot_count = duration_minutes // court.slot_minutes
+            if slot_count < 1 or slot_count * court.slot_minutes > max(MAX_BOOKING_MINUTES, court.slot_minutes):
+                continue
+            tmpls = templates[court.id]
+            by_day: dict[date, dict[datetime, SlotOut]] = {}
+
+            def grid(day: date, _court: Court = court, _tmpls=tmpls) -> dict[datetime, SlotOut]:
+                if day not in by_day:
+                    built = self.build_day_slots(
+                        _court, day, _tmpls.get(day.weekday()), rules[_court.id], blackouts[_court.id], bookings[_court.id]
+                    )
+                    by_day[day] = {s.starts_at: s for s in built}
+                return by_day[day]
+
+            # every slot that STARTS on this calendar date: yesterday's after-midnight tail + today's own slots
+            first_slots = [s for s in grid(calendar_date - timedelta(days=1)).values() if s.after_midnight] + [
+                s for s in grid(calendar_date).values() if not s.after_midnight
+            ]
+            if start_utc is not None:
+                first_slots = [s for s in first_slots if s.starts_at == start_utc]
+            horizon = horizon_days.get(court.venue_id, 90)
+            step = timedelta(minutes=court.slot_minutes)
+            for first in first_slots:
+                if first.starts_at <= now or utc_to_pkt_naive(first.starts_at).date() > today + timedelta(days=horizon):
+                    continue
+                ok = True
+                for i in range(slot_count):
+                    st = first.starts_at + step * i
+                    day = opening_day_of(utc_to_pkt_naive(st), tmpls)
+                    slot = grid(day).get(st)
+                    if slot is None or slot.status != "available" or slot.price <= 0:
+                        ok = False
+                        break
+                if ok:
+                    matched.add(court.id)
+                    break
+        return matched
 
     async def require_within_horizon(self, court: Court, starts_at: datetime) -> None:
         """A player can only book up to the venue's `booking_horizon_days` ahead (Section 32 Part 4b, default 90)."""

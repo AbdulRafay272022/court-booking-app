@@ -1,79 +1,90 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import type { Metadata } from "next";
+import type { VenueListResponse } from "@court-booking/types";
 import { serverApi } from "@/lib/server-api";
 import { SiteHeader } from "@/components/nav-auth";
-import { capitalize, formatDistance } from "@/lib/format";
-
-const SPORTS = ["padel", "futsal", "cricket", "tennis"];
+import { FilterBar } from "@/components/discovery/filter-bar";
+import { activeFilterCount, filtersToApiParams, parseFilters } from "@/lib/discovery-filters";
+import { formatDistance, formatPKR } from "@/lib/format";
 
 export async function generateMetadata({ searchParams }: PageProps<"/search">): Promise<Metadata> {
-  const sp = await searchParams;
-  const sport = typeof sp.sport === "string" ? sp.sport : undefined;
-  const title = sport ? `${capitalize(sport)} Courts in Karachi` : "Court Booking in Karachi";
+  const { sport } = parseFilters(await searchParams);
+  const title = sport ? `${sport} Courts in Karachi` : "Court Booking in Karachi";
   return { title, description: `Browse ${sport ?? "padel and futsal"} courts available to book right now in DHA and Clifton, Karachi.` };
 }
 
 export default async function SearchPage({ searchParams }: PageProps<"/search">) {
   const sp = await searchParams;
-  const sport = typeof sp.sport === "string" ? sp.sport : undefined;
   const city = typeof sp.city === "string" ? sp.city : "Karachi";
+  const filters = parseFilters(sp);
 
-  const { venues, total } = await serverApi.listVenues({ sport, city, radius_km: 15 });
-
-  function hrefFor(nextSport?: string) {
-    const usp = new URLSearchParams();
-    usp.set("city", city);
-    if (nextSport) usp.set("sport", nextSport);
-    return `/search?${usp.toString()}`;
+  let result: VenueListResponse | null = null;
+  let failed = false;
+  try {
+    result = await serverApi.listVenues({ city, ...filtersToApiParams(filters) });
+  } catch {
+    failed = true;
   }
+  let areas: string[] = [];
+  try {
+    areas = (await serverApi.areas()).areas;
+  } catch {
+    // the area picker just stays empty; the rest of the page still works
+  }
+
+  const venues = result?.venues ?? [];
+  const filtered = activeFilterCount(filters) > 0;
+  // Opening a venue from here keeps the sport the player was looking at (the venue page preselects it). The value is
+  // percent-encoded: "Football (full-field)" has spaces and parentheses.
+  const sportQuery = filters.sport ? `?sport=${encodeURIComponent(filters.sport)}` : "";
 
   return (
     <>
     <SiteHeader />
     <main className="px-6 md:px-14 py-10 flex flex-col gap-7">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-extrabold tracking-tight">
-          {sport ? `${capitalize(sport)} courts` : "Courts"} in {city}
-        </h1>
-        <p className="text-player-ink-faint text-sm">
-          {total} venue{total === 1 ? "" : "s"}
-        </p>
-      </div>
+      <h1 className="text-2xl font-extrabold tracking-tight">
+        {filters.sport ? `${filters.sport} courts` : "Courts"} in {city}
+      </h1>
 
-      <div className="flex gap-2 flex-wrap">
-        <Link
-          href={hrefFor(undefined)}
-          className="px-4 py-2.5 rounded-full text-[13.5px] font-semibold"
-          style={{ background: !sport ? "#141A1D" : "#F4EFEC", color: !sport ? "#fff" : "#5C544D" }}
-        >
-          All sports
-        </Link>
-        {SPORTS.map((s) => (
-          <Link
-            key={s}
-            href={hrefFor(s)}
-            className="px-4 py-2.5 rounded-full text-[13.5px] font-semibold"
-            style={{ background: sport === s ? "#141A1D" : "#F4EFEC", color: sport === s ? "#fff" : "#5C544D" }}
-          >
-            {capitalize(s)}
-          </Link>
-        ))}
-      </div>
+      <Suspense>
+        <FilterBar areas={areas} city={city} total={result ? result.total : null} />
+      </Suspense>
 
-      {venues.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-20 text-center">
-          <h2 className="text-xl font-extrabold">No {sport ?? "courts"} in {city} yet</h2>
-          <p className="text-player-ink-muted max-w-md">
-            We're opening one area at a time so every listing is real. Right now we're live in DHA and Clifton,
-            Karachi.
-          </p>
+      {failed ? (
+        <div role="alert" className="flex flex-col items-center gap-2 py-16 text-center">
+          <h2 className="text-xl font-extrabold">Couldn&apos;t load venues</h2>
+          <p className="text-player-ink-muted max-w-md">Check your filters (dates must be today or later) and try again.</p>
+        </div>
+      ) : venues.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-16 text-center" data-testid="empty-state">
+          {filtered ? (
+            <>
+              <h2 className="text-xl font-extrabold">No venues match these filters</h2>
+              <p className="text-player-ink-muted max-w-md">
+                Try a different date or time, a wider price range, or remove a filter.
+              </p>
+              <Link href={`/search?city=${encodeURIComponent(city)}`} className="px-5 py-2.5 rounded-full bg-player-ink text-white text-[13.5px] font-semibold">
+                Clear all filters
+              </Link>
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-extrabold">No courts in {city} yet</h2>
+              <p className="text-player-ink-muted max-w-md">
+                We&apos;re opening one area at a time so every listing is real. Right now we&apos;re live in DHA and Clifton,
+                Karachi.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {venues.map((v) => (
             <Link
               key={v.id}
-              href={sport ? `/venues/${v.slug}?sport=${sport}` : `/venues/${v.slug}`}
+              href={`/venues/${v.slug}${sportQuery}`}
+              data-testid="venue-card"
               className="bg-player-surface border border-player-border-light rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
             >
               {v.photo_urls?.[0] ? (
@@ -92,7 +103,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
                 <p className="text-[13px] text-player-ink-faint">
                   {[v.area ?? v.city, formatDistance(v.distance_meters)].filter(Boolean).join(" · ")}
                 </p>
-                <p className="text-xs text-player-ink-fainter">{v.sports.map(capitalize).join(" · ")}</p>
+                <p className="text-xs text-player-ink-fainter">{v.sports.join(" · ")}</p>
+                {v.min_price != null ? (
+                  <p className="text-[13.5px] font-semibold text-player-ink" data-testid="from-price">
+                    from PKR <span className="font-mono">{formatPKR(v.min_price)}</span>
+                  </p>
+                ) : null}
               </div>
             </Link>
           ))}

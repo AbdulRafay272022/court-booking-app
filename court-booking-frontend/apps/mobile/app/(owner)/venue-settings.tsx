@@ -2,8 +2,11 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import * as Location from "expo-location";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AMENITY_OPTIONS,
+  SPORT_OPTIONS,
   accountNumberError,
   accountTitleError,
   bankNameError,
@@ -27,22 +30,33 @@ import { ErrorState } from "@/components/error-state";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
 import { AdvanceRuleFields, CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
 import { PhotoManager } from "@/components/photo-manager";
+import { AmenityPicker, CourtIdentityFields } from "@/components/court-identity-fields";
+import { CourtTabs } from "@/components/court-tabs";
+import { courtLabel } from "@/components/court-label";
+import { confirmAction } from "@/lib/confirm";
+import { findSport, sameSport } from "@/lib/sport";
 import { Chip, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
-import { Tab } from "./_dashboard-components";
+
+type Section = "venue" | "courts";
+const NEW_COURT_KEY = "__new__";
 
 export default function VenueSettingsScreen() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
+  const [section, setSection] = useState<Section>("venue");
   // Only ACTIVE courts are editable here -- a deactivated ("deleted") court shouldn't be a
   // tab in the settings editor. Its history still lives in the ledger (post-batch #2).
   const courts = (activeVenue?.courts ?? []).filter((c) => c.is_active);
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
+  // A "+ Court" tab that has not been saved yet (local only until "Create court").
+  const [newCourtOpen, setNewCourtOpen] = useState(false);
   // If the selected court is no longer in the active list (e.g. just deleted), fall back to the first.
   const activeCourtId = (courtId && courts.some((c) => c.id === courtId) ? courtId : undefined) ?? courts[0]?.id;
+  const onNewTab = newCourtOpen && courtId === NEW_COURT_KEY;
 
   const courtQuery = useQuery({
     queryKey: ["court-settings", activeCourtId],
     queryFn: () => api.courts.get(activeCourtId!),
-    enabled: !!activeCourtId,
+    enabled: !!activeCourtId && section === "courts",
   });
   // The app's query client keeps the PREVIOUS query's data while a new one loads (placeholderData), so right after
   // switching court `courtQuery.data` is still the OLD court. A form seeded from it would hold the wrong court's hours
@@ -59,71 +73,124 @@ export default function VenueSettingsScreen() {
         <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px] flex-1">Venue settings</Text>
       </View>
 
-      {courts.length > 1 ? (
-        <View className="px-4.5 py-3 bg-owner-surface border-b border-owner-border flex-row gap-1.5">
-          {courts.map((c) => (
-            <Tab key={c.id} label={c.name} selected={activeCourtId === c.id} onPress={() => setCourtId(c.id)} />
-          ))}
-        </View>
-      ) : null}
+      {/* Venue-level settings and court-level settings are two separate sections, so an owner never edits a court's price
+          while looking at the venue's bank details (or the other way round). */}
+      <View className="px-4.5 py-3 bg-owner-surface border-b border-owner-border flex-row gap-2">
+        {(["venue", "courts"] as const).map((k) => (
+          <Pressable
+            key={k}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: section === k }}
+            onPress={() => setSection(k)}
+            className="flex-1 rounded-lg items-center justify-center"
+            style={{ minHeight: 44, backgroundColor: section === k ? "#0E6274" : "#F4F6F7" }}
+          >
+            <Text className="font-plex-semibold text-[14px]" style={{ color: section === k ? "#FFFFFF" : "#5B7079" }}>
+              {k === "venue" ? "Venue" : `Courts${courts.length ? ` (${courts.length})` : ""}`}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-4">
-        {/* QA signup-venue round item 3: post-approval editing for the fields the wizard's own
-            copy already promised are editable (name / WhatsApp / bank details). Sits above the
-            cancellation policy so a typo fix is not missed. */}
-        {activeVenue ? <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} /> : null}
-
-        {/* ONE cancellation policy for the whole venue (Section 32 Part 4), so it sits above the per-court settings. */}
-        {activeVenue ? (
-          <VenueCancellationCard
-            key={activeVenue.id}
-            venueId={activeVenue.id}
-            initialAllowed={activeVenue.cancellation_allowed}
-            initialCutoff={activeVenue.cancellation_cutoff_hours}
-          />
-        ) : null}
-
-        {activeVenue ? (
-          <VenuePhotosCard
-            key={`photos-${activeVenue.id}`}
-            venueId={activeVenue.id}
-            photoUrls={activeVenue.photo_urls}
-            photoKeys={activeVenue.photo_keys}
-          />
-        ) : null}
-
-        {loading ? (
-          <View className="py-10 items-center justify-center">
+      <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-4" keyboardShouldPersistTaps="handled">
+        {section === "venue" ? (
+          activeVenue ? (
+            <>
+              {/* QA signup-venue round item 3: post-approval editing for the fields the wizard's own
+                  copy already promised are editable (name / WhatsApp / bank details). */}
+              <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} activeSports={courts.map((c) => c.sport)} />
+              {/* ONE cancellation policy for the whole venue (Section 32 Part 4). */}
+              <VenueCancellationCard
+                key={activeVenue.id}
+                venueId={activeVenue.id}
+                initialAllowed={activeVenue.cancellation_allowed}
+                initialCutoff={activeVenue.cancellation_cutoff_hours}
+              />
+              <VenuePhotosCard
+                key={`photos-${activeVenue.id}`}
+                venueId={activeVenue.id}
+                photoUrls={activeVenue.photo_urls}
+                photoKeys={activeVenue.photo_keys}
+              />
+            </>
+          ) : (
             <ActivityIndicator color="#0E6274" />
-          </View>
-        ) : courtQuery.isError ? (
-          <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
-        ) : !activeCourtId || !court ? (
-          <Text className="font-plex-medium text-owner-ink-faint text-center py-10">No courts yet — add your first court below.</Text>
+          )
         ) : (
           <>
-            {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
-            <CourtSettingsForm key={court.id} court={court} canDelete={courts.length > 1} onDeleted={() => setCourtId(undefined)} />
-            <CourtPhotosCard key={`court-photos-${court.id}`} court={court} />
-            <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
+            <CourtTabs
+              tabs={[
+                ...courts.map((c) => ({ key: c.id, label: courtLabel(c.name, c.sport) })),
+                ...(newCourtOpen ? [{ key: NEW_COURT_KEY, label: "New court" }] : []),
+              ]}
+              selectedKey={onNewTab ? NEW_COURT_KEY : activeCourtId}
+              onSelect={(k) => setCourtId(k)}
+              onAdd={
+                activeVenue && !newCourtOpen
+                  ? () => {
+                      setNewCourtOpen(true);
+                      setCourtId(NEW_COURT_KEY);
+                    }
+                  : undefined
+              }
+            />
+
+            {onNewTab && activeVenue ? (
+              <NewCourtForm
+                key="new-court"
+                venue={activeVenue}
+                onDiscard={() => {
+                  setNewCourtOpen(false);
+                  setCourtId(undefined);
+                }}
+                onAdded={(id) => {
+                  setNewCourtOpen(false);
+                  setCourtId(id);
+                }}
+              />
+            ) : loading ? (
+              <View className="py-10 items-center justify-center">
+                <ActivityIndicator color="#0E6274" />
+              </View>
+            ) : courtQuery.isError ? (
+              <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
+            ) : !activeCourtId || !court ? (
+              <Text className="font-plex-medium text-owner-ink-faint text-center py-10">No courts yet. Tap "+ Court" to add your first one.</Text>
+            ) : (
+              <>
+                {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
+                <CourtSettingsForm
+                  key={court.id}
+                  court={court}
+                  venueSports={activeVenue?.sports ?? []}
+                  canDelete={courts.length > 1}
+                  onDeleted={() => setCourtId(undefined)}
+                />
+                <CourtPhotosCard key={`court-photos-${court.id}`} court={court} />
+                <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
+              </>
+            )}
           </>
         )}
-
-        {activeVenue ? <AddCourtCard venue={activeVenue} onAdded={(id) => setCourtId(id)} /> : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function VenueBasicsCard({ venue }: { venue: Venue }) {
+function VenueBasicsCard({ venue, activeSports }: { venue: Venue; activeSports: string[] }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(venue.name);
+  const [description, setDescription] = useState(venue.description ?? "");
   const [whatsapp, setWhatsapp] = useState(venue.whatsapp ?? "");
   const [address, setAddress] = useState(venue.address);
+  const [area, setArea] = useState(venue.area ?? "");
+  const [sports, setSports] = useState<string[]>(venue.sports);
+  const [amenities, setAmenities] = useState<string[]>(venue.amenities ?? []);
   const [bankName, setBankName] = useState(venue.bank_details?.bank ?? "");
   const [accountTitle, setAccountTitle] = useState(venue.bank_details?.account_title ?? "");
   const [accountNumber, setAccountNumber] = useState(venue.bank_details?.account_number ?? "");
   const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const bankTouched = !!(bankName || accountTitle || accountNumber);
@@ -131,7 +198,16 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
     ? { bank: bankNameError(bankName), title: accountTitleError(accountTitle), num: accountNumberError(accountNumber) }
     : { bank: null, title: null, num: null };
   const bankOk = !bankTouched || (!bErrors.bank && !bErrors.title && !bErrors.num);
-  const canSave = name.trim().length > 0 && address.trim().length > 0 && bankOk;
+  // A sport can't be switched off while one of this venue's live courts still plays it.
+  const blockedSport = activeSports.find((cs) => !findSport(sports, cs));
+  const canSave = name.trim().length > 0 && address.trim().length > 0 && sports.length > 0 && !blockedSport && bankOk;
+
+  function toggleSport(sport: string) {
+    setSports((cur) => {
+      if (cur.some((c) => sameSport(c, sport))) return cur.filter((c) => !sameSport(c, sport));
+      return [...cur, sport];
+    });
+  }
 
   async function save() {
     if (!canSave) return;
@@ -140,8 +216,12 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
     try {
       const patch: Parameters<typeof api.venues.update>[1] = {
         name: name.trim(),
+        description: description.trim() || undefined,
         address: address.trim(),
+        area: area.trim() || undefined,
         whatsapp: whatsapp.trim() || undefined,
+        sports,
+        amenities,
       };
       if (bankTouched) patch.bank_details = { bank: bankName, account_title: accountTitle, account_number: accountNumber };
       await api.venues.update(venue.id, patch);
@@ -154,12 +234,59 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
     }
   }
 
+  async function updatePin() {
+    setLocating(true);
+    setMessage(null);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setMessage({ ok: false, text: "Location permission denied. Allow it in your device settings to move the pin." });
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({});
+      await api.venues.update(venue.id, { latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      setMessage({ ok: true, text: `Pin moved to ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}.` });
+    } catch (e) {
+      setMessage({ ok: false, text: friendlyErrorMessage(e) });
+    } finally {
+      setLocating(false);
+    }
+  }
+
   return (
     <SectionCard>
       <SectionLabel>Venue basics</SectionLabel>
       <TextField label="Venue name" value={name} onChangeText={setName} />
+      <TextField label="Description" value={description} onChangeText={setDescription} placeholder="A few lines players will see" multiline style={{ height: 96, paddingTop: 12, textAlignVertical: "top" }} />
       <TextField label="Street address" value={address} onChangeText={setAddress} />
+      <TextField label="Area" value={area} onChangeText={setArea} placeholder="DHA Phase 6" />
       <TextField label="WhatsApp for bookings" value={whatsapp} onChangeText={setWhatsapp} placeholder="+923001234567" keyboardType="phone-pad" mono />
+
+      <View className="gap-2">
+        <FieldLabel>Sports offered at this venue</FieldLabel>
+        <View className="flex-row flex-wrap gap-2">
+          {SPORT_OPTIONS.map((sp) => (
+            <Chip key={sp} label={sp} selected={!!findSport(sports, sp)} onPress={() => toggleSport(sp)} />
+          ))}
+        </View>
+        {blockedSport ? (
+          <Text className="font-plex-medium text-owner-danger text-[12.5px]">
+            You still have a {blockedSport} court. Change or delete it in Courts before removing this sport.
+          </Text>
+        ) : null}
+      </View>
+
+      <AmenityPicker
+        value={amenities}
+        onToggle={(k) => setAmenities((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))}
+        options={AMENITY_OPTIONS}
+      />
+
+      <View className="gap-2">
+        <FieldLabel>Location pin</FieldLabel>
+        <SecondaryButton label={locating ? "Locating..." : "Move pin to my current location"} onPress={updatePin} />
+      </View>
+
       <SectionLabel>Bank details (players see these on the pay screen)</SectionLabel>
       <TextField label="Bank name" value={bankName} onChangeText={setBankName} placeholder="Meezan Bank" error={bankName ? bErrors.bank : null} />
       <TextField label="Account title" value={accountTitle} onChangeText={setAccountTitle} placeholder="Padel Republic" error={accountTitle ? bErrors.title : null} />
@@ -216,8 +343,9 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
 
 /** Slot length, hours and prices for ONE court. Seeded once from the court it is mounted for (the parent keys it by
  * court id), so it holds its own edits and never needs an effect to copy server data into state. */
-function CourtSettingsForm({ court, canDelete, onDeleted }: { court: Court; canDelete: boolean; onDeleted: () => void }) {
+function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court: Court; venueSports: string[]; canDelete: boolean; onDeleted: () => void }) {
   const queryClient = useQueryClient();
+  const [identity, setIdentity] = useState({ name: court.name, sport: court.sport, isIndoor: court.is_indoor });
   const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
   const [advanceType, setAdvanceType] = useState<"" | "fixed" | "percent">(court.advance_type ?? "");
   const [advanceValue, setAdvanceValue] = useState(court.advance_value != null ? String(court.advance_value) : "");
@@ -229,34 +357,32 @@ function CourtSettingsForm({ court, canDelete, onDeleted }: { court: Court; canD
   function confirmDelete() {
     // Soft-delete: the backend deactivates the court (is_active=false). Existing bookings and
     // their payments are untouched and stay in the ledger (post-batch #2) -- say so in the confirm.
-    Alert.alert(
-      `Delete "${court.name}"?`,
-      `It will stop taking new bookings and disappear from the player app. ` +
-        `Its past bookings and payments stay in your ledger.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await api.courts.deactivate(court.id);
-              await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-              onDeleted();
-            } catch (e) {
-              Alert.alert("Couldn't delete", friendlyErrorMessage(e));
-              setDeleting(false);
-            }
-          },
-        },
-      ],
-    );
+    confirmAction({
+      title: `Delete "${court.name}"?`,
+      message: "It will stop taking new bookings and disappear from the player app. Its past bookings and payments stay in your ledger.",
+      confirmLabel: "Delete",
+      destructive: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await api.courts.deactivate(court.id);
+          await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+          onDeleted();
+        } catch (e) {
+          Alert.alert("Couldn't delete", friendlyErrorMessage(e));
+          setDeleting(false);
+        }
+      },
+    });
   }
   const advanceProblem =
     advanceType !== "" && !advanceValue.trim() ? "Enter an advance amount or percentage, or switch back to Default." : null;
 
   async function save() {
+    if (!identity.name.trim()) {
+      Alert.alert("Name your court", "Give the court a name.");
+      return;
+    }
     if (problem) {
       Alert.alert("Check this court", problem);
       return;
@@ -267,7 +393,12 @@ function CourtSettingsForm({ court, canDelete, onDeleted }: { court: Court; canD
     }
     setSaving(true);
     try {
-      if (setup.slotMinutes !== court.slot_minutes) await api.courts.update(court.id, { slot_minutes: setup.slotMinutes });
+      await api.courts.update(court.id, {
+        name: identity.name.trim(),
+        sport: identity.sport,
+        is_indoor: identity.isIndoor,
+        ...(setup.slotMinutes !== court.slot_minutes ? { slot_minutes: setup.slotMinutes } : {}),
+      });
       await api.courts.update(court.id, {
         advance_type: advanceType || null,
         advance_value: advanceType ? Number(advanceValue) : null,
@@ -278,7 +409,7 @@ function CourtSettingsForm({ court, canDelete, onDeleted }: { court: Court; canD
       await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      Alert.alert("Saved", `${court.name}: slot length, hours, prices and advance rule updated.`);
+      Alert.alert("Saved", `${courtLabel(identity.name.trim(), identity.sport)}: details, hours, prices and advance rule updated.`);
     } catch (e) {
       Alert.alert("Couldn't save", friendlyErrorMessage(e));
     } finally {
@@ -288,7 +419,14 @@ function CourtSettingsForm({ court, canDelete, onDeleted }: { court: Court; canD
 
   return (
     <>
-      <Text className="font-plex-bold text-owner-ink text-[17px]">{court.name}</Text>
+      <Text className="font-plex-bold text-owner-ink text-[17px]">{courtLabel(court.name, court.sport)}</Text>
+      <CourtIdentityFields
+        name={identity.name}
+        sport={identity.sport}
+        isIndoor={identity.isIndoor}
+        sports={venueSports}
+        onChange={(patch) => setIdentity((cur) => ({ ...cur, ...patch }))}
+      />
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
       <AdvanceRuleFields
         advanceType={advanceType}
@@ -317,21 +455,18 @@ function CourtSettingsForm({ court, canDelete, onDeleted }: { court: Court; canD
   );
 }
 
-/** Add a new court to this venue -- reuses the venue-setup wizard's court fields, and the same
- * create -> setSchedule -> setPricing sequence. Sport is chosen from the venue's existing sports
- * (chips, so casing always matches -- see post-batch #3), never free text. */
-function AddCourtCard({ venue, onAdded }: { venue: Venue; onAdded: (courtId: string) => void }) {
+/** The unsaved "New court" tab: identity + hours + prices, created with the same create -> setSchedule -> setPricing sequence
+ * as the wizard. Sport is chosen from the venue's offered sports (chips, so casing always matches -- post-batch #3). */
+function NewCourtForm({ venue, onAdded, onDiscard }: { venue: Venue; onAdded: (courtId: string) => void; onDiscard: () => void }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [sport, setSport] = useState(venue.sports[0] ?? "");
+  const [identity, setIdentity] = useState({ name: "", sport: venue.sports[0] ?? "", isIndoor: false });
   const [setup, setSetup] = useState<CourtSetup>(() => defaultCourtSetup());
   const [saving, setSaving] = useState(false);
   const problem = courtSetupProblem(setup);
-  const valid = name.trim().length > 0 && sport.trim().length > 0 && !problem;
+  const valid = identity.name.trim().length > 0 && identity.sport.trim().length > 0 && !problem;
 
   async function create() {
-    if (!name.trim()) {
+    if (!identity.name.trim()) {
       Alert.alert("Name your court", "Give the court a name.");
       return;
     }
@@ -341,14 +476,15 @@ function AddCourtCard({ venue, onAdded }: { venue: Venue; onAdded: (courtId: str
     }
     setSaving(true);
     try {
-      const { court } = await api.courts.create(venue.id, { name: name.trim(), sport, slot_minutes: setup.slotMinutes });
+      const { court } = await api.courts.create(venue.id, {
+        name: identity.name.trim(),
+        sport: identity.sport,
+        is_indoor: identity.isIndoor,
+        slot_minutes: setup.slotMinutes,
+      });
       await api.courts.setSchedule(court.id, buildSchedules(setup));
       await api.courts.setPricing(court.id, buildPricingRules(setup));
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setName("");
-      setSport(venue.sports[0] ?? "");
-      setSetup(defaultCourtSetup());
-      setOpen(false);
       onAdded(court.id);
     } catch (e) {
       Alert.alert("Couldn't add court", friendlyErrorMessage(e));
@@ -357,26 +493,19 @@ function AddCourtCard({ venue, onAdded }: { venue: Venue; onAdded: (courtId: str
     }
   }
 
-  if (!open) {
-    return <PrimaryButton label="+ Add court" onPress={() => setOpen(true)} />;
-  }
-
   return (
-    <SectionCard>
-      <SectionLabel>Add a court</SectionLabel>
-      <TextField label="Court name" value={name} onChangeText={setName} placeholder="Court 2" />
-      <View className="gap-2">
-        <FieldLabel>Sport</FieldLabel>
-        <View className="flex-row flex-wrap gap-2">
-          {venue.sports.map((s) => (
-            <Chip key={s} label={s} selected={sport === s} onPress={() => setSport(s)} />
-          ))}
-        </View>
-      </View>
+    <View className="gap-4">
+      <CourtIdentityFields
+        name={identity.name}
+        sport={identity.sport}
+        isIndoor={identity.isIndoor}
+        sports={venue.sports}
+        onChange={(patch) => setIdentity((cur) => ({ ...cur, ...patch }))}
+      />
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((cur) => ({ ...cur, ...patch }))} />
-      <PrimaryButton label="Add court" onPress={create} disabled={!valid} loading={saving} />
-      <SecondaryButton label="Cancel" onPress={() => setOpen(false)} />
-    </SectionCard>
+      <PrimaryButton label="Create court" onPress={create} disabled={!valid} loading={saving} />
+      <SecondaryButton label="Discard" onPress={onDiscard} />
+    </View>
   );
 }
 
@@ -409,7 +538,7 @@ function CourtPhotosCard({ court }: { court: Court }) {
   };
   return (
     <PhotoManager
-      title={`${court.name} photos`}
+      title={`${courtLabel(court.name, court.sport)} photos`}
       photoUrls={court.photo_urls}
       photoKeys={court.photo_keys}
       max={5}

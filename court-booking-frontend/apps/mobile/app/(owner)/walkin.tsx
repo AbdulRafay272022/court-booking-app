@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -100,7 +101,7 @@ export default function WalkInScreen() {
             {courts.map((c) => (
               <Chip
                 key={c.id}
-                label={c.name}
+                label={courtLabel(c.name, c.sport)}
                 selected={courtId === c.id}
                 onPress={() => {
                   setCourtId(c.id);

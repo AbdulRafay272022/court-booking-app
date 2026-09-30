@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -16,7 +17,7 @@ import { EmptyState } from "./_dashboard-components";
 const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks like a duplicate", "Other"];
 
 export default function ApprovalsScreen() {
-  const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
+  const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -152,7 +153,7 @@ export default function ApprovalsScreen() {
               </View>
             </View>
             <View className="h-px bg-owner-border-light" />
-            <Row label="Slot" value={`${current.court_name} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
+            <Row label="Slot" value={`${courtLabel(current.court_name, sportForCourtName(activeVenue?.courts, current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
             <Row label="Advance due" value={`PKR ${formatPKR(current.expected_amount)}`} />
             <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
           </View>

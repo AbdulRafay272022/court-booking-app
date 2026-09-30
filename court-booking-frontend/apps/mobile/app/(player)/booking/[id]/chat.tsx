@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -26,6 +27,7 @@ export default function BookingChatScreen() {
     venueName?: string;
     courtId?: string;
     courtName?: string;
+    courtSport?: string;
     startsAt?: string;
     price?: string;
     // How long the player chose in the duration sheet (Section 32 Part 4); absent means one slot.
@@ -166,7 +168,7 @@ export default function BookingChatScreen() {
                 SELECTED SLOT
               </Text>
               <Text className="font-mono-semibold text-player-ink text-[14.5px]">
-                {params.courtName} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
+                {courtLabel(params.courtName, params.courtSport)} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
                 {minutes ? ` · ${formatDuration(minutes)}` : ""}
               </Text>
             </View>

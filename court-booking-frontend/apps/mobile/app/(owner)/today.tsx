@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -76,12 +77,13 @@ export default function OwnerTodayScreen() {
     ]);
   }
 
+  const sportOf = (id: string) => activeVenue?.courts.find((c) => c.id === id)?.sport;
   const data = todayQuery.data;
   const courts = data?.courts ?? [];
   const courtId = activeCourt === "all" ? undefined : activeCourt;
   const rows = courts
     .filter((c) => !courtId || c.court_id === courtId)
-    .flatMap((c) => c.slots.map((s) => ({ ...s, courtName: c.name })))
+    .flatMap((c) => c.slots.map((s) => ({ ...s, courtName: c.name, courtSport: sportOf(c.court_id) })))
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
   return (
@@ -157,13 +159,12 @@ export default function OwnerTodayScreen() {
       </View>
 
       {courts.length > 1 ? (
-        <View className="px-4.5 py-3 bg-owner-surface border-b border-owner-border flex-row gap-1.5">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0 bg-owner-surface border-b border-owner-border" contentContainerClassName="px-4.5 py-3 gap-1.5">
           {courts.map((c) => (
-            <Tab key={c.court_id} label={c.name} selected={activeCourt === c.court_id} onPress={() => setActiveCourt(c.court_id)} />
+            <Tab key={c.court_id} label={courtLabel(c.name, sportOf(c.court_id))} selected={activeCourt === c.court_id} onPress={() => setActiveCourt(c.court_id)} />
           ))}
-          <View className="flex-1" />
           <Tab label="All" selected={activeCourt === "all"} onPress={() => setActiveCourt("all")} />
-        </View>
+        </ScrollView>
       ) : null}
 
       {venuesLoading || todayQuery.isLoading ? (
@@ -205,7 +206,7 @@ export default function OwnerTodayScreen() {
                     className="font-plex-semibold text-sm"
                     style={{ color: slot.status === "available" || slot.status === "blocked" ? "#8399A1" : "#101C21" }}
                   >
-                    {courtId ? slot.player_name ?? statusLabel(slot.status) : `${slot.courtName} · ${slot.player_name ?? statusLabel(slot.status)}`}
+                    {courtId ? slot.player_name ?? statusLabel(slot.status) : `${courtLabel(slot.courtName, slot.courtSport)} · ${slot.player_name ?? statusLabel(slot.status)}`}
                   </Text>
                   <Text
                     className="font-plex-medium text-xs"

@@ -1,5 +1,6 @@
 "use client";
 
+import { courtLabel } from "@/components/court-label";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { durationChoices, formatDuration, type Slot } from "@court-booking/types";
@@ -16,6 +17,7 @@ import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 export function DurationSheet({
   courtId,
   courtName,
+  courtSport,
   slotMinutes,
   slots,
   index,
@@ -24,6 +26,7 @@ export function DurationSheet({
 }: {
   courtId: string;
   courtName: string;
+  courtSport?: string;
   slotMinutes: number;
   slots: Slot[];
   index: number;
@@ -44,13 +47,13 @@ export function DurationSheet({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Book ${courtName}`}
+        aria-label={`Book ${courtLabel(courtName, courtSport)}`}
         className="w-full sm:max-w-md bg-player-surface rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">{courtName.toUpperCase()}</span>
+            <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">{courtLabel(courtName, courtSport).toUpperCase()}</span>
             <span className="text-[17px] font-bold">{formatDate(slot.starts_at)}</span>
             <span className="font-mono text-[14.5px] font-semibold" data-testid="sheet-time-range">
               {quote ? formatTimeRange(quote.starts_at, quote.ends_at) : formatTimeRange(slot.starts_at, slot.ends_at)}

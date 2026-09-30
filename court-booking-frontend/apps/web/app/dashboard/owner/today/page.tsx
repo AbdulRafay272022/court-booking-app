@@ -1,5 +1,9 @@
 "use client";
 
+import { useOwnerCourtSports } from "@/lib/court-sports";
+
+import { courtLabel } from "@/components/court-label";
+
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,12 +64,13 @@ export default function OwnerTodayPage() {
     }
   }
 
+  const sports = useOwnerCourtSports();
   const data = todayQuery.data;
   const courts = data?.courts ?? [];
   const courtId = activeCourt === "all" ? undefined : activeCourt;
   const rows = courts
     .filter((c) => !courtId || c.court_id === courtId)
-    .flatMap((c) => c.slots.map((s) => ({ ...s, courtName: c.name })))
+    .flatMap((c) => c.slots.map((s) => ({ ...s, courtName: c.name, courtSport: sports.byId(c.court_id) })))
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
   return (
@@ -124,7 +129,7 @@ export default function OwnerTodayPage() {
               className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
               style={{ background: activeCourt === c.court_id ? "#0E6274" : "#F4F6F7", color: activeCourt === c.court_id ? "#fff" : "#5B7079" }}
             >
-              {c.name}
+              {courtLabel(c.name, sports.byId(c.court_id))}
             </button>
           ))}
         </div>
@@ -146,7 +151,7 @@ export default function OwnerTodayPage() {
             >
               <span className="font-mono text-sm font-semibold w-[4.75rem] shrink-0">{formatTime(slot.starts_at)}</span>
               <div className="flex-1">
-                <p className="font-semibold text-sm">{activeCourt === "all" ? `${slot.courtName} · ` : ""}{slot.player_name ?? statusLabel(slot.status)}</p>
+                <p className="font-semibold text-sm">{activeCourt === "all" ? `${courtLabel(slot.courtName, slot.courtSport)} · ` : ""}{slot.player_name ?? statusLabel(slot.status)}</p>
                 <p className="text-xs text-owner-ink-faint">{statusSubtitle(slot.status)}</p>
               </div>
               {slot.status === "payment_submitted" ? (

@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { courtLabel } from "@/components/court-label";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -67,7 +68,7 @@ export default function BookingDoneScreen() {
         <View className="w-full bg-white rounded-[20px] p-5.5 gap-4.5">
           <View className="gap-1">
             <Text className="font-figtree-bold text-player-ink text-[19px] -tracking-[0.2px]">
-              {venueQuery.data?.name ?? "Venue"} · {courtQuery.data?.name ?? "Court"}
+              {venueQuery.data?.name ?? "Venue"} · {courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : "Court"}
             </Text>
             <Text className="font-figtree-medium text-player-ink-faint text-sm">
               {venueQuery.data ? [venueQuery.data.area ?? venueQuery.data.city].join(", ") : ""}

@@ -5,11 +5,12 @@ import { router } from "expo-router";
 import * as Location from "expo-location";
 
 import { useAuthStore } from "@/lib/auth-store";
-import { SPORT_OPTIONS, useVenueSetupStore } from "@/lib/venue-setup-store";
+import { useVenueSetupStore } from "@/lib/venue-setup-store";
+import { AmenityPicker } from "@/components/court-identity-fields";
 import { CheckIcon } from "@/components/icons";
 import { Chip, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./_components";
 import { CancellationPolicyFields } from "@/components/court-setup-fields";
-import { CITY_CENTRES, accountNumberError, accountTitleError, bankNameError, type City } from "@court-booking/types";
+import { AMENITY_OPTIONS, CITY_CENTRES, SPORT_OPTIONS, accountNumberError, accountTitleError, bankNameError, type City } from "@court-booking/types";
 
 function Stepper({ current }: { current: 1 | 2 | 3 }) {
   const steps = ["Your venue", "Courts & pricing", "We review it"];
@@ -190,6 +191,8 @@ export default function VenueRegisterScreen() {
               ))}
             </View>
           </View>
+
+          <AmenityPicker value={store.amenities} onToggle={store.toggleAmenity} options={AMENITY_OPTIONS} />
 
           <TextField
             label="Street address"

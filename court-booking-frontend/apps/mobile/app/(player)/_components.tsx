@@ -2,6 +2,7 @@ import { Image, Pressable, Text, View } from "react-native";
 import { StarIcon } from "@/components/icons";
 import { formatDistance } from "@/lib/format";
 import type { VenueSummary } from "@court-booking/types";
+import { formatPKR } from "@/lib/format";
 
 export function SportChip({
   label,
@@ -66,6 +67,12 @@ export function VenueCard({ venue, onPress }: { venue: VenueSummary; onPress: ()
             </View>
           ) : null}
         </View>
+        {venue.min_price != null ? (
+          <Text className="font-mono-semibold text-player-ink text-[13px]">
+            from PKR {formatPKR(venue.min_price)}
+            <Text className="font-figtree-medium text-player-ink-faint text-[12px]"> / slot</Text>
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );

@@ -1,4 +1,5 @@
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { courtLabel } from "@/components/court-label";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -10,6 +11,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { confirmLogout } from "@/lib/logout";
 import { SUPPORT_WHATSAPP_NUMBER, openSupportWhatsApp } from "@/lib/support";
 import { WhatsAppIcon } from "@/components/icons";
+import type { WaitlistEntry } from "@court-booking/types";
 
 export default function PlayerProfileScreen() {
   const user = useAuthStore((s) => s.user);
@@ -40,22 +42,7 @@ export default function PlayerProfileScreen() {
           <View className="gap-3 pb-2">
             <Text className="font-figtree-bold text-[11px] tracking-[0.1em] text-player-ink-fainter">MY WAITLIST</Text>
             {activeEntries.map((entry) => (
-              <View
-                key={entry.id}
-                className="bg-player-surface border border-player-border-light rounded-2xl p-4 flex-row items-center gap-3"
-              >
-                <View className="flex-1 gap-0.5">
-                  <Text className="font-figtree-semibold text-player-ink text-[14.5px]">
-                    {entry.venue_name} · {entry.court_name}
-                  </Text>
-                  <Text className="font-figtree-medium text-player-ink-faint text-xs">
-                    {formatShortDate(entry.slot_starts_at)} · {formatTime(entry.slot_starts_at)} · #{entry.position} in line
-                  </Text>
-                </View>
-                <Pressable onPress={() => leaveWaitlist(entry.id)}>
-                  <Text className="font-figtree-semibold text-player-danger text-[13px]">Leave</Text>
-                </Pressable>
-              </View>
+              <WaitlistRow key={entry.id} entry={entry} onLeave={() => leaveWaitlist(entry.id)} />
             ))}
           </View>
         ) : null}
@@ -86,5 +73,25 @@ export default function PlayerProfileScreen() {
         </Pressable>
       </View>
     </SafeAreaView>
+  );
+}
+
+/** One waitlist entry. The waitlist payload carries only the court's NAME, so the sport is read from the (cached) court. */
+function WaitlistRow({ entry, onLeave }: { entry: WaitlistEntry; onLeave: () => void }) {
+  const courtQuery = useQuery({ queryKey: ["court", entry.court_id], queryFn: () => api.courts.get(entry.court_id) });
+  return (
+    <View className="bg-player-surface border border-player-border-light rounded-2xl p-4 flex-row items-center gap-3">
+      <View className="flex-1 gap-0.5">
+        <Text className="font-figtree-semibold text-player-ink text-[14.5px]">
+          {entry.venue_name} · {courtLabel(entry.court_name, courtQuery.data?.sport)}
+        </Text>
+        <Text className="font-figtree-medium text-player-ink-faint text-xs">
+          {formatShortDate(entry.slot_starts_at)} · {formatTime(entry.slot_starts_at)} · #{entry.position} in line
+        </Text>
+      </View>
+      <Pressable onPress={onLeave}>
+        <Text className="font-figtree-semibold text-player-danger text-[13px]">Leave</Text>
+      </Pressable>
+    </View>
   );
 }

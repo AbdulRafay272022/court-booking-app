@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -106,7 +107,9 @@ export default function VenuePendingScreen() {
   }
 
   const isChangesRequested = venue.status === "changes_requested";
-  const courtCount = venue.courts?.length ?? 0;
+  // A court the owner deleted in the wizard stays on the server as inactive; it is not one of the courts they sent in.
+  const activeCourts = (venue.courts ?? []).filter((c) => c.is_active);
+  const courtCount = activeCourts.length;
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
@@ -183,10 +186,10 @@ export default function VenuePendingScreen() {
             await reloadVenue();
           }}
         />
-        {(venue.courts ?? []).map((c) => (
+        {activeCourts.map((c) => (
           <PhotoManager
             key={`court-photos-${c.id}`}
-            title={`${c.name} photos`}
+            title={`${courtLabel(c.name, c.sport)} photos`}
             photoUrls={c.photo_urls}
             photoKeys={c.photo_keys}
             max={5}

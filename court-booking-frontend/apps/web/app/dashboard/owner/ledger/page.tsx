@@ -1,5 +1,9 @@
 "use client";
 
+import { useOwnerCourtSports } from "@/lib/court-sports";
+
+import { courtLabel } from "@/components/court-label";
+
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LedgerEntry } from "@court-booking/types";
@@ -41,6 +45,7 @@ export default function OwnerLedgerPage() {
     enabled: !!activeVenueId,
   });
 
+  const sports = useOwnerCourtSports();
   const courts = activeVenue?.courts ?? [];
   const ledger = query.data;
   const summary = ledger?.summary;
@@ -129,7 +134,7 @@ export default function OwnerLedgerPage() {
                 className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
                 style={{ background: courtId === c.id ? "#0E6274" : "#F4F6F7", color: courtId === c.id ? "#fff" : "#5B7079" }}
               >
-                {c.name}
+                {courtLabel(c.name, c.sport)}
               </button>
             ))}
           </>
@@ -168,7 +173,7 @@ export default function OwnerLedgerPage() {
                     <td className="px-4 py-3 font-mono text-sm">{formatShortDate(entry.recorded_at)}</td>
                     <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">{formatTime(entry.recorded_at)}</td>
                     <td className="px-4 py-3 text-sm font-semibold">{entry.player ?? "Walk-in"}</td>
-                    <td className="px-4 py-3 text-sm">{entry.court}</td>
+                    <td className="px-4 py-3 text-sm">{courtLabel(entry.court, sports.byName(entry.court))}</td>
                     <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">
                       {METHOD_LABEL[entry.method] ?? entry.method}
                       {isCorrection ? " · correction" : ""}

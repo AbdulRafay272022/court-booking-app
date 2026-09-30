@@ -1,5 +1,9 @@
 "use client";
 
+import { useOwnerCourtSports } from "@/lib/court-sports";
+
+import { courtLabel } from "@/components/court-label";
+
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -12,6 +16,7 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks like a duplicate", "Other"];
 
 export default function OwnerApprovalsPage() {
+  const sports = useOwnerCourtSports();
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -123,7 +128,7 @@ export default function OwnerApprovalsPage() {
               </div>
             </div>
             <div className="h-px bg-owner-border-light" />
-            <Row label="Slot" value={`${current.court_name} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
+            <Row label="Slot" value={`${courtLabel(current.court_name, sports.byName(current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
             <Row label="Advance due" value={`PKR ${formatPKR(current.expected_amount)}`} />
             <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
           </div>

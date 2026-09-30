@@ -221,6 +221,13 @@ class VenueListItemOut(BaseModel):
     average_rating: float | None = None
     review_count: int = 0  # Section 32 Part 6
     distance_meters: float | None = None
+    # Lowest starting price (PKR per slot) among the venue's active courts, only courts of the requested sport
+    # when the `sport` filter is given; null when no active court has an active pricing rule.
+    min_price: float | None = None
+
+
+class VenueAreasOut(BaseModel):
+    areas: list[str]
 
 
 class PhotoOrderIn(BaseModel):

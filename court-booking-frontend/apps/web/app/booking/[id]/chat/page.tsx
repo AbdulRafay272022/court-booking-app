@@ -1,5 +1,6 @@
 "use client";
 
+import { courtLabel } from "@/components/court-label";
 import { Suspense, use, useEffect, useRef, useState } from "react";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -27,6 +28,7 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
   const venueName = search.get("venueName") ?? undefined;
   const courtId = search.get("courtId") ?? undefined;
   const courtName = search.get("courtName") ?? undefined;
+  const courtSport = search.get("courtSport") ?? undefined;
   const startsAt = search.get("startsAt") ?? undefined;
   const price = search.get("price") ?? undefined;
   // How long the player chose in the duration sheet (Section 32 Part 4); a link without them means one slot.
@@ -149,7 +151,7 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
           <div className="flex flex-col">
             <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">SELECTED SLOT</span>
             <span className="font-mono text-[14.5px] font-semibold">
-              {courtName} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
+              {courtLabel(courtName, courtSport)} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
               {minutes ? ` · ${formatDuration(minutes)}` : ""}
             </span>
           </div>
