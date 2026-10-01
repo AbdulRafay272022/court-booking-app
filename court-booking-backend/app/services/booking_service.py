@@ -125,10 +125,17 @@ class BookingService:
             await self.db.commit()
 
     async def create_hold(
-        self, player: User, court_id: uuid.UUID, starts_at: datetime, slot_count: int = 1
+        self,
+        player: User,
+        court_id: uuid.UUID,
+        starts_at: datetime,
+        slot_count: int = 1,
+        player_name: str | None = None,
     ) -> Booking:
         """Hold `slot_count` consecutive slots (Section 32 Part 4: the player picks a duration, in
-        multiples of the court's slot length) as ONE booking priced across the whole range."""
+        multiples of the court's slot length) as ONE booking priced across the whole range. `player_name` is the
+        name the booking is made under when the player gave one in chat (their own, or a friend's); otherwise the
+        account's name."""
         if starts_at.tzinfo is None:
             # The HTTP endpoint's Pydantic schema (BookingHoldIn) already
             # rejects a naive starts_at before it gets here, but this method
@@ -163,7 +170,7 @@ class BookingService:
             ends_at=ends_at,
             status=BookingStatus.HELD,
             source=BookingSource.APP,
-            player_name=player.name,
+            player_name=player_name or player.name,
             player_phone=player.phone,
             price=price,
             advance_amount=advance_amount,

@@ -70,9 +70,12 @@ export function CourtDayPopup({
     (waitlistQuery.data ?? []).filter((e) => e.is_active).map((e) => `${e.court_id}|${e.slot_starts_at}`),
   );
 
+  // The app's query client keeps the PREVIOUS query's data while a new one loads (placeholderData). For a per-day
+  // query that shows the OLD day's slots, tappable, under the new day's label -- so opt out: this day has no data until it loads.
   const dayQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
     queryFn: () => api.availability.forCourtOnDate(courtId, date),
+    placeholderData: undefined,
   });
   const slots = dayQuery.data?.slots ?? [];
 

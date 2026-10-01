@@ -41,6 +41,7 @@ export default function WalkInScreen() {
   const availabilityQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
     queryFn: () => api.availability.forCourtOnDate(courtId!, date),
+    placeholderData: undefined,
     enabled: !!courtId,
   });
 

@@ -3,7 +3,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import date as date_cls
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 
 import structlog
 from fastapi import HTTPException
@@ -29,6 +29,7 @@ from app.utils.timezone import (
     format_pkt_now,
     format_slot_label,
     format_time,
+    pkt_time_to_utc,
     utc_to_pkt_naive,
 )
 
@@ -92,6 +93,20 @@ Rules:
    no #, no bullet characters -- they show up as literal symbols in WhatsApp.
 13. If something fails, tell the player plainly what happened and the next step (e.g. "That slot was
    just taken -- want me to check the next one?"). Never leave them with only "I'm having trouble".
+14. A booking belongs to the date and time it STARTS, even when it runs past midnight. "9 PM to 12 AM on
+   the 26th" starts at 9 PM on the 26th and ends at midnight at the end of that night: it is a booking on
+   the 26th, NOT on the 27th -- never check, mention or reject it because of the 27th. 12 AM as an END
+   time means midnight. Always pass check_availability the date the booking STARTS on. When the player
+   gives a start and an end time, pass them as start_time and end_time too and trust `requested_range`
+   (never work out the length or the end's date yourself); only say it isn't available when
+   `requested_range.available` is false. A start after midnight ("1 AM on the 27th") uses the 27th.
+   Say a range exactly as its `label` reads (for example "9:00 PM to 12:00 AM, Sat 26 Sep").
+15. Names. Never ask for the player's name. If the player volunteers a name ("mera naam Ali hai", "my
+   name is Ali", "book it for my friend Ali Khan"), pass exactly that name as player_name to
+   propose_booking_confirmation (and hold_slot); the booking is then made under it. Only a real person's
+   name: never the venue, court, sport or city ("Court 1", "Clifton Padel") and nothing you guessed. If
+   no name was given, omit player_name -- the player's own account name is used. Don't greet anyone by a
+   name the player didn't give.
 """
 
 
@@ -407,7 +422,13 @@ class AIChatService:
         # Slots that START on this Pakistan date, including the after-midnight tail of an overnight court's previous day.
         slots = await self.availability.get_slots_starting_on(court, target_date)
         available = [s for s in slots if s.status == "available"]
+        requested = (
+            {"requested_range": await self._requested_range(court, target_date, tool_input)}
+            if tool_input.get("start_time")
+            else {}
+        )
         return {
+            **requested,
             # `label` is what to say to the player (Pakistan time); `starts_at` (UTC) is only for
             # passing back to propose_booking_confirmation / hold_slot. The cap used to be 15, which
             # silently hid the evening slots of any 60-minute court -- exactly the ones players ask for.
@@ -421,6 +442,52 @@ class AIChatService:
                 for s in available
             ][:40],
             **({"note": "No available slots on this date."} if not available else {}),
+        }
+
+    @staticmethod
+    def _parse_clock(text: str) -> time:
+        """"21:00", "9 PM", "9:30pm", "12 AM", "midnight" -> a wall-clock time (the model may write either style)."""
+        raw = str(text).strip().lower()
+        if raw == "midnight":
+            return time(0, 0)
+        match = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap])?\.?m?\.?", raw)
+        if not match:
+            raise ValueError(raw)
+        hour, minute, meridiem = int(match.group(1)), int(match.group(2) or 0), match.group(3)
+        if meridiem:
+            if not 1 <= hour <= 12:
+                raise ValueError(raw)
+            hour = hour % 12 + (12 if meridiem == "p" else 0)
+        return time(hour, minute)  # ValueError if out of range
+
+    async def _requested_range(self, court: Court, start_date: date_cls, tool_input: dict) -> dict:
+        """The player's own start (and end) wall-clock times, judged as the REAL range they describe. A booking is anchored
+        to its START: `date` is the date it starts on, and an end at or before the start is the next morning ("9 PM to
+        12 AM" on the 26th ends at midnight at the end of the 26th -- it is NOT a booking on the 27th). Availability is
+        checked over the whole range, so it is refused only when part of it is genuinely unavailable."""
+        try:
+            start_t = self._parse_clock(tool_input["start_time"])
+            end_t = self._parse_clock(tool_input["end_time"]) if tool_input.get("end_time") else None
+        except ValueError:
+            return {"available": False, "error": "Give start_time and end_time as clock times like 21:00."}
+        start_utc = pkt_time_to_utc(start_date, start_t)
+        if end_t is None:
+            minutes = court.slot_minutes
+        else:
+            minutes = int((datetime.combine(start_date, end_t) - datetime.combine(start_date, start_t)).total_seconds() // 60)
+            if minutes <= 0:
+                minutes += 24 * 60  # the end is on the next calendar day
+        try:
+            if start_utc <= datetime.now(timezone.utc):
+                raise AppError(400, ErrorCode.SLOT_IN_PAST, "That start time has already passed.")
+            quote = await self.availability.quote_range(court, start_utc, self._slot_count_for(court, minutes))
+        except HTTPException as exc:
+            return {"available": False, "error": exc.detail}
+        return {
+            "available": True,
+            "starts_at": quote.starts_at.isoformat(),
+            "duration_minutes": quote.duration_minutes,
+            **self._quote_result(quote),
         }
 
     @staticmethod
@@ -464,6 +531,26 @@ class AIChatService:
         slot_count = self._slot_count_for(court, tool_input.get("duration_minutes"))
         return court, await self.availability.quote_range(court, starts_at, slot_count)
 
+    # words that are never a person's name on their own: sports, places and booking vocabulary
+    _NOT_NAMES = frozenset(
+        "padel futsal football cricket badminton tennis squash ground court courts club arena sports sport venue "
+        "booking book slot karachi lahore islamabad rawalpindi faisalabad multan peshawar quetta".split()
+    )
+
+    async def _clean_player_name(self, court: Court, raw: object) -> str | None:
+        """The name the player gave for the booking, or None when it is empty or not a person's name (the model
+        sometimes lifts "Court 1" or the venue's name out of the message). Only whole-word matches are rejected, so
+        a real name that merely contains a sport word ("Padel Khan") is kept."""
+        name = re.sub(r"\s+", " ", str(raw or "")).strip(" .,-")[:100]
+        words = {w.casefold() for w in re.findall(r"[^\W\d_]+", name)}
+        if not words:
+            return None
+        venue = await self.db.get(Venue, court.venue_id)
+        generic = set(self._NOT_NAMES)
+        for text in (court.name, court.sport, venue.name if venue else ""):
+            generic |= {w.casefold() for w in re.findall(r"[^\W\d_]+", text or "")}
+        return None if words <= generic else name
+
     @staticmethod
     def _quote_result(quote) -> dict:
         return {
@@ -483,6 +570,9 @@ class AIChatService:
         # on the court's grid at all, and the player's "yes" then had nothing valid to confirm.
         court, quote = await self._quote_for_tool(tool_input)
         data = {"court_id": str(court.id), "starts_at": quote.starts_at.isoformat(), "slot_count": quote.slot_count}
+        player_name = await self._clean_player_name(court, tool_input.get("player_name"))
+        if player_name:
+            data["player_name"] = player_name  # carried to the hold when the player says yes (see webhooks)
         actions.append(ChatAction(type="confirm_booking", label="Yes, book it", data=data))
         actions.append(ChatAction(type="decline", label="No, thanks", data={}))
         return {"ok": True, **self._quote_result(quote)}
@@ -494,6 +584,7 @@ class AIChatService:
             court.id,
             datetime.fromisoformat(tool_input["starts_at"]),
             self._slot_count_for(court, tool_input.get("duration_minutes")),
+            await self._clean_player_name(court, tool_input.get("player_name")),
         )
         return {
             "booking_id": str(booking.id),

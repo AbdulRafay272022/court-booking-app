@@ -449,3 +449,359 @@ def test_sanitize_reply_combines_all_safety_nets():
     assert "**" not in out
     assert "19:00" not in out  # enforce_display_format handles the clock
     assert "button" not in out.lower() and "tap" not in out.lower()
+
+
+# --- Bookings that cross midnight (owner report 2026-09-30) ---------------------------------------------
+# "9 PM to 12 AM on the 26th" must be ONE booking anchored to its START (21:00 on the 26th) that ends at midnight;
+# the assistant used to treat the 12 AM end as the 27th and refuse. Exact Pakistan wall-clock times throughout.
+from app.models.blackout import Blackout
+from app.utils.timezone import pkt_time_to_utc, pkt_today
+
+
+def _future_day(weekday: int = 5) -> date:
+    """The next given weekday (Saturday by default) at least 4 days ahead, so every slot is in the future."""
+    d = pkt_today() + timedelta(days=4)
+    while d.weekday() != weekday:
+        d += timedelta(days=1)
+    return d
+
+
+def _pkt(day: date, hh: int, mm: int = 0) -> datetime:
+    """A Pakistan wall-clock time on `day` as a UTC instant (hh may be 24+ for 'the next morning')."""
+    return pkt_time_to_utc(day, time(0, 0)) + timedelta(hours=hh, minutes=mm)
+
+
+async def _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone, *, open_, close,
+                          slot_minutes=60, days=range(7)):
+    owner = await make_user(phone, role=UserRole.OWNER)
+    court = await make_court(await make_venue(owner), slot_minutes=slot_minutes)
+    for dow in days:
+        await make_schedule(court, day_of_week=dow, open_time=open_, close_time=close)
+    await make_pricing_rule(court, price_per_slot=1000)
+    return owner, court
+
+
+async def _slot_labels(service, player, court, day: date) -> list[str]:
+    res = await service._execute_tool(player, "check_availability", {"court_id": str(court.id), "date": day.isoformat()}, [])
+    return [s["label"] for s in res["slots"]]
+
+
+async def _propose(service, player, court, start_utc: datetime, minutes: int):
+    actions: list = []
+    res = await service._execute_tool(
+        player, "propose_booking_confirmation",
+        {"court_id": str(court.id), "starts_at": start_utc.isoformat(), "duration_minutes": minutes}, actions,
+    )
+    return res, actions
+
+
+async def test_9pm_to_12am_is_one_booking_anchored_to_the_start_date_on_a_midnight_closing_court(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """A court open 4 PM to 12 AM (close 00:00, closes_next_day), Saturday only. Saturday 9 PM for 3 hours ends at
+    midnight; Sunday has NO schedule at all, and that must not matter."""
+    _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                      "+923014100001", open_=time(16, 0), close=time(0, 0), days=[5])
+    player = await make_user("+923014100002", role=UserRole.PLAYER)
+    sat = _future_day(5)
+    service = AIChatService(db_session, get_settings())
+
+    labels = await _slot_labels(service, player, court, sat)
+    assert any(l.startswith("11:00 PM to 12:00 AM, ") for l in labels), labels  # last slot ends AT midnight
+    assert await _slot_labels(service, player, court, sat + timedelta(days=1)) == []  # Sunday: closed, no tail
+
+    res, actions = await _propose(service, player, court, _pkt(sat, 21), 180)
+    assert res.get("ok") is True, res
+    assert res["label"].startswith("9:00 PM to 12:00 AM, ")
+    assert res["duration_text"] == "3 hours" and res["total_price_text"] == "PKR 3,000"
+    assert actions[0].data == {"court_id": str(court.id), "starts_at": _pkt(sat, 21).isoformat(), "slot_count": 3}
+
+    held = await service._execute_tool(
+        player, "hold_slot", {"court_id": str(court.id), "starts_at": _pkt(sat, 21).isoformat(), "duration_minutes": 180}, []
+    )
+    assert "error" not in held, held
+    booking = (await db_session.execute(select(Booking).where(Booking.player_id == player.id))).scalar_one()
+    assert (booking.starts_at, booking.ends_at) == (_pkt(sat, 21), _pkt(sat, 24))
+
+
+async def test_1130pm_to_1230am_crosses_midnight_via_the_quote_hold_and_assistant_paths(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, client, make_auth_headers
+):
+    """Non-AI path too: quote and hold of 11:30 PM -> 12:30 AM, on a 3:30 PM-1:30 AM court (60-min grid on the half
+    hour) and on two 24-hour courts (open == close). All are Saturday-schedule slots even though they end on Sunday."""
+    player = await make_user("+923014100004", role=UserRole.PLAYER)
+    headers = await make_auth_headers(player)
+    sat = _future_day(5)
+    service = AIChatService(db_session, get_settings())
+
+    for phone, open_, close in (("+923014100003", time(15, 30), time(1, 30)), ("+923014100005", time(0, 0), time(0, 0)),
+                                ("+923014100006", time(6, 0), time(6, 0))):
+        _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone,
+                                          open_=open_, close=close, slot_minutes=30 if open_ == close else 60)
+        start = _pkt(sat, 23, 30)
+        slots = 60 // court.slot_minutes if court.slot_minutes == 30 else 1
+        quote = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": start.isoformat(), "slot_count": slots})
+        assert quote.status_code == 200, (open_, close, quote.text)
+        assert datetime.fromisoformat(quote.json()["ends_at"]) == _pkt(sat, 24, 30), quote.json()
+
+        res, _actions = await _propose(service, player, court, start, slots * court.slot_minutes)
+        assert res.get("ok") is True, (open_, close, res)
+        assert res["label"].startswith("11:30 PM to Sun 12:30 AM, Sat "), res
+        hold = await client.post("/api/v1/bookings/hold", headers=headers,
+                                 json={"court_id": str(court.id), "starts_at": start.isoformat(), "slot_count": slots})
+        assert hold.status_code in (200, 201), (open_, close, hold.text)
+
+
+async def test_12am_start_belongs_to_the_previous_schedule_day_on_an_overnight_court(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """3 PM to 3 AM court: Sunday 12:00 AM is a SATURDAY slot. The assistant finds it when asked about Sunday (by start
+    date), quotes it, and a Saturday blackout covering it blocks it (it is NOT governed by Sunday's schedule)."""
+    _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100007",
+                                      open_=time(15, 0), close=time(3, 0))
+    player = await make_user("+923014100008", role=UserRole.PLAYER)
+    sat = _future_day(5)
+    sun = sat + timedelta(days=1)
+    service = AIChatService(db_session, get_settings())
+
+    sunday_labels = await _slot_labels(service, player, court, sun)
+    assert any(l.startswith("12:00 AM to 1:00 AM, ") for l in sunday_labels), sunday_labels  # tail of Saturday
+    res, _a = await _propose(service, player, court, _pkt(sun, 0), 60)
+    assert res.get("ok") is True and res["label"].startswith("12:00 AM to 1:00 AM, "), res
+
+    db_session.add(Blackout(court_id=court.id, starts_at=_pkt(sat, 22), ends_at=_pkt(sat, 26), reason="maintenance"))
+    await db_session.commit()
+    blocked, actions = await _propose(service, player, court, _pkt(sun, 0), 60)
+    assert "error" in blocked and actions == []  # Saturday's blackout reaches into Sunday's early hours
+
+
+async def test_a_genuinely_booked_slot_still_rejects_a_midnight_crossing_booking(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100009",
+                                      open_=time(16, 0), close=time(0, 0))
+    player = await make_user("+923014100010", role=UserRole.PLAYER)
+    other = await make_user("+923014100011", role=UserRole.PLAYER)
+    sat = _future_day(5)
+    service = AIChatService(db_session, get_settings())
+    await service.booking_service.create_hold(other, court.id, _pkt(sat, 23), 1)  # 11 PM to 12 AM taken
+
+    assert not any(l.startswith("11:00 PM to 12:00 AM, ") for l in await _slot_labels(service, player, court, sat))
+    res, actions = await _propose(service, player, court, _pkt(sat, 21), 180)
+    assert "error" in res and "already booked" in res["error"].lower() and actions == [], res
+    ok, _a = await _propose(service, player, court, _pkt(sat, 21), 120)  # 9 PM to 11 PM is still fine
+    assert ok.get("ok") is True and ok["label"].startswith("9:00 PM to 11:00 PM, ")
+
+
+async def test_midnight_crossing_booking_ignores_a_closed_or_blacked_out_next_day(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """Overnight court open Saturday only (3 PM to 3 AM); Sunday has no schedule and a Sunday blackout (8 AM-8 PM)
+    exists. 11:30 PM Saturday to 12:30 AM Sunday is still bookable: it belongs to Saturday's schedule."""
+    _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100012",
+                                      open_=time(15, 0), close=time(3, 0), days=[5], slot_minutes=30)
+    player = await make_user("+923014100013", role=UserRole.PLAYER)
+    sat = _future_day(5)
+    sun = sat + timedelta(days=1)
+    db_session.add(Blackout(court_id=court.id, starts_at=_pkt(sun, 8), ends_at=_pkt(sun, 20)))
+    await db_session.commit()
+    service = AIChatService(db_session, get_settings())
+
+    res, actions = await _propose(service, player, court, _pkt(sat, 23, 30), 60)
+    assert res.get("ok") is True and res["label"].startswith("11:30 PM to Sun 12:30 AM, Sat "), res
+    assert actions[0].data["slot_count"] == 2
+    late, _a = await _propose(service, player, court, _pkt(sat, 26, 30), 60)  # 2:30 AM + 1 h would end 3:30 AM: past close
+    assert "error" in late
+
+
+async def _range(service, player, court, day: date, start: str, end: str | None):
+    args = {"court_id": str(court.id), "date": day.isoformat(), "start_time": start}
+    if end is not None:
+        args["end_time"] = end
+    return (await service._execute_tool(player, "check_availability", args, []))["requested_range"]
+
+
+async def test_check_availability_judges_the_requested_range_by_its_start_date(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """The assistant hands check_availability the START date plus start_time/end_time and gets the real range back.
+    An end at or before the start is the next morning, so "9 PM to 12 AM" on Saturday is Saturday's booking, and a
+    closed Sunday (no schedule) cannot make it unavailable."""
+    _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100020",
+                                      open_=time(16, 0), close=time(0, 0), days=[5])
+    player = await make_user("+923014100021", role=UserRole.PLAYER)
+    other = await make_user("+923014100022", role=UserRole.PLAYER)
+    sat = _future_day(5)
+    service = AIChatService(db_session, get_settings())
+
+    for start, end in (("21:00", "00:00"), ("9 PM", "12 AM"), ("21:00", "midnight")):
+        rng = await _range(service, player, court, sat, start, end)
+        assert rng["available"] is True, (start, end, rng)
+        assert rng["starts_at"] == _pkt(sat, 21).isoformat() and rng["duration_minutes"] == 180
+        assert rng["label"].startswith("9:00 PM to 12:00 AM, Sat ") and rng["total_price_text"] == "PKR 3,000"
+    # asking about "the 27th" (the end's date) is what used to go wrong: Sunday has no 9 PM slot, correctly
+    sun = await _range(service, player, court, sat + timedelta(days=1), "21:00", "00:00")
+    assert sun["available"] is False
+
+    # same-day range, and a start with no end (one slot)
+    assert (await _range(service, player, court, sat, "18:00", "20:00"))["duration_minutes"] == 120
+    assert (await _range(service, player, court, sat, "22:00", None))["label"].startswith("10:00 PM to 11:00 PM, ")
+
+    # genuinely unavailable: past closing, off the grid, bad input, and a booked slot inside the range
+    assert (await _range(service, player, court, sat, "23:00", "01:00"))["available"] is False  # runs past midnight close
+    assert (await _range(service, player, court, sat, "21:30", "23:30"))["available"] is False  # off the 60-min grid
+    assert (await _range(service, player, court, sat, "banana", "00:00"))["available"] is False
+    await service.booking_service.create_hold(other, court.id, _pkt(sat, 23), 1)
+    taken = await _range(service, player, court, sat, "21:00", "00:00")
+    assert taken["available"] is False and "already booked" in taken["error"].lower(), taken
+    assert (await _range(service, player, court, sat, "21:00", "23:00"))["available"] is True
+
+
+async def test_assistant_books_9pm_to_12am_end_to_end_with_a_mocked_model(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    """The model's turn for "book 9 PM to 12 AM on Saturday": check_availability(start date, 21:00, 00:00) ->
+    propose_booking_confirmation(starts_at/duration copied from requested_range) -> the Yes/No actions carry the
+    right 3-slot range anchored at 9 PM Saturday."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100023",
+                                      open_=time(16, 0), close=time(0, 0))
+    player = await make_user("+923014100024", role=UserRole.PLAYER)
+    sat = _future_day(5)
+    start = _pkt(sat, 21).isoformat()
+    _mock_anthropic_sequence(
+        monkeypatch,
+        [
+            _tool_use_response("check_availability", {"court_id": str(court.id), "date": sat.isoformat(), "start_time": "21:00", "end_time": "00:00"}),
+            _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start, "duration_minutes": 180}, "toolu_2"),
+            _text_response("9:00 PM to 12:00 AM, PKR 3,000. Shall I book it? Reply Yes or No"),
+        ],
+    )
+    result = await AIChatService(db_session, settings).process_message(user=player, message="9 pm to 12 am saturday", history=[])
+    assert result.tool_calls == ["check_availability", "propose_booking_confirmation"]
+    assert result.actions[0].data == {"court_id": str(court.id), "starts_at": start, "slot_count": 3}
+
+
+def test_system_prompt_anchors_midnight_crossing_bookings_to_the_start_date():
+    from app.services.ai_chat_service import SYSTEM_PROMPT
+    from app.services.ai.tools import BOOKING_TOOLS
+
+    assert "12 AM as an END" in SYSTEM_PROMPT and "NOT on the 27th" in SYSTEM_PROMPT and "start_time" in SYSTEM_PROMPT
+    props = next(t for t in BOOKING_TOOLS if t.name == "check_availability").parameters["properties"]
+    assert {"start_time", "end_time"} <= set(props)
+
+
+# --- The name the player gives in chat (owner report: "extracts the player's name incorrectly") -------------------
+# The assistant never captured a name at all: the booking always carried the ACCOUNT's name (blank for someone who
+# first wrote on WhatsApp), so "mera naam Ali hai" / "book for my friend Ali Khan" produced a booking under Sara Ahmed
+# (or under nobody). player_name now travels propose_booking_confirmation -> the Yes action -> hold.
+from app.models.message import Message
+
+
+async def _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phones, *, venue_name="Clifton Padel Club",
+                      court_name="Court 1", player_name="Sara Ahmed"):
+    owner = await make_user(phones[0], role=UserRole.OWNER)
+    venue = await make_venue(owner, name=venue_name)
+    court = await make_court(venue, name=court_name, slot_minutes=60)
+    for dow in range(7):
+        await make_schedule(court, day_of_week=dow, open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court, price_per_slot=3500)
+    player = await make_user(phones[1], role=UserRole.PLAYER, name=player_name)
+    return court, player
+
+
+async def test_a_name_given_in_chat_rides_on_the_proposal_and_the_hold_not_the_account_name(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    court, player = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200001", "+923014200002"))
+    service = AIChatService(db_session, get_settings())
+    day = _future_day(5)
+    start = _pkt(day, 19).isoformat()
+
+    # "mera naam Ali hai" / "book for my friend Ali Khan" / sloppy spacing and punctuation from the model
+    for said, kept in (("Ali", "Ali"), ("Ali Khan", "Ali Khan"), ("  ali   khan. ", "ali khan"), ("Padel Khan", "Padel Khan")):
+        actions: list = []
+        res = await service._execute_tool(player, "propose_booking_confirmation",
+                                          {"court_id": str(court.id), "starts_at": start, "player_name": said}, actions)
+        assert res["ok"] is True
+        assert actions[0].data["player_name"] == kept, (said, actions[0].data)
+
+    held = await service._execute_tool(player, "hold_slot", {"court_id": str(court.id), "starts_at": start, "player_name": "Ali Khan"}, [])
+    assert "error" not in held, held
+    booking = (await db_session.execute(select(Booking).where(Booking.player_id == player.id))).scalar_one()
+    assert booking.player_name == "Ali Khan"  # NOT "Sara Ahmed"
+    assert booking.player_phone == player.phone  # the contact number is still the account's
+
+
+async def test_no_name_given_keeps_the_account_name_and_a_whatsapp_guest_stays_nameless(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    court, player = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200003", "+923014200004"))
+    guest = await make_user("+923014200005", role=UserRole.PLAYER)  # a WhatsApp-first guest: no name on the account
+    service = AIChatService(db_session, get_settings())
+    day = _future_day(5)
+
+    actions: list = []
+    await service._execute_tool(player, "propose_booking_confirmation", {"court_id": str(court.id), "starts_at": _pkt(day, 19).isoformat()}, actions)
+    assert "player_name" not in actions[0].data
+    await service._execute_tool(player, "hold_slot", {"court_id": str(court.id), "starts_at": _pkt(day, 19).isoformat()}, [])
+    await service._execute_tool(guest, "hold_slot", {"court_id": str(court.id), "starts_at": _pkt(day, 20).isoformat()}, [])
+    named = (await db_session.execute(select(Booking.player_id, Booking.player_name))).all()
+    assert {pid: name for pid, name in named} == {player.id: "Sara Ahmed", guest.id: None}
+
+
+async def test_a_court_venue_sport_or_city_word_is_never_taken_as_the_players_name(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """The model can lift "Court 1" or "Clifton Padel Club" out of "book Court 1 at Clifton Padel Club" and call it a
+    name. Those are dropped (the account name is used); a real name that merely CONTAINS such a word is kept."""
+    court, player = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200006", "+923014200007"))
+    service = AIChatService(db_session, get_settings())
+    start = _pkt(_future_day(5), 19).isoformat()
+    for bad in ("Court 1", "court", "Clifton Padel Club", "Clifton", "padel", "Futsal", "Karachi", "1234", "", "   ", None):
+        actions: list = []
+        await service._execute_tool(player, "propose_booking_confirmation",
+                                    {"court_id": str(court.id), "starts_at": start, "player_name": bad}, actions)
+        assert "player_name" not in actions[0].data, bad
+    for good in ("Clifton Khan", "Court Ali"):
+        actions = []
+        await service._execute_tool(player, "propose_booking_confirmation",
+                                    {"court_id": str(court.id), "starts_at": start, "player_name": good}, actions)
+        assert actions[0].data["player_name"] == good
+
+
+async def test_whatsapp_yes_books_under_the_name_the_player_gave(
+    client, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    """A WhatsApp-first guest says "mera naam Ali hai", the assistant proposes (name stored on the proposal's action), a
+    typed "yes" and a later button tap both book under "Ali"; with no stored name the booking stays unnamed."""
+    from tests.test_webhooks import _button_payload, _mock_whatsapp_send, _text_payload
+
+    _mock_whatsapp_send(monkeypatch)
+    court, _p = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200008", "+923014200009"))
+    guest = await make_user("+923014200010", role=UserRole.PLAYER)
+    day = _future_day(5)
+    slot = lambda hh: _pkt(day, hh).isoformat()  # noqa: E731
+    db_session.add(Message(
+        sender_id=guest.id, sender_type="ai", channel="whatsapp", content="Shall I book it?",
+        meta={"actions": [{"type": "confirm_booking", "label": "Yes", "data": {
+            "court_id": str(court.id), "starts_at": slot(19), "slot_count": 1, "player_name": "Ali"}}]},
+    ))
+    await db_session.commit()
+
+    typed = await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014200010", "wamid.name-1", "yes"))
+    assert typed.status_code == 200
+    tapped = await client.post("/api/v1/webhooks/whatsapp", json=_button_payload("923014200010", "wamid.name-2", f"confirm:{court.id}:{slot(21)}"))
+    assert tapped.status_code == 200
+    rows = (await db_session.execute(select(Booking).where(Booking.player_id == guest.id).order_by(Booking.starts_at))).scalars().all()
+    assert [(b.starts_at, b.player_name) for b in rows] == [(_pkt(day, 19), "Ali"), (_pkt(day, 21), None)]
+
+
+def test_prompt_and_tools_tell_the_model_how_to_handle_names():
+    from app.services.ai.tools import BOOKING_TOOLS
+    from app.services.ai_chat_service import SYSTEM_PROMPT
+
+    assert "Never ask for the player's name" in SYSTEM_PROMPT and "mera naam" in SYSTEM_PROMPT and "player_name" in SYSTEM_PROMPT
+    for name in ("propose_booking_confirmation", "hold_slot"):
+        assert "player_name" in next(t for t in BOOKING_TOOLS if t.name == name).parameters["properties"]

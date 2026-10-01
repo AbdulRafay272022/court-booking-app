@@ -181,6 +181,39 @@ async def _pending_confirmation(db: DbSession, user: User) -> tuple[str, str, in
     return None
 
 
+async def _proposed_player_name(db: DbSession, user: User, court_id: str, starts_at: str) -> str | None:
+    """The name the player gave for the slot the assistant proposed (its `confirm_booking` action carries
+    `player_name`), found by court + start among the most recent assistant messages -- the Yes button id itself only
+    holds the slot. None when no name was given, so the hold uses the account's own name."""
+    rows = (
+        (
+            await db.execute(
+                select(Message)
+                .where(Message.sender_id == user.id, Message.channel == "whatsapp", Message.sender_type == "ai")
+                .order_by(Message.created_at.desc())
+                .limit(5)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    try:
+        wanted = datetime.fromisoformat(starts_at)
+    except ValueError:
+        return None
+    for row in rows:
+        for action in (row.meta or {}).get("actions") or []:
+            data = action.get("data") or {}
+            if action.get("type") != "confirm_booking" or data.get("court_id") != court_id:
+                continue
+            try:
+                if datetime.fromisoformat(data["starts_at"]) == wanted:
+                    return data.get("player_name") or None
+            except (KeyError, ValueError):
+                continue
+    return None
+
+
 async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: str) -> None:
     if _is_plain_affirmative(text):
         pending = await _pending_confirmation(db, user)
@@ -319,7 +352,11 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
                 slot_count = int(count_str)
             booking_service = BookingService(db, settings)
             booking = await booking_service.create_hold(
-                user, uuid.UUID(court_id_str), datetime.fromisoformat(starts_at_str), slot_count
+                user,
+                uuid.UUID(court_id_str),
+                datetime.fromisoformat(starts_at_str),
+                slot_count,
+                await _proposed_player_name(db, user, court_id_str, starts_at_str),
             )
             court = await db.get(Court, booking.court_id)
             venue = await db.get(Venue, court.venue_id) if court else None

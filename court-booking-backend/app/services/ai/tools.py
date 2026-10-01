@@ -58,13 +58,20 @@ BOOKING_TOOLS: list[ToolDefinition] = [
         name="check_availability",
         description=(
             "Get the available time slots for a court on a given date. Each slot has a ready-made `label` and "
-            "`price_text`; one slot is one court slot_minutes long (a longer booking takes several in a row)."
+            "`price_text`; one slot is one court slot_minutes long (a longer booking takes several in a row). "
+            "`date` is the date the booking STARTS on. When the player has named a start time (and an end time), "
+            "pass `start_time` and `end_time` too: the result's `requested_range` then says whether exactly that "
+            "range can be booked (`available`), with its `starts_at`, `duration_minutes`, `label` and price, or an "
+            "`error`. An end at or before the start is the next morning, e.g. 21:00 to 00:00 on the 26th is a "
+            "booking on the 26th that ends at midnight."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "court_id": {"type": "string"},
-                "date": {"type": "string", "format": "date", "description": "YYYY-MM-DD"},
+                "date": {"type": "string", "format": "date", "description": "YYYY-MM-DD, the date the booking starts on"},
+                "start_time": {"type": "string", "description": "Optional. The player's start time on `date`, Pakistan time, e.g. 21:00"},
+                "end_time": {"type": "string", "description": "Optional. The player's end time, e.g. 00:00 for 12 AM / midnight. Never move `date` to the end's date."},
             },
             "required": ["court_id", "date"],
         },
@@ -98,6 +105,7 @@ BOOKING_TOOLS: list[ToolDefinition] = [
                 "court_id": {"type": "string"},
                 "starts_at": {"type": "string", "format": "date-time", "description": "ISO 8601 datetime"},
                 "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of the court's slot_minutes. Omit for one slot."},
+                "player_name": {"type": "string", "description": "Optional. The name the booking is for, ONLY if the player said it (their own name, or 'for my friend Ali Khan'). Never a venue, court, sport or city word. Do not ask for it."},
             },
             "required": ["court_id", "starts_at"],
         },
@@ -111,6 +119,7 @@ BOOKING_TOOLS: list[ToolDefinition] = [
                 "court_id": {"type": "string"},
                 "starts_at": {"type": "string", "format": "date-time", "description": "ISO 8601 datetime"},
                 "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of the court's slot_minutes. Omit for one slot."},
+                "player_name": {"type": "string", "description": "Optional. The name the booking is for, ONLY if the player said it (their own name, or 'for my friend Ali Khan'). Never a venue, court, sport or city word. Do not ask for it."},
             },
             "required": ["court_id", "starts_at"],
         },

@@ -33,9 +33,12 @@ export default function OwnerWalkinPage() {
   const next7Days = useMemo(() => pktDayTabs(7), []);
   const [dateIdx, setDateIdx] = useState(0);
   const date = next7Days[dateIdx].date;
+  // The app's query client keeps the PREVIOUS query's data while a new one loads (placeholderData). For a per-day
+  // query that shows the OLD day's slots, tappable, under the new day's label -- so opt out: this day has no data until it loads.
   const availabilityQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
     queryFn: () => api.availability.forCourtOnDate(courtId!, date),
+    placeholderData: undefined,
     enabled: !!courtId,
   });
 
