@@ -396,7 +396,10 @@ async def test_outside_schedule_hours_and_closed_day_block(
     assert _names(await client.get(URL, params=_avail(d, "03:00"))) == []  # before opening
     assert _names(await client.get(URL, params=_avail(d, "23:00"))) == []  # 22:00 is the last hour slot
     assert _names(await client.get(URL, params=_avail(d, "22:00"))) == ["Hours"]
-    assert _names(await client.get(URL, params=_avail(d, "10:30"))) == []  # off the 60-minute grid
+    # Part 4c: one fixed 30-minute grid for every court, so 10:30 is a real start time even on a 60-minute court
+    assert _names(await client.get(URL, params=_avail(d, "10:30"))) == ["Hours"]
+    assert _names(await client.get(URL, params=_avail(d, "10:15"))) == []  # off the 30-minute grid
+    assert _names(await client.get(URL, params=_avail(d, "22:30"))) == []  # the 60-minute minimum would end 23:30, past closing
 
     closed = await make_venue(o, name="Closed Day")
     court = await make_court(closed)
@@ -444,13 +447,16 @@ async def test_multi_slot_duration_overlap_vs_back_to_back(client, owner, make_v
     assert _names(await client.get(URL, params=_avail(d, "10:30"))) == []
 
 
-async def test_duration_must_fit_the_courts_slots_and_closing_time(client, owner, make_venue, bookable_court):
+async def test_duration_must_fit_the_courts_minimum_the_grid_and_closing_time(client, owner, make_venue, bookable_court):
     o = await owner()
     v = await make_venue(o, name="Hourly")
     await bookable_court(v)  # 60-minute slots, closes 23:00
     d = _tomorrow()
     assert _names(await client.get(URL, params=_avail(d, "10:00", duration_minutes=120))) == ["Hourly"]
-    assert _names(await client.get(URL, params=_avail(d, "10:00", duration_minutes=90))) == []  # not bookable
+    # any multiple of 30 minutes at or above the court's 60-minute minimum is bookable (Part 4c)
+    assert _names(await client.get(URL, params=_avail(d, "10:00", duration_minutes=90))) == ["Hourly"]
+    assert _names(await client.get(URL, params=_avail(d, "10:00", duration_minutes=30))) == []  # below the minimum
+    assert _names(await client.get(URL, params=_avail(d, "10:00", duration_minutes=45))) == []  # not a multiple of 30
     assert _names(await client.get(URL, params=_avail(d, "21:00", duration_minutes=180))) == []  # past closing
     assert _names(await client.get(URL, params=_avail(d, "10:00", duration_minutes=480))) == []  # over the cap
 

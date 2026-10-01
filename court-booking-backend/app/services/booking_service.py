@@ -1,4 +1,5 @@
 import uuid
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 
 import structlog
@@ -22,6 +23,12 @@ from app.services.payment_ledger_service import recompute_payment_totals
 from app.utils.timezone import format_when
 
 logger = structlog.get_logger(__name__)
+
+# Which channel a player-initiated hold came through. `create_hold` is reached from three places (the HTTP hold
+# endpoint, the in-app AI chat tool, and the WhatsApp webhook + its AI tool). The WhatsApp webhook sets this for the
+# duration of its handler so every hold made under it is recorded as source=whatsapp without threading a parameter
+# through the AI service. Default APP. (No schema change: `bookings.source` and its 'whatsapp' value already exist.)
+booking_source_ctx: ContextVar[BookingSource] = ContextVar("booking_source_ctx", default=BookingSource.APP)
 
 
 def recompute_reliability(user: User) -> None:
@@ -129,11 +136,13 @@ class BookingService:
         player: User,
         court_id: uuid.UUID,
         starts_at: datetime,
-        slot_count: int = 1,
+        slot_count: int | None = None,
         player_name: str | None = None,
+        source: BookingSource | None = None,
     ) -> Booking:
-        """Hold `slot_count` consecutive slots (Section 32 Part 4: the player picks a duration, in
-        multiples of the court's slot length) as ONE booking priced across the whole range. `player_name` is the
+        """Hold `slot_count` consecutive 30-minute slots (Section 32 Part 4c: the grid is always 30 minutes; the court's
+        slot length is the MINIMUM booking, so fewer than min_slots is refused; None = that minimum) as ONE booking priced
+        across the whole range. `player_name` is the
         name the booking is made under when the player gave one in chat (their own, or a friend's); otherwise the
         account's name."""
         if starts_at.tzinfo is None:
@@ -169,7 +178,7 @@ class BookingService:
             starts_at=starts_at,
             ends_at=ends_at,
             status=BookingStatus.HELD,
-            source=BookingSource.APP,
+            source=source or booking_source_ctx.get(),
             player_name=player_name or player.name,
             player_phone=player.phone,
             price=price,
@@ -200,13 +209,17 @@ class BookingService:
         amount_paid: float,
         recorded_by: User,
         method: PaymentMethod = PaymentMethod.CASH_AT_VENUE,
+        slot_count: int | None = None,
     ) -> Booking:
+        """The owner/staff records a booking for a customer: `slot_count` consecutive 30-minute slots (None = the court's
+        minimum) as ONE booking, validated and priced by the same quote_range as a player's hold (grid, closing time,
+        blackouts, already-booked, the court's minimum booking time) but not limited by the player booking horizon.
+        `player_name` is who it is for (required); `player_phone` (already normalized to +923XXXXXXXXX by the endpoint
+        schema) links the booking to an existing account when one has that number, else the name/phone live on the row."""
         court = await self._load_active_court(court_id)
-        ends_at = starts_at + timedelta(minutes=court.slot_minutes)
-
-        price, _advance_percentage = await self.availability.price_for_range_with_advance(
-            court, starts_at, ends_at
-        )
+        quote = await self.availability.quote_range(court, starts_at, slot_count, enforce_horizon=False)
+        ends_at = quote.ends_at
+        price = quote.price
 
         linked_player: User | None = None
         if player_phone:
@@ -326,8 +339,10 @@ class BookingService:
             raise AppError(
                 status.HTTP_409_CONFLICT, ErrorCode.INVALID_BOOKING_STATE, "Booking cannot be cancelled"
             )
-        if cancelled_by == CancelledBy.PLAYER and old_status == BookingStatus.BOOKED:
-            await self._flag_refund_for_voluntary_cancel(booking)
+        if old_status == BookingStatus.BOOKED:
+            # Money-correctness fix: an OWNER cancelling a paid (booked) booking owes the player a refund
+            # exactly like a player cancel does (previously only PLAYER cancels were flagged).
+            await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
         await self.audit.log(
             actor_user_id=booking.player_id,
             actor_type=cancelled_by.value,
@@ -376,7 +391,9 @@ class BookingService:
                     details={"cutoff_at": cutoff_at.isoformat(), "cutoff_hours": venue.cancellation_cutoff_hours},
                 )
 
-    async def _flag_refund_for_voluntary_cancel(self, booking: Booking) -> None:
+    async def _flag_refund_for_voluntary_cancel(
+        self, booking: Booking, cancelled_by: CancelledBy = CancelledBy.PLAYER
+    ) -> None:
         """Same underlying gap as _flag_unclaimed_payments (finding #5),
         for the voluntary-cancellation path (finding #13): a player who
         cancels a booking they already paid the advance on gets that money
@@ -396,17 +413,25 @@ class BookingService:
                 booking_id=booking.id,
                 payment_id=payment.id,
                 player_id=booking.player_id,
-                reason="player_cancelled_paid_booking",
+                reason=f"{cancelled_by.value}_cancelled_paid_booking",
                 # Section 32 Part 10: a voluntary cancel that reaches this point already
                 # passed _enforce_cancellation_policy, so it's always fully refundable --
                 # there's no code path where a cancel succeeds "inside the cutoff" for a
                 # partial/non-refundable amount to apply to (the cutoff blocks the cancel
                 # outright instead). Refund owed = whatever was actually paid.
+                # `booking.amount_paid` is the ledger sum (payment_entries), which since the money-correctness
+                # fix is the REAL amount the player paid (capped at the price), cash entries included.
                 refund_amount=booking.amount_paid,
             )
         )
 
-    async def confirm_booking(self, booking: Booking, recorded_by: User | None = None) -> Booking:
+    async def confirm_booking(
+        self,
+        booking: Booking,
+        recorded_by: User | None = None,
+        amount_pkr: int | None = None,
+        payment: Payment | None = None,
+    ) -> Booking:
         """Called once an owner (or auto-approve) verifies the advance
         payment. Guarded by a conditional UPDATE (see _atomic_transition) so
         a double-tap approve, two concurrent approve requests, or an approve
@@ -431,19 +456,43 @@ class BookingService:
                 ErrorCode.BOOKING_ALREADY_CANCELLED,
                 "This booking is no longer awaiting payment review",
             )
-        advance = int(round(float(booking.advance_amount)))
-        if advance > 0:
+        # Money-correctness fix: credit what the player REALLY paid (`amount_pkr`: owner-confirmed, or the OCR
+        # amount, resolved by PaymentService), not blindly the expected advance. Anything above the booking
+        # price is capped in the ledger and the excess is queued as a refund owed (`overpayment_excess`).
+        expected = int(round(float(booking.advance_amount)))
+        paid = int(round(amount_pkr)) if amount_pkr is not None else expected
+        price_int = int(round(float(booking.price)))
+        credited = min(paid, price_int)
+        excess = paid - credited
+        if credited > 0:
+            ocr_text = ""
+            if payment is not None and payment.ocr_amount is not None:
+                ocr_text = f" Screenshot showed PKR {int(round(float(payment.ocr_amount))):,}."
+            excess_text = f" Excess PKR {excess:,} queued as a refund owed." if excess > 0 else ""
             self.db.add(
                 PaymentEntry(
                     booking_id=booking.id,
-                    amount_pkr=advance,
+                    amount_pkr=credited,
                     method=PaymentMethod.BANK_TRANSFER_PROOF,
                     recorded_by=recorded_by.id if recorded_by else None,
-                    note="Advance payment approved" if recorded_by else "Advance payment auto-approved",
+                    note=(
+                        ("Advance payment approved." if recorded_by else "Advance payment auto-approved.")
+                        + f" Expected PKR {expected:,}.{ocr_text} Paid PKR {paid:,}. Credited PKR {credited:,}.{excess_text}"
+                    ),
                 )
             )
             await self.db.flush()
             await recompute_payment_totals(self.db, booking)
+        if excess > 0 and payment is not None:
+            self.db.add(
+                PaymentDispute(
+                    booking_id=booking.id,
+                    payment_id=payment.id,
+                    player_id=booking.player_id,
+                    reason="overpayment_excess",
+                    refund_amount=excess,
+                )
+            )
         if booking.player_id is not None:
             player = await self.db.get(User, booking.player_id)
             if player is not None:

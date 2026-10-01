@@ -131,7 +131,7 @@ function VenuePhotosCard({ venue }: { venue: Venue }) {
 }
 
 /** The Courts tab: one tab per court (the shared CourtTabs), a "+ Court" that opens an unsaved new-court tab, and for
- * the selected court everything court-level -- name, sport, indoor, slot length, hours, prices, advance rule, photos,
+ * the selected court everything court-level -- name, sport, indoor, minimum booking time, hours, prices, advance rule, photos,
  * blackouts. */
 function CourtsSection({ venue }: { venue: Venue }) {
   const queryClient = useQueryClient();
@@ -188,7 +188,7 @@ function CourtsSection({ venue }: { venue: Venue }) {
   return (
     <>
       <p className="text-[13.5px] font-medium text-owner-ink-muted">
-        Each court has its own name, sport, slot length, opening hours, prices and photos. Pick a court to edit, or add a new one.
+        Each court has its own name, sport, minimum booking time, opening hours, prices and photos. Pick a court to edit, or add a new one.
       </p>
       <CourtTabs
         count={tabCount}
@@ -522,7 +522,7 @@ function VenueCancellationCard({
   );
 }
 
-/** Everything court-level for ONE court: name, sport, indoor, slot length, hours, prices and the advance rule. Seeded once
+/** Everything court-level for ONE court: name, sport, indoor, minimum booking time, hours, prices and the advance rule. Seeded once
  * from the court it is mounted for (the parent keys it by court id), so it holds its own edits and never needs an
  * effect to copy server data into state. Deleting the court is the tab control's job (CourtsSection). */
 function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: string[] }) {

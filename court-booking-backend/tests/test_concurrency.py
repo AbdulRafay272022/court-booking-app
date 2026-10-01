@@ -463,9 +463,10 @@ async def test_off_grid_overlap_rejected(
     headers_a = await make_auth_headers(player_a)
     headers_b = await make_auth_headers(player_b)
 
-    # Schedule hours are PKT; 19:00/19:30/20:00 PKT are 14:00/14:30/15:00 UTC.
+    # Schedule hours are PKT; 19:00/19:20/20:00 PKT are 14:00/14:20/15:00 UTC. (19:30 is a real slot on the fixed
+    # 30-minute grid of Section 32 Part 4c, so the off-grid probe is 19:20.)
     on_grid_1900 = f"{target.isoformat()}T14:00:00+00:00"
-    off_grid_1930 = f"{target.isoformat()}T14:30:00+00:00"
+    off_grid_1930 = f"{target.isoformat()}T14:20:00+00:00"
     on_grid_2000 = f"{target.isoformat()}T15:00:00+00:00"
 
     first = await client.post(

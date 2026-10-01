@@ -816,6 +816,23 @@ owner hours accept close <= open (`hoursKind`: same-day / next-day / 24-hours) w
 `weeklyHoursError` refuses an overnight day that runs into the next day's opening, and `slotPreview` counts across midnight.
 Duration choices need no change (contiguity is by `ends_at == next starts_at`). Tests: `court-setup.test.ts`.
 
+## Section 32, Part 4c -- fixed 30-minute grid, minimum booking time, multi-slot walk-in (2026-10-02, not deployed)
+
+The slot grid is always 30 minutes; a court's `slot_minutes` is its MINIMUM booking time (see the backend CLAUDE.md Part 4c).
+`packages/types/src/booking-duration.ts`: `GRID_MINUTES`, `minSlotsFor(minutes)`, and `durationChoices(slots, index, minSlots)`
+which is empty when the minimum does not fit from that slot and otherwise lists min, min+30, ... (each choice carries its
+`price`). Player (web `components/booking/{court-day-popup,duration-sheet}.tsx`, mobile `components/{court-day-popup,duration-sheet}.tsx`):
+tap a free 30-minute start (rows show the minimum booking's price, "Too short" when it does not fit), pick a length in the sheet
+(contiguous by construction), the sheet shows the server quote, Continue carries `slotCount` (30-minute slots) to the chat/hold.
+Owner walk-in (web `app/dashboard/owner/walkin/page.tsx`, mobile `app/(owner)/walkin.tsx`): tap the first slot (the court
+minimum is preselected), tap a later slot or "+ 30 min" to stretch, tap inside the range to shrink (never below the minimum),
+total from `GET /courts/:id/quote`, ONE booking via `slot_count`; customer name required, phone optional and validated with
+`isValidPkMobile` (server normalizes and links an existing account). Owner settings relabelled "Minimum booking time" and the
+per-court price field reads "Per <minimum> (PKR)". The venue-setup preview counts 30-minute slots. Mobile is `tsc`-checked only
+(no device run). Playwright proof (web) used a local backend on :8765 + `next build && next start` on :3765 from a COPY of
+`apps/web` (so no other agent's `.next` is touched); the assistant reply was stubbed with `page.route` because no model key
+exists locally (the Yes button's hold, the booking, payment proof and owner approval were real).
+
 ## Section 32, Part 4b -- calendar-first venue page (2026-09-23, branch `section-32-part-4b`, not merged)
 
 Replaces the old page-level week strip + side-by-side court slot lists with the owner's "Part 4b UPDATE"

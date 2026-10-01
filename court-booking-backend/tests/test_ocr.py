@@ -389,7 +389,9 @@ def _make_payment(**overrides) -> Payment:
 
 def test_build_payment_checks_all_matched_case():
     now = datetime.now(timezone.utc)
-    booking = _make_booking(price=3500, amount_paid=400, balance_due=3100, created_at=now, held_until=now + timedelta(minutes=15))
+    # A booking awaiting approval has nothing credited yet (amount_paid=0): the card now describes the position
+    # AFTER approving at the paid amount (400) -- "Paid after approval" -- instead of echoing the pre-approval state.
+    booking = _make_booking(price=3500, amount_paid=0, balance_due=3500, created_at=now, held_until=now + timedelta(minutes=15))
     payment = _make_payment(ocr_timestamp=now + timedelta(minutes=5))
     checks = build_payment_checks(payment, booking, account_name="Ali Raza")
 
@@ -397,7 +399,7 @@ def test_build_payment_checks_all_matched_case():
     assert "Ali Raza" in checks.name.text and "Matched" in checks.name.text
     assert checks.amount.verdict == "match"
     assert "Matched" in checks.amount.text
-    assert checks.balance_text == "Total PKR 3,500. Paid so far PKR 400. Balance due at the venue: PKR 3,100."
+    assert checks.balance_text == "Total PKR 3,500. Paid after approval PKR 400. Balance due at the venue: PKR 3,100."
     assert checks.time.verdict == "match"
     assert "Within the timer" in checks.time.text
     assert checks.bank.verdict == "match"

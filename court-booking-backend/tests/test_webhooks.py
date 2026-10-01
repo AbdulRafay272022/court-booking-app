@@ -403,8 +403,13 @@ def test_plain_affirmative_detection():
         assert not yes(text), text
 
 
-async def _seed_proposal(db_session_factory, user, court, starts_at, *, age_minutes=0):
+async def _seed_proposal(db_session_factory, user, court, starts_at, *, age_minutes=0, states_slot=True, content=None, **extra):
     from datetime import datetime, timezone
+
+    from app.utils.timezone import format_slot_label
+
+    start = datetime.fromisoformat(starts_at)
+    label = format_slot_label(start, start + timedelta(minutes=court.slot_minutes))
 
     async with db_session_factory() as session:
         session.add(
@@ -412,12 +417,13 @@ async def _seed_proposal(db_session_factory, user, court, starts_at, *, age_minu
                 sender_id=user.id,
                 sender_type="ai",
                 channel="whatsapp",
-                content="Kya aap booking confirm karna chahte hain?",
+                # a proposal's text states the exact slot (a bare "yes" only books such a proposal)
+                content=content or (f"{label}, PKR 3,500. Shall I book it? Reply Yes or No" if states_slot else "Shall I book it?"),
                 message_type="text",
                 created_at=datetime.now(timezone.utc) - timedelta(minutes=age_minutes),
                 meta={
                     "actions": [
-                        {"type": "confirm_booking", "label": "Yes, book it", "data": {"court_id": str(court.id), "starts_at": starts_at}},
+                        {"type": "confirm_booking", "label": "Yes, book it", "data": {"court_id": str(court.id), "starts_at": starts_at, "label": label, **extra}},
                         {"type": "decline", "label": "No, thanks", "data": {}},
                     ]
                 },
@@ -474,7 +480,7 @@ async def test_typed_yes_with_extra_information_still_goes_to_the_assistant(
     sent = _mock_whatsapp_send(monkeypatch)
     calls = []
 
-    async def fake_process(self, *, user, message, history=None):
+    async def fake_process(self, *, user, message, history=None, channel="app"):
         from app.services.ai_chat_service import ChatResult
 
         calls.append(message)
@@ -499,7 +505,7 @@ async def test_typed_yes_without_a_pending_proposal_or_after_it_went_stale_is_no
     _mock_whatsapp_send(monkeypatch)
     calls = []
 
-    async def fake_process(self, *, user, message, history=None):
+    async def fake_process(self, *, user, message, history=None, channel="app"):
         from app.services.ai_chat_service import ChatResult
 
         calls.append(message)
@@ -534,7 +540,7 @@ async def test_proposal_reply_is_sent_with_real_yes_no_buttons(client, db_sessio
     court_id = "0b7a5b0c-1111-4222-8333-444455556666"
     starts_at = "2026-09-22T16:00:00+00:00"
 
-    async def fake_process(self, *, user, message, history=None):
+    async def fake_process(self, *, user, message, history=None, channel="app"):
         return ChatResult(
             reply="Court 1, Tue 22 Sep, 9:00 PM - 10:30 PM for PKR 3,500. Confirm?",
             actions=[
@@ -555,3 +561,56 @@ async def test_proposal_reply_is_sent_with_real_yes_no_buttons(client, db_sessio
     assert buttons[0] == {"id": f"confirm:{court_id}:{starts_at}", "title": "Yes, book it"}
     assert buttons[1] == {"id": "decline", "title": "No, thanks"}
     assert all(len(b["title"]) <= 20 for b in buttons)
+
+
+async def test_typed_yes_books_only_a_proposal_whose_message_stated_the_exact_time(
+    client, db_session, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    """Exact-time rule: a typed "yes" books the pending proposal only if the assistant's message right before it spelled out
+    the slot. A proposal whose text never said the time, one the assistant has since moved past (a newer message with no
+    proposal), and a stale one all go to the assistant instead (which is told to re-state the exact slot)."""
+    from app.services.ai_chat_service import ChatResult
+
+    _mock_whatsapp_send(monkeypatch)
+    calls = []
+
+    async def fake_process(self, *, user, message, history=None, channel="app"):
+        calls.append((message, channel))
+        return ChatResult(reply="Court 1, Sat, 7:00 PM to 8:00 PM. Shall I book it?")
+
+    monkeypatch.setattr("app.services.ai_chat_service.AIChatService.process_message", fake_process)
+    player, court, starts_at = await _proposal_setup(
+        make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923020000041"
+    )
+
+    # (a) the proposal's text never said which time -> not booked, routed to the assistant
+    await _seed_proposal(db_session_factory, player, court, starts_at, states_slot=False)
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923020000041", "wamid.exact-1", "yes"))
+    assert calls == [("yes", "whatsapp")]
+    assert await db_session.scalar(select(Booking).where(Booking.player_id == player.id)) is None
+
+    # (b) a stated proposal, then the player changed their mind and the assistant replied with something that proposes
+    # nothing (the reply recorded above): the newest assistant message is not a proposal -> "yes" is not a booking
+    await _seed_proposal(db_session_factory, player, court, starts_at)
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923020000041", "wamid.exact-2", "9 baje kar do"))
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923020000041", "wamid.exact-3", "yes"))
+    assert calls[-1] == ("yes", "whatsapp")
+    assert await db_session.scalar(select(Booking).where(Booking.player_id == player.id)) is None
+
+
+async def test_typed_yes_with_a_stated_recent_proposal_books_without_the_model(
+    client, db_session, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    _mock_whatsapp_send(monkeypatch)
+
+    async def must_not_be_called(self, **kwargs):
+        raise AssertionError("a plain 'yes' to a stated, live proposal must not go back to the model")
+
+    monkeypatch.setattr("app.services.ai_chat_service.AIChatService.process_message", must_not_be_called)
+    player, court, starts_at = await _proposal_setup(
+        make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923020000042"
+    )
+    await _seed_proposal(db_session_factory, player, court, starts_at, age_minutes=29, player_name="Ali")
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923020000042", "wamid.exact-4", "yes"))
+    booking = await db_session.scalar(select(Booking).where(Booking.player_id == player.id))
+    assert booking is not None and booking.player_name == "Ali"

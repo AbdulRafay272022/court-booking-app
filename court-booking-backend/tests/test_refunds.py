@@ -287,6 +287,16 @@ async def test_mark_refund_paid_partial_amount_allowed(
     assert resp.status_code == 200
     assert resp.json()["refunded_amount"] == 150.0
     assert resp.json()["refund_amount"] == 400.0  # what was owed is unchanged, only what was paid differs
+    # Money-correctness: a partial refund does NOT close the dispute -- 250 is still owed.
+    assert resp.json()["refund_status"] == "owed"
+    assert resp.json()["remaining_amount"] == 250.0
+    async with db_session_factory() as session:
+        from sqlalchemy import select
+
+        dispute = (
+            await session.execute(select(PaymentDispute).where(PaymentDispute.booking_id == booking["id"]))
+        ).scalar_one()
+        assert dispute.resolved is False
 
 
 async def test_double_click_on_refunded_is_idempotent(

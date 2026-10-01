@@ -11,7 +11,8 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { RecordPaymentSheet } from "@/components/owner/record-payment-sheet";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDateString, formatPKR, formatTime } from "@/lib/format";
+import { formatDateString, formatPKR, formatTime, formatWhen } from "@/lib/format";
+import { bookingSourceLabel } from "@court-booking/types";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 
@@ -70,7 +71,14 @@ export default function OwnerTodayPage() {
   const courtId = activeCourt === "all" ? undefined : activeCourt;
   const rows = courts
     .filter((c) => !courtId || c.court_id === courtId)
-    .flatMap((c) => c.slots.map((s) => ({ ...s, courtName: c.name, courtSport: sports.byId(c.court_id) })))
+    .flatMap((c) =>
+      c.slots.map((s) => ({
+        ...s,
+        courtName: s.court_name ?? c.name,
+        // The API carries the sport now; the owner-venues lookup only covers an old backend.
+        courtSport: s.court_sport ?? c.sport ?? sports.byId(c.court_id),
+      })),
+    )
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
   return (
@@ -129,7 +137,7 @@ export default function OwnerTodayPage() {
               className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
               style={{ background: activeCourt === c.court_id ? "#0E6274" : "#F4F6F7", color: activeCourt === c.court_id ? "#fff" : "#5B7079" }}
             >
-              {courtLabel(c.name, sports.byId(c.court_id))}
+              {courtLabel(c.name, c.sport ?? sports.byId(c.court_id))}
             </button>
           ))}
         </div>
@@ -151,8 +159,26 @@ export default function OwnerTodayPage() {
             >
               <span className="font-mono text-sm font-semibold w-[4.75rem] shrink-0">{formatTime(slot.starts_at)}</span>
               <div className="flex-1">
-                <p className="font-semibold text-sm">{activeCourt === "all" ? `${courtLabel(slot.courtName, slot.courtSport)} · ` : ""}{slot.player_name ?? statusLabel(slot.status)}</p>
+                <p className="font-semibold text-sm" data-testid="today-row-title">
+                  {slot.booking_id || activeCourt === "all" ? `${courtLabel(slot.courtName, slot.courtSport)} · ` : ""}{slot.player_name ?? statusLabel(slot.status)}
+                </p>
                 <p className="text-xs text-owner-ink-faint">{statusSubtitle(slot.status)}</p>
+                {slot.booking_id ? (
+                  <>
+                    <p className="text-xs text-owner-ink-faint" data-testid="today-row-origin">
+                      {[
+                        bookingSourceLabel(slot.booking_source) ? `Booked via ${bookingSourceLabel(slot.booking_source)}` : null,
+                        slot.booked_at ? `on ${formatWhen(slot.booked_at)}` : null,
+                        slot.account_name && slot.account_name !== slot.player_name ? `Account: ${slot.account_name}` : null,
+                      ].filter(Boolean).join(" · ")}
+                    </p>
+                    {slot.price != null ? (
+                      <p className="text-xs font-mono text-owner-ink-muted" data-testid="today-row-money">
+                        Total PKR {formatPKR(slot.price)} · Paid PKR {formatPKR(slot.amount_paid ?? 0)} · Balance PKR {formatPKR(slot.balance_due ?? 0)}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
               {slot.status === "payment_submitted" ? (
                 <Link href="/dashboard/owner/approvals" className="px-3 py-2 rounded-lg text-white text-xs font-semibold" style={{ background: "#9C5C0A" }}>

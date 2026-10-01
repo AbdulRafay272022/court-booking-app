@@ -11,7 +11,7 @@ import { formatDate, formatPKR, formatTime, formatTimeRange } from "@/lib/format
 import { formatDuration } from "@court-booking/types";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { ChevronLeftIcon } from "@/components/icons";
-import type { ChatAction } from "@court-booking/types";
+import { chatActionLabel, type ChatAction } from "@court-booking/types";
 
 interface Turn {
   id: string;
@@ -129,7 +129,14 @@ export default function BookingChatScreen() {
       const startsAt = String(action.data.starts_at ?? params.startsAt);
       // The Yes button the assistant showed carries the length it quoted; fall back to what was picked before the chat.
       const holdSlotCount = Number(action.data.slot_count ?? slotCount) || 1;
-      const { booking, payment_instructions } = await api.bookings.hold({ court_id: courtId, starts_at: startsAt, slot_count: holdSlotCount });
+      // A name the player gave in the chat (their own or a friend's) rides on the Yes button; the server tidies it.
+      const holdPlayerName = typeof action.data.player_name === "string" ? action.data.player_name.trim() : "";
+      const { booking, payment_instructions } = await api.bookings.hold({
+        court_id: courtId,
+        starts_at: startsAt,
+        slot_count: holdSlotCount,
+        ...(holdPlayerName ? { player_name: holdPlayerName } : {}),
+      });
       if (payment_instructions) setPaymentInstructions(booking.id, payment_instructions);
       router.replace({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } });
     } catch (e) {
@@ -207,7 +214,7 @@ export default function BookingChatScreen() {
                         key={key}
                         onPress={() => handleAction(turn.id, action)}
                         disabled={!!holdingActionKey}
-                        className="px-4 h-11 rounded-xl items-center justify-center flex-row gap-2"
+                        className="px-4 min-h-11 py-2 rounded-xl items-center justify-center flex-row gap-2"
                         style={{
                           backgroundColor: action.type === "confirm_booking" ? "#EF5A2C" : "#FFFFFF",
                           borderWidth: action.type === "confirm_booking" ? 0 : 1,
@@ -220,7 +227,7 @@ export default function BookingChatScreen() {
                           className="font-figtree-bold text-[13.5px]"
                           style={{ color: action.type === "confirm_booking" ? "#FFFFFF" : "#5C544D" }}
                         >
-                          {action.label}
+                          {chatActionLabel(action)}
                         </Text>
                       </Pressable>
                     );

@@ -296,6 +296,7 @@ class AdminService:
                 refund_reference=dispute.refund_reference,
                 refunded_at=dispute.refunded_at,
                 refunded_by_user_id=dispute.refunded_by_user_id,
+                remaining_amount=round(max(float(dispute.refund_amount or 0) - float(dispute.refunded_amount or 0), 0.0), 2),
                 # Derived at read time, not stored (this codebase's usual pattern for
                 # anything computable from "now" -- see the availability engine): a
                 # refund that's still owed and was flagged more than REFUND_OVERDUE_DAYS
@@ -325,31 +326,56 @@ class AdminService:
         "Refunded" -- or two staff devices doing it at once -- can never
         double-process or double-notify: the loser gets a clean
         REFUND_ALREADY_MARKED, not silent corruption."""
+        if dispute.refund_status != "owed":
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.REFUND_ALREADY_MARKED,
+                "This refund has already been marked as paid",
+            )
         owed = float(dispute.refund_amount) if dispute.refund_amount is not None else 0.0
-        target_amount = amount if amount is not None else owed
+        already = float(dispute.refunded_amount) if dispute.refunded_amount is not None else 0.0
+        remaining = round(max(owed - already, 0.0), 2)
+        target_amount = amount if amount is not None else remaining
         if target_amount < 0:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "Refund amount cannot be negative"
             )
-        if target_amount > owed + 0.01:
+        if target_amount == 0 and remaining > 0.01:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "Refund amount must be greater than zero"
+            )
+        if target_amount > remaining + 0.01:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,
                 ErrorCode.REFUND_EXCEEDS_OWED_AMOUNT,
-                f"Cannot mark PKR {target_amount:,.2f} as refunded -- only PKR {owed:,.2f} is owed on this booking.",
-                details={"owed": owed, "attempted": target_amount},
+                f"Cannot mark PKR {target_amount:,.2f} as refunded -- only PKR {remaining:,.2f} is still owed on this booking.",
+                details={"owed": remaining, "attempted": target_amount},
             )
+        # Money-correctness fix: a refund below what is still owed is a PARTIAL refund -- the dispute stays open
+        # (refund_status stays "owed", resolved False) and `refunded_amount` accumulates, until the cumulative
+        # refunded amount reaches the owed amount. (refund_status is a plain string column, so "owed" +
+        # refunded_amount < refund_amount is the partial signal -- no new value, no migration.)
+        new_total = round(already + target_amount, 2)
+        fully_refunded = new_total + 0.01 >= owed
+        values = dict(
+            refunded_amount=new_total,
+            refund_reference=reference,
+            refund_screenshot_key=screenshot_key,
+            refunded_by_user_id=actor.id,
+            refunded_at=func.now(),
+        )
+        if fully_refunded:
+            values.update(refund_status="refunded", resolved=True)
+        # Optimistic guard on the amount seen above, so two concurrent partial refunds can't both apply.
+        prior_matches = (
+            PaymentDispute.refunded_amount.is_(None)
+            if dispute.refunded_amount is None
+            else PaymentDispute.refunded_amount == dispute.refunded_amount
+        )
         result = await self.db.execute(
             update(PaymentDispute)
-            .where(PaymentDispute.id == dispute.id, PaymentDispute.refund_status == "owed")
-            .values(
-                refund_status="refunded",
-                refunded_amount=target_amount,
-                refund_reference=reference,
-                refund_screenshot_key=screenshot_key,
-                refunded_by_user_id=actor.id,
-                refunded_at=func.now(),
-                resolved=True,
-            )
+            .where(PaymentDispute.id == dispute.id, PaymentDispute.refund_status == "owed", prior_matches)
+            .values(**values)
             .returning(PaymentDispute.id)
         )
         if result.first() is None:
@@ -359,11 +385,12 @@ class AdminService:
                 "This refund has already been marked as paid",
             )
         # Section 32 batch-merge integration (Parts 5 + 10): a paid refund is money that LEFT again, so it
-        # belongs in the payment_entries ledger as a real NEGATIVE entry (this is the wiring both parts'
-        # handoffs deferred to "once Part 5 merges"). recompute keeps bookings.amount_paid in step.
+        # belongs in the payment_entries ledger as a real NEGATIVE entry. recompute keeps bookings.amount_paid
+        # in step. Exception: an `overpayment_excess` refund returns money that was never credited to the ledger
+        # (the ledger is capped at the price), so there is nothing to subtract -- it is tracked on the dispute only.
         from app.services.payment_ledger_service import recompute_payment_totals
 
-        if target_amount > 0:
+        if target_amount > 0 and dispute.reason != "overpayment_excess":
             booking = await self.db.get(Booking, dispute.booking_id, with_for_update=True)
             if booking is not None:
                 self.db.add(
@@ -372,7 +399,8 @@ class AdminService:
                         amount_pkr=-int(round(target_amount)),
                         method=PaymentMethod.OTHER,
                         recorded_by=actor.id,
-                        note=f"Refund paid ({reference})",
+                        note=f"Refund paid ({reference})"
+                        + ("" if fully_refunded else f" -- partial, PKR {max(owed - new_total, 0):,.0f} still owed"),
                     )
                 )
                 await self.db.flush()
@@ -384,7 +412,12 @@ class AdminService:
             entity_type="payment_dispute",
             entity_id=dispute.id,
             old_value={"refund_status": "owed"},
-            new_value={"refund_status": "refunded", "refunded_amount": target_amount, "reference": reference},
+            new_value={
+                "refund_status": "refunded" if fully_refunded else "owed",
+                "refunded_amount": new_total,
+                "this_payment": target_amount,
+                "reference": reference,
+            },
         )
         await self.db.commit()
         await self.db.refresh(dispute)

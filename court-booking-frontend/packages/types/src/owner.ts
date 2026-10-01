@@ -1,3 +1,4 @@
+import type { BookingSource } from "./booking";
 import type { PaymentChecks } from "./payment";
 
 export interface TodaySlot {
@@ -12,11 +13,34 @@ export interface TodaySlot {
   /** Section 32 Part 9. */
   checked_in_at: string | null;
   checked_in_by: "owner" | "player" | null;
+  /** Owner Today detail: the booking's court + sport, how and when it was made. Null on an open/closed slot. Optional
+   * so an older backend (before these fields) still typechecks and the screens fall back gracefully. */
+  court_id?: string | null;
+  court_name?: string | null;
+  court_sport?: string | null;
+  booking_source?: BookingSource | null;
+  /** When the booking was made (bookings.created_at). */
+  booked_at?: string | null;
+  /** The registered account behind the booking (null for a walk-in with no account). `player_name` is the name it was booked under. */
+  account_name?: string | null;
+  player_phone?: string | null;
+}
+
+/** "App", "WhatsApp", "Walk-in", "Phone" -- what the owner reads. Unknown/missing -> null (don't guess). */
+export function bookingSourceLabel(source: string | null | undefined): string | null {
+  switch (source) {
+    case "app": return "App";
+    case "whatsapp": return "WhatsApp";
+    case "walkin": return "Walk-in";
+    case "phone": return "Phone";
+    default: return null;
+  }
 }
 
 export interface TodayCourt {
   court_id: string;
   name: string;
+  sport?: string | null;
   slots: TodaySlot[];
 }
 
@@ -39,6 +63,10 @@ export interface PendingApproval {
   payment_id: string;
   booking_id: string;
   court_name: string;
+  /** Carried by the API so screens never match a court by name. Optional for old backends. */
+  court_id?: string | null;
+  court_sport?: string | null;
+  account_name?: string | null;
   starts_at: string;
   ends_at: string;
   player_name: string | null;
@@ -60,11 +88,18 @@ export interface LedgerEntry {
   entry_id: string;
   recorded_at: string;
   court: string;
+  court_id?: string | null;
+  court_sport?: string | null;
   booking_id: string;
   starts_at: string;
   player: string | null;
   // Batch merge: Part 5's per-payment ledger row supersedes Part 10's per-booking row.
   method: string;
+  /** "payment" | "refund" | "correction" with a ready-made label ("Payment" / "Refund" / "Correction"). */
+  entry_type?: "payment" | "refund" | "correction";
+  label?: string;
+  /** Refund reference, or the audit text (expected / screenshot / paid / credited). */
+  note?: string | null;
   amount_pkr: number;
   running_total: number;
   booking_status: string;
@@ -110,6 +145,8 @@ export interface OwnerRefund {
   id: string;
   booking_id: string;
   court_name: string;
+  court_id?: string | null;
+  court_sport?: string | null;
   venue_name: string;
   player_name: string | null;
   player_phone: string | null;
@@ -118,6 +155,8 @@ export interface OwnerRefund {
   refund_amount: number;
   refund_status: "owed" | "refunded";
   refunded_amount: number | null;
+  /** Still owed after any partial refunds (refund_amount - refunded_amount). Show this as the amount to pay. */
+  remaining_amount?: number;
   refund_reference: string | null;
   refunded_at: string | null;
   created_at: string;

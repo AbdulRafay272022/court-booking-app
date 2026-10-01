@@ -27,6 +27,7 @@ from app.schemas.booking import (
 )
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
+from app.services.player_name import clean_player_name
 from app.services.venue_service import VenueService
 from app.services.waitlist_service import WaitlistService
 
@@ -38,7 +39,14 @@ async def hold_booking(
     payload: BookingHoldIn, db: DbSession, settings: AppSettings, user: CurrentUser
 ) -> BookingHoldResponse:
     service = BookingService(db, settings)
-    booking = await service.create_hold(user, payload.court_id, payload.starts_at, payload.slot_count)
+    # The name the player gave in the chat (same rule as the AI tools and the WhatsApp path); a court/venue/sport word
+    # or a blank is dropped and the account's own name is used.
+    player_name = None
+    if payload.player_name:
+        named_court = await db.get(Court, payload.court_id)
+        if named_court is not None:
+            player_name = await clean_player_name(db, named_court, payload.player_name)
+    booking = await service.create_hold(user, payload.court_id, payload.starts_at, payload.slot_count, player_name)
 
     court = await db.get(Court, booking.court_id)
     payment_instructions = None
@@ -84,6 +92,7 @@ async def create_walkin_booking(
         amount_paid=payload.amount_paid,
         recorded_by=owner,
         method=payload.method,
+        slot_count=payload.slot_count,
     )
     return BookingResponse(booking=BookingOut.model_validate(booking))
 

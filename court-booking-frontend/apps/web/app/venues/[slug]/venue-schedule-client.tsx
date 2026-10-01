@@ -8,6 +8,7 @@ import { PhotoGallery } from "@/components/photo-gallery";
 import { formatDuration, type Court } from "@court-booking/types";
 import { CourtMonthCalendar } from "@/components/booking/court-month-calendar";
 import { CourtDayPopup } from "@/components/booking/court-day-popup";
+import { CourtHoursPanel } from "@/components/booking/court-hours-panel";
 
 /**
  * Calendar-first venue page (Section 32 Part 4b UPDATE, 2026-09-22 -- replaces the earlier slot-list-first
@@ -20,11 +21,13 @@ export function VenueScheduleClient({
   venueName,
   sports,
   courts,
+  horizonDays,
 }: {
   venueId: string;
   venueName: string;
   sports: string[];
   courts: Court[];
+  horizonDays?: number | null;
 }) {
   const searchParams = useSearchParams();
   const sportParam = searchParams.get("sport");
@@ -77,12 +80,13 @@ export function VenueScheduleClient({
                 <div className="flex flex-col items-center gap-0.5 rounded-xl px-4 py-3" style={{ background: "#F3EEE9" }}>
                   <h3 className="text-[15px] font-bold text-player-ink" data-testid="court-card-title"><CourtLabel name={court.name} sport={court.sport} /></h3>
                   <span className="text-[12.5px] font-medium text-player-ink-faint">
-                    {formatDuration(court.slot_minutes)} slots{price != null ? ` · From PKR ${formatPKR(price)}` : ""}
+                    {formatDuration(court.slot_minutes)} minimum{price != null ? ` · From PKR ${formatPKR(price)}` : ""}
                   </span>
                 </div>
                 {court.photo_urls && court.photo_urls.length > 0 ? (
                   <PhotoGallery photos={court.photo_urls} alt={`${court.name} · ${court.sport}`} aspectClass="aspect-video" thumbSize={56} testId={`court-gallery-${court.name}`} />
                 ) : null}
+                <CourtHoursPanel court={court} horizonDays={horizonDays} />
                 <CourtMonthCalendar
                   courtId={court.id}
                   onSummary={(s) => setPrices((p) => ({ ...p, [court.id]: s.starts_from_price }))}

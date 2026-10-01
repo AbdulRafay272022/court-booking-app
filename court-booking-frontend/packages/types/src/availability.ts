@@ -23,7 +23,11 @@ export interface BookingQuote {
   starts_at: string;
   ends_at: string;
   slot_count: number;
+  /** Length of ONE slot: always the fixed 30-minute grid (Section 32 Part 4c). */
   slot_minutes: number;
+  /** The court's minimum booking time and the matching number of consecutive slots. */
+  min_booking_minutes: number;
+  min_slots: number;
   duration_minutes: number;
   price: number;
   advance_amount: number;
@@ -34,7 +38,11 @@ export interface BookingQuote {
 export interface CourtAvailability {
   court_id: string;
   date: string;
+  /** Length of one slot in `slots`: always 30 (Part 4c). */
   slot_minutes: number;
+  /** The court's minimum booking time (its `slot_minutes` setting) and how many slots in a row that is. */
+  min_booking_minutes: number;
+  min_slots: number;
   slots: Slot[];
 }
 
@@ -47,6 +55,8 @@ export interface DateSlots {
 export interface RangeAvailability {
   court_id: string;
   slot_minutes: number;
+  min_booking_minutes: number;
+  min_slots: number;
   days: DateSlots[];
 }
 
@@ -55,6 +65,8 @@ export interface VenueCourtAvailability {
   court_id: string;
   court_name: string;
   slot_minutes: number;
+  min_booking_minutes: number;
+  min_slots: number;
   slots: Slot[];
 }
 
@@ -82,6 +94,8 @@ export interface CourtMonthSummary {
   court_id: string;
   month: string; // "2026-09"
   slot_minutes: number;
+  min_booking_minutes: number;
+  min_slots: number;
   /** The lowest active price on this court (floodlight surcharge included); null if it has no price yet. */
   starts_from_price: number | null;
   booking_horizon_days: number;

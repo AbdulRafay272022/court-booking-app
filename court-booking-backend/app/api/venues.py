@@ -189,8 +189,8 @@ async def get_venue_by_slug(
     for court in venue.courts:
         if not court.is_active:
             continue
-        slots = await availability.get_slots_starting_on(court, today)
-        available += sum(1 for s in slots if s.status == "available")
+        # starts where a minimum-length booking fits (30-minute grid: a lone free half hour on a 60-minute court is not a slot)
+        available += len(await availability.get_startable_starting_on(court, today))
     out.available_slots_today = available
     return out
 

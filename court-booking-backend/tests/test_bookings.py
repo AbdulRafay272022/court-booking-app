@@ -778,3 +778,38 @@ async def test_create_hold_rejects_naive_datetime_from_non_http_callers(
     except Exception as exc:
         assert getattr(exc, "code", None) == ErrorCode.VALIDATION_ERROR
         assert getattr(exc, "status_code", None) == 400
+
+
+async def test_hold_accepts_an_optional_player_name_from_the_in_app_chat(
+    client, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    """The in-app chat's Yes button posts the name the player gave ("book it for my friend Ali Khan"); it is tidied by the
+    same rule as the WhatsApp/AI paths, a blank or a court/venue word is ignored, and an over-long one is a 422."""
+    from sqlalchemy import select
+
+    owner = await make_user("+923004000091", role=UserRole.OWNER)
+    customer = await make_user("+923004000092", role=UserRole.PLAYER, name="Sara Ahmed")
+    venue = await make_venue(owner, name="Clifton Padel Club")
+    court = await make_court(venue, name="Court 1")
+    await _open_all_week(make_schedule, court)
+    await make_pricing_rule(court, price_per_slot=1500, advance_percentage=50)
+    headers = await make_auth_headers(customer)
+
+    async def hold(days_ahead: int, **extra):
+        return await client.post(
+            "/api/v1/bookings/hold", headers=headers,
+            json={"court_id": str(court.id), "starts_at": _future_starts_at(days_ahead), **extra},
+        )
+
+    async def name_of(resp):
+        assert resp.status_code == 201, resp.text
+        booking = await db_session.scalar(select(Booking).where(Booking.id == resp.json()["booking"]["id"]))
+        await db_session.refresh(booking)
+        return booking.player_name
+
+    assert await name_of(await hold(1)) == "Sara Ahmed"  # no field: unchanged behaviour (old app builds)
+    assert await name_of(await hold(2, player_name="  Ali   Khan. ")) == "Ali Khan"
+    assert await name_of(await hold(3, player_name="   ")) == "Sara Ahmed"
+    assert await name_of(await hold(4, player_name=None)) == "Sara Ahmed"
+    assert await name_of(await hold(5, player_name="Court 1")) == "Sara Ahmed"  # a court/venue word is not a name
+    assert (await hold(6, player_name="x" * 101)).status_code == 422

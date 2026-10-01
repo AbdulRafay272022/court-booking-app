@@ -38,6 +38,22 @@ async def _booked(db_session_factory, court, player, *, price=3500, advance_amou
 
 
 # ---- advance rule (court-level fixed/percent/minimum, falling back to the pricing rule) ------------------
+# Section 32 Part 4c: the grid is 30 minutes and these courts' 90 minutes is their MINIMUM booking, so the price and
+# advance of one priced unit are read off the quote of the minimum booking (3 slots); each 30-minute slot carries a
+# third of both and the three add back up to exactly the old per-slot figures.
+
+
+async def _min_booking_quote(client, court):
+    day = pkt_today() + timedelta(days=2)
+    resp = await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["min_slots"] == 3
+    first = body["slots"][0]
+    quote = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": first["starts_at"]})
+    assert quote.status_code == 200, quote.text
+    assert quote.json()["slot_count"] == 3 and quote.json()["duration_minutes"] == 90
+    return first, quote.json()
 
 
 async def test_advance_rule_fixed_amount_overrides_the_pricing_rule_percentage(
@@ -49,12 +65,10 @@ async def test_advance_rule_fixed_amount_overrides_the_pricing_rule_percentage(
         make_court, make_schedule, make_pricing_rule, venue,
         advance_type=CourtAdvanceType.FIXED, advance_value=400,
     )
-    day = pkt_today() + timedelta(days=2)
-    resp = await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()})
-    assert resp.status_code == 200, resp.text
-    slot = resp.json()["slots"][0]
-    assert slot["price"] == 3500.0
-    assert slot["advance_amount"] == 400.0  # not 100% of price, the pricing rule's own fallback
+    slot, quote = await _min_booking_quote(client, court)
+    assert quote["price"] == 3500.0
+    assert quote["advance_amount"] == 400.0  # not 100% of price, the pricing rule's own fallback
+    assert slot["price"] == 1166.67 and slot["advance_amount"] == 133.33  # one 30-minute slot = a third
 
 
 async def test_advance_rule_percent_raised_to_the_minimum_floor(
@@ -67,10 +81,8 @@ async def test_advance_rule_percent_raised_to_the_minimum_floor(
         make_court, make_schedule, make_pricing_rule, venue,
         advance_type=CourtAdvanceType.PERCENT, advance_value=10, advance_minimum=500,
     )
-    day = pkt_today() + timedelta(days=2)
-    resp = await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()})
-    slot = resp.json()["slots"][0]
-    assert slot["advance_amount"] == 500.0
+    _slot, quote = await _min_booking_quote(client, court)
+    assert quote["advance_amount"] == 500.0
 
 
 async def test_advance_rule_falls_back_to_pricing_rule_when_court_has_no_override(
@@ -85,10 +97,9 @@ async def test_advance_rule_falls_back_to_pricing_rule_when_court_has_no_overrid
         await make_schedule(court, day_of_week=day, open_time=time(6, 0), close_time=time(23, 0))
     await make_pricing_rule(court, price_per_slot=3500, advance_percentage=20.00)
 
-    day = pkt_today() + timedelta(days=2)
-    resp = await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()})
-    slot = resp.json()["slots"][0]
-    assert slot["advance_amount"] == 700.0  # 20% of 3500
+    _slot, quote = await _min_booking_quote(client, court)
+    assert quote["price"] == 3500.0
+    assert quote["advance_amount"] == 700.0  # 20% of 3500
 
 
 async def test_advance_never_exceeds_the_total_price(
@@ -100,10 +111,8 @@ async def test_advance_never_exceeds_the_total_price(
         make_court, make_schedule, make_pricing_rule, venue,
         advance_type=CourtAdvanceType.FIXED, advance_value=99999,
     )
-    day = pkt_today() + timedelta(days=2)
-    resp = await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()})
-    slot = resp.json()["slots"][0]
-    assert slot["advance_amount"] == 3500.0  # capped at the price, never more
+    _slot, quote = await _min_booking_quote(client, court)
+    assert quote["advance_amount"] == 3500.0  # capped at the price, never more
 
 
 async def test_owner_sets_the_courts_advance_rule_via_patch(

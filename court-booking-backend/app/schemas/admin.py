@@ -137,6 +137,8 @@ class RefundQueueEntryOut(BaseModel):
     refund_reference: str | None
     refunded_at: datetime | None
     refunded_by_user_id: uuid.UUID | None
+    # Refund still owed after any partial refunds (refund_amount - refunded_amount); 0 once fully refunded.
+    remaining_amount: float = 0.0
     is_overdue: bool
 
 
@@ -148,6 +150,8 @@ class OwnerRefundOut(BaseModel):
     id: uuid.UUID
     booking_id: uuid.UUID
     court_name: str
+    court_id: uuid.UUID | None = None
+    court_sport: str | None = None
     venue_name: str
     player_name: str | None
     player_phone: str | None
@@ -156,6 +160,8 @@ class OwnerRefundOut(BaseModel):
     refund_amount: float
     refund_status: str
     refunded_amount: float | None
+    # Still owed after any partial refunds; the screens show this, not refund_amount, as the amount to pay.
+    remaining_amount: float = 0.0
     refund_reference: str | None
     refunded_at: datetime | None
     created_at: datetime

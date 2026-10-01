@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { approvalSummary } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -38,6 +39,14 @@ export default function ApprovalsScreen() {
   const list = query.data ?? [];
   const current = list[0];
 
+  // Money-correctness: the owner confirms how much the player really paid. Pre-filled with the screenshot
+  // amount (else the expected one); editing it re-labels the card and is what gets credited on Approve.
+  const [amountEdit, setAmountEdit] = useState<{ paymentId: string; text: string } | null>(null);
+  const defaultAmount = current?.checks?.paid_amount ?? current?.expected_amount ?? 0;
+  const amountText = amountEdit && amountEdit.paymentId === current?.payment_id ? amountEdit.text : String(defaultAmount);
+  const amountValue = /^\d+$/.test(amountText.trim()) ? Number(amountText.trim()) : null;
+  const summary = current?.checks && amountValue !== null && amountValue > 0 ? approvalSummary(current.checks, amountValue) : null;
+
   function resetRejectSheet() {
     setRejecting(false);
     setRejectReason(null);
@@ -46,9 +55,13 @@ export default function ApprovalsScreen() {
 
   async function handleApprove() {
     if (!current) return;
+    if (current.checks && (amountValue === null || amountValue <= 0)) {
+      Alert.alert("Enter the amount", "Enter the amount the player actually paid (whole PKR).");
+      return;
+    }
     setBusy(true);
     try {
-      await api.payments.approve(current.payment_id);
+      await api.payments.approve(current.payment_id, current.checks ? (amountValue ?? undefined) : undefined);
       await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
     } catch (e) {
@@ -153,7 +166,7 @@ export default function ApprovalsScreen() {
               </View>
             </View>
             <View className="h-px bg-owner-border-light" />
-            <Row label="Slot" value={`${courtLabel(current.court_name, sportForCourtName(activeVenue?.courts, current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
+            <Row label="Slot" value={`${courtLabel(current.court_name, current.court_sport ?? sportForCourtName(activeVenue?.courts, current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
             <Row label="Advance due" value={`PKR ${formatPKR(current.expected_amount)}`} />
             <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
           </View>
@@ -163,9 +176,34 @@ export default function ApprovalsScreen() {
               <Text className="font-plex-bold text-owner-ink text-[13.5px]">Checks</Text>
               <CheckRow check={current.checks.name} />
               <CheckRow check={current.checks.amount} />
-              <Text className="font-mono-medium text-owner-ink-muted text-[12.5px] -mt-1.5">
-                {current.checks.balance_text}
-              </Text>
+              <View className="gap-2 rounded-lg border border-owner-border p-3">
+                <Text className="font-plex-semibold text-owner-ink text-[13px]">Amount received (PKR)</Text>
+                <TextInput
+                  value={amountText}
+                  onChangeText={(text) => setAmountEdit({ paymentId: current.payment_id, text })}
+                  keyboardType="number-pad"
+                  className="font-mono-medium"
+                  style={{ height: 44, paddingHorizontal: 13, borderRadius: 9, borderWidth: 1, borderColor: "#DCE3E6", fontSize: 14 }}
+                />
+                {summary ? (
+                  <>
+                    <Text
+                      className="font-plex-bold text-[14px]"
+                      style={{ color: summary.status === "paid_in_full" ? "#14563A" : summary.status === "overpaid" ? "#8A5A00" : "#8C3823" }}
+                    >
+                      {summary.text}
+                    </Text>
+                    <Text className="font-mono-medium text-owner-ink-muted text-[12.5px]">
+                      Total PKR {formatPKR(summary.totalAfter + summary.balanceAfter)}. Paid after approval PKR {formatPKR(summary.totalAfter)}. Balance due at the venue: PKR {formatPKR(summary.balanceAfter)}.
+                    </Text>
+                    {summary.excess > 0 ? (
+                      <Text className="font-plex-medium text-[12.5px]" style={{ color: "#8A5A00" }}>
+                        PKR {formatPKR(summary.excess)} is more than the booking price. Only the price is recorded; the excess will be added to Refunds to pay.
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </View>
               <CheckRow check={current.checks.time} />
               <CheckRow check={current.checks.bank} />
               <CheckRow check={current.checks.duplicate} />

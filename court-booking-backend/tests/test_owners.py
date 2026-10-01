@@ -362,13 +362,15 @@ async def test_ledger_csv_export(client, db_session_factory, make_user, make_ven
 
     rows = list(csv.reader(io.StringIO(resp.text)))
     assert rows[0] == [
-        "recorded_at", "court", "booking_starts_at", "player", "method", "amount_pkr", "running_total", "booking_status"
+        "recorded_at", "court", "booking_starts_at", "player", "type", "method", "amount_pkr", "running_total",
+        "booking_status", "note",
     ]
     assert len(rows) == 2
     assert rows[1][1] == court.name
     assert rows[1][3] == "Ahmed"
-    assert rows[1][4] == "bank_transfer_proof"
-    assert rows[1][5] == "1500"
+    assert rows[1][4] == "Payment"
+    assert rows[1][5] == "bank_transfer_proof"
+    assert rows[1][6] == "1500"
 
 
 async def test_growth_suggestions_guardrail_insufficient_history(

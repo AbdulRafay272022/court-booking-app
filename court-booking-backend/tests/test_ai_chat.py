@@ -91,6 +91,28 @@ async def test_check_availability_tool_feeds_real_data_into_reply(
     assert result.model == "routine"
 
 
+async def _add_proposal(db_session, user, court, starts_at, *, channel="app", age_minutes=0, states_slot=True, content=None, **extra):
+    """An assistant message that proposed `starts_at` (the court's minimum booking) -- what a bare "yes" is answering."""
+    from datetime import timezone
+
+    from app.models.message import Message
+    from app.utils.timezone import format_slot_label
+
+    start = datetime.fromisoformat(starts_at)
+    label = format_slot_label(start, start + timedelta(minutes=court.slot_minutes))
+    slot_count = court.slot_minutes // 30  # Part 4c: the fixed 30-minute grid; slot_minutes is the court's minimum booking
+    db_session.add(
+        Message(
+            sender_id=user.id, sender_type="ai", channel=channel, message_type="text",
+            content=content or (f"Court 1, {label}, PKR 2,500. Shall I book it? Reply Yes or No" if states_slot else "Shall I book it?"),
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=age_minutes),
+            meta={"actions": [{"type": "confirm_booking", "label": "Yes, book it",
+                               "data": {"court_id": str(court.id), "starts_at": starts_at, "slot_count": slot_count, "label": label, **extra}}]},
+        )
+    )
+    await db_session.commit()
+
+
 async def test_hold_slot_tool_actually_creates_booking(
     db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
@@ -108,6 +130,8 @@ async def test_hold_slot_tool_actually_creates_booking(
     await make_pricing_rule(court, price_per_slot=2500)
 
     starts_at = target.isoformat() + "T17:00:00+00:00"
+    # hold_slot only runs for a slot the assistant's previous message stated and proposed (rule 16)
+    await _add_proposal(db_session, player, court, starts_at)
 
     _mock_anthropic_sequence(
         monkeypatch,
@@ -134,7 +158,7 @@ async def test_propose_booking_confirmation_surfaces_actions(
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
 
     owner = await make_user("+923014000006", role=UserRole.OWNER)
-    player = await make_user("+923014000007", role=UserRole.PLAYER)
+    player = await make_user("+923014000007", role=UserRole.PLAYER, name="Sara Ahmed")
     venue = await make_venue(owner)
     court = await make_court(venue, slot_minutes=60)
     target = date.today() + timedelta(days=1)
@@ -219,8 +243,11 @@ async def test_check_availability_speaks_pakistan_time_and_shows_late_slots(
         player, "check_availability", {"court_id": str(court.id), "date": target.isoformat()}, []
     )
     labels = [s["label"] for s in result["slots"]]
-    assert len(labels) == 17  # 06:00 ... 22:00 -- all of them, not the first 15
+    # Part 4c: a start every 30 minutes, 06:00 ... 22:00 (a 60-minute booking from 22:30 would pass the 11 PM close),
+    # each shown as the court's whole minimum booking -- all of them, not the first 15
+    assert len(labels) == 33
     assert labels[0].startswith("6:00 AM to 7:00 AM, ")
+    assert labels[1].startswith("6:30 AM to 7:30 AM, ")
     assert labels[-1].startswith("10:00 PM to 11:00 PM, ")
     assert all("UTC" not in label and "+00:00" not in label for label in labels)
     assert all(s["starts_at"].endswith("+00:00") for s in result["slots"])  # still UTC for tool round-trips
@@ -327,7 +354,8 @@ async def test_reply_naming_one_offered_slot_gets_a_yes_no_proposal_even_if_the_
         ("+923014000040", "+923014000041"), "5:00 PM to 6:00 PM available hai, PKR 3,000. Kya main book kar doon?",
     )
     assert [a.type for a in result.actions] == ["confirm_booking", "decline"]
-    assert result.actions[0].data == {"court_id": str(court.id), "starts_at": target.isoformat() + "T12:00:00+00:00"}
+    assert {k: result.actions[0].data[k] for k in ("court_id", "starts_at")} == {"court_id": str(court.id), "starts_at": target.isoformat() + "T12:00:00+00:00"}
+    assert result.actions[0].data["label"]  # the exact slot is stored with the proposal
 
 
 async def test_no_proposal_is_attached_when_the_reply_is_ambiguous_or_not_about_booking(
@@ -514,7 +542,8 @@ async def test_9pm_to_12am_is_one_booking_anchored_to_the_start_date_on_a_midnig
     assert res.get("ok") is True, res
     assert res["label"].startswith("9:00 PM to 12:00 AM, ")
     assert res["duration_text"] == "3 hours" and res["total_price_text"] == "PKR 3,000"
-    assert actions[0].data == {"court_id": str(court.id), "starts_at": _pkt(sat, 21).isoformat(), "slot_count": 3}
+    assert {k: actions[0].data[k] for k in ("court_id", "starts_at", "slot_count")} == {"court_id": str(court.id), "starts_at": _pkt(sat, 21).isoformat(), "slot_count": 6}  # six 30-minute slots
+    assert actions[0].data["label"].startswith("9:00 PM to 12:00 AM") and actions[0].data["total_price_text"]
 
     held = await service._execute_tool(
         player, "hold_slot", {"court_id": str(court.id), "starts_at": _pkt(sat, 21).isoformat(), "duration_minutes": 180}, []
@@ -539,12 +568,12 @@ async def test_1130pm_to_1230am_crosses_midnight_via_the_quote_hold_and_assistan
         _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone,
                                           open_=open_, close=close, slot_minutes=30 if open_ == close else 60)
         start = _pkt(sat, 23, 30)
-        slots = 60 // court.slot_minutes if court.slot_minutes == 30 else 1
+        slots = 2  # one hour = two 30-minute slots, whatever the court's own minimum
         quote = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": start.isoformat(), "slot_count": slots})
         assert quote.status_code == 200, (open_, close, quote.text)
         assert datetime.fromisoformat(quote.json()["ends_at"]) == _pkt(sat, 24, 30), quote.json()
 
-        res, _actions = await _propose(service, player, court, start, slots * court.slot_minutes)
+        res, _actions = await _propose(service, player, court, start, 60)
         assert res.get("ok") is True, (open_, close, res)
         assert res["label"].startswith("11:30 PM to Sun 12:30 AM, Sat "), res
         hold = await client.post("/api/v1/bookings/hold", headers=headers,
@@ -584,7 +613,7 @@ async def test_a_genuinely_booked_slot_still_rejects_a_midnight_crossing_booking
     other = await make_user("+923014100011", role=UserRole.PLAYER)
     sat = _future_day(5)
     service = AIChatService(db_session, get_settings())
-    await service.booking_service.create_hold(other, court.id, _pkt(sat, 23), 1)  # 11 PM to 12 AM taken
+    await service.booking_service.create_hold(other, court.id, _pkt(sat, 23), 2)  # 11 PM to 12 AM taken
 
     assert not any(l.startswith("11:00 PM to 12:00 AM, ") for l in await _slot_labels(service, player, court, sat))
     res, actions = await _propose(service, player, court, _pkt(sat, 21), 180)
@@ -649,9 +678,12 @@ async def test_check_availability_judges_the_requested_range_by_its_start_date(
 
     # genuinely unavailable: past closing, off the grid, bad input, and a booked slot inside the range
     assert (await _range(service, player, court, sat, "23:00", "01:00"))["available"] is False  # runs past midnight close
-    assert (await _range(service, player, court, sat, "21:30", "23:30"))["available"] is False  # off the 60-min grid
+    assert (await _range(service, player, court, sat, "21:30", "23:30"))["available"] is True   # 21:30 is on the 30-min grid
+    assert (await _range(service, player, court, sat, "21:10", "23:10"))["available"] is False  # off the grid
+    below = await _range(service, player, court, sat, "21:00", "21:30")  # 30 minutes on a 60-minute-minimum court
+    assert below["available"] is False and "minimum booking" in below["error"].lower(), below
     assert (await _range(service, player, court, sat, "banana", "00:00"))["available"] is False
-    await service.booking_service.create_hold(other, court.id, _pkt(sat, 23), 1)
+    await service.booking_service.create_hold(other, court.id, _pkt(sat, 23), 2)
     taken = await _range(service, player, court, sat, "21:00", "00:00")
     assert taken["available"] is False and "already booked" in taken["error"].lower(), taken
     assert (await _range(service, player, court, sat, "21:00", "23:00"))["available"] is True
@@ -667,7 +699,7 @@ async def test_assistant_books_9pm_to_12am_end_to_end_with_a_mocked_model(
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
     _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100023",
                                       open_=time(16, 0), close=time(0, 0))
-    player = await make_user("+923014100024", role=UserRole.PLAYER)
+    player = await make_user("+923014100024", role=UserRole.PLAYER, name="Sara Ahmed")
     sat = _future_day(5)
     start = _pkt(sat, 21).isoformat()
     _mock_anthropic_sequence(
@@ -680,7 +712,7 @@ async def test_assistant_books_9pm_to_12am_end_to_end_with_a_mocked_model(
     )
     result = await AIChatService(db_session, settings).process_message(user=player, message="9 pm to 12 am saturday", history=[])
     assert result.tool_calls == ["check_availability", "propose_booking_confirmation"]
-    assert result.actions[0].data == {"court_id": str(court.id), "starts_at": start, "slot_count": 3}
+    assert {k: result.actions[0].data[k] for k in ("court_id", "starts_at", "slot_count")} == {"court_id": str(court.id), "starts_at": start, "slot_count": 6}
 
 
 def test_system_prompt_anchors_midnight_crossing_bookings_to_the_start_date():
@@ -783,12 +815,7 @@ async def test_whatsapp_yes_books_under_the_name_the_player_gave(
     guest = await make_user("+923014200010", role=UserRole.PLAYER)
     day = _future_day(5)
     slot = lambda hh: _pkt(day, hh).isoformat()  # noqa: E731
-    db_session.add(Message(
-        sender_id=guest.id, sender_type="ai", channel="whatsapp", content="Shall I book it?",
-        meta={"actions": [{"type": "confirm_booking", "label": "Yes", "data": {
-            "court_id": str(court.id), "starts_at": slot(19), "slot_count": 1, "player_name": "Ali"}}]},
-    ))
-    await db_session.commit()
+    await _add_proposal(db_session, guest, court, slot(19), channel="whatsapp", player_name="Ali")
 
     typed = await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014200010", "wamid.name-1", "yes"))
     assert typed.status_code == 200
@@ -802,6 +829,261 @@ def test_prompt_and_tools_tell_the_model_how_to_handle_names():
     from app.services.ai.tools import BOOKING_TOOLS
     from app.services.ai_chat_service import SYSTEM_PROMPT
 
-    assert "Never ask for the player's name" in SYSTEM_PROMPT and "mera naam" in SYSTEM_PROMPT and "player_name" in SYSTEM_PROMPT
+    assert "ONE short question" in SYSTEM_PROMPT and "mera naam" in SYSTEM_PROMPT and "player_name" in SYSTEM_PROMPT
     for name in ("propose_booking_confirmation", "hold_slot"):
         assert "player_name" in next(t for t in BOOKING_TOOLS if t.name == name).parameters["properties"]
+
+
+# --- Ask for a name once; confirm the EXACT time before booking (owner decisions 2026-10-02) ----------------------------
+def _capture_anthropic(monkeypatch, responses: list[dict]) -> list[dict]:
+    """Like _mock_anthropic_sequence, but records every request body (the system prompt the model was given)."""
+    bodies: list[dict] = []
+    calls = {"n": 0}
+
+    async def fake_post(self, url, headers=None, json=None, **kwargs):
+        bodies.append(json)
+        i = min(calls["n"], len(responses) - 1)
+        calls["n"] += 1
+        return httpx.Response(200, request=httpx.Request("POST", url), json=responses[i])
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    return bodies
+
+
+async def _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phones, monkeypatch, *, name=None):
+    monkeypatch.setattr(get_settings(), "ANTHROPIC_API_KEY", "test-key")
+    court, _p = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, (phones[0], phones[1]))
+    user = await make_user(phones[2], role=UserRole.PLAYER, **({"name": name} if name else {}))
+    return court, user
+
+
+async def test_assistant_asks_a_nameless_player_for_a_name_once_before_proposing(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                         ("+923014300001", "+923014300002", "+923014300003"), monkeypatch)
+    guest = await db_session.get(type(guest), guest.id)  # bound to the session, like the request's user
+    start = _pkt(_future_day(5), 19).isoformat()
+    bodies = _capture_anthropic(monkeypatch, [
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
+        _text_response("What name should I put the booking under?"),
+    ])
+    service = AIChatService(db_session, get_settings())
+    result = await service.process_message(user=guest, message="book 7pm saturday", history=[])
+    assert result.actions == [] and "name" in result.reply.lower()  # no Yes/No yet: a name comes first
+    assert "none on file" in bodies[0]["system"]  # the model is told the account has no name
+
+    # next turn: the question is in the history, the player answers with their own name -> proposal carries it, account filled
+    history = [{"role": "user", "content": "book 7pm saturday"}, {"role": "assistant", "content": result.reply}]
+    _capture_anthropic(monkeypatch, [
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start,
+                                                            "player_name": "Ali", "name_is_players_own": True}),
+        _text_response("Court 1, Sat, 7 PM. Shall I book it?"),
+    ])
+    result2 = await service.process_message(user=guest, message="Ali", history=history)
+    confirm = next(a for a in result2.actions if a.type == "confirm_booking")
+    assert confirm.data["player_name"] == "Ali"
+    await db_session.refresh(guest)
+    assert guest.name == "Ali"  # saved on the empty account name
+
+    # an existing account name is NEVER overwritten, and a friend's name is never saved on the account
+    sara = await make_user("+923014300004", role=UserRole.PLAYER, name="Sara Ahmed")
+    sara = await db_session.get(type(sara), sara.id)
+    await service._execute_tool(sara, "propose_booking_confirmation",
+                                {"court_id": str(court.id), "starts_at": start, "player_name": "Ali", "name_is_players_own": True}, [])
+    assert sara.name == "Sara Ahmed"
+    other = await make_user("+923014300005", role=UserRole.PLAYER)
+    other = await db_session.get(type(other), other.id)
+    await service._execute_tool(other, "propose_booking_confirmation",
+                                {"court_id": str(court.id), "starts_at": start, "player_name": "Ali Khan", "name_is_players_own": False}, [])
+    await service._execute_tool(other, "propose_booking_confirmation",
+                                {"court_id": str(court.id), "starts_at": start, "player_name": "Court 1", "name_is_players_own": True}, [])
+    assert other.name is None
+
+
+async def test_name_question_is_never_repeated_and_a_named_account_is_never_asked(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                         ("+923014300011", "+923014300012", "+923014300013"), monkeypatch)
+    start = _pkt(_future_day(5), 19).isoformat()
+    service = AIChatService(db_session, get_settings())
+
+    # the question was already asked and the player brushed it off: propose WITHOUT a name goes straight through
+    history = [{"role": "user", "content": "book 7pm"}, {"role": "assistant", "content": "What name should I put the booking under?"},
+               {"role": "user", "content": "koi bhi"}]
+    _capture_anthropic(monkeypatch, [
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
+        _text_response("Court 1, 7 PM. Shall I book it?"),
+    ])
+    result = await service.process_message(user=guest, message="koi bhi", history=history)
+    assert any(a.type == "confirm_booking" for a in result.actions)
+    assert "player_name" not in next(a for a in result.actions if a.type == "confirm_booking").data
+
+    # an account with a name is never asked: the proposal goes straight through and the prompt says the name is on file
+    sara = await make_user("+923014300014", role=UserRole.PLAYER, name="Sara Ahmed")
+    bodies = _capture_anthropic(monkeypatch, [
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
+        _text_response("Court 1, 7 PM. Shall I book it?"),
+    ])
+    result = await service.process_message(user=sara, message="book 7pm", history=[])
+    assert any(a.type == "confirm_booking" for a in result.actions)
+    assert 'Player account name: "Sara Ahmed"' in bodies[0]["system"]
+
+
+async def test_proposal_message_always_states_the_exact_slot_court_date_time_and_price(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    court, sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                        ("+923014300021", "+923014300022", "+923014300023"), monkeypatch, name="Sara Ahmed")
+    day = _future_day(5)
+    start = _pkt(day, 19).isoformat()
+    _capture_anthropic(monkeypatch, [
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
+        _text_response("Shall I book it? Reply Yes or No"),  # the model never said WHICH slot
+    ])
+    result = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday", history=[])
+    label = next(a for a in result.actions if a.type == "confirm_booking").data["label"]
+    assert label.startswith("7:00 PM to 8:00 PM, ") and label in result.reply
+    assert "Court 1" in result.reply and "PKR 3,500" in result.reply and result.reply.rstrip().endswith("Reply Yes or No")
+
+    # when the model already states it, nothing is appended
+    _capture_anthropic(monkeypatch, [
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
+        _text_response(f"Court 1, {label}, PKR 3,500. Shall I book it? Reply Yes or No"),
+    ])
+    again = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday", history=[])
+    assert again.reply.count(label) == 1
+
+
+async def _hold_via_model(db_session, monkeypatch, user, court, start, message="yes", history=None, **hold_args):
+    _capture_anthropic(monkeypatch, [
+        _tool_use_response("hold_slot", {"court_id": str(court.id), "starts_at": start, **hold_args}),
+        _text_response("ok"),
+    ])
+    return await AIChatService(db_session, get_settings()).process_message(user=user, message=message, history=history or [])
+
+
+async def _held(db_session, user):
+    return (await db_session.execute(select(Booking).where(Booking.player_id == user.id))).scalars().all()
+
+
+async def test_hold_slot_only_runs_for_the_exact_slot_the_previous_message_stated(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    """The owner's rule: yes with a clear proposal books; yes after the time changed re-asks; yes with no proposal asks;
+    a stale proposal (>30 min) re-confirms."""
+    court, sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                        ("+923014300031", "+923014300032", "+923014300033"), monkeypatch, name="Sara Ahmed")
+    day = _future_day(5)
+    seven, eight = _pkt(day, 19).isoformat(), _pkt(day, 20).isoformat()
+
+    # (1) yes with NO proposal at all -> refused (the model is told to state the slot), nothing held
+    res = await _hold_via_model(db_session, monkeypatch, sara, court, seven)
+    assert res.tool_calls == ["hold_slot"] and await _held(db_session, sara) == []
+
+    # (2) a proposal whose text never said which time -> refused
+    await _add_proposal(db_session, sara, court, seven, states_slot=False)
+    await _hold_via_model(db_session, monkeypatch, sara, court, seven)
+    assert await _held(db_session, sara) == []
+
+    # (3) a stated proposal, but 45 minutes old -> refused (stale)
+    await _add_proposal(db_session, sara, court, seven, age_minutes=45)
+    await _hold_via_model(db_session, monkeypatch, sara, court, seven)
+    assert await _held(db_session, sara) == []
+
+    # (4) a live, stated proposal for 7 PM, but the model tries to hold 8 PM (the player changed the time) -> refused
+    await _add_proposal(db_session, sara, court, seven)
+    await _hold_via_model(db_session, monkeypatch, sara, court, eight)
+    assert await _held(db_session, sara) == []
+
+    # (5) the same live proposal, held for exactly that slot -> books
+    await _hold_via_model(db_session, monkeypatch, sara, court, seven)
+    held = await _held(db_session, sara)
+    assert [b.starts_at for b in held] == [_pkt(day, 19)]
+
+
+async def test_a_name_given_before_the_proposal_survives_the_yes_into_the_hold(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                         ("+923014300041", "+923014300042", "+923014300043"), monkeypatch)
+    seven = _pkt(_future_day(5), 19).isoformat()
+    await _add_proposal(db_session, guest, court, seven, player_name="Ali")
+    # the model forgets the name when it calls hold_slot; the proposal's stored name is used
+    await _hold_via_model(db_session, monkeypatch, guest, court, seven)
+    assert [b.player_name for b in await _held(db_session, guest)] == ["Ali"]
+
+
+async def test_a_bare_yes_without_a_stated_slot_tells_the_model_to_restate_it_and_a_valid_one_to_book(
+    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    court, sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                        ("+923014300051", "+923014300052", "+923014300053"), monkeypatch, name="Sara Ahmed")
+    seven = _pkt(_future_day(5), 19).isoformat()
+    service = AIChatService(db_session, get_settings())
+
+    bodies = _capture_anthropic(monkeypatch, [_text_response("Which slot do you mean?")])
+    await service.process_message(user=sara, message="Yes", history=[])
+    assert "bare \"yes\"" in bodies[0]["system"] and "Do NOT call hold_slot" in bodies[0]["system"]
+
+    await _add_proposal(db_session, sara, court, seven)
+    bodies = _capture_anthropic(monkeypatch, [_text_response("ok")])
+    await service.process_message(user=sara, message="haan bhai book kardo", history=[])
+    assert seven in bodies[0]["system"] and "call hold_slot for exactly that slot" in bodies[0]["system"]
+
+    # a message that says more than yes (a changed time) gets no yes-hint at all
+    bodies = _capture_anthropic(monkeypatch, [_text_response("Checking 9pm.")])
+    await service.process_message(user=sara, message="yes but 9pm", history=[])
+    assert "The player just replied" not in bodies[0]["system"]
+
+
+async def test_whatsapp_name_then_exact_time_flow_end_to_end(
+    client, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+):
+    """A brand-new WhatsApp guest: asked for a name once, answers, gets the exact slot + Yes/No, a typed "yes" books it
+    under that name and the name lands on the account. The model is mocked; everything else is the real path."""
+    from app.models.user import User
+    from tests.test_webhooks import _mock_whatsapp_send, _text_payload
+
+    sent = _mock_whatsapp_send(monkeypatch)
+
+    async def fake_send_buttons(self, to, body, buttons):
+        sent.append({"to": to, "body": body, "buttons": buttons})
+        return {"messages": [{"id": f"wamid.buttons.{len(sent)}"}]}
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_buttons", fake_send_buttons)
+    court, _sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
+                                         ("+923014300061", "+923014300062", "+923014300063"), monkeypatch)
+    day = _future_day(5)
+    seven = _pkt(day, 19).isoformat()
+    # the test client is itself an httpx.AsyncClient: only the model call may be intercepted
+    real_post, calls = httpx.AsyncClient.post, {"n": 0}
+    model_replies = [
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": seven}),
+        _text_response("What name should I put the booking under?"),
+        _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": seven,
+                                                            "player_name": "Ali Raza", "name_is_players_own": True}),
+        _text_response("Shall I book it?"),
+    ]
+
+    async def fake_post(self, url, *args, **kwargs):
+        if "anthropic" not in str(url):
+            return await real_post(self, url, *args, **kwargs)
+        calls["n"] += 1
+        return httpx.Response(200, request=httpx.Request("POST", url), json=model_replies[calls["n"] - 1])
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-1", "book court 1 at 7pm saturday"))
+    assert "name" in sent[-1]["body"].lower() and "Shall I book" not in sent[-1]["body"]
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-2", "Ali Raza"))
+    assert "7:00 PM to 8:00 PM" in sent[-1]["body"] and "PKR 3,500" in sent[-1]["body"] and sent[-1]["buttons"]  # exact slot + buttons
+    guest = await db_session.scalar(select(User).where(User.phone == "+923014300063"))
+    assert await _held(db_session, guest) == []  # nothing booked yet
+
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-3", "yes"))
+    await db_session.refresh(guest)
+    rows = await _held(db_session, guest)
+    assert [(b.starts_at, b.player_name) for b in rows] == [(_pkt(day, 19), "Ali Raza")]
+    assert guest.name == "Ali Raza"

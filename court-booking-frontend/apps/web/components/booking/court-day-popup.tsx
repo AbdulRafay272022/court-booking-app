@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, monthOf, pktDateString, weekOf } from "@court-booking/types";
+import { addDays, durationChoices, formatDuration, minSlotsFor, monthOf, pktDateString, weekOf } from "@court-booking/types";
 import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -43,6 +43,7 @@ export function CourtDayPopup({
   courtId: string;
   courtName: string;
   courtSport?: string;
+  /** The court's MINIMUM booking time (its slot_minutes setting); the slots themselves are always 30 minutes. */
   slotMinutes: number;
   venueId: string;
   venueName: string;
@@ -80,6 +81,7 @@ export function CourtDayPopup({
     placeholderData: undefined,
   });
   const slots = dayQuery.data?.slots ?? [];
+  const minSlots = minSlotsFor(slotMinutes);
 
   // Drives the small availability dot on each week-strip pill. Shares the calendar's query key, so it's already
   // cached from the month view and adds no extra fetch in the common case.
@@ -119,6 +121,7 @@ export function CourtDayPopup({
       return;
     }
     if (slot.status !== "available") return;
+    if (durationChoices(slots, index, minSlots).length === 0) return; // the minimum booking does not fit from here
     if (status !== "signedIn") {
       router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`);
       return;
@@ -234,7 +237,11 @@ export function CourtDayPopup({
                   <p className="text-center py-8 text-[13.5px] text-player-ink-faint">Closed this day.</p>
                 ) : (
                   slots.map((slot, index) => {
-                    const isOpen = slot.status === "available";
+                    // on the 30-minute grid a free slot is only a place a booking can START when the court's minimum
+                    // (e.g. 2 slots for 60 minutes) fits from here; the first choice also carries that minimum's price
+                    const startChoices = slot.status === "available" ? durationChoices(slots, index, minSlots) : [];
+                    const isOpen = startChoices.length > 0;
+                    const tooShort = slot.status === "available" && !isOpen;
                     const isBooked = slot.status === "booked";
                     const dividerBefore = slot.after_midnight && !slots[index - 1]?.after_midnight;
                     const divider = dividerBefore ? (
@@ -267,7 +274,8 @@ export function CourtDayPopup({
                         <button
                           onClick={() => handleTapSlot(index, null)}
                           disabled={!isOpen}
-                          title={slot.status === "blocked" && slot.reason ? slot.reason : undefined}
+                          title={slot.status === "blocked" && slot.reason ? slot.reason : tooShort ? `Needs at least ${formatDuration(slotMinutes)} free` : undefined}
+                          data-testid={isOpen ? "slot-open" : undefined}
                           className="flex items-center justify-between px-3.5 py-3 rounded-xl text-left"
                           style={{
                             background: isOpen ? "#FFFFFF" : "#F3EEE9",
@@ -298,12 +306,14 @@ export function CourtDayPopup({
                             ) : null}
                             {isOpen ? (
                               <>
-                                <span className="font-mono text-[12px] font-semibold text-player-ink-faint">PKR {formatPKR(slot.price)}</span>
+                                <span className="font-mono text-[12px] font-semibold text-player-ink-faint">
+                                  PKR {formatPKR(startChoices[0].price)}{minSlots > 1 ? ` · ${formatDuration(startChoices[0].minutes)}` : ""}
+                                </span>
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#E3F7EB", color: "#1E9E5A" }}>Open</span>
                               </>
                             ) : (
                               <span className="text-[11px] font-bold" style={{ color: "#9A9791" }}>
-                                {OTHER_STATUS_LABEL[slot.status] ?? slot.status}
+                                {tooShort ? "Too short" : OTHER_STATUS_LABEL[slot.status] ?? slot.status}
                               </span>
                             )}
                           </span>

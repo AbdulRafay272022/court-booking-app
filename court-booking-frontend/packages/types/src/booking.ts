@@ -45,8 +45,10 @@ export interface PaymentInstructions {
 export interface HoldBookingInput {
   court_id: string;
   starts_at: string;
-  /** How many consecutive slots (the court's slot length each) to book as one booking. Default 1. */
+  /** How many consecutive 30-minute slots to book as one booking (at least the court's minimum). Omitted = the minimum. */
   slot_count?: number;
+  /** The name the booking is made under when the player gave one in the chat (their own, or a friend's). Omit to use the account's name. */
+  player_name?: string;
 }
 
 export interface HoldBookingOut {
@@ -57,7 +59,11 @@ export interface HoldBookingOut {
 export interface WalkinBookingInput {
   court_id: string;
   starts_at: string;
+  /** Consecutive 30-minute slots in this one booking (Part 4c). Omitted = the court's minimum booking. */
+  slot_count?: number;
+  /** Who the booking is for (required). */
   player_name: string;
+  /** Optional Pakistani mobile (any common form; the server stores +923XXXXXXXXX and links an existing account). */
   player_phone?: string;
   amount_paid: number;
 }

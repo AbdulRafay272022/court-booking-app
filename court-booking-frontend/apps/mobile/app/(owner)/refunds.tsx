@@ -55,7 +55,7 @@ export default function RefundsScreen() {
       ) : open ? (
         <MarkRefundedForm
           refund={open}
-          courtSport={sportForCourtName(activeVenue?.courts, open.court_name)}
+          courtSport={open.court_sport ?? sportForCourtName(activeVenue?.courts, open.court_name)}
           onClose={() => setOpenId(null)}
           onDone={async () => {
             setOpenId(null);
@@ -77,7 +77,7 @@ export default function RefundsScreen() {
                   {refund.player_name ?? refund.player_phone ?? "Player"}
                 </Text>
                 <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
-                  {courtLabel(refund.court_name, sportForCourtName(activeVenue?.courts, refund.court_name))} · {formatWhen(refund.starts_at)}
+                  {courtLabel(refund.court_name, refund.court_sport ?? sportForCourtName(activeVenue?.courts, refund.court_name))} · {formatWhen(refund.starts_at)}
                 </Text>
                 {refund.is_overdue ? (
                   <Text className="font-plex-semibold text-[11.5px]" style={{ color: "#A8432C" }}>
@@ -85,7 +85,7 @@ export default function RefundsScreen() {
                   </Text>
                 ) : null}
               </View>
-              <Text className="font-mono-bold text-owner-ink text-[15px]">PKR {formatPKR(refund.refund_amount)}</Text>
+              <View className="items-end"><Text className="font-mono-bold text-owner-ink text-[15px]">PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))}</Text>{(refund.refunded_amount ?? 0) > 0 ? <Text className="font-plex-medium text-owner-ink-faint text-[11px]">remaining of PKR {formatPKR(refund.refund_amount)}</Text> : null}</View>
             </Pressable>
           ))}
         </ScrollView>
@@ -96,7 +96,7 @@ export default function RefundsScreen() {
 
 function MarkRefundedForm({ refund, courtSport, onClose, onDone }: { refund: OwnerRefund; courtSport?: string; onClose: () => void; onDone: () => void }) {
   const [reference, setReference] = useState("");
-  const [amount, setAmount] = useState(String(Math.round(refund.refund_amount)));
+  const [amount, setAmount] = useState(String(Math.round((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))));
   const [busy, setBusy] = useState(false);
 
   async function submit() {
@@ -127,7 +127,7 @@ function MarkRefundedForm({ refund, courtSport, onClose, onDone }: { refund: Own
         <Text className="font-plex-bold text-owner-ink text-[15px]">
           {refund.player_name ?? refund.player_phone} · {courtLabel(refund.court_name, courtSport)}
         </Text>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13px]">Owed PKR {formatPKR(refund.refund_amount)}</Text>
+        <Text className="font-plex-medium text-owner-ink-muted text-[13px]">Remaining PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))} of PKR {formatPKR(refund.refund_amount)}</Text>
       </View>
 
       <View className="gap-1.5">

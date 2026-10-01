@@ -10,13 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import AppSettings, DbSession
-from app.models.booking import Booking, BookingStatus
+from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.court import Court
 from app.models.message import Message
 from app.models.user import User
 from app.models.venue import Venue
-from app.services.ai_chat_service import AIChatService
-from app.services.booking_service import BookingService
+from app.services.ai_chat_service import AIChatService, explicit_proposal_data, is_plain_affirmative
+from app.services.booking_service import BookingService, booking_source_ctx
 from app.services.notification_service import NotificationService
 from app.services.payment_service import PaymentService
 from app.services.venue_service import VenueService
@@ -117,30 +117,9 @@ async def _most_recent_held_booking(db: DbSession, user: User) -> Booking | None
     return result.scalar_one_or_none()
 
 
-# A bare "yes" only confirms a proposal made in the message right before it, and only for this long.
-PENDING_CONFIRMATION_MAX_AGE = timedelta(minutes=30)
-
-# Words that may appear in a *plain* confirmation ("Yesss", "haan bhai book kardo", "ok"). Anything
-# else in the message (a time, a date, "but", "no") means the player is saying something more, so it
-# goes to the assistant instead of being treated as a bare yes.
-_AFFIRMATIVE_RE = re.compile(
-    r"^(y+e+s+|y+e+a+h*|y+e+p+|y+u+p+|y+a+|y|h+a+a*n+|h+a+a+|h+n+|o+k+a*y*|ji+|je+e+|g|sure|bilkul|zaroor|"
-    r"confirm(ed)?|kardo|karo|done|theek|thik|book)$"
-)
-_FILLER_WORDS = frozenset(
-    "bhai yaar sir please plz pls thanks thank you it this the kar do karo kardo booking hai hain sahi fine "
-    "go ahead lets let s now abhi".split()
-)
-
-
-def _is_plain_affirmative(text: str) -> bool:
-    """True for a short reply that is nothing but agreement, e.g. "Yesss" or "Haan bhai yes book kardo"."""
-    words = re.sub(r"[^a-z\s]", " ", text.lower()).split()
-    if not words or len(words) > 8:
-        return False
-    if not all(_AFFIRMATIVE_RE.match(w) or w in _FILLER_WORDS for w in words):
-        return False
-    return any(_AFFIRMATIVE_RE.match(w) for w in words)
+# A bare "yes" only confirms a proposal made in the message right before it, that stated the exact slot, and only for
+# PROPOSAL_MAX_AGE (see ai_chat_service.explicit_proposal_data); the plain-affirmative test is shared with the in-app chat.
+_is_plain_affirmative = is_plain_affirmative
 
 
 def _confirm_button_id(court_id: str, starts_at: str, slot_count: int = 1) -> str:
@@ -170,14 +149,11 @@ async def _pending_confirmation(db: DbSession, user: User) -> tuple[str, str, in
     )
     if len(rows) < 2 or rows[0].sender_type != "player" or rows[1].sender_type != "ai":
         return None
-    proposal = rows[1]
-    if datetime.now(timezone.utc) - proposal.created_at > PENDING_CONFIRMATION_MAX_AGE:
-        return None
-    for action in (proposal.meta or {}).get("actions") or []:
-        if action.get("type") == "confirm_booking":
-            data = action.get("data") or {}
-            if data.get("court_id") and data.get("starts_at"):
-                return data["court_id"], data["starts_at"], int(data.get("slot_count") or 1)
+    # Only a proposal whose own text stated the exact slot (label), and that is still recent, may be booked by a bare
+    # "yes"; anything else (older, unstated, no label stored) goes to the assistant to re-state the exact time.
+    data = explicit_proposal_data(rows[1])
+    if data is not None:
+        return data["court_id"], data["starts_at"], int(data.get("slot_count") or 1)
     return None
 
 
@@ -224,7 +200,7 @@ async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: s
 
     chat_service = AIChatService(db, settings)
     history = await chat_service.load_history(user, "whatsapp")
-    result = await chat_service.process_message(user=user, message=text, history=history)
+    result = await chat_service.process_message(user=user, message=text, history=history, channel="whatsapp")
 
     whatsapp = WhatsAppService(settings)
     # A direct reply to an inbound message is always inside the 24h window by
@@ -346,7 +322,7 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
     if button_id.startswith("confirm:"):
         try:
             _prefix, court_id_str, starts_at_str = button_id.split(":", 2)
-            slot_count = 1
+            slot_count: int | None = None  # no suffix = the court's minimum booking (30-minute grid, Part 4c)
             if "|x" in starts_at_str:
                 starts_at_str, count_str = starts_at_str.rsplit("|x", 1)
                 slot_count = int(count_str)
@@ -408,29 +384,34 @@ async def receive_whatsapp_webhook(request: Request, db: DbSession, settings: Ap
         )
 
     messages = WhatsAppService.parse_inbound_messages(payload)
+    # Every hold made while handling a WhatsApp message (button reply or the AI's hold tool) is recorded as
+    # source=whatsapp, so the owner can see how a booking was made.
+    source_token = booking_source_ctx.set(BookingSource.WHATSAPP)
+    try:
+        for msg in messages:
+            user = await _find_or_create_guest(db, msg["phone_number"])
 
-    for msg in messages:
-        user = await _find_or_create_guest(db, msg["phone_number"])
+            inbound_content = msg["text"] or msg.get("button_text") or f"[{msg['type']}]"
+            recorded = await _record_message(
+                db,
+                user=user,
+                sender_type="player",
+                content=inbound_content,
+                message_type=msg["type"] or "text",
+                whatsapp_msg_id=msg["message_id"],
+            )
+            await db.commit()
+            if recorded is None:
+                # Duplicate delivery (webhook retry) -- already processed.
+                continue
 
-        inbound_content = msg["text"] or msg.get("button_text") or f"[{msg['type']}]"
-        recorded = await _record_message(
-            db,
-            user=user,
-            sender_type="player",
-            content=inbound_content,
-            message_type=msg["type"] or "text",
-            whatsapp_msg_id=msg["message_id"],
-        )
-        await db.commit()
-        if recorded is None:
-            # Duplicate delivery (webhook retry) -- already processed.
-            continue
-
-        if msg["type"] == "text" and msg["text"]:
-            await _handle_text(db, settings, user, msg["text"])
-        elif msg["type"] == "image" and msg.get("image_id"):
-            await _handle_image(db, settings, user, msg["image_id"], msg.get("image_mime_type"))
-        elif msg["type"] in ("interactive", "button"):
-            await _handle_button_reply(db, settings, user, msg.get("button_id"))
+            if msg["type"] == "text" and msg["text"]:
+                await _handle_text(db, settings, user, msg["text"])
+            elif msg["type"] == "image" and msg.get("image_id"):
+                await _handle_image(db, settings, user, msg["image_id"], msg.get("image_mime_type"))
+            elif msg["type"] in ("interactive", "button"):
+                await _handle_button_reply(db, settings, user, msg.get("button_id"))
+    finally:
+        booking_source_ctx.reset(source_token)
 
     return {"status": "received"}

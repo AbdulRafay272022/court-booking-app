@@ -101,7 +101,7 @@ export default function OwnerLedgerPage() {
         ) : null}
         {summary && summary.cancelled_refund_pending > 0 ? (
           <p className="text-sm font-semibold" style={{ color: "#8C3823" }}>
-            PKR {formatPKR(summary.cancelled_refund_pending)} may be owed back (cancelled, unresolved)
+            PKR {formatPKR(summary.cancelled_refund_pending)} still owed back in refunds
           </p>
         ) : null}
       </div>
@@ -173,10 +173,13 @@ export default function OwnerLedgerPage() {
                     <td className="px-4 py-3 font-mono text-sm">{formatShortDate(entry.recorded_at)}</td>
                     <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">{formatTime(entry.recorded_at)}</td>
                     <td className="px-4 py-3 text-sm font-semibold">{entry.player ?? "Walk-in"}</td>
-                    <td className="px-4 py-3 text-sm">{courtLabel(entry.court, sports.byName(entry.court))}</td>
+                    <td className="px-4 py-3 text-sm">{courtLabel(entry.court, entry.court_sport ?? sports.byName(entry.court))}</td>
                     <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">
-                      {METHOD_LABEL[entry.method] ?? entry.method}
-                      {isCorrection ? " · correction" : ""}
+                      {entry.entry_type === "refund" ? "Refund" : METHOD_LABEL[entry.method] ?? entry.method}
+                      {entry.entry_type === "correction" ? " · correction" : ""}
+                      {entry.entry_type === "refund" && entry.note ? (
+                        <span className="block normal-case font-normal text-owner-ink-faint">{entry.note}</span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{entry.booking_status}</td>
                     <td className="px-4 py-3 font-mono text-sm font-semibold" style={{ color: isCorrection ? "#8C3823" : undefined }}>

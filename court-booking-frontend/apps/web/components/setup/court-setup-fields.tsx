@@ -2,6 +2,7 @@
 
 import {
   DAY_LABELS,
+  GRID_MINUTES,
   SLOT_MINUTES_OPTIONS,
   WEEKDAY_NUMBERS,
   WEEKEND_NUMBERS,
@@ -47,7 +48,10 @@ export function CourtSetupFields({
   return (
     <>
       <SectionCard>
-        <SectionLabel>Slot length</SectionLabel>
+        <SectionLabel>Minimum booking time</SectionLabel>
+        <p className="text-[12.5px] font-medium text-owner-ink-faint">
+          Time is offered in 30-minute slots. Players must book at least this long (in a row) and can add 30 minutes at a time.
+        </p>
         <div className="flex flex-wrap gap-2">
           {SLOT_MINUTES_OPTIONS.map((m) => (
             <Chip key={m} label={`${m} min`} selected={value.slotMinutes === m} onClick={() => onChange({ slotMinutes: m })} />
@@ -56,7 +60,7 @@ export function CourtSetupFields({
         <SlotPreviewLine value={value} />
         {slotChangeNote ? (
           <p className="text-[12.5px] font-medium text-owner-ink-faint">
-            Bookings already made keep their own times if you change this. Any new time that would overlap one of them stays unavailable.
+            Bookings already made keep their own times if you change this; the price entered below is for one minimum booking. Any new time that would overlap one of them stays unavailable.
           </p>
         ) : null}
       </SectionCard>
@@ -136,7 +140,7 @@ export function CourtSetupFields({
             </div>
             <div className="flex flex-wrap gap-3">
               <Field
-                label="Per slot (PKR)"
+                label={`Per ${formatDuration(value.slotMinutes)} (PKR)`}
                 value={rule.pricePerSlot}
                 onChange={(e) => updateRule(rule.id, { pricePerSlot: e.target.value.replace(/\D/g, "") })}
                 inputMode="numeric"
@@ -177,14 +181,17 @@ function HoursKindNote({ open, close }: { open: string; close: string }) {
 /** "11 slots a day, 6:00 AM to 10:30 PM", plus a warning when the closing time leaves a gap too short for a slot. */
 function SlotPreviewLine({ value }: { value: CourtSetup }) {
   if (value.sameHoursEveryDay) {
-    const p = slotPreview(value.openTime, value.closeTime, value.slotMinutes);
+    const p = slotPreview(value.openTime, value.closeTime, GRID_MINUTES);
     return (
       <div className="flex flex-col gap-1" data-testid="slot-preview">
-        <p className="text-[13.5px] font-semibold text-owner-ink">{slotPreviewText(value.openTime, value.closeTime, value.slotMinutes)}</p>
+        <p className="text-[13.5px] font-semibold text-owner-ink">{slotPreviewText(value.openTime, value.closeTime, GRID_MINUTES)}</p>
+        <p className="text-[12.5px] font-medium text-owner-ink-faint">
+          Minimum booking: {formatDuration(value.slotMinutes)} ({Math.ceil(value.slotMinutes / GRID_MINUTES)} {value.slotMinutes <= GRID_MINUTES ? "slot" : "slots in a row"}).
+        </p>
         {p && p.lastEnd !== value.closeTime.slice(0, 5) ? (
           <p className="text-[12.5px] font-medium text-owner-ink-faint">
             The last slot ends at {formatTime24As12(p.lastEnd)}; the time left before {formatTime24As12(value.closeTime)} is shorter than one{" "}
-            {formatDuration(value.slotMinutes)} slot, so it is not offered.
+            {formatDuration(GRID_MINUTES)} slot, so it is not offered.
           </p>
         ) : null}
       </div>
@@ -195,7 +202,7 @@ function SlotPreviewLine({ value }: { value: CourtSetup }) {
       Slots a day:{" "}
       {DAY_LABELS.map((label, day) => {
         const o = value.perDayOverrides[day] ?? { open: value.openTime, close: value.closeTime };
-        return `${label} ${slotPreview(o.open, o.close, value.slotMinutes)?.count ?? 0}`;
+        return `${label} ${slotPreview(o.open, o.close, GRID_MINUTES)?.count ?? 0}`;
       }).join(" · ")}
     </p>
   );

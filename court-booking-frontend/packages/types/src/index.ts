@@ -18,3 +18,4 @@ export * from "./datetime";
 export * from "./booking-duration";
 export * from "./court-setup";
 export * from "./sports";
+export * from "./court-hours";

@@ -13,6 +13,7 @@ import { ChevronLeftIcon, StarIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { CourtMonthCalendar } from "@/components/court-month-calendar";
 import { CourtDayPopup } from "@/components/court-day-popup";
+import { CourtHoursPanel } from "@/components/court-hours-panel";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { courtLabel } from "@/components/court-label";
 import { decodeSportParam, findSport, sameSport } from "@/lib/sport";
@@ -133,13 +134,14 @@ export default function VenueDetailScreen() {
                 <View className="items-center gap-0.5 rounded-xl px-4 py-3" style={{ backgroundColor: "#F3EEE9" }}>
                   <Text className="font-figtree-bold text-player-ink text-[16px] -tracking-[0.2px]">{courtLabel(court.name, court.sport)}</Text>
                   <Text className="font-figtree-medium text-player-ink-faint text-[12.5px]">
-                    {court.is_indoor ? "Indoor · " : ""}{formatDuration(court.slot_minutes)} slots{price != null ? ` · From PKR ${formatPKR(price)}` : ""}
+                    {court.is_indoor ? "Indoor · " : ""}{formatDuration(court.slot_minutes)} minimum{price != null ? ` · From PKR ${formatPKR(price)}` : ""}
                   </Text>
                 </View>
                 {/* this court's OWN photos, attached to its card (not the venue's) */}
                 {court.photo_urls && court.photo_urls.length > 0 ? (
                   <PhotoGallery photos={court.photo_urls} aspectRatio={16 / 9} label={court.name} />
                 ) : null}
+                <CourtHoursPanel court={court} horizonDays={venue.booking_horizon_days} />
                 <CourtMonthCalendar
                   courtId={court.id}
                   onSummary={(s) => setPrices((p) => ({ ...p, [court.id]: s.starts_from_price }))}

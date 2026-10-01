@@ -15,7 +15,7 @@ from app.schemas.availability import (
     RangeAvailabilityOut,
     VenueAvailabilityOut,
 )
-from app.services.availability_service import AvailabilityService
+from app.services.availability_service import GRID_MINUTES, AvailabilityService, min_slots
 
 router = APIRouter(tags=["availability"])
 
@@ -35,7 +35,8 @@ async def get_court_availability(
     if date is not None:
         slots = await service.get_day_slots(court, date, viewer_id=viewer.id if viewer else None)
         return DayAvailabilityOut(
-            court_id=str(court_id), date=date, slot_minutes=court.slot_minutes, slots=slots
+            court_id=str(court_id), date=date, slot_minutes=GRID_MINUTES,
+            min_booking_minutes=court.slot_minutes, min_slots=min_slots(court), slots=slots
         )
 
     if start_date is None or end_date is None:
@@ -55,7 +56,10 @@ async def get_court_availability(
         )
         current += timedelta(days=1)
 
-    return RangeAvailabilityOut(court_id=str(court_id), slot_minutes=court.slot_minutes, days=days)
+    return RangeAvailabilityOut(
+        court_id=str(court_id), slot_minutes=GRID_MINUTES, min_booking_minutes=court.slot_minutes,
+        min_slots=min_slots(court), days=days,
+    )
 
 
 @router.get("/venues/{venue_id}/availability", response_model=VenueAvailabilityOut)
@@ -71,7 +75,8 @@ async def get_venue_availability(
         slots = await service.get_day_slots(court, date, viewer_id=viewer.id if viewer else None)
         court_availabilities.append(
             CourtAvailabilityOut(
-                court_id=str(court.id), court_name=court.name, slot_minutes=court.slot_minutes, slots=slots
+                court_id=str(court.id), court_name=court.name, slot_minutes=GRID_MINUTES,
+                min_booking_minutes=court.slot_minutes, min_slots=min_slots(court), slots=slots
             )
         )
 
@@ -83,20 +88,23 @@ async def quote_booking(
     court_id: uuid.UUID,
     db: DbSession,
     starts_at: datetime,
-    slot_count: int = Query(default=1, ge=1, le=16),
+    slot_count: int | None = Query(default=None, ge=1, le=16),
 ) -> BookingQuoteOut:
-    """What a booking of `slot_count` consecutive slots from `starts_at` costs, before anything is held."""
+    """What a booking of `slot_count` consecutive 30-minute slots from `starts_at` costs, before anything is held.
+    Omitted `slot_count` = the court's minimum booking (min_slots)."""
     if starts_at.tzinfo is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="starts_at must include a UTC offset")
     service = AvailabilityService(db)
     court = await service.get_court(court_id)
-    quote = await service.quote_range(court, starts_at, slot_count)
+    quote = await service.quote_range(court, starts_at, slot_count if slot_count is not None else min_slots(court))
     return BookingQuoteOut(
         court_id=str(court_id),
         starts_at=quote.starts_at,
         ends_at=quote.ends_at,
         slot_count=quote.slot_count,
-        slot_minutes=court.slot_minutes,
+        slot_minutes=GRID_MINUTES,
+        min_booking_minutes=court.slot_minutes,
+        min_slots=min_slots(court),
         duration_minutes=quote.duration_minutes,
         price=quote.price,
         advance_amount=quote.advance_amount,

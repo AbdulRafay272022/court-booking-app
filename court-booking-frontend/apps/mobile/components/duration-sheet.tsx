@@ -2,15 +2,16 @@ import { useState } from "react";
 import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Modal, Pressable, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { durationChoices, formatDuration, type Slot } from "@court-booking/types";
+import { durationChoices, formatDuration, minSlotsFor, type Slot } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 
 /**
- * "How long do you want to play?" (Section 32 Part 4). Opens when a player taps an open slot: they pick a length in
- * multiples of the court's slot length (only lengths whose every slot is free and back to back are offered), and
+ * "How long do you want to play?" (Section 32 Part 4 / 4c). Opens when a player taps an open 30-minute slot: they pick a
+ * length of at least the court's minimum booking time, in steps of 30 minutes (only lengths whose every slot is free and
+ * back to back are offered, so the selection is always contiguous), and
  * see the TOTAL price for that length before anything is held. The price comes from the server's quote endpoint --
  * the same code that prices the hold -- so it already accounts for peak-price boundaries across the whole booking.
  */
@@ -34,8 +35,9 @@ export function DurationSheet({
   onContinue: (choice: { slotCount: number; minutes: number; price: number }) => void;
 }) {
   const slot = slots[index];
-  const choices = durationChoices(slots, index, slotMinutes);
-  const [slotCount, setSlotCount] = useState(1);
+  // `slotMinutes` is the court's MINIMUM booking time (the grid itself is always 30 minutes)
+  const choices = durationChoices(slots, index, minSlotsFor(slotMinutes));
+  const [slotCount, setSlotCount] = useState(choices[0]?.slotCount ?? minSlotsFor(slotMinutes));
   const quoteQuery = useQuery({
     queryKey: ["booking-quote", courtId, slot.starts_at, slotCount],
     queryFn: () => api.availability.quote(courtId, slot.starts_at, slotCount),
@@ -53,7 +55,7 @@ export function DurationSheet({
               </Text>
               <Text className="font-figtree-bold text-player-ink text-[17px]">{formatDate(slot.starts_at)}</Text>
               <Text className="font-mono-semibold text-player-ink text-[14.5px]">
-                {quote ? formatTimeRange(quote.starts_at, quote.ends_at) : formatTimeRange(slot.starts_at, slot.ends_at)}
+                {quote ? formatTimeRange(quote.starts_at, quote.ends_at) : formatTimeRange(slot.starts_at, choices.find((c) => c.slotCount === slotCount)?.endsAt ?? slot.ends_at)}
               </Text>
             </View>
             <Pressable onPress={onClose} accessibilityLabel="Close" className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">

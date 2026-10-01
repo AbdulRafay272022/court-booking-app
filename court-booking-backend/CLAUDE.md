@@ -227,6 +227,33 @@ the live test, fixed (the form mounts only when `data.id === selected court`); s
 opening question was sent twice in dev (effect ran twice); guarded with a ref. Known flaky test: `test_typed_yes_books_the_slot_...`
 compares a host-clock timestamp with a DB-clock one and failed once under load (passes alone and on rerun).
 
+**SECTION 32 PART 4c (built and tested 2026-10-02, branch `booking-ledger-fixes-2026-09-30`, NO schema change): one fixed 30-minute grid.**
+Every court and venue now has a 30-minute slot grid (`GRID_MINUTES` in `availability_service.py`); `courts.slot_minutes`
+(30/60/90/120, same column, same API field on the court) is now the court's MINIMUM BOOKING TIME: a booking must span at least
+`min_slots(court)` consecutive 30-minute slots (60 min -> 2, 90 -> 3, 120 -> 4) and any longer multiple of 30 is allowed (cap
+still `MAX_BOOKING_MINUTES`). `slot_count` everywhere (quote, hold, walk-in, AI, WhatsApp button `|x<n>`) now counts 30-minute
+slots; omitted = the court's minimum. Fewer than the minimum is refused in `quote_range` (so quote, hold, walk-in, AI and
+WhatsApp all obey it) with `BELOW_MINIMUM_BOOKING_TIME` (400, details `min_booking_minutes`/`min_slots`). Pricing: `price_per_slot`
+is still the price of the court's own unit (`slot_minutes`), so one 30-minute slot costs `price * 30 / slot_minutes` (floodlight
+surcharge and the court/pricing-rule advance scale the same way) and a 60-minute booking on a 60-minute court costs exactly
+what it always did; peak windows are evaluated per 30-minute slot, so a booking that crosses a boundary is charged slot by
+slot. A 90-minute court's slots are thirds: `SlotOut.price_exact`/`advance_exact` (never serialized) carry the un-rounded value
+and `quote_range` rounds the SUM once, so 90 minutes is exactly 1000.00 not 999.99. Availability/quote/summary responses carry
+`slot_minutes` = 30 (the grid), `min_booking_minutes`, `min_slots`. "Open" on the month calendar, `available_slots_today` and the
+assistant's `check_availability` means `startable_slots`: a free, unstarted slot that begins a run of `min_slots` free,
+back-to-back slots (a lone free half hour on a 60-minute court is not bookable); the assistant lists each such start as the
+whole minimum booking ("6:30 PM to 7:30 PM", priced as that booking). `courts_bookable_at` defaults to the minimum and accepts
+any multiple of 30 at or above it. `starts_from_price` is unchanged (the price of the minimum booking). Owner walk-in
+(`POST /bookings/walkin`) now takes `slot_count`, runs the same `quote_range` (grid, closing, blackout, already-booked, minimum;
+`enforce_horizon=False`), and creates ONE booking; it also now refuses off-grid/closed/blacked-out starts (it used to accept
+anything, including a 19:17 start and a 2020 date). Walk-in customer identity: `player_name` required (whitespace-only is
+422), `player_phone` optional, validated with the signup rule (+923XXXXXXXXX; `0333 5119042`, `923335119042`, `333-5119042` are
+accepted and normalized), linked to the account with that phone if one exists, else stored on the booking row only (no login is
+created); owner Today / ledger show `booking.player_name`. COMPAT: an app build from before this change sends `slot_count` in
+old-slot units (1 = one hour on a 60-minute court) and would get BELOW_MINIMUM_BOOKING_TIME or a shorter booking; ship web and
+the mobile EAS build together. Known gap: waitlist "Notify me" still keys on a booking's FIRST slot only. Tests:
+`tests/test_grid_min_slots.py` (exact numbers), plus the existing availability/overnight/month/venue-filter/AI suites updated.
+
 **SECTION 32 PART 10 (built and tested 2026-09-24, branch `section-32-part-10`, NOT merged to `main`, NOT deployed).**
 Manual refunds (no payment gateway) reuse `payment_disputes` (Section 23 finding #5 / Section 24 finding #13) rather
 than a new table -- migration `a3f7c9d2e185` adds `refund_amount`/`refund_status`/`refunded_amount`/`refund_reference`/
