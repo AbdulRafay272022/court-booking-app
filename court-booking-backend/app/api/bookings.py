@@ -27,7 +27,9 @@ from app.schemas.booking import (
 )
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
+from app.services import slot_compat
 from app.services.player_name import clean_player_name
+from app.services.slot_compat import LegacySlotUnits
 from app.services.venue_service import VenueService
 from app.services.waitlist_service import WaitlistService
 
@@ -36,17 +38,26 @@ router = APIRouter(prefix="/bookings", tags=["bookings"])
 
 @router.post("/hold", response_model=BookingHoldResponse, status_code=status.HTTP_201_CREATED)
 async def hold_booking(
-    payload: BookingHoldIn, db: DbSession, settings: AppSettings, user: CurrentUser
+    payload: BookingHoldIn, db: DbSession, settings: AppSettings, user: CurrentUser, legacy: LegacySlotUnits
 ) -> BookingHoldResponse:
     service = BookingService(db, settings)
+    named_court = await db.get(Court, payload.court_id)
+    # TRANSITION (delete with slot_compat.py): a request without `X-Slot-Grid: 30` is an app build from before the 30-minute
+    # grid; its `slot_count` counts slots of the court's own length (omitted = 1), so convert it before the one real code path.
+    slot_count = payload.slot_count
+    if legacy and named_court is not None:
+        slot_count = slot_compat.to_new_slot_count(named_court, payload.slot_count)
     # The name the player gave in the chat (same rule as the AI tools and the WhatsApp path); a court/venue/sport word
     # or a blank is dropped and the account's own name is used.
     player_name = None
-    if payload.player_name:
-        named_court = await db.get(Court, payload.court_id)
-        if named_court is not None:
-            player_name = await clean_player_name(db, named_court, payload.player_name)
-    booking = await service.create_hold(user, payload.court_id, payload.starts_at, payload.slot_count, player_name)
+    if payload.player_name and named_court is not None:
+        player_name = await clean_player_name(db, named_court, payload.player_name)
+    # `name_is_own` only has effect together with a name that survived cleaning; the account name is saved inside create_hold,
+    # in the same transaction as the hold (never for a proposal alone, never over an existing name).
+    booking = await service.create_hold(
+        user, payload.court_id, payload.starts_at, slot_count, player_name,
+        legacy_units=legacy, name_is_own=payload.name_is_own,
+    )
 
     court = await db.get(Court, booking.court_id)
     payment_instructions = None
@@ -73,10 +84,12 @@ async def hold_booking(
 
 @router.post("/walkin", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 async def create_walkin_booking(
-    payload: WalkInBookingIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+    payload: WalkInBookingIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable, legacy: LegacySlotUnits
 ) -> BookingResponse:
     """Owner/staff records a booking made by phone or at the counter -- cash
-    already collected, so it's booked immediately with no hold or proof."""
+    already collected, so it's booked immediately with no hold or proof. A start whose 30-minute slot has already ended is
+    refused (WALKIN_IN_PAST); the slot in progress is allowed. TRANSITION: a legacy request counts `slot_count` in the
+    court's own slot length (omitted = 1)."""
     court = await db.get(Court, payload.court_id)
     if court is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Court not found")
@@ -92,7 +105,8 @@ async def create_walkin_booking(
         amount_paid=payload.amount_paid,
         recorded_by=owner,
         method=payload.method,
-        slot_count=payload.slot_count,
+        slot_count=slot_compat.to_new_slot_count(court, payload.slot_count) if legacy else payload.slot_count,
+        legacy_units=legacy,
     )
     return BookingResponse(booking=BookingOut.model_validate(booking))
 

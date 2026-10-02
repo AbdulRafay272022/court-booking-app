@@ -1,5 +1,12 @@
 const API_PREFIX = "/api/v1";
 
+/** Sent on EVERY request: tells the backend this client speaks the fixed 30-minute grid (`slot_count` counts 30-minute slots,
+ * slots are 30 minutes long). A request without it is treated as an app build from before that change and gets the old
+ * per-court-slot-length units. TRANSITION: the backend's compat layer (app/services/slot_compat.py) goes away once the new
+ * build is out everywhere, but keep sending the header; it is harmless. */
+export const SLOT_GRID_HEADER = "X-Slot-Grid";
+export const SLOT_GRID_VALUE = "30";
+
 // No request here previously had any timeout at all -- on the patchy
 // 2G/4G this app targets, a stalled fetch (or the payment-proof XHR
 // upload) would spin indefinitely with the player unsure if their
@@ -94,7 +101,7 @@ export function createApiClient(config: ApiClientConfig) {
       try {
         const res = await fetchWithTimeout(
           `${config.baseUrl}${API_PREFIX}/auth/refresh`,
-          { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+          { method: "POST", headers: { Authorization: `Bearer ${token}`, [SLOT_GRID_HEADER]: SLOT_GRID_VALUE } },
           DEFAULT_TIMEOUT_MS,
         );
         if (!res.ok) return res.status >= 500 ? ("network" as const) : ("rejected" as const);
@@ -122,7 +129,10 @@ export function createApiClient(config: ApiClientConfig) {
   async function request<T>(path: string, options: RequestInit = {}, opts: RequestOpts = {}): Promise<T> {
     const token = opts.skipAuth ? null : await config.getToken();
     const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
-    const headers: Record<string, string> = { ...(options.headers as Record<string, string> | undefined) };
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string> | undefined),
+      [SLOT_GRID_HEADER]: SLOT_GRID_VALUE,
+    };
     if (!isFormData && options.body !== undefined && !("Content-Type" in headers)) {
       headers["Content-Type"] = "application/json";
     }
@@ -172,6 +182,7 @@ export function createApiClient(config: ApiClientConfig) {
         xhr.open("POST", url);
         xhr.timeout = UPLOAD_TIMEOUT_MS;
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.setRequestHeader(SLOT_GRID_HEADER, SLOT_GRID_VALUE);
         if (xhr.upload && onProgress) {
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) onProgress(uploadProgressFraction(e.loaded, e.total));
@@ -224,7 +235,10 @@ export function createApiClient(config: ApiClientConfig) {
   /** For non-JSON responses (e.g. CSV export) — returns the raw response body as text. */
   async function requestText(path: string, options: RequestInit = {}): Promise<string> {
     const token = await config.getToken();
-    const headers: Record<string, string> = { ...(options.headers as Record<string, string> | undefined) };
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string> | undefined),
+      [SLOT_GRID_HEADER]: SLOT_GRID_VALUE,
+    };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     const response = await fetchWithTimeout(

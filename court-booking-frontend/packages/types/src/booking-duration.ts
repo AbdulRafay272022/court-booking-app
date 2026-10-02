@@ -131,3 +131,25 @@ export function cancellationPolicyText(
   }
   return "You can cancel any time before your booking starts.";
 }
+
+/**
+ * The slots the owner walk-in screen OFFERS (mirrors the backend rule, error WALKIN_IN_PAST): a slot whose 30 minutes have
+ * already ended is not offered; the slot in progress (started, not ended) still is, because owners log people who have just
+ * arrived. Judged by the real instant (`ends_at` against `now`), so an overnight court's 1:00 AM slot, which belongs to the
+ * PREVIOUS schedule day, is judged by when it actually happens.
+ *
+ * `todaySlots` is the schedule day being viewed. For TODAY (`includeYesterdayTail`) the previous schedule day's after-midnight
+ * slots are added first: at 1:10 AM an overnight court is still open on yesterday's schedule, and its 1:00 AM slot is the one
+ * in progress. A date picker that never goes before today still reaches it this way.
+ */
+export function walkinSlots(
+  todaySlots: Slot[],
+  previousDaySlots: Slot[] | undefined,
+  includeYesterdayTail: boolean,
+  now: number | Date = Date.now(),
+): Slot[] {
+  const nowMs = typeof now === "number" ? now : now.getTime();
+  const tail = includeYesterdayTail ? (previousDaySlots ?? []).filter((s) => s.after_midnight) : [];
+  return [...tail, ...todaySlots].filter((s) => Date.parse(s.ends_at) > nowMs);
+}
+

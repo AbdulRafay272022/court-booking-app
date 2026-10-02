@@ -20,7 +20,8 @@ from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 from app.services.availability_service import AvailabilityService
 from app.services.payment_ledger_service import recompute_payment_totals
-from app.utils.timezone import format_when
+from app.services.availability_service import GRID_MINUTES
+from app.utils.timezone import format_when, utc_now
 
 logger = structlog.get_logger(__name__)
 
@@ -139,12 +140,18 @@ class BookingService:
         slot_count: int | None = None,
         player_name: str | None = None,
         source: BookingSource | None = None,
+        *,
+        legacy_units: bool = False,
+        name_is_own: bool = False,
     ) -> Booking:
         """Hold `slot_count` consecutive 30-minute slots (Section 32 Part 4c: the grid is always 30 minutes; the court's
         slot length is the MINIMUM booking, so fewer than min_slots is refused; None = that minimum) as ONE booking priced
         across the whole range. `player_name` is the
         name the booking is made under when the player gave one in chat (their own, or a friend's); otherwise the
-        account's name."""
+        account's name. `name_is_own` says that name is the player's OWN: it is then saved on the account (users.name) IF the
+        account has none, in the same transaction as the hold -- so a name is only ever saved when the booking is actually
+        confirmed (the hold is created), never for a mere proposal. Never overwrites a name, never saves a friend's
+        (`name_is_own` False) -- callers pass a name already cleaned by app/services/player_name.py."""
         if starts_at.tzinfo is None:
             # The HTTP endpoint's Pydantic schema (BookingHoldIn) already
             # rejects a naive starts_at before it gets here, but this method
@@ -168,7 +175,9 @@ class BookingService:
         # Every slot in the range must be on the court's real grid, free, and priced; the total is the sum
         # of each slot's own rate. (The pre-check gives a clear message; the database constraints still
         # decide any race.)
-        quote = await self.availability.quote_range(court, starts_at, slot_count)
+        # TRANSITION: `legacy_units` = an app build from before Part 4c; `slot_count` is already in 30-minute slots, only the
+        # money keeps the old whole-slot-window pricing (see app/services/slot_compat.py).
+        quote = await self.availability.quote_range(court, starts_at, slot_count, legacy_units=legacy_units)
         ends_at = quote.ends_at
         price, advance_amount = quote.price, quote.advance_amount
 
@@ -186,6 +195,10 @@ class BookingService:
             balance_due=round(price - advance_amount, 2),
             held_until=datetime.now(timezone.utc) + timedelta(minutes=self.settings.BOOKING_HOLD_MINUTES),
         )
+        if name_is_own and player_name and not (player.name or "").strip():
+            # set BEFORE the insert so it is committed in the very same transaction as the hold: if the slot is taken the
+            # insert rolls back and the name is not saved either
+            player.name = player_name
         await self._insert_booking(booking)
 
         await self.audit.log(
@@ -210,14 +223,27 @@ class BookingService:
         recorded_by: User,
         method: PaymentMethod = PaymentMethod.CASH_AT_VENUE,
         slot_count: int | None = None,
+        legacy_units: bool = False,
     ) -> Booking:
         """The owner/staff records a booking for a customer: `slot_count` consecutive 30-minute slots (None = the court's
         minimum) as ONE booking, validated and priced by the same quote_range as a player's hold (grid, closing time,
         blackouts, already-booked, the court's minimum booking time) but not limited by the player booking horizon.
         `player_name` is who it is for (required); `player_phone` (already normalized to +923XXXXXXXXX by the endpoint
         schema) links the booking to an existing account when one has that number, else the name/phone live on the row."""
+        # No walk-ins in the past. The rule is on the 30-minute grid slot the booking STARTS in: a slot that has started but not
+        # ended is "in progress" and still allowed (owners log people who have just arrived); a slot that has already ended
+        # is refused. Instants are compared in UTC, which is the same instant as Pakistan time, so an overnight court's
+        # 1:00 AM slot (which belongs to the previous schedule day) is judged by when it really happens, not by its date.
+        if starts_at.tzinfo is not None and starts_at + timedelta(minutes=GRID_MINUTES) <= utc_now():
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.WALKIN_IN_PAST,
+                "That time has already passed. A walk-in can be recorded for the slot happening now or a later one.",
+            )
         court = await self._load_active_court(court_id)
-        quote = await self.availability.quote_range(court, starts_at, slot_count, enforce_horizon=False)
+        quote = await self.availability.quote_range(
+            court, starts_at, slot_count, enforce_horizon=False, legacy_units=legacy_units
+        )
         ends_at = quote.ends_at
         price = quote.price
 

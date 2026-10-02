@@ -36,6 +36,9 @@ class BookingHoldIn(BaseModel):
     # The name the booking is made under when the player gave one in the chat (their own, or a friend's). Optional:
     # blank/whitespace means "none", and the account's own name is used.
     player_name: str | None = Field(default=None, max_length=PLAYER_NAME_MAX_LENGTH)
+    # True when `player_name` is the player's OWN name (not a friend's): it is then saved on their account IF it has no name,
+    # at the moment this hold is created (never when merely proposed). Comes from the assistant's confirm button.
+    name_is_own: bool = False
 
     @field_validator("player_name", mode="before")
     @classmethod

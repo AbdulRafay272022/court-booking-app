@@ -884,7 +884,10 @@ async def test_assistant_asks_a_nameless_player_for_a_name_once_before_proposing
     confirm = next(a for a in result2.actions if a.type == "confirm_booking")
     assert confirm.data["player_name"] == "Ali"
     await db_session.refresh(guest)
-    assert guest.name == "Ali"  # saved on the empty account name
+    # owner decision: a PROPOSAL only records the intent; users.name is saved when the hold is created (see
+    # tests/test_name_saved_on_confirmation.py), so the account is still empty here
+    assert confirm.data["name_is_players_own"] is True
+    assert guest.name is None
 
     # an existing account name is NEVER overwritten, and a friend's name is never saved on the account
     sara = await make_user("+923014300004", role=UserRole.PLAYER, name="Sara Ahmed")

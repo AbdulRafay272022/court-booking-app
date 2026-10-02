@@ -833,6 +833,21 @@ per-court price field reads "Per <minimum> (PKR)". The venue-setup preview count
 `apps/web` (so no other agent's `.next` is touched); the assistant reply was stubbed with `page.route` because no model key
 exists locally (the Yes button's hold, the booking, payment proof and owner approval were real).
 
+## Section 32, Part 4d -- legacy-build compat header, name-on-confirm, no past walk-ins (2026-10-02, not deployed)
+
+- **`X-Slot-Grid: 30` on every request** (`packages/api-client/src/client.ts`: `request`, `requestText`, `requestUpload` (XHR) and the
+  silent refresh; constants `SLOT_GRID_HEADER`/`SLOT_GRID_VALUE`). Web and mobile both use this client, so both send it. A request
+  without it is treated by the backend as an old app build (pre-30-minute-grid units; backend CLAUDE.md Part 4d). Keep sending it.
+  Side effect on web: it is a non-simple header, so even public cross-origin GETs now preflight (cached 600 s by the server).
+- **Name on confirm:** `HoldBookingInput.name_is_own` (packages/types); web `app/booking/[id]/chat/page.tsx` and mobile
+  `app/(player)/booking/[id]/chat.tsx` pass `name_is_own: true` when the Yes button's `action.data.name_is_players_own === true`
+  and a name is present. The server saves the name on the account only when the hold is created.
+- **No past walk-ins:** `walkinSlots(todaySlots, previousDaySlots, includeYesterdayTail, now)` in `packages/types/src/booking-duration.ts`
+  (tests: `walkin-slots.test.ts`) drops slots whose `ends_at` has passed (the in-progress slot stays) and, for the Today tab, prepends
+  the previous schedule day's after-midnight slots (an overnight court at 1:10 AM). Web `app/dashboard/owner/walkin/page.tsx` and
+  mobile `app/(owner)/walkin.tsx` use it, with a 30 s "now" tick; the date picker (`pktDayTabs(7)`) starts at today (PKT). New error
+  code `WALKIN_IN_PAST` (types `errors.ts`, both `lib/error-messages.ts`); the screens show the server message and reset the selection.
+
 ## Section 32, Part 4b -- calendar-first venue page (2026-09-23, branch `section-32-part-4b`, not merged)
 
 Replaces the old page-level week strip + side-by-side court slot lists with the owner's "Part 4b UPDATE"

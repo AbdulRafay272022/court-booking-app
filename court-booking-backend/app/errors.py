@@ -49,6 +49,8 @@ class ErrorCode:
     INVALID_DURATION = "INVALID_DURATION"  # Section 32 Part 4: a booking length the court can't give
     # Section 32 Part 4c: fewer 30-minute slots than the court's minimum booking time (courts.slot_minutes)
     BELOW_MINIMUM_BOOKING_TIME = "BELOW_MINIMUM_BOOKING_TIME"
+    # An owner walk-in whose 30-minute start slot has already ended (the slot in progress is still allowed)
+    WALKIN_IN_PAST = "WALKIN_IN_PAST"
     BOOKING_ALREADY_CANCELLED = "BOOKING_ALREADY_CANCELLED"
     INVALID_CHECKIN_CODE = "INVALID_CHECKIN_CODE"
     TOO_EARLY_FOR_NO_SHOW = "TOO_EARLY_FOR_NO_SHOW"  # Section 32 Part 9: owner manual no-show, before the grace window

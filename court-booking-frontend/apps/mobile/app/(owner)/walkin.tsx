@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
-import { durationChoices, formatDuration, isValidPkMobile, minSlotsFor } from "@court-booking/types";
+import { addDays, durationChoices, formatDuration, isValidPkMobile, minSlotsFor, walkinSlots } from "@court-booking/types";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTime, formatTimeRange, pktDayTabs } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
@@ -20,6 +20,10 @@ import { Chip, FieldLabel, PrimaryButton, TextField } from "./venue-setup/_compo
  * time is selected for you and cannot be shortened below it. The total comes from the server's quote, and Save creates ONE
  * booking. The customer's name is required; the phone is optional and links the booking to an existing account when it
  * matches one (otherwise the name lives on the booking).
+ *
+ * No walk-ins in the past: the date picker starts at TODAY (Pakistan calendar day) and, for today, slots that have already
+ * ended are not offered (`walkinSlots`); the slot in progress still is. The server enforces the same rule (WALKIN_IN_PAST)
+ * and its message is shown if a stale screen still gets it.
  */
 export default function WalkInScreen() {
   const params = useLocalSearchParams<{ courtId?: string; startsAt?: string }>();
@@ -57,7 +61,23 @@ export default function WalkInScreen() {
     enabled: !!courtId,
   });
 
-  const slots = availabilityQuery.data?.slots ?? [];
+  // an overnight court at 1:10 AM is still on YESTERDAY's schedule: its after-midnight slots are today's earliest ones
+  const tailQuery = useQuery({
+    queryKey: ["court-availability", courtId, addDays(date, -1)],
+    queryFn: () => api.availability.forCourtOnDate(courtId!, addDays(date, -1)),
+    placeholderData: undefined,
+    enabled: !!courtId && dateIdx === 0,
+  });
+  // "now" for the past-slot rule, refreshed every 30 s so a screen left open stops offering a slot once it has ended
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const slots = useMemo(
+    () => walkinSlots(availabilityQuery.data?.slots ?? [], tailQuery.data?.slots, dateIdx === 0, nowMs),
+    [availabilityQuery.data, tailQuery.data, dateIdx, nowMs],
+  );
   const court = courts.find((c) => c.id === courtId);
   const minSlots = minSlotsFor(availabilityQuery.data?.min_booking_minutes ?? court?.slot_minutes ?? 60);
   const startIndex = startsAt ? slots.findIndex((s) => s.starts_at === startsAt) : -1;
@@ -146,6 +166,10 @@ export default function WalkInScreen() {
         Alert.alert("Time just taken", "Part of that time was just booked. Pick another.");
         reset();
         availabilityQuery.refetch();
+      } else if (e instanceof ApiError && e.code === "WALKIN_IN_PAST") {
+        Alert.alert("That time has passed", e.message || friendlyErrorMessage(e)); // the server's own words
+        reset();
+        setNowMs(Date.now());
       } else {
         Alert.alert("Couldn't save booking", friendlyErrorMessage(e));
       }

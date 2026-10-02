@@ -49,6 +49,9 @@ export interface HoldBookingInput {
   slot_count?: number;
   /** The name the booking is made under when the player gave one in the chat (their own, or a friend's). Omit to use the account's name. */
   player_name?: string;
+  /** True when `player_name` is the player's OWN name (the confirm button's `name_is_players_own`): the server then saves it
+   * on their account IF the account has no name, when this hold is created. Never for a friend's name. */
+  name_is_own?: boolean;
 }
 
 export interface HoldBookingOut {

@@ -250,9 +250,48 @@ anything, including a 19:17 start and a 2020 date). Walk-in customer identity: `
 422), `player_phone` optional, validated with the signup rule (+923XXXXXXXXX; `0333 5119042`, `923335119042`, `333-5119042` are
 accepted and normalized), linked to the account with that phone if one exists, else stored on the booking row only (no login is
 created); owner Today / ledger show `booking.player_name`. COMPAT: an app build from before this change sends `slot_count` in
-old-slot units (1 = one hour on a 60-minute court) and would get BELOW_MINIMUM_BOOKING_TIME or a shorter booking; ship web and
-the mobile EAS build together. Known gap: waitlist "Notify me" still keys on a booking's FIRST slot only. Tests:
+old-slot units (1 = one hour on a 60-minute court); that is served by the TRANSITION layer below (Part 4d). Known gap: waitlist "Notify me" still keys on a booking's FIRST slot only. Tests:
 `tests/test_grid_min_slots.py` (exact numbers), plus the existing availability/overnight/month/venue-filter/AI suites updated.
+
+**SECTION 32 PART 4d (built and tested 2026-10-02, same branch, NO schema change): legacy slot units, name-on-confirm, no past walk-ins.**
+1. **TRANSITION: delete once the new EAS build is out everywhere -- legacy (pre-30-minute-grid) app builds.** A request WITHOUT the
+header `X-Slot-Grid: 30` is LEGACY (`app/services/slot_compat.py`, `LegacySlotUnits` dependency); the new web/mobile api-client
+(`packages/api-client/src/client.ts`) sends it on every request. ONE implementation stays (the 30-minute logic); legacy is a thin
+adapter: legacy `slot_count` (omitted = 1) x `slot_minutes/30` -> 30-minute slots (`to_new_slot_count`) for `POST /bookings/hold`,
+`POST /bookings/walkin` and `GET /courts/{id}/quote`; legacy RESPONSES are re-derived from the real 30-minute grid
+(`legacy_day_slots`: slots of the court's own length from opening time, `available` only if every 30-minute part is free, status of
+the covering booking otherwise, `is_mine`/`booking_id`/`held_until`/blocked `reason` carried, a whole booking shows its own price)
+for `GET /courts/{id}/availability` (day and range), `GET /venues/{id}/availability` and the month summary (`slot_minutes` = the
+court's length, `open_slots` = available unstarted old slots); quote returns `slot_count` in old units and `slot_minutes` = court
+length; booking objects carry real `starts_at`/`ends_at` (no durations to convert). Legacy MONEY is the pre-change rule (the slot is
+priced by the one rule that contains its WHOLE court-length window, so a peak boundary inside an old slot is charged as before),
+via `quote_range(..., legacy_units=True)` -> `slot_compat.legacy_range_price`; the 30-minute validation (grid, closing, blackout,
+taken, cap) is shared. The month summary sets `Vary: X-Slot-Grid` (it is publicly cacheable). The in-app assistant's Yes button:
+`POST /chat/message` converts the stored action's `slot_count` to old units for a legacy caller (an old build sends it straight back
+to the hold) and omits the confirm/decline buttons when the length is not a whole number of old slots (90 min on a 60-min court;
+typing "yes" still books it); the stored message keeps the real count. WhatsApp/AI/webhooks are server-side and untouched.
+Not adapted (cosmetic): `available_slots_today` on the venue list counts new startable starts; the venue filter `start_time`
+accepts any 30-minute start for a legacy caller (more permissive, still truthful). CORS: `allow_headers=["*", "X-Slot-Grid"]`
+(Starlette echoes the requested headers; preflight verified live). Tests: `tests/test_legacy_slot_units.py` (OLD assertions from
+e0da708 run through `legacy_client`, the conftest fixture without the header; the default `client` fixture now sends
+`X-Slot-Grid: 30`). To delete the layer: remove slot_compat.py, the `legacy`/`legacy_units` branches marked TRANSITION in
+api/availability.py, api/bookings.py, api/chat.py, availability_service.py (`get_day_slots`, `month_summary`, `quote_range`),
+booking_service.py (`create_hold`/`create_walkin` `legacy_units`), the `legacy_client` fixture and the test file.
+2. **A player's own name is saved on `users.name` only when the booking is CONFIRMED** (the hold is created), never when proposed.
+`propose_booking_confirmation` stores `player_name` + `name_is_players_own` in the confirm action data; `BookingService.create_hold(...,
+name_is_own=True)` sets `users.name` (only if empty, in the same transaction as the hold, so a refused/taken slot saves nothing).
+Callers: WhatsApp Yes button / typed yes (`webhooks._proposed_player_name` returns `(name, own)`), the model-driven `hold_slot`
+(the gate copies name + flag from the confirmed proposal), and the in-app Yes button (`BookingHoldIn.name_is_own`, sent by the
+web/mobile chat from `action.data.name_is_players_own`). Same rules: `clean_player_name` (court/venue/sport/city words dropped),
+never overwrite, never a friend's. A legacy app build does not send `name_is_own`, so it does not save the name. Tests:
+`tests/test_name_saved_on_confirmation.py`.
+3. **No past walk-ins.** `create_walkin` raises `WALKIN_IN_PAST` (400) when the 30-minute grid slot the booking starts in has
+already ENDED (`starts_at + 30 min <= now`). The slot in progress is still allowed (owners log people who just arrived). Instants
+are compared in UTC (= the same instant as PKT), so an overnight court's 1:00 AM slot (previous schedule day) is judged by when it
+happens. Checked before the grid validation. Web/mobile walk-in: the date picker starts at today (PKT), slots that have ended are
+not offered (`walkinSlots` in packages/types, which also adds the previous schedule day's after-midnight tail on the Today tab), and
+the server message is shown if it still comes back. Tests: `tests/test_walkin_not_in_past.py` (clock frozen via
+`app.services.booking_service.utc_now`).
 
 **SECTION 32 PART 10 (built and tested 2026-09-24, branch `section-32-part-10`, NOT merged to `main`, NOT deployed).**
 Manual refunds (no payment gateway) reuse `payment_disputes` (Section 23 finding #5 / Section 24 finding #13) rather

@@ -136,6 +136,8 @@ export default function BookingChatScreen() {
         starts_at: startsAt,
         slot_count: holdSlotCount,
         ...(holdPlayerName ? { player_name: holdPlayerName } : {}),
+        // The server saves the name on the account only when this hold is created AND it is the player's own name.
+        ...(holdPlayerName && action.data.name_is_players_own === true ? { name_is_own: true } : {}),
       });
       if (payment_instructions) setPaymentInstructions(booking.id, payment_instructions);
       router.replace({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } });

@@ -157,10 +157,13 @@ async def _pending_confirmation(db: DbSession, user: User) -> tuple[str, str, in
     return None
 
 
-async def _proposed_player_name(db: DbSession, user: User, court_id: str, starts_at: str) -> str | None:
-    """The name the player gave for the slot the assistant proposed (its `confirm_booking` action carries
-    `player_name`), found by court + start among the most recent assistant messages -- the Yes button id itself only
-    holds the slot. None when no name was given, so the hold uses the account's own name."""
+async def _proposed_player_name(
+    db: DbSession, user: User, court_id: str, starts_at: str
+) -> tuple[str | None, bool]:
+    """(name, name_is_players_own) the player gave for the slot the assistant proposed (its `confirm_booking` action carries
+    `player_name` and `name_is_players_own`), found by court + start among the most recent assistant messages -- the Yes
+    button id itself only holds the slot. (None, False) when no name was given, so the hold uses the account's own name.
+    The proposal only RECORDS the intent; the name is saved on the account when the hold is created (create_hold)."""
     rows = (
         (
             await db.execute(
@@ -176,7 +179,7 @@ async def _proposed_player_name(db: DbSession, user: User, court_id: str, starts
     try:
         wanted = datetime.fromisoformat(starts_at)
     except ValueError:
-        return None
+        return None, False
     for row in rows:
         for action in (row.meta or {}).get("actions") or []:
             data = action.get("data") or {}
@@ -184,10 +187,11 @@ async def _proposed_player_name(db: DbSession, user: User, court_id: str, starts
                 continue
             try:
                 if datetime.fromisoformat(data["starts_at"]) == wanted:
-                    return data.get("player_name") or None
+                    name = data.get("player_name") or None
+                    return name, bool(name and data.get("name_is_players_own"))
             except (KeyError, ValueError):
                 continue
-    return None
+    return None, False
 
 
 async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: str) -> None:
@@ -327,12 +331,14 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
                 starts_at_str, count_str = starts_at_str.rsplit("|x", 1)
                 slot_count = int(count_str)
             booking_service = BookingService(db, settings)
+            proposed_name, name_is_own = await _proposed_player_name(db, user, court_id_str, starts_at_str)
             booking = await booking_service.create_hold(
                 user,
                 uuid.UUID(court_id_str),
                 datetime.fromisoformat(starts_at_str),
                 slot_count,
-                await _proposed_player_name(db, user, court_id_str, starts_at_str),
+                proposed_name,
+                name_is_own=name_is_own,
             )
             court = await db.get(Court, booking.court_id)
             venue = await db.get(Venue, court.venue_id) if court else None

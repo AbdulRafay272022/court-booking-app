@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
-import { durationChoices, formatDuration, isValidPkMobile, minSlotsFor } from "@court-booking/types";
+import { addDays, durationChoices, formatDuration, isValidPkMobile, minSlotsFor, walkinSlots } from "@court-booking/types";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTime, formatTimeRange, pktDayTabs } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
@@ -19,6 +19,10 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
  * you and can't be shortened below it. The total comes from the server's quote (the same code that prices a player's
  * hold), and Save creates ONE booking for the whole range. The customer's name is required; the phone is optional and,
  * when it matches an existing account, links the booking to that account (otherwise the name lives on the booking).
+ *
+ * No walk-ins in the past: the date picker starts at TODAY (Pakistan calendar day) and, for today, slots that have already
+ * ended are not offered (`walkinSlots`); the slot in progress still is. The server enforces the same rule (WALKIN_IN_PAST)
+ * and its message is shown if a stale screen still gets it.
  */
 export default function OwnerWalkinPage() {
   const { activeVenue } = useOwnerVenues();
@@ -56,7 +60,23 @@ export default function OwnerWalkinPage() {
     enabled: !!courtId,
   });
 
-  const slots = availabilityQuery.data?.slots ?? [];
+  // an overnight court at 1:10 AM is still on YESTERDAY's schedule: its after-midnight slots are today's earliest ones
+  const tailQuery = useQuery({
+    queryKey: ["court-availability", courtId, addDays(date, -1)],
+    queryFn: () => api.availability.forCourtOnDate(courtId!, addDays(date, -1)),
+    placeholderData: undefined,
+    enabled: !!courtId && dateIdx === 0,
+  });
+  // "now" for the past-slot rule, refreshed every 30 s so a screen left open stops offering a slot once it has ended
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const slots = useMemo(
+    () => walkinSlots(availabilityQuery.data?.slots ?? [], tailQuery.data?.slots, dateIdx === 0, nowMs),
+    [availabilityQuery.data, tailQuery.data, dateIdx, nowMs],
+  );
   const court = courts.find((c) => c.id === courtId);
   const minSlots = minSlotsFor(availabilityQuery.data?.min_booking_minutes ?? court?.slot_minutes ?? 60);
   const startIndex = startsAt ? slots.findIndex((s) => s.starts_at === startsAt) : -1;
@@ -144,6 +164,10 @@ export default function OwnerWalkinPage() {
         setMessage("Part of that time was just booked — pick another.");
         reset();
         availabilityQuery.refetch();
+      } else if (e instanceof ApiError && e.code === "WALKIN_IN_PAST") {
+        setMessage(e.message || friendlyErrorMessage(e)); // the server's own words: that slot has already ended
+        reset();
+        setNowMs(Date.now());
       } else {
         setMessage(friendlyErrorMessage(e));
       }

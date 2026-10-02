@@ -477,6 +477,7 @@ class AIChatService:
                 }
             if data.get("player_name") and not tidy_player_name(args.get("player_name")):
                 args["player_name"] = data["player_name"]  # the name given before the proposal survives the "yes"
+                args["name_is_players_own"] = bool(data.get("name_is_players_own"))
         return None
 
     @staticmethod
@@ -744,12 +745,10 @@ class AIChatService:
         return await clean_player_name(self.db, court, raw)
 
     @staticmethod
-    def _remember_own_name(user: User, player_name: str | None, tool_input: dict) -> None:
-        """Save the player's OWN name on their account when it is empty -- e.g. a WhatsApp guest, created with no name.
-        Only when the model says the name is the player's own (never a friend's), and never over an existing name."""
-        own = tool_input.get("name_is_players_own")
-        if player_name and own in (True, "true", "True") and not (user.name or "").strip():
-            user.name = player_name
+    def _name_is_own(tool_input: dict) -> bool:
+        """Did the model say the name is the player's OWN (not a friend's)? The name is only SAVED on the account later, when
+        the hold is actually created (BookingService.create_hold), never when merely proposed."""
+        return tool_input.get("name_is_players_own") in (True, "true", "True")
 
     @staticmethod
     def _quote_result(quote) -> dict:
@@ -779,9 +778,11 @@ class AIChatService:
             "total_price_text": format_pkr(quote.price),
         }
         player_name = await self._clean_player_name(court, tool_input.get("player_name"))
-        self._remember_own_name(user, player_name, tool_input)
         if player_name:
-            data["player_name"] = player_name  # carried to the hold when the player says yes (see webhooks)
+            # carried to the hold when the player says yes (see webhooks / POST /bookings/hold). Only the INTENT is stored
+            # here: users.name is saved when the hold is created from this confirmation, not at proposal time.
+            data["player_name"] = player_name
+            data["name_is_players_own"] = self._name_is_own(tool_input)
         actions.append(ChatAction(type="confirm_booking", label="Yes, book it", data=data))
         actions.append(ChatAction(type="decline", label="No, thanks", data={}))
         return {"ok": True, **self._quote_result(quote)}
@@ -789,13 +790,13 @@ class AIChatService:
     async def _tool_hold_slot(self, user: User, tool_input: dict) -> dict:
         court = await self.availability.get_court(uuid.UUID(tool_input["court_id"]))
         player_name = await self._clean_player_name(court, tool_input.get("player_name"))
-        self._remember_own_name(user, player_name, tool_input)
         booking = await self.booking_service.create_hold(
             user,
             court.id,
             datetime.fromisoformat(tool_input["starts_at"]),
             self._slot_count_for(court, tool_input.get("duration_minutes")),
             player_name,
+            name_is_own=self._name_is_own(tool_input),  # saved on the account only if this hold is created
         )
         return {
             "booking_id": str(booking.id),

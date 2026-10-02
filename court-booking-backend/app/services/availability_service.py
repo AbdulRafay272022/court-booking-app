@@ -280,9 +280,11 @@ class AvailabilityService:
         return slots
 
     async def get_day_slots(
-        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None
+        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None, *, legacy_units: bool = False
     ) -> list[SlotOut]:
-        """The slots of the schedule day that OPENS on `target_date` (see build_day_slots)."""
+        """The slots of the schedule day that OPENS on `target_date` (see build_day_slots).
+        TRANSITION (delete once the new EAS build is out everywhere): `legacy_units=True` returns the same day regrouped into
+        the pre-Part-4c per-court-slot-length slots for an old app build (see app/services/slot_compat.py)."""
         template = await self.db.scalar(
             select(ScheduleTemplate).where(
                 ScheduleTemplate.court_id == court.id,
@@ -297,7 +299,14 @@ class AvailabilityService:
         window_end = (closes_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
         blackouts, bookings = await self._blackouts_and_bookings(court.id, window_start, window_end)
         rules = await self._load_rules(court.id)
-        return self.build_day_slots(court, target_date, template, rules, blackouts, bookings, viewer_id)
+        new_slots = self.build_day_slots(court, target_date, template, rules, blackouts, bookings, viewer_id)
+        if legacy_units:
+            from app.services import slot_compat
+
+            return slot_compat.legacy_day_slots(
+                court, new_slots, rules=rules, target_date=target_date, bookings=bookings, viewer_id=viewer_id
+            )
+        return new_slots
 
     async def _blackouts_and_bookings(
         self, court_id: uuid.UUID, window_start: datetime, window_end: datetime
@@ -318,7 +327,13 @@ class AvailabilityService:
         return list(blackouts_result.scalars().all()), list(bookings_result.scalars().all())
 
     async def month_summary(
-        self, court: Court, month_first: date, booking_horizon_days: int, now_utc: datetime | None = None
+        self,
+        court: Court,
+        month_first: date,
+        booking_horizon_days: int,
+        now_utc: datetime | None = None,
+        *,
+        legacy_units: bool = False,
     ) -> "CourtMonthSummaryOut":
         """The dots on a court's month calendar (Section 32 Part 4b), computed from ONE read of the schedule, prices,
         blackouts and bookings for the whole month (4 queries, not a set per day) by the same grid code as the day
@@ -350,9 +365,17 @@ class AvailabilityService:
                 days.append(DaySummaryOut(date=d, state="beyond", open_slots=0, total_slots=0))
             else:
                 slots = self.build_day_slots(court, d, templates.get(d.weekday()), rules, blackouts, bookings)
+                if legacy_units:
+                    # TRANSITION: an old app build counts per-court-slot-length slots; a legacy slot is available only when
+                    # every 30-minute part is free, so "open" is simply the available, unstarted legacy slots
+                    from app.services import slot_compat
+
+                    slots = slot_compat.legacy_day_slots(court, slots)
+                    open_slots = sum(1 for s in slots if s.status == "available" and s.starts_at > now)
+                else:
+                    # "open" = a start a player could book right now: min_slots(court) free, back-to-back, unstarted slots
+                    open_slots = len(startable_slots(court, slots, now))
                 total = len(slots)
-                # "open" = a start a player could book right now: min_slots(court) free, back-to-back, unstarted slots
-                open_slots = len(startable_slots(court, slots, now))
                 if total == 0 or all(s.status == "blocked" for s in slots):
                     state = "closed"
                 elif open_slots == 0:
@@ -367,7 +390,7 @@ class AvailabilityService:
         return CourtMonthSummaryOut(
             court_id=str(court.id),
             month=month_first.strftime("%Y-%m"),
-            slot_minutes=GRID_MINUTES,
+            slot_minutes=int(court.slot_minutes) if legacy_units else GRID_MINUTES,
             min_booking_minutes=court.slot_minutes,
             min_slots=min_slots(court),
             starts_from_price=self.starts_from_price(court, rules),
@@ -536,6 +559,7 @@ class AvailabilityService:
         slot_count: int | None = None,
         *,
         enforce_horizon: bool = True,
+        legacy_units: bool = False,
     ) -> RangeQuote:
         """Price a booking of `slot_count` consecutive 30-minute slots beginning exactly at `starts_at` (None = the court's
         minimum booking, `min_slots(court)`). Fewer than the minimum is refused with BELOW_MINIMUM_BOOKING_TIME.
@@ -546,6 +570,10 @@ class AvailabilityService:
         boundary (or midnight) is charged slot by slot rather than at the first slot's rate. Raises AppError
         with a plain-language message when the range cannot be booked as asked. The caller still relies on
         the database (unique index + overlap constraint) for the actual race, not on this pre-check.
+
+        TRANSITION (delete once the new EAS build is out everywhere): `legacy_units=True` is a request from an app build from
+        before Part 4c. `slot_count` is ALREADY converted to 30-minute slots by the caller; only the money differs: the price is
+        the old whole-court-slot-window price (app/services/slot_compat.legacy_range_price), not the per-30-minute sum.
         """
         if slot_count is None:
             slot_count = min_slots(court)
@@ -608,6 +636,10 @@ class AvailabilityService:
         # sum the un-rounded per-slot figures and round ONCE: a 90-minute court's slots are thirds of its price
         price = round(sum(s.price if s.price_exact is None else s.price_exact for s in picked), 2)
         advance_amount = round(sum(s.advance_amount if s.advance_exact is None else s.advance_exact for s in picked), 2)
+        if legacy_units:
+            from app.services import slot_compat
+
+            price, advance_amount = await slot_compat.legacy_range_price(self, court, picked)
         # Split-payments kill switch (Section 32 Part 12): when off, a new booking
         # must be paid in full up front -- force the advance to the whole price so
         # there's no balance due. The payment ledger still runs underneath exactly

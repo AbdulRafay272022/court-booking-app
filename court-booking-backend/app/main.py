@@ -94,7 +94,9 @@ def create_app() -> FastAPI:
         allow_origins=settings.ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["*"],
+        # "*" echoes whatever the preflight asks for; X-Slot-Grid (the 30-minute-grid marker every web/mobile request now
+        # carries, see app/services/slot_compat.py) is listed explicitly too so it can never be dropped by a future tightening.
+        allow_headers=["*", "X-Slot-Grid"],
     )
 
     @app.exception_handler(RequestValidationError)
