@@ -48,12 +48,12 @@ export default function WalkInScreen() {
 
   // Section 29 Tier 2 Part 3: a walk-in used to always book against today only -- an owner
   // taking a phone booking for tomorrow (a completely normal case) had no way to do it here.
-  const next7Days = useMemo(
-    () => pktDayTabs(7), // Pakistan calendar days, not the UTC date
+  const nextDays = useMemo(
+    () => pktDayTabs(15), // Pakistan calendar days, not the UTC date
     [],
   );
   const [dateIdx, setDateIdx] = useState(0);
-  const date = next7Days[dateIdx].date;
+  const date = nextDays[dateIdx].date;
   const availabilityQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
     queryFn: () => api.availability.forCourtOnDate(courtId!, date),
@@ -211,7 +211,7 @@ export default function WalkInScreen() {
         <View className="gap-2">
           <FieldLabel>Date</FieldLabel>
           <View className="flex-row flex-wrap gap-2">
-            {next7Days.map((d, i) => (
+            {nextDays.map((d, i) => (
               <Pressable
                 key={i}
                 onPress={() => {

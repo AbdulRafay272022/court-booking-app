@@ -270,7 +270,7 @@ async def set_pricing_rules(
         db.add(PricingRule(court_id=court_id, **rule.model_dump()))
     await db.commit()
 
-    result = await db.execute(select(PricingRule).where(PricingRule.court_id == court_id))
+    result = await db.execute(select(PricingRule).where(PricingRule.court_id == court_id).order_by(PricingRule.priority, PricingRule.created_at))
     return [PricingRuleOut.model_validate(r) for r in result.scalars().all()]
 
 

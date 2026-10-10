@@ -48,9 +48,9 @@ export default function OwnerWalkinPage() {
   // Section 29 Tier 2 Part 3: a walk-in used to always book against today only -- an owner
   // taking a phone booking for tomorrow (a completely normal case) had no way to do it here.
   // Pakistan calendar days (not `new Date()` + the UTC date, which is yesterday until 5 AM in Karachi).
-  const next7Days = useMemo(() => pktDayTabs(7), []);
+  const nextDays = useMemo(() => pktDayTabs(15), []);
   const [dateIdx, setDateIdx] = useState(0);
-  const date = next7Days[dateIdx].date;
+  const date = nextDays[dateIdx].date;
   // The app's query client keeps the PREVIOUS query's data while a new one loads (placeholderData). For a per-day
   // query that shows the OLD day's slots, tappable, under the new day's label -- so opt out: this day has no data until it loads.
   const availabilityQuery = useQuery({
@@ -199,7 +199,7 @@ export default function OwnerWalkinPage() {
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">DATE</span>
         <div className="flex gap-2 flex-wrap">
-          {next7Days.map((d, i) => (
+          {nextDays.map((d, i) => (
             <button
               key={i}
               onClick={() => { setDateIdx(i); reset(); }}
