@@ -18,6 +18,7 @@ import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIco
 import { ErrorState } from "@/components/error-state";
 import { RecordPaymentSheet } from "@/components/record-payment-sheet";
 import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
+import { PremiumNotices } from "@/components/premium-notices";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 
 const STATUS_STYLE: Record<string, { border: string; bg: string }> = {
@@ -143,6 +144,7 @@ export default function OwnerTodayScreen() {
             router.push("/(owner)/venue-setup/register");
           }}
         />
+        {isOwner ? <PremiumNotices /> : null}
         {activeVenue ? (
           <VenueStatusBanner
             venue={activeVenue}

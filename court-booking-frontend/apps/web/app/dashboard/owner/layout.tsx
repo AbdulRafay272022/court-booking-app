@@ -12,6 +12,7 @@ import { useFeatureFlags } from "@/lib/use-feature-flags";
 import { SUPPORT_WHATSAPP_NUMBER, supportWhatsAppUrl } from "@/lib/support";
 import { Logo } from "@/components/auth/logo";
 import { VenuePicker, VenueStatusBanner } from "@/components/owner/venue-nav";
+import { PremiumNotices } from "@/components/owner/premium-notices";
 
 export default function OwnerDashboardLayout({ children }: { children: React.ReactNode }) {
   // Staff accounts (Section 32 Part 12) use the same dashboard with a reduced view.
@@ -150,6 +151,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
       </aside>
 
       <div className="flex-1 min-w-0">
+        {!isStaff ? <PremiumNotices /> : null}
         {activeVenue ? <VenueStatusBanner venue={activeVenue} /> : null}
         {children}
       </div>

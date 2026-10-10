@@ -14,3 +14,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 0 3 * * *      root flock -n /var/lock/cb-digest.lock    docker exec court-booking-backend python -m app.jobs.runner digest    >> /var/log/court-booking-jobs.log 2>&1
 # Nightly slot_stats / growth materialization: 02:00 PKT.
 0 21 * * *     root flock -n /var/lock/cb-growth.lock    docker exec court-booking-backend python -m app.jobs.runner growth    >> /var/log/court-booking-jobs.log 2>&1
+# Owner premium billing: lapse statuses, due invoices, reminders. Daily 03:00 PKT. A no-op until the `owner_billing_enforced`
+# flag is switched on, and safe to repeat.
+0 22 * * *     root flock -n /var/lock/cb-billing.lock   docker exec court-booking-backend python -m app.jobs.runner billing   >> /var/log/court-booking-jobs.log 2>&1

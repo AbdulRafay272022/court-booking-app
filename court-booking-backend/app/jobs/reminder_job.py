@@ -10,6 +10,7 @@ from app.services.feature_flag_service import flag_on
 from app.models.booking import Booking, BookingStatus
 from app.models.court import Court
 from app.models.user import User
+from app.services.entitlement_service import EntitlementService
 from app.services.notification_service import NotificationService
 
 logger = structlog.get_logger(__name__)
@@ -32,6 +33,7 @@ async def send_booking_reminders(session_factory: async_sessionmaker = AsyncSess
         if not await flag_on(db, "digest_reminders"):
             return 0
         notifications = NotificationService(db, settings)
+        entitlements = EntitlementService(db, settings)
         result = await db.execute(
             select(Booking).where(
                 Booking.status == BookingStatus.BOOKED,
@@ -44,6 +46,9 @@ async def send_booking_reminders(session_factory: async_sessionmaker = AsyncSess
             court = await db.get(Court, booking.court_id)
             player = await db.get(User, booking.player_id)
             if court is None or player is None:
+                continue
+            # Owner premium billing: reminders for a venue whose owner has no "Digest & reminders" are not sent.
+            if not await entitlements.court_entitled(court.id, "digest_reminders"):
                 continue
             if await notifications.has_sent(player.id, "booking_reminder", booking.id):
                 continue

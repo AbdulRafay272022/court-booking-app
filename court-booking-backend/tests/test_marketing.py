@@ -25,31 +25,6 @@ async def _open_all_week(make_schedule, court) -> None:
         await make_schedule(court, day_of_week=day, open_time=time(6, 0), close_time=time(23, 0))
 
 
-async def test_free_tier_venue_cannot_send_marketing(
-    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
-):
-    # Free tier's cap is 0, so send_marketing_announcement rejects before
-    # ever touching WhatsApp -- no need to mock that send here.
-    owner = await make_user("+923012000001", role=UserRole.OWNER)
-    player = await make_user("+923012000002", role=UserRole.PLAYER)
-    venue = await make_venue(owner, plan_tier=PlanTier.FREE)
-    court = await make_court(venue)
-    await _open_all_week(make_schedule, court)
-    await make_pricing_rule(court, price_per_slot=1000)
-    player_headers = await make_auth_headers(player)
-    await _hold_and_book(client, court, player_headers)
-
-    owner_headers = await make_auth_headers(owner)
-    resp = await client.post(
-        f"/api/v1/venues/{venue.id}/announcements",
-        headers=owner_headers,
-        json={"title": "Tournament!", "body": "Join our tournament this weekend."},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["sent"] == 0
-    assert resp.json()["skipped_cap_reached"] == 1
-
-
 async def test_pro_tier_venue_can_send_marketing(
     client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
 ):

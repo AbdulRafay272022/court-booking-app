@@ -13,6 +13,7 @@ from app.schemas.owner_billing import (
     OwnerFeatureOut,
     OwnerPremiumOut,
     PaymentInstructionsOut,
+    PremiumNoticeOut,
     SelectionIn,
 )
 from app.services.owner_payment_service import OwnerPaymentService, platform_payment_details
@@ -91,6 +92,13 @@ async def build_owner_premium(db, settings, owner) -> OwnerPremiumOut:
 async def my_premium(db: DbSession, settings: AppSettings, owner: RequireOwner) -> OwnerPremiumOut:
     """The premium features this owner can buy, what they have switched on, their monthly total and their invoices."""
     return await build_owner_premium(db, settings, owner)
+
+
+@router.get("/notices", response_model=list[PremiumNoticeOut])
+async def my_premium_notices(db: DbSession, settings: AppSettings, owner: RequireOwner) -> list[PremiumNoticeOut]:
+    """Banners about premium payments for the dashboard: a period ending within a week, an overdue payment (still working),
+    or a feature that has switched off. Empty while billing is not enforced."""
+    return [PremiumNoticeOut(**n.__dict__) for n in await EntitlementService(db, settings).notices(owner.id)]
 
 
 @router.put("/selection", response_model=OwnerPremiumOut)

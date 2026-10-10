@@ -32,6 +32,7 @@ from app.schemas.venue import (
     VenueUpdateIn,
 )
 from app.services.availability_service import AvailabilityService
+from app.services.entitlement_service import EntitlementService, premium_required_error
 from app.services.notification_service import MarketingSendLimitExceeded, NotificationService
 from app.services.venue_service import VenueService
 from app.utils.timezone import pkt_today
@@ -258,9 +259,11 @@ async def send_announcement(
     venue_id: uuid.UUID, payload: AnnouncementIn, db: DbSession, settings: AppSettings, owner: RequireOwner
 ) -> AnnouncementResultOut:
     """Tier 3 (paid marketing) broadcast to every player who has ever booked
-    at this venue, gated by the venue's plan_tier monthly send cap."""
+    at this venue. Needs the owner's Announcements premium feature; one fixed monthly allowance."""
     service = VenueService(db, settings)
     venue = await service.require_owned_venue(venue_id, owner)
+    if not await EntitlementService(db, settings).owner_entitled(venue.owner_id, "marketing_announcements"):
+        raise premium_required_error("Announcements")
 
     court_ids_result = await db.execute(select(Court.id).where(Court.venue_id == venue_id))
     court_ids = [row[0] for row in court_ids_result.all()]

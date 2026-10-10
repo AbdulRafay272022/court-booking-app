@@ -17,7 +17,8 @@ from app.models.payment import Payment
 from app.models.payment_entry import PaymentEntry
 from app.models.stats import SlotStats
 from app.models.user import User
-from app.models.venue import PlanTier, Venue
+from app.models.venue import Venue
+from app.services.entitlement_service import EntitlementService, premium_required_error
 from app.services.availability_service import AvailabilityService
 from app.services.feature_flag_service import flag_on
 from app.services.payment_service import PaymentService, build_payment_checks
@@ -40,7 +41,6 @@ from app.schemas.admin import OwnerRefundOut  # Section 32 Part 10: "Refunds to 
 OUTSTANDING_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED)
 
 REVENUE_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED)
-GROWTH_TIERS = (PlanTier.PRO, PlanTier.BUSINESS)
 
 
 class OwnerDashboardService:
@@ -540,21 +540,19 @@ class OwnerDashboardService:
         # The screen already handles an empty list ("check back in a few weeks").
         if not await flag_on(self.db, "growth_suggestions"):
             return GrowthOut(underbooked_slots=[], computed_at=pkt_today())
+        # Owner premium billing replaced the old plan_tier (Pro/Business) gate.
+        entitled = await EntitlementService(self.db).owner_entitled(owner.id, "growth_suggestions")
         if venue_id is not None:
             venue = await self.db.get(Venue, venue_id)
             if venue is None or venue.owner_id != owner.id:
                 raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_VENUE_OWNER, "Not your venue")
-            if venue.plan_tier not in GROWTH_TIERS:
-                raise AppError(
-                    status.HTTP_403_FORBIDDEN,
-                    ErrorCode.FORBIDDEN,
-                    "Growth insights require a Pro plan or higher",
-                )
+            if not entitled:
+                raise premium_required_error("Growth suggestions")
             venues = [venue]
+        elif not entitled:
+            venues = []
         else:
-            result = await self.db.execute(
-                select(Venue).where(Venue.owner_id == owner.id, Venue.plan_tier.in_(GROWTH_TIERS))
-            )
+            result = await self.db.execute(select(Venue).where(Venue.owner_id == owner.id))
             venues = list(result.scalars().all())
 
         today = pkt_today()

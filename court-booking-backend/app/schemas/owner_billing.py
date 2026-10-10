@@ -75,6 +75,13 @@ class OwnerPremiumOut(BaseModel):
     invoices: list[InvoiceOut]
 
 
+class PremiumNoticeOut(BaseModel):
+    level: str  # info (ends within 7 days) | urgent (overdue, still working) | off (switched off)
+    feature_key: str
+    label: str
+    message: str
+
+
 class SelectionIn(BaseModel):
     # The complete set of premium features the owner wants ON. Anything enabled and left out is cancelled.
     feature_keys: list[str] = Field(default_factory=list, max_length=20)

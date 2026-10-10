@@ -24,6 +24,7 @@ from app.services.ai.schemas import PaymentExtractionValidationError
 from app.services.ai.usage import log_ai_usage
 from app.services.audit_service import AuditService
 from app.services.booking_service import BookingService, recompute_reliability
+from app.services.entitlement_service import EntitlementService
 from app.services.feature_flag_service import flag_on
 from app.services.waitlist_service import WaitlistService
 from app.utils.encryption import decrypt_json
@@ -241,6 +242,7 @@ class PaymentService:
         self.audit = AuditService(db)
         self.booking_service = BookingService(db, settings)
         self.waitlist_service = WaitlistService(db, settings)
+        self.entitlements = EntitlementService(db, settings)
 
     @staticmethod
     def _parse_ocr_timestamp(raw: str | None) -> datetime | None:
@@ -285,7 +287,7 @@ class PaymentService:
         return naive_pkt_to_utc(parsed)
 
     async def _extract_payment_proof(
-        self, proof_bytes: bytes, content_type: str, expected_amount: float
+        self, proof_bytes: bytes, content_type: str, expected_amount: float, *, entitled: bool = True
     ) -> PaymentExtraction:
         """Vision call via whichever provider AI_VISION_PROVIDER (or
         AI_PROVIDER) selects -- Section 21. Mirrors the pre-Section-21
@@ -297,6 +299,11 @@ class PaymentService:
         # auto-approve is blocked, and the owner reviews the screenshot by eye --
         # the pre-Part-7 behavior.
         if not await flag_on(self.db, "ocr_verification"):
+            return _UNCONFIGURED_EXTRACTION
+        # Owner premium billing: a venue whose owner has not got "AI payment verification" gets the same manual-review
+        # fallback as the global switch being off (no billed vision call). `entitled` is False only for a player-side
+        # proof at such a venue; the platform's own owner-billing proofs always read.
+        if not entitled:
             return _UNCONFIGURED_EXTRACTION
         try:
             vision = get_vision_provider(self.settings)
@@ -399,7 +406,12 @@ class PaymentService:
         proof_key = await upload_private_proof(proof_bytes, filename, content_type)
         proof_hash = perceptual_hash(proof_bytes)
 
-        extraction = await self._extract_payment_proof(proof_bytes, content_type, expected_amount)
+        extraction = await self._extract_payment_proof(
+            proof_bytes,
+            content_type,
+            expected_amount,
+            entitled=await self.entitlements.court_entitled(booking.court_id, "ocr_verification"),
+        )
         ocr_amount = extraction.amount
         if ocr_amount is None:
             ocr_verdict = "unreadable"
@@ -507,6 +519,9 @@ class PaymentService:
         # OFF forces every payment to manual owner review regardless of any venue's
         # own auto_approve_enabled setting.
         if not await flag_on(self.db, "auto_approve"):
+            return False
+        # Owner premium billing: no "Auto-approve payments" for this venue's owner => every payment is reviewed by hand.
+        if not await self.entitlements.court_entitled(booking.court_id, "auto_approve"):
             return False
         if ocr_verdict != "match" or is_duplicate or booking.player_id is None:
             return False
