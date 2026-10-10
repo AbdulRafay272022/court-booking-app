@@ -74,7 +74,13 @@ class Settings(BaseSettings):
     BOOKING_HOLD_MINUTES: int = 15
     # Owner premium billing (only has any effect once the `owner_billing_enforced` feature flag is turned on).
     OWNER_TRIAL_DAYS: int = 15  # each premium feature is free for this many days from the day the owner first enables it
-    OWNER_BILLING_GRACE_DAYS: int = 7  # a feature keeps working this long after its paid period ends
+    OWNER_BILLING_GRACE_DAYS: int = 7
+    # Where owners pay the platform for premium features. Blank until the operator sets them (see .env.example);
+    # with no account number or IBAN the owner screen says payment details are not available yet.
+    PLATFORM_BANK_NAME: str = ""
+    PLATFORM_ACCOUNT_TITLE: str = ""
+    PLATFORM_ACCOUNT_NUMBER: str = ""
+    PLATFORM_IBAN: str = ""  # a feature keeps working this long after its paid period ends
     PAYMENT_REVIEW_HOURS: int = 2  # owner-action expiry after a proof is submitted
     NO_SHOW_GRACE_MINUTES: int = 60  # how long past starts_at before an unchecked-in booking is a no-show
 

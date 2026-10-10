@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api import (
     admin,
+    admin_billing,
     auth,
     availability,
     bookings,
@@ -33,6 +34,7 @@ api_router.include_router(reviews.router)
 api_router.include_router(owner_premium.router)
 api_router.include_router(owners.router)
 api_router.include_router(admin.router)
+api_router.include_router(admin_billing.router)
 api_router.include_router(chat.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(feature_flags.router)
