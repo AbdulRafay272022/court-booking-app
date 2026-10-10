@@ -54,6 +54,16 @@ export interface PaymentChecks {
   time: PaymentCheck;
   bank: PaymentCheck;
   duplicate: PaymentCheck;
+  /** Money-correctness: what the player paid (screenshot amount, else the expected one) -- the editable default
+   * for the approve amount field -- vs what this booking's flow expected (advance, or full price). */
+  paid_amount: number;
+  expected_amount: number;
+  payment_status: "paid_in_full" | "overpaid" | "underpaid";
+  /** Ready-made: "Paid in full" / "Overpaid by PKR 500" / "Underpaid by PKR 500". */
+  payment_status_text: string;
+  /** Amount paid on the booking once approved at `paid_amount` (credit is capped at the price). */
+  total_after_approval: number;
+  balance_after_approval: number;
 }
 
 export interface PaymentProofOut {
@@ -64,4 +74,49 @@ export interface PaymentProofOut {
 export interface ProofUrlOut {
   url: string;
   expires_in: number;
+}
+
+/** What the approval card shows for the amount currently typed into the editable "amount received" field.
+ * Mirrors the backend's `build_payment_summary` (which computes the same for the pre-filled default): compares the
+ * amount with the expected amount for this booking's flow, and says where the booking ends up after approval.
+ * The ledger credits at most the booking price; `excess` is what would be queued as a refund owed. */
+export function approvalSummary(
+  checks: Pick<PaymentChecks, "expected_amount" | "paid_amount" | "total_after_approval" | "balance_after_approval">,
+  amount: number,
+): {
+  status: "paid_in_full" | "overpaid" | "underpaid";
+  text: string;
+  creditedNow: number;
+  totalAfter: number;
+  balanceAfter: number;
+  excess: number;
+} {
+  const fmt = (n: number) => `PKR ${Math.round(n).toLocaleString("en-US")}`;
+  const price = checks.total_after_approval + checks.balance_after_approval;
+  const already = Math.max(checks.total_after_approval - Math.min(checks.paid_amount, price), 0);
+  const credited = Math.min(Math.max(amount, 0), price - already);
+  const totalAfter = already + credited;
+  const balanceAfter = Math.max(price - totalAfter, 0);
+  const excess = Math.max(amount - credited, 0);
+  if (amount === checks.expected_amount) {
+    return { status: "paid_in_full", text: "Paid in full", creditedNow: credited, totalAfter, balanceAfter, excess };
+  }
+  if (amount > checks.expected_amount) {
+    return {
+      status: "overpaid",
+      text: `Overpaid by ${fmt(amount - checks.expected_amount)}`,
+      creditedNow: credited,
+      totalAfter,
+      balanceAfter,
+      excess,
+    };
+  }
+  return {
+    status: "underpaid",
+    text: `Underpaid by ${fmt(checks.expected_amount - amount)}`,
+    creditedNow: credited,
+    totalAfter,
+    balanceAfter,
+    excess,
+  };
 }

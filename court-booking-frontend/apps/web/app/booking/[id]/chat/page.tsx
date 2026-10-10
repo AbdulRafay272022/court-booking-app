@@ -10,7 +10,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDate, formatPKR, formatTime, formatTimeRange } from "@/lib/format";
 import { formatDuration } from "@court-booking/types";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
-import type { ChatAction } from "@court-booking/types";
+import { chatActionLabel, type ChatAction } from "@court-booking/types";
 
 interface Turn {
   id: string;
@@ -112,10 +112,15 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
       const holdStartsAt = String(action.data.starts_at ?? startsAt);
       // The Yes button the assistant showed carries the length it quoted; fall back to what was picked before the chat.
       const holdSlotCount = Number(action.data.slot_count ?? slotCount) || 1;
+      // A name the player gave in the chat (their own or a friend's) rides on the Yes button; the server tidies it.
+      const holdPlayerName = typeof action.data.player_name === "string" ? action.data.player_name.trim() : "";
       const { booking, payment_instructions } = await api.bookings.hold({
         court_id: holdCourtId,
         starts_at: holdStartsAt,
         slot_count: holdSlotCount,
+        ...(holdPlayerName ? { player_name: holdPlayerName } : {}),
+        // The server saves the name on the account only when this hold is created AND it is the player's own name.
+        ...(holdPlayerName && action.data.name_is_players_own === true ? { name_is_own: true } : {}),
       });
       if (payment_instructions) setPaymentInstructions(booking.id, payment_instructions);
       router.replace(`/booking/${booking.id}/pay`);
@@ -185,14 +190,14 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
                       key={key}
                       onClick={() => handleAction(turn.id, action)}
                       disabled={!!holdingKey}
-                      className="px-4 h-11 rounded-xl font-bold text-[13.5px] disabled:opacity-50"
+                      className="px-4 min-h-11 py-2 rounded-xl font-bold text-[13.5px] disabled:opacity-50"
                       style={{
                         background: action.type === "confirm_booking" ? "#EF5A2C" : "#FFFFFF",
                         color: action.type === "confirm_booking" ? "#FFFFFF" : "#5C544D",
                         border: action.type === "confirm_booking" ? "none" : "1px solid #E0D9D4",
                       }}
                     >
-                      {isHolding ? "…" : action.label}
+                      {isHolding ? "…" : chatActionLabel(action)}
                     </button>
                   );
                 })}

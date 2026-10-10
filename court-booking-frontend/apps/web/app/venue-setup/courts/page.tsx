@@ -149,7 +149,7 @@ export default function VenueCourtsPage() {
       <Stepper current={2} />
       <div className="flex flex-col gap-1.5">
         <h1 className="text-[26px] font-bold tracking-tight">Your courts and prices</h1>
-        <p className="text-owner-ink-muted text-[15px]">Each court has its own slot length, opening hours and prices. We build its schedule from them.</p>
+        <p className="text-owner-ink-muted text-[15px]">Each court has its own minimum booking time, opening hours and prices. We build its schedule from them.</p>
       </div>
 
       <SectionLabel>Courts</SectionLabel>

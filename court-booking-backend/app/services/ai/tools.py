@@ -45,7 +45,7 @@ BOOKING_TOOLS: list[ToolDefinition] = [
     ToolDefinition(
         name="get_venue_courts",
         description=(
-            "List the courts at a venue (id, name, sport, slot_minutes, and `durations`: the booking lengths "
+            "List the courts at a venue (id, name, sport, slot_minutes = the minimum booking time, and `durations`: the booking lengths "
             "a player can choose on that court, each with a ready-made label)."
         ),
         parameters={
@@ -58,13 +58,20 @@ BOOKING_TOOLS: list[ToolDefinition] = [
         name="check_availability",
         description=(
             "Get the available time slots for a court on a given date. Each slot has a ready-made `label` and "
-            "`price_text`; one slot is one court slot_minutes long (a longer booking takes several in a row)."
+            "`price_text`; slots start every 30 minutes and only start times where the court's minimum booking fits are listed (a longer booking takes several 30-minute slots in a row). "
+            "`date` is the date the booking STARTS on. When the player has named a start time (and an end time), "
+            "pass `start_time` and `end_time` too: the result's `requested_range` then says whether exactly that "
+            "range can be booked (`available`), with its `starts_at`, `duration_minutes`, `label` and price, or an "
+            "`error`. An end at or before the start is the next morning, e.g. 21:00 to 00:00 on the 26th is a "
+            "booking on the 26th that ends at midnight."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "court_id": {"type": "string"},
-                "date": {"type": "string", "format": "date", "description": "YYYY-MM-DD"},
+                "date": {"type": "string", "format": "date", "description": "YYYY-MM-DD, the date the booking starts on"},
+                "start_time": {"type": "string", "description": "Optional. The player's start time on `date`, Pakistan time, e.g. 21:00"},
+                "end_time": {"type": "string", "description": "Optional. The player's end time, e.g. 00:00 for 12 AM / midnight. Never move `date` to the end's date."},
             },
             "required": ["court_id", "date"],
         },
@@ -81,7 +88,7 @@ BOOKING_TOOLS: list[ToolDefinition] = [
             "properties": {
                 "court_id": {"type": "string"},
                 "starts_at": {"type": "string", "format": "date-time", "description": "starts_at of the first slot, copied unchanged from check_availability"},
-                "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of the court's slot_minutes"},
+                "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of 30 and at least the court's slot_minutes (its minimum booking)"},
             },
             "required": ["court_id", "starts_at", "duration_minutes"],
         },
@@ -90,27 +97,37 @@ BOOKING_TOOLS: list[ToolDefinition] = [
         name="propose_booking_confirmation",
         description=(
             "Show the user a Yes/No confirmation for holding a specific court, start time and duration. Call "
-            "this instead of asking them to type a yes/no reply once you have a concrete booking in mind."
+            "this instead of asking them to type a yes/no reply once you have a concrete booking in mind. Your "
+            "message must also state the exact slot (court, sport, date, start to end time, total price). If the "
+            "account has no name on file and the player gave none, ask for the booking name first."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "court_id": {"type": "string"},
                 "starts_at": {"type": "string", "format": "date-time", "description": "ISO 8601 datetime"},
-                "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of the court's slot_minutes. Omit for one slot."},
+                "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of 30 and at least the court's slot_minutes (its minimum booking). Omit for the minimum."},
+                "player_name": {"type": "string", "description": "The name the booking is for: what the player said when you asked (once) 'what name should I put the booking under?', or one they volunteered (their own, or 'for my friend Ali Khan'). Omit when the account already has a name or the player gave none. Never a venue, court, sport or city word."},
+                "name_is_players_own": {"type": "boolean", "description": "true only when player_name is the player's OWN name (so it is saved on their account when it has none); false/omit for a friend's name."},
             },
             "required": ["court_id", "starts_at"],
         },
     ),
     ToolDefinition(
         name="hold_slot",
-        description="Place a hold on a court booking for the current user. Only call after explicit confirmation.",
+        description=(
+            "Place a hold on a court booking for the current user. Only call after the player explicitly confirmed "
+            "an exact slot you stated in your previous message; a bare 'yes' to an unstated or changed slot is not "
+            "confirmation (re-state it via propose_booking_confirmation first)."
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "court_id": {"type": "string"},
                 "starts_at": {"type": "string", "format": "date-time", "description": "ISO 8601 datetime"},
-                "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of the court's slot_minutes. Omit for one slot."},
+                "duration_minutes": {"type": "integer", "description": "How long to play, in minutes; a multiple of 30 and at least the court's slot_minutes (its minimum booking). Omit for the minimum."},
+                "player_name": {"type": "string", "description": "The name the booking is for: what the player said when you asked (once) 'what name should I put the booking under?', or one they volunteered (their own, or 'for my friend Ali Khan'). Omit when the account already has a name or the player gave none. Never a venue, court, sport or city word."},
+                "name_is_players_own": {"type": "boolean", "description": "true only when player_name is the player's OWN name (so it is saved on their account when it has none); false/omit for a friend's name."},
             },
             "required": ["court_id", "starts_at"],
         },

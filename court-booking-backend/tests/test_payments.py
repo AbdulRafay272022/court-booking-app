@@ -77,6 +77,7 @@ async def test_submit_payment_proof_and_approve_confirms_booking(
     assert approve.status_code == 200
     assert approve.json()["payment"]["review_verdict"] == "approved"
     assert approve.json()["booking"]["status"] == "booked"
+    # Unreadable screenshot (no OCR amount) -> credits the expected advance (2000 here: 100% advance rule).
     assert approve.json()["booking"]["amount_paid"] == 2000.0
 
 
@@ -344,6 +345,13 @@ async def test_ocr_match_within_tolerance(
         files={"image": ("proof.jpg", io.BytesIO(_sample_png_bytes()), "image/jpeg")},
     )
     assert submit.json()["payment"]["ocr_verdict"] == "match"
+    # Money-correctness: approving credits what the screenshot showed (2980), not the fixed 3000 advance.
+    approve = await client.post(
+        f"/api/v1/payments/{submit.json()['payment']['id']}/approve",
+        headers=await make_auth_headers(owner),
+    )
+    assert approve.json()["booking"]["amount_paid"] == 2980.0
+    assert approve.json()["booking"]["balance_due"] == 20.0
 
 
 async def test_vision_provider_timeout_degrades_to_manual_review(
@@ -602,6 +610,10 @@ async def test_pending_approvals_includes_the_five_plain_language_checks(
     assert checks["amount"]["verdict"] == "mismatch"
     assert "less than expected" in checks["amount"]["text"]
     assert checks["balance_text"].startswith("Total PKR 3,000.")
+    # Screenshot shows 500 vs 3000 expected -> plain-language status + the position after approval.
+    assert checks["payment_status"] == "underpaid"
+    assert checks["payment_status_text"] == "Underpaid by PKR 2,500"
+    assert checks["total_after_approval"] == 500 and checks["balance_after_approval"] == 2500
     assert checks["time"]["verdict"] == "match"
     assert checks["bank"]["text"].startswith("Paid via Easypaisa")
     assert checks["duplicate"]["verdict"] == "match"

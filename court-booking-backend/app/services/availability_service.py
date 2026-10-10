@@ -28,6 +28,38 @@ MAX_RANGE_DAYS = 28
 # Raised 240 -> 360 (post-batch #8): a real long evening / near-overnight padel or futsal booking needs
 # more than 4 hours. One global cap for now; a per-court override can come later if a venue needs it.
 MAX_BOOKING_MINUTES = 360
+# The ONE slot grid for every court and venue: 30 minutes. A court's own `slot_minutes` (30/60/90/120) is no longer the
+# grid, it is the MINIMUM BOOKING TIME: a booking must span at least `min_slots(court)` consecutive 30-minute slots.
+GRID_MINUTES = 30
+
+
+def min_slots(court: Court) -> int:
+    """How many consecutive 30-minute slots the shortest booking on this court spans (60 min -> 2, 90 -> 3, 120 -> 4)."""
+    return max(1, -(-int(court.slot_minutes) // GRID_MINUTES))
+
+
+def startable_runs(court: Court, slots: list[SlotOut], now: datetime | None = None) -> list[list[SlotOut]]:
+    """The slots of ONE schedule day a player could start a minimum-length booking at: available, back to back with the
+    next `min_slots(court) - 1` slots (all available, no gap), and (when `now` is given) not already started. This is
+    what 'open' means on the month calendar, 'available today' and the assistant's slot list, so a lone 30-minute gap on
+    a 60-minute court never counts as bookable."""
+    need = min_slots(court)
+    out: list[list[SlotOut]] = []
+    for i, s in enumerate(slots):
+        if s.status != "available" or (now is not None and s.starts_at <= now):
+            continue
+        run = slots[i : i + need]
+        if len(run) < need or any(r.status != "available" for r in run):
+            continue
+        if any(run[j].ends_at != run[j + 1].starts_at for j in range(need - 1)):
+            continue
+        out.append(run)
+    return out
+
+
+def startable_slots(court: Court, slots: list[SlotOut], now: datetime | None = None) -> list[SlotOut]:
+    """The first slot of each run in startable_runs."""
+    return [run[0] for run in startable_runs(court, slots, now)]
 
 
 @dataclass(frozen=True)
@@ -42,6 +74,13 @@ class RangeQuote:
     price: float
     advance_amount: float
     slots: list[SlotOut]
+
+
+def _format_minutes(minutes: int) -> str:
+    if minutes < 60:
+        return f"{minutes} minutes"
+    hours = minutes / 60
+    return "1 hour" if hours == 1 else f"{hours:g} hours"
 
 
 class AvailabilityService:
@@ -91,8 +130,15 @@ class AvailabilityService:
         return price
 
     @staticmethod
+    def slot_fraction(court: Court) -> float:
+        """One 30-minute slot as a fraction of the court's priced unit. `pricing_rules.price_per_slot` is the price of ONE
+        court slot (the court's `slot_minutes` = its minimum booking), so a 30-minute slot of a 60-minute-priced court costs
+        half of it and a 60-minute booking costs exactly what it always did."""
+        return GRID_MINUTES / int(court.slot_minutes)
+
+    @staticmethod
     def starts_from_price(court: Court, rules: list[PricingRule]) -> float | None:
-        """The cheapest per-slot price a court advertises: the lowest ACTIVE pricing rule (plus the floodlight surcharge
+        """The cheapest price of the court's minimum booking (one priced unit = `slot_minutes`) it advertises: the lowest ACTIVE pricing rule (plus the floodlight surcharge
         when the court has floodlights, exactly as price_for_rule charges it). None when no active rule exists. The month
         calendar's `starts_from_price` and the venue-list price filter/`min_price` both come from here."""
         prices = [
@@ -154,7 +200,8 @@ class AvailabilityService:
         existing_bookings = [b for b in bookings if b.starts_at < window_end and b.ends_at > window_start]
 
         slots: list[SlotOut] = []
-        duration = timedelta(minutes=court.slot_minutes)
+        duration = timedelta(minutes=GRID_MINUTES)
+        fraction = AvailabilityService.slot_fraction(court)
         day_midnight = datetime.combine(target_date, time.min)
         day_of_week = target_date.weekday()
         slot_start_local = opens_local
@@ -162,11 +209,15 @@ class AvailabilityService:
         while slot_start_local + duration <= closes_local:
             slot_end_local = slot_start_local + duration
             start_min = int((slot_start_local - day_midnight).total_seconds() // 60)
-            rule = AvailabilityService.match_rule_minutes(rules, day_of_week, start_min, start_min + court.slot_minutes)
-            price = AvailabilityService.price_for_rule(rule, court) or 0.0
+            rule = AvailabilityService.match_rule_minutes(rules, day_of_week, start_min, start_min + GRID_MINUTES)
+            # the rule's price is for one court_slot_minutes unit; this 30-minute cell is its proportional share
+            unit_price = AvailabilityService.price_for_rule(rule, court) or 0.0
+            price_exact = unit_price * fraction
+            price = round(price_exact, 2)
             slot_start_dt = (slot_start_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
             slot_end_dt = (slot_end_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
-            advance_amount = AvailabilityService.compute_advance(price, court, rule) if rule else 0.0
+            advance_exact = AvailabilityService.compute_advance(unit_price, court, rule) * fraction if rule else 0.0
+            advance_amount = round(advance_exact, 2)
             after_midnight = slot_start_local.date() > target_date
 
             blackout = next(
@@ -189,6 +240,8 @@ class AvailabilityService:
                         status="blocked",
                         price=round(price, 2),
                         advance_amount=advance_amount,
+                        price_exact=price_exact,
+                        advance_exact=advance_exact,
                         reason=blackout.reason,
                         after_midnight=after_midnight,
                     )
@@ -218,6 +271,8 @@ class AvailabilityService:
                         status="available",
                         price=round(price, 2),
                         advance_amount=advance_amount,
+                        price_exact=price_exact,
+                        advance_exact=advance_exact,
                         after_midnight=after_midnight,
                     )
                 )
@@ -225,9 +280,11 @@ class AvailabilityService:
         return slots
 
     async def get_day_slots(
-        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None
+        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None, *, legacy_units: bool = False
     ) -> list[SlotOut]:
-        """The slots of the schedule day that OPENS on `target_date` (see build_day_slots)."""
+        """The slots of the schedule day that OPENS on `target_date` (see build_day_slots).
+        TRANSITION (delete once the new EAS build is out everywhere): `legacy_units=True` returns the same day regrouped into
+        the pre-Part-4c per-court-slot-length slots for an old app build (see app/services/slot_compat.py)."""
         template = await self.db.scalar(
             select(ScheduleTemplate).where(
                 ScheduleTemplate.court_id == court.id,
@@ -242,7 +299,14 @@ class AvailabilityService:
         window_end = (closes_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
         blackouts, bookings = await self._blackouts_and_bookings(court.id, window_start, window_end)
         rules = await self._load_rules(court.id)
-        return self.build_day_slots(court, target_date, template, rules, blackouts, bookings, viewer_id)
+        new_slots = self.build_day_slots(court, target_date, template, rules, blackouts, bookings, viewer_id)
+        if legacy_units:
+            from app.services import slot_compat
+
+            return slot_compat.legacy_day_slots(
+                court, new_slots, rules=rules, target_date=target_date, bookings=bookings, viewer_id=viewer_id
+            )
+        return new_slots
 
     async def _blackouts_and_bookings(
         self, court_id: uuid.UUID, window_start: datetime, window_end: datetime
@@ -263,7 +327,13 @@ class AvailabilityService:
         return list(blackouts_result.scalars().all()), list(bookings_result.scalars().all())
 
     async def month_summary(
-        self, court: Court, month_first: date, booking_horizon_days: int, now_utc: datetime | None = None
+        self,
+        court: Court,
+        month_first: date,
+        booking_horizon_days: int,
+        now_utc: datetime | None = None,
+        *,
+        legacy_units: bool = False,
     ) -> "CourtMonthSummaryOut":
         """The dots on a court's month calendar (Section 32 Part 4b), computed from ONE read of the schedule, prices,
         blackouts and bookings for the whole month (4 queries, not a set per day) by the same grid code as the day
@@ -271,7 +341,8 @@ class AvailabilityService:
 
         A day is: past (before today) | beyond (after the venue's booking horizon) | closed (no schedule, or every slot
         blocked) | full (nothing open) | few (20% or fewer of the day's slots open, at least 1) | open. "Open" counts
-        slots a player could book right now: available and not already started."""
+        starts a player could book right now: a free, unstarted slot that begins a run of at least the court's minimum
+        booking (min_slots 30-minute slots) with nothing booked or blocked in it. `total_slots` counts the day's 30-minute slots."""
         now = now_utc or datetime.now(timezone.utc)
         today = utc_to_pkt_naive(now).date()
         last_bookable = today + timedelta(days=booking_horizon_days)
@@ -294,8 +365,17 @@ class AvailabilityService:
                 days.append(DaySummaryOut(date=d, state="beyond", open_slots=0, total_slots=0))
             else:
                 slots = self.build_day_slots(court, d, templates.get(d.weekday()), rules, blackouts, bookings)
+                if legacy_units:
+                    # TRANSITION: an old app build counts per-court-slot-length slots; a legacy slot is available only when
+                    # every 30-minute part is free, so "open" is simply the available, unstarted legacy slots
+                    from app.services import slot_compat
+
+                    slots = slot_compat.legacy_day_slots(court, slots)
+                    open_slots = sum(1 for s in slots if s.status == "available" and s.starts_at > now)
+                else:
+                    # "open" = a start a player could book right now: min_slots(court) free, back-to-back, unstarted slots
+                    open_slots = len(startable_slots(court, slots, now))
                 total = len(slots)
-                open_slots = sum(1 for s in slots if s.status == "available" and s.starts_at > now)
                 if total == 0 or all(s.status == "blocked" for s in slots):
                     state = "closed"
                 elif open_slots == 0:
@@ -310,7 +390,9 @@ class AvailabilityService:
         return CourtMonthSummaryOut(
             court_id=str(court.id),
             month=month_first.strftime("%Y-%m"),
-            slot_minutes=court.slot_minutes,
+            slot_minutes=int(court.slot_minutes) if legacy_units else GRID_MINUTES,
+            min_booking_minutes=court.slot_minutes,
+            min_slots=min_slots(court),
             starts_from_price=self.starts_from_price(court, rules),
             booking_horizon_days=booking_horizon_days,
             last_bookable_date=last_bookable,
@@ -327,6 +409,28 @@ class AvailabilityService:
         today = await self.get_day_slots(court, calendar_date, viewer_id=viewer_id)
         return [s for s in previous if s.after_midnight] + [s for s in today if not s.after_midnight]
 
+    async def get_startable_runs_starting_on(
+        self, court: Court, calendar_date: date, now: datetime | None = None
+    ) -> list[list[SlotOut]]:
+        """For each start a minimum-length booking can begin at on this Pakistan calendar date, the `min_slots` slots that
+        booking would cover (so a caller can show 'start to end' and the minimum booking's total price)."""
+        previous = await self.get_day_slots(court, calendar_date - timedelta(days=1))
+        today = await self.get_day_slots(court, calendar_date)
+        return [r for r in startable_runs(court, previous, now) if r[0].after_midnight] + [
+            r for r in startable_runs(court, today, now) if not r[0].after_midnight
+        ]
+
+    async def get_startable_starting_on(
+        self, court: Court, calendar_date: date, now: datetime | None = None
+    ) -> list[SlotOut]:
+        """Like get_slots_starting_on, but only the slots where a minimum-length booking can START (see startable_slots):
+        what the assistant offers and what 'available today' counts."""
+        previous = await self.get_day_slots(court, calendar_date - timedelta(days=1))
+        today = await self.get_day_slots(court, calendar_date)
+        return [s for s in startable_slots(court, previous, now) if s.after_midnight] + [
+            s for s in startable_slots(court, today, now) if not s.after_midnight
+        ]
+
     async def courts_bookable_at(
         self,
         courts: list[Court],
@@ -339,8 +443,8 @@ class AvailabilityService:
         """Which of `courts` a player could genuinely book on the Pakistan calendar date `calendar_date`.
 
         With `start_local` (naive PKT wall-clock) the booking must begin exactly then, for `duration_minutes` (default:
-        the court's own slot length; it must be a whole number of that court's slots, the only lengths quote_range can
-        book). Without it, any slot that starts on the date counts. "Bookable" is judged by the SAME grid code the day
+        the court's minimum booking time; any multiple of 30 minutes that is at least that minimum, the lengths
+        quote_range can book). Without it, any slot that starts on the date counts. "Bookable" is judged by the SAME grid code the day
         view uses (build_day_slots: schedule, closes_next_day, blackouts, live held/payment_submitted/booked bookings),
         plus what quote_range/create_hold enforce: the slot has not started, the start is inside the venue's booking
         horizon (`horizon_days`, by venue id), every slot of a multi-slot range exists and is free with a price, and the
@@ -390,12 +494,13 @@ class AvailabilityService:
         start_utc = pkt_time_to_utc(calendar_date, start_local) if start_local is not None else None
         matched: set[uuid.UUID] = set()
         for court in courts:
-            slot_count = 1
+            slot_count = min_slots(court)
             if duration_minutes is not None:
-                if duration_minutes % court.slot_minutes != 0:
+                # any whole number of 30-minute slots, but never shorter than the court's minimum booking
+                if duration_minutes % GRID_MINUTES != 0 or duration_minutes < court.slot_minutes:
                     continue
-                slot_count = duration_minutes // court.slot_minutes
-            if slot_count < 1 or slot_count * court.slot_minutes > max(MAX_BOOKING_MINUTES, court.slot_minutes):
+                slot_count = duration_minutes // GRID_MINUTES
+            if slot_count < 1 or slot_count * GRID_MINUTES > max(MAX_BOOKING_MINUTES, court.slot_minutes):
                 continue
             tmpls = templates[court.id]
             by_day: dict[date, dict[datetime, SlotOut]] = {}
@@ -415,7 +520,7 @@ class AvailabilityService:
             if start_utc is not None:
                 first_slots = [s for s in first_slots if s.starts_at == start_utc]
             horizon = horizon_days.get(court.venue_id, 90)
-            step = timedelta(minutes=court.slot_minutes)
+            step = timedelta(minutes=GRID_MINUTES)
             for first in first_slots:
                 if first.starts_at <= now or utc_to_pkt_naive(first.starts_at).date() > today + timedelta(days=horizon):
                     continue
@@ -447,25 +552,50 @@ class AvailabilityService:
                 f"You can book up to {horizon} days ahead at this venue (until {last.strftime('%a')}, {last.day} {last.strftime('%b')}).",
             )
 
-    async def quote_range(self, court: Court, starts_at: datetime, slot_count: int = 1) -> RangeQuote:
-        """Price a booking of `slot_count` consecutive slots beginning exactly at `starts_at`.
+    async def quote_range(
+        self,
+        court: Court,
+        starts_at: datetime,
+        slot_count: int | None = None,
+        *,
+        enforce_horizon: bool = True,
+        legacy_units: bool = False,
+    ) -> RangeQuote:
+        """Price a booking of `slot_count` consecutive 30-minute slots beginning exactly at `starts_at` (None = the court's
+        minimum booking, `min_slots(court)`). Fewer than the minimum is refused with BELOW_MINIMUM_BOOKING_TIME.
+        `enforce_horizon=False` is for an owner's own walk-in, which is not limited by the player booking horizon.
 
         Every slot is looked up on the court's real grid (so a range that runs past closing time, or starts
         off the grid, is refused) and priced by its own matching rule, so a booking that crosses a peak-price
         boundary (or midnight) is charged slot by slot rather than at the first slot's rate. Raises AppError
         with a plain-language message when the range cannot be booked as asked. The caller still relies on
         the database (unique index + overlap constraint) for the actual race, not on this pre-check.
+
+        TRANSITION (delete once the new EAS build is out everywhere): `legacy_units=True` is a request from an app build from
+        before Part 4c. `slot_count` is ALREADY converted to 30-minute slots by the caller; only the money differs: the price is
+        the old whole-court-slot-window price (app/services/slot_compat.legacy_range_price), not the per-30-minute sum.
         """
+        if slot_count is None:
+            slot_count = min_slots(court)
         if slot_count < 1:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_DURATION, "Pick at least one slot")
-        await self.require_within_horizon(court, starts_at)
-        if slot_count * court.slot_minutes > max(MAX_BOOKING_MINUTES, court.slot_minutes):
+        if slot_count < min_slots(court):
+            minimum = min_slots(court) * GRID_MINUTES
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.BELOW_MINIMUM_BOOKING_TIME,
+                f"This court needs a minimum booking of {_format_minutes(minimum)}. Pick a longer time.",
+                details={"min_booking_minutes": minimum, "min_slots": min_slots(court), "slot_count": slot_count},
+            )
+        if enforce_horizon:
+            await self.require_within_horizon(court, starts_at)
+        if slot_count * GRID_MINUTES > max(MAX_BOOKING_MINUTES, court.slot_minutes):
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,
                 ErrorCode.INVALID_DURATION,
                 f"A single booking can be at most {MAX_BOOKING_MINUTES // 60} hours long",
             )
-        step = timedelta(minutes=court.slot_minutes)
+        step = timedelta(minutes=GRID_MINUTES)
         by_day: dict[date, list[SlotOut]] = {}
         picked: list[SlotOut] = []
         for i in range(slot_count):
@@ -503,8 +633,13 @@ class AvailabilityService:
                     "No pricing rule covers this slot; ask the venue to configure pricing",
                 )
             picked.append(slot)
-        price = round(sum(s.price for s in picked), 2)
-        advance_amount = round(sum(s.advance_amount for s in picked), 2)
+        # sum the un-rounded per-slot figures and round ONCE: a 90-minute court's slots are thirds of its price
+        price = round(sum(s.price if s.price_exact is None else s.price_exact for s in picked), 2)
+        advance_amount = round(sum(s.advance_amount if s.advance_exact is None else s.advance_exact for s in picked), 2)
+        if legacy_units:
+            from app.services import slot_compat
+
+            price, advance_amount = await slot_compat.legacy_range_price(self, court, picked)
         # Split-payments kill switch (Section 32 Part 12): when off, a new booking
         # must be paid in full up front -- force the advance to the whole price so
         # there's no balance due. The payment ledger still runs underneath exactly
@@ -517,7 +652,7 @@ class AvailabilityService:
             starts_at=picked[0].starts_at,
             ends_at=picked[-1].ends_at,
             slot_count=slot_count,
-            duration_minutes=slot_count * court.slot_minutes,
+            duration_minutes=slot_count * GRID_MINUTES,
             price=price,
             advance_amount=advance_amount,
             slots=picked,

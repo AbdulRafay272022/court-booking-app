@@ -258,7 +258,7 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
             value={filters.durationMinutes ?? ""}
             onChange={(e) => set({ durationMinutes: e.target.value ? Number(e.target.value) : undefined })}
           >
-            <option value="">Court&apos;s slot length</option>
+            <option value="">Court&apos;s minimum booking</option>
             {DURATIONS.map((d) => (
               <option key={d} value={d}>{formatDuration(d)}</option>
             ))}

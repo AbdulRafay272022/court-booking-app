@@ -816,6 +816,38 @@ owner hours accept close <= open (`hoursKind`: same-day / next-day / 24-hours) w
 `weeklyHoursError` refuses an overnight day that runs into the next day's opening, and `slotPreview` counts across midnight.
 Duration choices need no change (contiguity is by `ends_at == next starts_at`). Tests: `court-setup.test.ts`.
 
+## Section 32, Part 4c -- fixed 30-minute grid, minimum booking time, multi-slot walk-in (2026-10-02, not deployed)
+
+The slot grid is always 30 minutes; a court's `slot_minutes` is its MINIMUM booking time (see the backend CLAUDE.md Part 4c).
+`packages/types/src/booking-duration.ts`: `GRID_MINUTES`, `minSlotsFor(minutes)`, and `durationChoices(slots, index, minSlots)`
+which is empty when the minimum does not fit from that slot and otherwise lists min, min+30, ... (each choice carries its
+`price`). Player (web `components/booking/{court-day-popup,duration-sheet}.tsx`, mobile `components/{court-day-popup,duration-sheet}.tsx`):
+tap a free 30-minute start (rows show the minimum booking's price, "Too short" when it does not fit), pick a length in the sheet
+(contiguous by construction), the sheet shows the server quote, Continue carries `slotCount` (30-minute slots) to the chat/hold.
+Owner walk-in (web `app/dashboard/owner/walkin/page.tsx`, mobile `app/(owner)/walkin.tsx`): tap the first slot (the court
+minimum is preselected), tap a later slot or "+ 30 min" to stretch, tap inside the range to shrink (never below the minimum),
+total from `GET /courts/:id/quote`, ONE booking via `slot_count`; customer name required, phone optional and validated with
+`isValidPkMobile` (server normalizes and links an existing account). Owner settings relabelled "Minimum booking time" and the
+per-court price field reads "Per <minimum> (PKR)". The venue-setup preview counts 30-minute slots. Mobile is `tsc`-checked only
+(no device run). Playwright proof (web) used a local backend on :8765 + `next build && next start` on :3765 from a COPY of
+`apps/web` (so no other agent's `.next` is touched); the assistant reply was stubbed with `page.route` because no model key
+exists locally (the Yes button's hold, the booking, payment proof and owner approval were real).
+
+## Section 32, Part 4d -- legacy-build compat header, name-on-confirm, no past walk-ins (2026-10-02, not deployed)
+
+- **`X-Slot-Grid: 30` on every request** (`packages/api-client/src/client.ts`: `request`, `requestText`, `requestUpload` (XHR) and the
+  silent refresh; constants `SLOT_GRID_HEADER`/`SLOT_GRID_VALUE`). Web and mobile both use this client, so both send it. A request
+  without it is treated by the backend as an old app build (pre-30-minute-grid units; backend CLAUDE.md Part 4d). Keep sending it.
+  Side effect on web: it is a non-simple header, so even public cross-origin GETs now preflight (cached 600 s by the server).
+- **Name on confirm:** `HoldBookingInput.name_is_own` (packages/types); web `app/booking/[id]/chat/page.tsx` and mobile
+  `app/(player)/booking/[id]/chat.tsx` pass `name_is_own: true` when the Yes button's `action.data.name_is_players_own === true`
+  and a name is present. The server saves the name on the account only when the hold is created.
+- **No past walk-ins:** `walkinSlots(todaySlots, previousDaySlots, includeYesterdayTail, now)` in `packages/types/src/booking-duration.ts`
+  (tests: `walkin-slots.test.ts`) drops slots whose `ends_at` has passed (the in-progress slot stays) and, for the Today tab, prepends
+  the previous schedule day's after-midnight slots (an overnight court at 1:10 AM). Web `app/dashboard/owner/walkin/page.tsx` and
+  mobile `app/(owner)/walkin.tsx` use it, with a 30 s "now" tick; the date picker (`pktDayTabs(7)`) starts at today (PKT). New error
+  code `WALKIN_IN_PAST` (types `errors.ts`, both `lib/error-messages.ts`); the screens show the server message and reset the selection.
+
 ## Section 32, Part 4b -- calendar-first venue page (2026-09-23, branch `section-32-part-4b`, not merged)
 
 Replaces the old page-level week strip + side-by-side court slot lists with the owner's "Part 4b UPDATE"

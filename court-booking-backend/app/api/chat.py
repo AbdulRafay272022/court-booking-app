@@ -4,16 +4,24 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from app.dependencies import AppSettings, ChatRateLimit, CurrentUser, DbSession, PageParams
+from app.models.court import Court
 from app.models.message import Message
 from app.schemas.chat import ChatActionOut, ChatHistoryItemOut, ChatMessageIn, ChatMessageOut
+from app.services import slot_compat
 from app.services.ai_chat_service import AIChatService
+from app.services.slot_compat import LegacySlotUnits
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/message", response_model=ChatMessageOut)
 async def send_chat_message(
-    payload: ChatMessageIn, db: DbSession, settings: AppSettings, user: CurrentUser, _rate_limit: ChatRateLimit
+    payload: ChatMessageIn,
+    db: DbSession,
+    settings: AppSettings,
+    user: CurrentUser,
+    _rate_limit: ChatRateLimit,
+    legacy: LegacySlotUnits,
 ) -> ChatMessageOut:
     chat_service = AIChatService(db, settings)
     history = await chat_service.load_history(user, "app")
@@ -46,10 +54,33 @@ async def send_chat_message(
     )
     await db.commit()
 
-    return ChatMessageOut(
-        reply=result.reply,
-        actions=[ChatActionOut(type=a.type, label=a.label, data=a.data) for a in result.actions],
-    )
+    actions = [ChatActionOut(type=a.type, label=a.label, data=a.data) for a in result.actions]
+    if legacy:
+        actions = await _legacy_actions(db, actions)
+    return ChatMessageOut(reply=result.reply, actions=actions)
+
+
+async def _legacy_actions(db: DbSession, actions: list[ChatActionOut]) -> list[ChatActionOut]:
+    """TRANSITION (delete with app/services/slot_compat.py): an app build from before the 30-minute grid sends the Yes button's
+    `slot_count` straight back to POST /bookings/hold, where (without X-Slot-Grid) it counts the court's own slot length. So the
+    button it is shown carries the count in those units (the stored message keeps the real 30-minute count). A length an old
+    build cannot express (90 minutes on a 60-minute court) gets no button: the player's typed "yes" books it correctly."""
+    out: list[ChatActionOut] = []
+    drop_decline = False
+    for action in actions:
+        if action.type == "confirm_booking":
+            court = None
+            try:
+                court = await db.get(Court, uuid.UUID(str(action.data.get("court_id"))))
+            except ValueError:
+                pass
+            data = slot_compat.legacy_action_data(court, action.data)
+            if data is None:
+                drop_decline = True
+                continue
+            action = ChatActionOut(type=action.type, label=action.label, data=data)
+        out.append(action)
+    return [a for a in out if not (drop_decline and a.type == "decline")]
 
 
 @router.get("/history", response_model=list[ChatHistoryItemOut])

@@ -79,7 +79,20 @@ async def test_every_day_of_the_summary_matches_the_day_view(
             continue
         day = (await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": row["date"]})).json()["slots"]
         now = datetime.now(timezone.utc)
-        open_now = sum(1 for s in day if s["status"] == "available" and datetime.fromisoformat(s["starts_at"].replace("Z", "+00:00")) > now)
+        # Part 4c: the grid is 30 minutes and this court's minimum booking is 60 minutes (2 slots), so a day is "open" at
+        # every unstarted slot that begins a run of 2 free, back-to-back slots (a lone free half hour is not bookable).
+        def free(i):
+            return day[i]["status"] == "available"
+
+        open_now = sum(
+            1
+            for i, s in enumerate(day)
+            if free(i)
+            and datetime.fromisoformat(s["starts_at"].replace("Z", "+00:00")) > now
+            and i + 1 < len(day)
+            and free(i + 1)
+            and day[i]["ends_at"] == day[i + 1]["starts_at"]
+        )
         assert row["total_slots"] == len(day), row
         assert row["open_slots"] == open_now, row
         checked += 1
@@ -109,7 +122,7 @@ async def test_states_open_few_full_closed_past_and_the_cache_header(
     client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     owner, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923100000003",
-                                    open_=time(8, 0), close=time(18, 0))  # 10 one-hour slots a day
+                                    open_=time(8, 0), close=time(18, 0))  # 20 half-hour slots a day (60-minute minimum booking)
     today = pkt_today()
     # The open/few/full/closed days are the first FOUR days of next month: always in a
     # single month and always in the future (well within the 90-day booking horizon), so
@@ -118,11 +131,11 @@ async def test_states_open_few_full_closed_past_and_the_cache_header(
     # didn't contain that day and the lookup KeyError'd.)
     first_next = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
     d_open, d_few, d_full, d_closed = (first_next + timedelta(days=n) for n in (0, 1, 2, 3))
-    for h in (8, 9):                       # 8 of 10 left = open (>20%)
+    for h in (8, 9):                       # 8-10 booked: 10:00 ... 17:00 can still start a 60-minute booking = 15 of 20 -> open
         await _book(db_session_factory, court, _at(d_open, h))
-    for h in range(8, 16):                 # 2 of 10 left = 20% -> few
+    for h in range(8, 16):                 # 8-16 booked: 16:00, 16:30, 17:00 can still start one = 3 of 20 = 15% -> few
         await _book(db_session_factory, court, _at(d_few, h))
-    for h in range(8, 18):                 # 0 left = full
+    for h in range(8, 18):                 # nothing left = full
         await _book(db_session_factory, court, _at(d_full, h))
     async with db_session_factory() as s:                      # every slot blocked = closed
         s.add(Blackout(court_id=court.id, created_by=owner.id, starts_at=_at(d_closed, 0), ends_at=_at(d_closed, 24), reason="private event"))
@@ -131,9 +144,9 @@ async def test_states_open_few_full_closed_past_and_the_cache_header(
     resp = await _summary(client, court, _month(d_open))
     assert resp.headers["cache-control"] == "public, max-age=30"
     by = {r["date"]: r for r in resp.json()["days"]}
-    assert by[d_open.isoformat()]["state"] == "open" and by[d_open.isoformat()]["open_slots"] == 8
-    assert by[d_few.isoformat()]["state"] == "few" and by[d_few.isoformat()]["open_slots"] == 2
-    assert by[d_full.isoformat()]["state"] == "full" and by[d_full.isoformat()]["open_slots"] == 0 and by[d_full.isoformat()]["total_slots"] == 10
+    assert by[d_open.isoformat()]["state"] == "open" and by[d_open.isoformat()]["open_slots"] == 15
+    assert by[d_few.isoformat()]["state"] == "few" and by[d_few.isoformat()]["open_slots"] == 3
+    assert by[d_full.isoformat()]["state"] == "full" and by[d_full.isoformat()]["open_slots"] == 0 and by[d_full.isoformat()]["total_slots"] == 20
     assert by[d_closed.isoformat()]["state"] == "closed"
     # "past" state: yesterday, checked in THIS month's summary (guarded against month-start).
     if today.day > 1:
@@ -163,7 +176,7 @@ async def test_todays_slots_that_already_started_are_not_open(
     _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923100000005")
     resp = (await _summary(client, court, _month(pkt_today()))).json()
     today_row = next(r for r in resp["days"] if r["date"] == pkt_today().isoformat())
-    assert today_row["open_slots"] <= today_row["total_slots"] == 17
+    assert today_row["open_slots"] <= today_row["total_slots"] == 34
 
 
 async def test_an_overnight_courts_day_includes_its_after_midnight_slots(
@@ -173,7 +186,7 @@ async def test_an_overnight_courts_day_includes_its_after_midnight_slots(
                                  open_=time(15, 0), close=time(3, 0))
     row = next(r for r in (await _summary(client, court, _month(pkt_today() + timedelta(days=3)))).json()["days"]
                if r["date"] == (pkt_today() + timedelta(days=3)).isoformat())
-    assert row["total_slots"] == 12  # 3 PM ... 2 AM
+    assert row["total_slots"] == 24  # 3:00 PM ... 2:30 AM half-hour slots
 
 
 async def test_starts_from_price_is_the_lowest_active_rule_including_floodlights(
@@ -185,7 +198,8 @@ async def test_starts_from_price_is_the_lowest_active_rule_including_floodlights
     await make_pricing_rule(court, name="Off", priority=9, price_per_slot=100, is_active=False)  # inactive rules never count
     body = (await _summary(client, court, _month(pkt_today()))).json()
     assert body["starts_from_price"] == 2000.0  # 1800 + 200 floodlight, not the inactive 100 and not 2500
-    assert body["slot_minutes"] == 60
+    # the grid is 30 minutes; 60 is the court's minimum booking time; and "from PKR 2000" is the price of that minimum
+    assert body["slot_minutes"] == 30 and body["min_booking_minutes"] == 60 and body["min_slots"] == 2
 
 
 # ---- the booking horizon -------------------------------------------------------------------------------------
@@ -211,7 +225,7 @@ async def test_the_calendar_stops_at_the_venues_horizon_and_a_hold_beyond_it_is_
     too_far = await client.post("/api/v1/bookings/hold", headers=headers, json={"court_id": str(court.id), "starts_at": _iso(_at(last + timedelta(days=1), 12))})
     assert too_far.status_code == 400 and too_far.json()["error"]["code"] == "BOOKING_TOO_FAR"
     assert "10 days ahead" in too_far.json()["error"]["message"]
-    q = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(last + timedelta(days=1), 12)), "slot_count": 1})
+    q = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(last + timedelta(days=1), 12)), "slot_count": 2})
     assert q.status_code == 400 and q.json()["error"]["code"] == "BOOKING_TOO_FAR"
 
     # the owner changes the setting (a per-venue setting, not a constant) and the same slot opens up

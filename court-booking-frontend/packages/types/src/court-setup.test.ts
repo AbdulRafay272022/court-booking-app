@@ -18,6 +18,7 @@ import {
   cancellationPolicyText,
   durationChoices,
   formatDuration,
+  minSlotsFor,
   slotPreview,
   slotPreviewText,
 } from "./booking-duration";
@@ -136,23 +137,39 @@ function slot(startHour: number, minutes: number, status: Slot["status"] = "avai
 
 test("duration choices stop at the first taken slot and at six hours", () => {
   const day = [slot(10, 60), slot(11, 60), slot(12, 60), slot(13, 60, "booked"), slot(14, 60)];
-  assert.deepEqual(durationChoices(day, 0, 60).map((c) => c.minutes), [60, 120, 180]);
-  assert.deepEqual(durationChoices(day, 2, 60).map((c) => c.minutes), [60]);
+  // third argument = the court's minimum number of slots (1 here: these fixtures use 60-minute slots)
+  assert.deepEqual(durationChoices(day, 0, 1).map((c) => c.minutes), [60, 120, 180]);
+  assert.deepEqual(durationChoices(day, 2, 1).map((c) => c.minutes), [60]);
   // post-batch #8: the cap is 6 hours now, so a 60-min court offers up to six slots
   const open = Array.from({ length: 8 }, (_, i) => slot(6 + i, 60));
-  assert.deepEqual(durationChoices(open, 0, 60).map((c) => c.minutes), [60, 120, 180, 240, 300, 360]); // capped at 6 h
+  assert.deepEqual(durationChoices(open, 0, 1).map((c) => c.minutes), [60, 120, 180, 240, 300, 360]); // capped at 6 h
   // a 30-minute court: twelve consecutive 30-minute slots make 6 hours, so up to 12 slots (30 min ... 6 h)
   const half = Array.from({ length: 12 }, (_, i) => {
     const s = slot(6, 30);
     const start = Date.parse(s.starts_at) + i * 30 * 60_000;
     return { ...s, starts_at: new Date(start).toISOString(), ends_at: new Date(start + 30 * 60_000).toISOString() };
   });
-  assert.deepEqual(durationChoices(half, 0, 30).map((c) => c.minutes), [30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360]);
+  assert.deepEqual(durationChoices(half, 0, 1).map((c) => c.minutes), [30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360]);
+  // Part 4c: a 60-minute court on the 30-minute grid offers nothing under 60 minutes, then every 30 minutes
+  assert.deepEqual(durationChoices(half, 0, minSlotsFor(60)).map((c) => c.minutes), [60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360]);
+  assert.deepEqual(durationChoices(half, 0, minSlotsFor(90)).map((c) => c.minutes), [90, 120, 150, 180, 210, 240, 270, 300, 330, 360]);
+  assert.deepEqual(durationChoices(half, 0, minSlotsFor(120)).slice(0, 2).map((c) => c.minutes), [120, 150]);
+  // prices add up slot by slot (each fixture slot costs 1000), and the minimum is the first choice
+  assert.equal(durationChoices(half, 0, 2)[0].price, 2000);
+  assert.equal(durationChoices(half, 0, 2)[1].slotCount, 3);
+  // a lone free half hour (next slot booked) or the last half hour of the day cannot start a 60-minute booking
+  const lone = [half[0], { ...half[1], status: "booked" as const }, half[2]];
+  assert.deepEqual(durationChoices(lone, 0, 2), []);
+  assert.deepEqual(durationChoices(half.slice(0, 1), 0, 2), []);
+  assert.equal(minSlotsFor(30), 1);
+  assert.equal(minSlotsFor(60), 2);
+  assert.equal(minSlotsFor(90), 3);
+  assert.equal(minSlotsFor(120), 4);
 });
 
 test("duration choices need slots that follow each other with no gap", () => {
   const gap = [slot(10, 60), slot(12, 60)]; // 11:00-12:00 missing (closed)
-  assert.equal(durationChoices(gap, 0, 60).length, 1);
+  assert.equal(durationChoices(gap, 0, 1).length, 1);
 });
 
 test("durations read in plain words", () => {

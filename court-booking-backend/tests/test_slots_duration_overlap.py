@@ -1,4 +1,5 @@
-"""Section 32 Part 4: per-court slot length, multi-slot (duration) bookings priced across the whole range, the
+"""Section 32 Part 4 (+ Part 4c): per-court minimum booking time on a fixed 30-minute grid, multi-slot (duration)
+bookings priced across the whole range, the
 database-level overlap guarantee (btree_gist exclusion constraint), and what the availability grid shows.
 
 The overlap tests are the ones the owner asked for by name: a 90-minute booking vs a 60-minute booking that
@@ -36,7 +37,8 @@ def _at(day_offset: int, hh: int, mm: int = 0) -> datetime:
     return pkt_time_to_utc(pkt_today() + timedelta(days=day_offset), time(hh, mm))
 
 
-async def _hold(client, court, headers, starts, slot_count=1):
+async def _hold(client, court, headers, starts, slot_count=2):
+    """`slot_count` counts 30-minute slots (Part 4c). Default 2 = the 60-minute minimum of the helper courts."""
     return await client.post(
         "/api/v1/bookings/hold",
         headers=headers,
@@ -61,7 +63,7 @@ async def test_a_two_hour_booking_is_one_booking_priced_slot_by_slot(
     headers = await make_auth_headers(player)
     starts = _at(2, 19)
 
-    resp = await _hold(client, court, headers, starts, slot_count=2)
+    resp = await _hold(client, court, headers, starts, slot_count=4)  # four 30-minute slots = two hours
     assert resp.status_code == 201, resp.text
     booking = resp.json()["booking"]
     assert booking["starts_at"] == _iso(starts) and booking["ends_at"] == _iso(starts + timedelta(hours=2))
@@ -70,27 +72,27 @@ async def test_a_two_hour_booking_is_one_booking_priced_slot_by_slot(
     # the slot grid now shows BOTH cells as this player's, and neither claims the whole 2000
     day = pkt_today() + timedelta(days=2)
     grid = (await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()}, headers=headers)).json()
-    cells = [s for s in grid["slots"] if s["starts_at"] in (_iso(starts), _iso(starts + timedelta(hours=1)))]
-    assert [c["status"] for c in cells] == ["held", "held"]
+    cells = [s for s in grid["slots"] if s["starts_at"] in {_iso(starts + timedelta(minutes=30 * i)) for i in range(4)}]
+    assert [c["status"] for c in cells] == ["held"] * 4
     assert all(c["is_mine"] for c in cells)
-    assert [c["price"] for c in cells] == [1000.0, 1000.0]
+    assert [c["price"] for c in cells] == [500.0] * 4  # a 30-minute slot of a PKR 1000/hour court
 
 
 async def test_price_follows_each_slots_own_rule_across_a_peak_boundary(
     client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
 ):
     """17:00-18:00 is off-peak (1000), 18:00-19:00 is peak (1500): a 2-hour booking from 17:00 costs 2500,
-    not 2000 (first slot's rate) and not 3000."""
+    not 2000 (first slot's rate) and not 3000. Priced half-hour by half-hour: 500+500+750+750."""
     _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000003", price=1000)
     await make_pricing_rule(court, name="Peak", priority=5, start_time=time(18, 0), end_time=time(23, 0), price_per_slot=1500)
     player = await make_user("+923070000004", role=UserRole.PLAYER)
     headers = await make_auth_headers(player)
 
-    quote = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(2, 17)), "slot_count": 2})
+    quote = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(2, 17)), "slot_count": 4})
     assert quote.status_code == 200, quote.text
     assert quote.json()["price"] == 2500.0 and quote.json()["duration_minutes"] == 120
 
-    hold = await _hold(client, court, headers, _at(2, 17), slot_count=2)
+    hold = await _hold(client, court, headers, _at(2, 17), slot_count=4)
     assert hold.status_code == 201
     # the quote the app showed is exactly what is charged
     assert hold.json()["booking"]["price"] == quote.json()["price"]
@@ -103,28 +105,32 @@ async def test_a_duration_that_runs_past_closing_time_is_refused(
     _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000005")
     player = await make_user("+923070000006", role=UserRole.PLAYER)
     headers = await make_auth_headers(player)
-    # court closes 11 PM; the last 60-min slot starts 10 PM, so 10 PM x2 would end at midnight
-    resp = await _hold(client, court, headers, _at(2, 22), slot_count=2)
+    # court closes 11 PM: a 2-hour booking from 10 PM would end at midnight
+    resp = await _hold(client, court, headers, _at(2, 22), slot_count=4)
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "INVALID_DURATION"
     assert "closing" in resp.json()["error"]["message"].lower()
-    # one slot at 10 PM is fine
-    assert (await _hold(client, court, headers, _at(2, 22), slot_count=1)).status_code == 201
+    # a 30-minute booking is BELOW this 60-minute court's minimum (even though the 10:30 PM slot exists)
+    below = await _hold(client, court, headers, _at(2, 22, 30), slot_count=1)
+    assert below.status_code == 400 and below.json()["error"]["code"] == "BELOW_MINIMUM_BOOKING_TIME"
+    # 10:30 PM for the 60-minute minimum would end at 11:30 PM, past closing; 10 PM for 60 minutes is fine
+    assert (await _hold(client, court, headers, _at(2, 22, 30), slot_count=2)).status_code == 400
+    assert (await _hold(client, court, headers, _at(2, 22), slot_count=2)).status_code == 201
 
 
 async def test_a_duration_over_six_hours_is_refused(
     client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
 ):
-    """post-batch #8: the cap is 6 hours now. Exactly 6 hours (six 60-min slots) is allowed; 7 hours is refused."""
+    """post-batch #8: the cap is 6 hours now. Exactly 6 hours (twelve 30-min slots) is allowed; 7 hours is refused."""
     _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000007")
     player = await make_user("+923070000008", role=UserRole.PLAYER)
     headers = await make_auth_headers(player)
     # 8 AM x 7 = 8 AM-3 PM, all within the 6 AM-11 PM hours but 420 min > the 360-min cap
-    too_long = await _hold(client, court, headers, _at(2, 8), slot_count=7)
+    too_long = await _hold(client, court, headers, _at(2, 8), slot_count=14)
     assert too_long.status_code == 400 and too_long.json()["error"]["code"] == "INVALID_DURATION"
     assert "6 hours" in too_long.json()["error"]["message"]
     # exactly 6 hours (six slots, 8 AM-2 PM) is now allowed
-    ok = await _hold(client, court, headers, _at(2, 8), slot_count=6)
+    ok = await _hold(client, court, headers, _at(2, 8), slot_count=12)
     assert ok.status_code == 201, ok.text
     assert ok.json()["booking"]["ends_at"] == _iso(_at(2, 8) + timedelta(hours=6))
 
@@ -139,25 +145,25 @@ async def test_a_six_hour_booking_blocks_every_slot_it_covers(
     b = await make_user("+923070000023", role=UserRole.PLAYER)
     ha, hb = await make_auth_headers(a), await make_auth_headers(b)
 
-    held = await _hold(client, court, ha, _at(2, 8), slot_count=6)  # A holds 8 AM-2 PM
+    held = await _hold(client, court, ha, _at(2, 8), slot_count=12)  # A holds 8 AM-2 PM
     assert held.status_code == 201, held.text
 
     # every hour inside the 6-hour span is taken for anyone else, incl. the first, a middle one, and the last
     for hh in (8, 11, 13):
-        clash = await _hold(client, court, hb, _at(2, hh), slot_count=1)
+        clash = await _hold(client, court, hb, _at(2, hh), slot_count=2)
         assert clash.status_code == 409 and clash.json()["error"]["code"] == "SLOT_ALREADY_TAKEN", (hh, clash.text)
     # a booking that starts before and runs into the span is refused too
-    overlap = await _hold(client, court, hb, _at(2, 7), slot_count=2)  # 7-9 AM runs into 8 AM
+    overlap = await _hold(client, court, hb, _at(2, 7), slot_count=4)  # 7-9 AM runs into 8 AM
     assert overlap.status_code == 409 and overlap.json()["error"]["code"] == "SLOT_ALREADY_TAKEN"
     # the slot right after the span (2 PM) is still free
-    assert (await _hold(client, court, hb, _at(2, 14), slot_count=1)).status_code == 201
+    assert (await _hold(client, court, hb, _at(2, 14), slot_count=2)).status_code == 201
 
-    # the grid shows all six covered cells as A's own held slots
+    # the grid shows all twelve covered half-hour cells as A's own held slots
     day = pkt_today() + timedelta(days=2)
     grid = (await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()}, headers=ha)).json()
-    covered = {_iso(_at(2, 8) + timedelta(hours=i)) for i in range(6)}
+    covered = {_iso(_at(2, 8) + timedelta(minutes=30 * i)) for i in range(12)}
     cells = [s for s in grid["slots"] if s["starts_at"] in covered]
-    assert len(cells) == 6
+    assert len(cells) == 12
     assert all(c["status"] == "held" and c["is_mine"] for c in cells)
 
 
@@ -169,7 +175,7 @@ async def test_a_six_hour_booking_that_runs_past_closing_time_is_refused(
     _o, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000024")
     player = await make_user("+923070000025", role=UserRole.PLAYER)
     headers = await make_auth_headers(player)
-    resp = await _hold(client, court, headers, _at(2, 18), slot_count=6)  # 6 PM-12 AM, past the 11 PM close
+    resp = await _hold(client, court, headers, _at(2, 18), slot_count=12)  # 6 PM-12 AM, past the 11 PM close
     assert resp.status_code == 400 and resp.json()["error"]["code"] == "INVALID_DURATION"
     assert "closing" in resp.json()["error"]["message"].lower()
 
@@ -185,13 +191,13 @@ async def test_a_duration_touching_a_booked_or_blocked_slot_is_refused_with_a_cl
     ha, hb = await make_auth_headers(a), await make_auth_headers(b)
     assert (await _hold(client, court, ha, _at(2, 20))).status_code == 201  # A holds 8-9 PM
 
-    over = await _hold(client, court, hb, _at(2, 19), slot_count=2)  # B wants 7-9 PM
+    over = await _hold(client, court, hb, _at(2, 19), slot_count=4)  # B wants 7-9 PM
     assert over.status_code == 409 and over.json()["error"]["code"] == "SLOT_ALREADY_TAKEN"
 
     async with db_session_factory() as s:
         s.add(Blackout(court_id=court.id, created_by=owner.id, starts_at=_at(3, 12), ends_at=_at(3, 14), reason="maintenance"))
         await s.commit()
-    blocked = await _hold(client, court, hb, _at(3, 11), slot_count=2)  # 11 AM-1 PM runs into the 12-2 blackout
+    blocked = await _hold(client, court, hb, _at(3, 11), slot_count=4)  # 11 AM-1 PM runs into the 12-2 blackout
     assert blocked.status_code == 400 and blocked.json()["error"]["code"] == "SLOT_BLOCKED"
 
 
@@ -335,15 +341,15 @@ async def test_only_30_60_90_120_minute_slots_can_be_chosen(
 async def test_changing_slot_length_later_never_moves_an_existing_booking(
     client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
 ):
-    """A 90-minute booking (6:00-7:30 PM) exists, then the owner switches the court to 60-minute slots. The
-    booking keeps its own times; the new 7:00 PM cell overlaps it so it shows booked and cannot be booked; the
-    next free cell (7:30 PM does not exist on the hourly grid, 8:00 PM does) is bookable."""
+    """A 90-minute booking (6:00-7:30 PM) exists, then the owner changes the court's minimum booking to 60 minutes.
+    The booking keeps its own times; the grid is 30 minutes either way, so the 7:00 PM cell is still booked and
+    cannot be booked; 7:30 PM onward is free."""
     owner, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923070000050", slot_minutes=90, open_=time(6, 0), close=time(23, 30))
     player = await make_user("+923070000051", role=UserRole.PLAYER)
     other = await make_user("+923070000052", role=UserRole.PLAYER)
     hp, ho, hown = await make_auth_headers(player), await make_auth_headers(other), await make_auth_headers(owner)
     six = _at(2, 18)  # 6:00 PM is on the 6:00/7:30 grid of a 90-minute court opening at 6 AM
-    booking = (await _hold(client, court, hp, six)).json()["booking"]
+    booking = (await _hold(client, court, hp, six, slot_count=3)).json()["booking"]  # 90-minute minimum = 3 slots
     assert booking["ends_at"] == _iso(six + timedelta(minutes=90))
 
     patch = await client.patch(f"/api/v1/courts/{court.id}", headers=hown, json={"slot_minutes": 60})
@@ -357,7 +363,8 @@ async def test_changing_slot_length_later_never_moves_an_existing_booking(
     grid = (await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()}, headers=ho)).json()
     by_start = {s["starts_at"]: s for s in grid["slots"]}
     assert by_start[_iso(six)]["status"] == "held"
-    assert by_start[_iso(six + timedelta(hours=1))]["status"] == "held"  # 7-8 PM cell overlaps the old 6-7:30 booking
+    assert by_start[_iso(six + timedelta(hours=1))]["status"] == "held"  # the 7:00 cell is inside the old 6-7:30 booking
+    assert by_start[_iso(six + timedelta(minutes=90))]["status"] == "available"  # 7:30 PM is free
     assert by_start[_iso(six + timedelta(hours=2))]["status"] == "available"
     clash = await _hold(client, court, ho, six + timedelta(hours=1))
     assert clash.status_code == 409
@@ -372,9 +379,9 @@ async def test_a_6am_to_11pm_court_shows_exactly_those_slots_and_nothing_else(
     day = pkt_today() + timedelta(days=2)
     grid = (await client.get(f"/api/v1/courts/{court.id}/availability", params={"date": day.isoformat()})).json()
     starts = [s["starts_at"] for s in grid["slots"]]
-    assert len(starts) == 17  # 6 AM ... 10 PM starts, the last one ends at 11 PM
-    assert starts[0] == _iso(_at(2, 6)) and starts[-1] == _iso(_at(2, 22))
-    assert all(_at(2, 6) <= datetime.fromisoformat(s.replace("Z", "+00:00")) <= _at(2, 22) for s in starts)
+    assert len(starts) == 34  # 6:00 AM ... 10:30 PM half-hour starts, the last one ends at 11 PM
+    assert starts[0] == _iso(_at(2, 6)) and starts[-1] == _iso(_at(2, 22, 30))
+    assert all(_at(2, 6) <= datetime.fromisoformat(s.replace("Z", "+00:00")) <= _at(2, 22, 30) for s in starts)
     assert {s["status"] for s in grid["slots"]} == {"available"}
 
 

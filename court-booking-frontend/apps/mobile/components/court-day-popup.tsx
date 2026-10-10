@@ -3,7 +3,7 @@ import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, monthOf, pktDateString, weekOf } from "@court-booking/types";
+import { addDays, durationChoices, formatDuration, minSlotsFor, monthOf, pktDateString, weekOf } from "@court-booking/types";
 import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -43,6 +43,7 @@ export function CourtDayPopup({
   courtName: string;
   /** Shown next to the name ("Court 1 · Padel"). */
   courtSport?: string;
+  /** The court's MINIMUM booking time (its slot_minutes setting); the slots themselves are always 30 minutes. */
   slotMinutes: number;
   venueId: string;
   venueName: string;
@@ -70,11 +71,15 @@ export function CourtDayPopup({
     (waitlistQuery.data ?? []).filter((e) => e.is_active).map((e) => `${e.court_id}|${e.slot_starts_at}`),
   );
 
+  // The app's query client keeps the PREVIOUS query's data while a new one loads (placeholderData). For a per-day
+  // query that shows the OLD day's slots, tappable, under the new day's label -- so opt out: this day has no data until it loads.
   const dayQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
     queryFn: () => api.availability.forCourtOnDate(courtId, date),
+    placeholderData: undefined,
   });
   const slots = dayQuery.data?.slots ?? [];
+  const minSlots = minSlotsFor(slotMinutes);
 
   // Drives the availability dot on each week-strip pill; shares the calendar's query key so it's already cached.
   const monthSummaryQuery = useQuery({
@@ -117,6 +122,10 @@ export function CourtDayPopup({
         slot.status === "booked" ? "Booked" : "Payment pending",
         slot.status === "booked" ? "This time is already booked. Tap Notify me to hear if it opens up." : "Another player is paying for this time. If they don't finish, it opens up again.",
       );
+      return;
+    }
+    if (durationChoices(slots, index, minSlots).length === 0) {
+      Alert.alert("Too short", `This court needs at least ${formatDuration(slotMinutes)} in a row. Pick an earlier start.`);
       return;
     }
     setPickingIndex(index);
@@ -220,7 +229,10 @@ export function CourtDayPopup({
                           slot.is_mine && slot.booking_id && (slot.status === "booked" || slot.status === "held" || slot.status === "payment_submitted")
                             ? slot.booking_id
                             : null;
-                        const isOpen = slot.status === "available";
+                        // a free 30-minute slot only opens a booking when the court's minimum fits from here
+                        const startChoices = slot.status === "available" ? durationChoices(slots, slotIndex, minSlots) : [];
+                        const isOpen = startChoices.length > 0;
+                        const tooShort = slot.status === "available" && !isOpen;
                         const isBooked = slot.status === "booked" && !mineBookingId;
                         const mineBadge = mineBookingId
                           ? slot.status === "booked"
@@ -274,14 +286,16 @@ export function CourtDayPopup({
                                   </View>
                                 ) : isOpen ? (
                                   <>
-                                    <Text className="font-mono-semibold text-[12px]" style={{ color: "#9A9791" }}>PKR {formatPKR(slot.price)}</Text>
+                                    <Text className="font-mono-semibold text-[12px]" style={{ color: "#9A9791" }}>
+                                      PKR {formatPKR(startChoices[0].price)}{minSlots > 1 ? ` · ${formatDuration(startChoices[0].minutes)}` : ""}
+                                    </Text>
                                     <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: "#E3F7EB" }}>
                                       <Text className="font-figtree-bold text-[10px]" style={{ color: "#1E9E5A" }}>Open</Text>
                                     </View>
                                   </>
                                 ) : !isBooked ? (
                                   <Text className="font-figtree-bold text-[11px]" style={{ color: "#9A9791" }}>
-                                    {(STATUS_META[slot.status] ?? STATUS_META.blocked).label}
+                                    {tooShort ? "TOO SHORT" : (STATUS_META[slot.status] ?? STATUS_META.blocked).label}
                                   </Text>
                                 ) : null}
                               </View>

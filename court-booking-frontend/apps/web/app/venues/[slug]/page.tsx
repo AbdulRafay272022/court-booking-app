@@ -100,7 +100,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
             ) : null}
           </div>
 
-          <VenueScheduleClient venueId={venue.id} venueName={venue.name} sports={venue.sports} courts={venue.courts.filter((c) => c.is_active)} />
+          <VenueScheduleClient venueId={venue.id} venueName={venue.name} sports={venue.sports} courts={venue.courts.filter((c) => c.is_active)} horizonDays={venue.booking_horizon_days} />
 
           <VenueReviews venueId={venue.id} />
         </div>

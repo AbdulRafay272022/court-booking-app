@@ -5,6 +5,7 @@ import { useOwnerCourtSports } from "@/lib/court-sports";
 import { courtLabel } from "@/components/court-label";
 
 import { useState } from "react";
+import { approvalSummary } from "@court-booking/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
@@ -38,6 +39,14 @@ export default function OwnerApprovalsPage() {
   const list = query.data ?? [];
   const current = list[0];
 
+  // Money-correctness: the owner confirms how much the player really paid. Pre-filled with the screenshot
+  // amount (else the expected one); editing it re-labels the card and is what gets credited on Approve.
+  const [amountEdit, setAmountEdit] = useState<{ paymentId: string; text: string } | null>(null);
+  const defaultAmount = current?.checks?.paid_amount ?? current?.expected_amount ?? 0;
+  const amountText = amountEdit && amountEdit.paymentId === current?.payment_id ? amountEdit.text : String(defaultAmount);
+  const amountValue = /^\d+$/.test(amountText.trim()) ? Number(amountText.trim()) : null;
+  const summary = current?.checks && amountValue !== null && amountValue > 0 ? approvalSummary(current.checks, amountValue) : null;
+
   function resetRejectSheet() {
     setRejecting(false);
     setRejectReason(null);
@@ -46,9 +55,13 @@ export default function OwnerApprovalsPage() {
 
   async function handleApprove() {
     if (!current) return;
+    if (current.checks && (amountValue === null || amountValue <= 0)) {
+      alert("Enter the amount the player actually paid (whole PKR).");
+      return;
+    }
     setBusy(true);
     try {
-      await api.payments.approve(current.payment_id);
+      await api.payments.approve(current.payment_id, current.checks ? (amountValue ?? undefined) : undefined);
       await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
     } catch (e) {
@@ -128,7 +141,7 @@ export default function OwnerApprovalsPage() {
               </div>
             </div>
             <div className="h-px bg-owner-border-light" />
-            <Row label="Slot" value={`${courtLabel(current.court_name, sports.byName(current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
+            <Row label="Slot" value={`${courtLabel(current.court_name, current.court_sport ?? sports.byName(current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
             <Row label="Advance due" value={`PKR ${formatPKR(current.expected_amount)}`} />
             <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
           </div>
@@ -138,7 +151,36 @@ export default function OwnerApprovalsPage() {
               <p className="font-bold text-owner-ink text-[13.5px]">Checks</p>
               <CheckRow check={current.checks.name} />
               <CheckRow check={current.checks.amount} />
-              <p className="font-mono text-owner-ink-muted text-[12.5px] -mt-1">{current.checks.balance_text}</p>
+              <div className="flex flex-col gap-2 rounded-lg border border-owner-border p-3 -mx-1">
+                <label className="text-[13px] font-semibold text-owner-ink" htmlFor="amount-received">
+                  Amount received (PKR)
+                </label>
+                <input
+                  id="amount-received"
+                  inputMode="numeric"
+                  value={amountText}
+                  onChange={(e) => setAmountEdit({ paymentId: current.payment_id, text: e.target.value })}
+                  className="h-11 px-3.5 rounded-lg border border-owner-border outline-none text-sm font-mono"
+                />
+                {summary ? (
+                  <>
+                    <p
+                      className="text-[14px] font-bold"
+                      style={{ color: summary.status === "paid_in_full" ? "#14563A" : summary.status === "overpaid" ? "#8A5A00" : "#8C3823" }}
+                    >
+                      {summary.text}
+                    </p>
+                    <p className="font-mono text-owner-ink-muted text-[12.5px]">
+                      Total PKR {formatPKR(summary.totalAfter + summary.balanceAfter)}. Paid after approval PKR {formatPKR(summary.totalAfter)}. Balance due at the venue: PKR {formatPKR(summary.balanceAfter)}.
+                    </p>
+                    {summary.excess > 0 ? (
+                      <p className="text-[12.5px]" style={{ color: "#8A5A00" }}>
+                        PKR {formatPKR(summary.excess)} is more than the booking price. Only the price is recorded; the excess will be added to Refunds to pay.
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
               <CheckRow check={current.checks.time} />
               <CheckRow check={current.checks.bank} />
               <CheckRow check={current.checks.duplicate} />

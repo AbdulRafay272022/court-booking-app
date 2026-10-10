@@ -7,7 +7,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDayHeader, formatPKR, formatTime } from "@/lib/format";
+import { formatDayHeader, formatPKR, formatTime, formatTimeRange, formatWhen } from "@/lib/format";
+import { bookingSourceLabel } from "@court-booking/types";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useAuthStore } from "@/lib/auth-store";
@@ -83,7 +84,15 @@ export default function OwnerTodayScreen() {
   const courtId = activeCourt === "all" ? undefined : activeCourt;
   const rows = courts
     .filter((c) => !courtId || c.court_id === courtId)
-    .flatMap((c) => c.slots.map((s) => ({ ...s, courtName: c.name, courtSport: sportOf(c.court_id) })))
+    .flatMap((c) =>
+      c.slots.map((s) => ({
+        ...s,
+        courtId: c.court_id,
+        courtName: s.court_name ?? c.name,
+        // The API carries the sport now; the owner-venues lookup only covers an old backend.
+        courtSport: s.court_sport ?? c.sport ?? sportOf(c.court_id),
+      })),
+    )
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
   return (
@@ -161,7 +170,7 @@ export default function OwnerTodayScreen() {
       {courts.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0 bg-owner-surface border-b border-owner-border" contentContainerClassName="px-4.5 py-3 gap-1.5">
           {courts.map((c) => (
-            <Tab key={c.court_id} label={courtLabel(c.name, sportOf(c.court_id))} selected={activeCourt === c.court_id} onPress={() => setActiveCourt(c.court_id)} />
+            <Tab key={c.court_id} label={courtLabel(c.name, c.sport ?? sportOf(c.court_id))} selected={activeCourt === c.court_id} onPress={() => setActiveCourt(c.court_id)} />
           ))}
           <Tab label="All" selected={activeCourt === "all"} onPress={() => setActiveCourt("all")} />
         </ScrollView>
@@ -206,7 +215,7 @@ export default function OwnerTodayScreen() {
                     className="font-plex-semibold text-sm"
                     style={{ color: slot.status === "available" || slot.status === "blocked" ? "#8399A1" : "#101C21" }}
                   >
-                    {courtId ? slot.player_name ?? statusLabel(slot.status) : `${courtLabel(slot.courtName, slot.courtSport)} · ${slot.player_name ?? statusLabel(slot.status)}`}
+                    {slot.booking_id || !courtId ? `${courtLabel(slot.courtName, slot.courtSport)} · ${slot.player_name ?? statusLabel(slot.status)}` : slot.player_name ?? statusLabel(slot.status)}
                   </Text>
                   <Text
                     className="font-plex-medium text-xs"
@@ -214,6 +223,25 @@ export default function OwnerTodayScreen() {
                   >
                     {statusSubtitle(slot.status)}
                   </Text>
+                  {slot.booking_id ? (
+                    <>
+                      <Text className="font-plex-semibold text-xs" style={{ color: "#101C21" }} testID="today-row-range">
+                        {formatTimeRange(slot.starts_at, slot.ends_at)}
+                      </Text>
+                      <Text className="font-plex-medium text-xs text-owner-ink-faint" testID="today-row-origin">
+                        {[
+                          bookingSourceLabel(slot.booking_source) ? `Booked via ${bookingSourceLabel(slot.booking_source)}` : null,
+                          slot.booked_at ? `on ${formatWhen(slot.booked_at)}` : null,
+                          slot.account_name && slot.account_name !== slot.player_name ? `Account: ${slot.account_name}` : null,
+                        ].filter(Boolean).join(" · ")}
+                      </Text>
+                      {slot.price != null ? (
+                        <Text className="font-mono-medium text-[11px] text-owner-ink-muted" testID="today-row-money">
+                          Total PKR {formatPKR(slot.price)} · Paid PKR {formatPKR(slot.amount_paid ?? 0)} · Balance PKR {formatPKR(slot.balance_due ?? 0)}
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : null}
                 </View>
                 {slot.status === "payment_submitted" ? (
                   <Pressable
@@ -228,7 +256,7 @@ export default function OwnerTodayScreen() {
                     onPress={() =>
                       router.push({
                         pathname: "/(owner)/walkin",
-                        params: { courtId: courts.find((c) => c.name === slot.courtName)?.court_id, startsAt: slot.starts_at },
+                        params: { courtId: slot.courtId, startsAt: slot.starts_at },
                       })
                     }
                     className="px-3 rounded-lg border border-owner-border items-center justify-center"

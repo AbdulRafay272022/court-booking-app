@@ -1,13 +1,20 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.booking import BookingOut
 
 
 class PaymentRejectIn(BaseModel):
     reason: str
+
+
+class PaymentApproveIn(BaseModel):
+    """Optional body for POST /payments/{id}/approve. `amount_pkr` is the amount the owner confirms the player
+    really paid; omitted = the screenshot amount (else the expected advance)."""
+
+    amount_pkr: int | None = Field(default=None, gt=0)
 
 
 class PaymentOut(BaseModel):
@@ -63,6 +70,14 @@ class PaymentChecksOut(BaseModel):
     time: PaymentCheckOut
     bank: PaymentCheckOut
     duplicate: PaymentCheckOut
+    # Money-correctness fix: what the player paid vs what this booking's flow expected (advance, or the full
+    # price for a full-payment flow), in plain words, plus the booking's position once approved at that amount.
+    paid_amount: int = 0  # screenshot amount (expected amount when unreadable) -- the editable default
+    expected_amount: int = 0
+    payment_status: str = "paid_in_full"  # "paid_in_full" | "overpaid" | "underpaid"
+    payment_status_text: str = ""  # "Paid in full" / "Overpaid by PKR X" / "Underpaid by PKR X"
+    total_after_approval: int = 0  # amount paid on the booking after approval (credit capped at the price)
+    balance_after_approval: int = 0
 
 
 class PaymentSubmitResponse(BaseModel):

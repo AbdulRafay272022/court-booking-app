@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.venue import Venue
 from app.models.waitlist import WaitlistEntry
 from app.services.feature_flag_service import flag_on
+from app.services.availability_service import GRID_MINUTES
 from app.services.notification_service import NotificationService
 
 
@@ -113,12 +114,16 @@ class WaitlistService:
         await self.db.refresh(entry)
         return entry
 
-    async def _matching_entries(self, court_id: uuid.UUID, slot_starts_at: datetime) -> list[WaitlistEntry]:
+    async def _matching_entries(
+        self, court_id: uuid.UUID, range_start: datetime, range_end: datetime
+    ) -> list[WaitlistEntry]:
+        """Active, not-yet-notified entries whose requested slot starts anywhere inside the freed range [start, end)."""
         result = await self.db.execute(
             select(WaitlistEntry)
             .where(
                 WaitlistEntry.court_id == court_id,
-                WaitlistEntry.slot_starts_at == slot_starts_at,
+                WaitlistEntry.slot_starts_at >= range_start,
+                WaitlistEntry.slot_starts_at < range_end,
                 WaitlistEntry.is_active.is_(True),
                 WaitlistEntry.notified_at.is_(None),
             )
@@ -126,10 +131,15 @@ class WaitlistService:
         )
         return list(result.scalars().all())
 
-    async def notify_matching_entries(self, court: Court, freed_slot_starts_at: datetime) -> int:
-        """Called when a booking on `court` is cancelled/expired, freeing a
-        slot. Every active, not-yet-notified entry for this court+slot is
-        notified at once -- a deliberate departure from strict FIFO
+    async def notify_matching_entries(
+        self, court: Court, freed_slot_starts_at: datetime, freed_slot_ends_at: datetime | None = None
+    ) -> int:
+        """Called when a booking on `court` is cancelled/expired, freeing the
+        range [freed_slot_starts_at, freed_slot_ends_at) (one 30-minute slot
+        when no end is given). A multi-slot booking frees every slot it
+        covered, so every active, not-yet-notified entry whose requested
+        slot starts anywhere in that range is notified at once -- not only
+        the entry matching the booking's first slot -- a deliberate departure from strict FIFO
         exclusivity (AUDIT_FINDINGS.md finding #15): "waitlist" means
         "you'll hear about it first," not "your place in line reserves the
         slot." No hold is created for anyone; whoever actually completes a
@@ -141,7 +151,9 @@ class WaitlistService:
         # notifications when the waitlist feature is off.
         if not await flag_on(self.db, "waitlist"):
             return 0
-        entries = await self._matching_entries(court.id, freed_slot_starts_at)
+        if freed_slot_ends_at is None or freed_slot_ends_at <= freed_slot_starts_at:
+            freed_slot_ends_at = freed_slot_starts_at + timedelta(minutes=GRID_MINUTES)
+        entries = await self._matching_entries(court.id, freed_slot_starts_at, freed_slot_ends_at)
         if not entries:
             return 0
 
@@ -152,7 +164,7 @@ class WaitlistService:
             player = await self.db.get(User, entry.player_id)
             if player is not None:
                 await self.notifications.notify_waitlist_slot_available(
-                    user=player, court_name=court.name, starts_at=freed_slot_starts_at
+                    user=player, court_name=court.name, starts_at=entry.slot_starts_at
                 )
                 notified += 1
         await self.db.commit()
@@ -180,7 +192,9 @@ class WaitlistService:
             still_free = await self.db.scalar(
                 select(Booking.id).where(
                     Booking.court_id == stale.court_id,
-                    Booking.starts_at == stale.slot_starts_at,
+                    # Overlap, not equality: a multi-slot booking that STARTED earlier still covers this slot.
+                    Booking.starts_at < stale.slot_starts_at + timedelta(minutes=GRID_MINUTES),
+                    Booking.ends_at > stale.slot_starts_at,
                     Booking.status.in_(LIVE_BOOKING_STATUSES),
                 )
             )
@@ -188,7 +202,9 @@ class WaitlistService:
             if still_free is None:
                 court = await self.db.get(Court, stale.court_id)
                 if court is not None:
-                    advanced += await self.notify_matching_entries(court, stale.slot_starts_at)
+                    advanced += await self.notify_matching_entries(
+                        court, stale.slot_starts_at, stale.slot_starts_at + timedelta(minutes=GRID_MINUTES)
+                    )
         if stale_entries:
             await self.db.commit()
         return advanced

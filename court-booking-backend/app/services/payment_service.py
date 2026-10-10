@@ -13,6 +13,7 @@ from app.config import Settings
 from app.errors import AppError, ErrorCode
 from app.models.booking import Booking, BookingStatus, CancelledBy
 from app.models.court import Court
+from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
 from app.models.user import User
 from app.models.venue import Venue
@@ -79,6 +80,35 @@ def compute_receiver_match(receiver_name: str | None, venue: Venue | None, setti
     return "match" if fuzzy_name_match(receiver_name, account_title) else "mismatch"
 
 
+def default_credit_amount(payment: Payment, booking: Booking) -> int:
+    """What an approval credits when the owner doesn't type an amount: the amount the screenshot actually
+    showed when OCR read one, else the expected advance (full price for a full-payment flow, where
+    advance_amount == price)."""
+    if payment.ocr_amount is not None and float(payment.ocr_amount) > 0:
+        return int(round(float(payment.ocr_amount)))
+    return int(round(float(booking.advance_amount)))
+
+
+def build_payment_summary(payment: Payment, booking: Booking) -> tuple[str, str, int, int, int, int]:
+    """(status, text, paid, expected, total_after, balance_after) for the approval card: compares the paid amount
+    (screenshot amount, else the expected one) with the expected amount for this booking's flow, and says what the
+    booking will look like once approved at that amount (credit capped at the price)."""
+    expected = int(round(float(booking.advance_amount)))
+    paid = default_credit_amount(payment, booking)
+    price = int(round(float(booking.price)))
+    credited = min(paid, price)
+    already = int(round(float(booking.amount_paid)))
+    total_after = already + credited
+    balance_after = max(price - total_after, 0)
+    if paid == expected:
+        status_, text = "paid_in_full", "Paid in full"
+    elif paid > expected:
+        status_, text = "overpaid", f"Overpaid by {format_pkr(paid - expected)}"
+    else:
+        status_, text = "underpaid", f"Underpaid by {format_pkr(expected - paid)}"
+    return status_, text, paid, expected, total_after, balance_after
+
+
 def build_payment_checks(payment: Payment, booking: Booking, account_name: str | None) -> PaymentChecksOut:
     """Pure, no I/O -- the five plain-language checks for the owner's
     approval card (Section 32 Part 7), built from verdicts already computed
@@ -87,14 +117,10 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
     a ready-made string" convention this codebase already uses for money
     and time in the AI chat's tool results.
 
-    Deliberately does NOT change how much a booking is credited for
-    (`booking.amount_paid`/`balance_due` come from the existing
-    `confirm_booking` flow, unchanged by this Part) -- an overpayment is
-    only *described* here ("PKR 50 more than expected"), not yet credited
-    beyond the fixed advance. Crediting the real paid amount belongs to
-    Section 32 Part 5's `payment_entries` ledger (built independently,
-    unmerged as of this Part); wiring the two together is a batch-merge
-    step, not something to guess at here."""
+    Money-correctness fix: approval now credits the REAL paid amount (see
+    `default_credit_amount` / `confirm_booking`), so `balance_text` and the
+    summary fields describe what the booking will look like AFTER approval
+    at that amount, not just the current state."""
     payer_name = payment.ocr_payer_name
 
     if payment.name_match_verdict == "match":
@@ -111,11 +137,12 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
         name = PaymentCheckOut(verdict="not_available", text=f"Name on screenshot: {payer_name}.")
 
     total = float(booking.price)
-    paid_so_far = float(booking.amount_paid)
-    balance_due = float(booking.balance_due)
+    summary_status, summary_text, paid_amt, expected_amt, total_after, balance_after = build_payment_summary(
+        payment, booking
+    )
     balance_text = (
-        f"Total {format_pkr(total)}. Paid so far {format_pkr(paid_so_far)}. "
-        f"Balance due at the venue: {format_pkr(balance_due)}."
+        f"Total {format_pkr(total)}. Paid after approval {format_pkr(total_after)}. "
+        f"Balance due at the venue: {format_pkr(balance_after)}."
     )
     ocr_amount = float(payment.ocr_amount) if payment.ocr_amount is not None else None
     expected = float(payment.amount_claimed) if payment.amount_claimed is not None else None
@@ -191,7 +218,20 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
     else:
         duplicate = PaymentCheckOut(verdict="match", text="No duplicate found.")
 
-    return PaymentChecksOut(name=name, amount=amount, balance_text=balance_text, time=time_check, bank=bank, duplicate=duplicate)
+    return PaymentChecksOut(
+        name=name,
+        amount=amount,
+        balance_text=balance_text,
+        time=time_check,
+        bank=bank,
+        duplicate=duplicate,
+        paid_amount=paid_amt,
+        expected_amount=expected_amt,
+        payment_status=summary_status,
+        payment_status_text=summary_text,
+        total_after_approval=total_after,
+        balance_after_approval=balance_after,
+    )
 
 
 class PaymentService:
@@ -496,7 +536,9 @@ class PaymentService:
         payment.reviewed_at = datetime.now(timezone.utc)
         payment.auto_approved = True
         try:
-            await self.booking_service.confirm_booking(booking)
+            await self.booking_service.confirm_booking(
+                booking, amount_pkr=default_credit_amount(payment, booking), payment=payment
+            )
         except AppError:
             # Lost a race with something else that moved the booking off
             # HELD/PAYMENT_SUBMITTED between this payment being inserted and
@@ -562,7 +604,9 @@ class PaymentService:
         await self.db.refresh(payment)
         return True
 
-    async def approve_payment(self, payment: Payment, booking: Booking, approved_by: User) -> Payment:
+    async def approve_payment(
+        self, payment: Payment, booking: Booking, approved_by: User, amount_pkr: int | None = None
+    ) -> Payment:
         """No upfront `if booking.status != PAYMENT_SUBMITTED` / `if
         payment.review_verdict is not None` pre-check here on purpose: a
         plain Python read of either would itself be the exact read-then-
@@ -588,7 +632,12 @@ class PaymentService:
             entity_type="payment",
             entity_id=payment.id,
         )
-        await self.booking_service.confirm_booking(booking, recorded_by=approved_by)
+        # Credit the amount the owner confirmed, defaulting to what the screenshot showed (else the expected
+        # advance) -- never blindly the advance (money-correctness fix).
+        credit = amount_pkr if amount_pkr is not None else default_credit_amount(payment, booking)
+        await self.booking_service.confirm_booking(
+            booking, recorded_by=approved_by, amount_pkr=credit, payment=payment
+        )
         await self.db.commit()
         await self.db.refresh(payment)
         return payment
@@ -622,6 +671,22 @@ class PaymentService:
         # the player starts over with a fresh hold if they want to try again.
         await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason)
 
+        # Safety net: the owner rejected the proof, but "rejected" does not prove no money moved (the transfer may have
+        # been real and the rejection for another reason -- wrong amount, wrong account, a stale screenshot). Leave a
+        # trail in the same queue as an expired review so an admin can chase it. Refund owed is 0 for the same reason as
+        # `payment_review_expired`: nothing was ever recorded as paid in this app. A duplicate of an earlier receipt is
+        # not flagged -- that image's money is already accounted for on the earlier payment.
+        if not payment.is_duplicate:
+            self.db.add(
+                PaymentDispute(
+                    booking_id=booking.id,
+                    payment_id=payment.id,
+                    player_id=booking.player_id,
+                    reason="payment_rejected",
+                    refund_amount=0,
+                )
+            )
+
         if booking.player_id is not None:
             player = await self.db.get(User, booking.player_id)
             if player is not None:
@@ -630,7 +695,7 @@ class PaymentService:
 
         court = await self.db.get(Court, booking.court_id)
         if court is not None:
-            await self.waitlist_service.notify_matching_entries(court, booking.starts_at)
+            await self.waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
 
         await self.db.commit()
         await self.db.refresh(payment)

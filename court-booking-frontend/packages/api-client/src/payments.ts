@@ -10,8 +10,13 @@ import type { ApiClient } from "./client";
 
 export function createPaymentsApi(client: ApiClient) {
   return {
-    approve: (paymentId: string) =>
-      client.request<PaymentProofOut>(`/payments/${paymentId}/approve`, { method: "POST" }),
+    /** `amountPkr` = the amount the owner confirms the player really paid; omitted = the screenshot amount
+     * (else the expected advance). The ledger credits at most the booking price; any excess is queued as a refund. */
+    approve: (paymentId: string, amountPkr?: number) =>
+      client.request<PaymentProofOut>(`/payments/${paymentId}/approve`, {
+        method: "POST",
+        ...(amountPkr !== undefined ? { body: JSON.stringify({ amount_pkr: amountPkr }) } : {}),
+      }),
 
     reject: (paymentId: string, reason: string) =>
       client.request<PaymentProofOut>(`/payments/${paymentId}/reject`, {

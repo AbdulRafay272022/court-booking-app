@@ -69,6 +69,34 @@ class OwnerDashboardService:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def _account_names(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """Registered account names by user id (one query), for owner screens that show the account behind a booking
+        as a fallback / secondary label. The booking's own `player_name` is what the customer was booked under and
+        always wins where both exist."""
+        if not user_ids:
+            return {}
+        result = await self.db.execute(select(User.id, User.name).where(User.id.in_(user_ids)))
+        return {uid: name for uid, name in result.all() if name}
+
+    @staticmethod
+    def _merge_booking_rows(rows: list[TodaySlotOut]) -> list[TodaySlotOut]:
+        """One display row per booking: the grid is 30 minutes, so a 1-hour booking arrives as two cells carrying the
+        same booking_id. Back-to-back cells of one booking collapse into a single row spanning the whole booking
+        ("6:00 PM - 7:00 PM"). Display only -- the bookings themselves are untouched, and free/closed cells never merge."""
+        merged: list[TodaySlotOut] = []
+        for row in rows:
+            prev = merged[-1] if merged else None
+            if (
+                prev is not None
+                and row.booking_id is not None
+                and prev.booking_id == row.booking_id
+                and prev.ends_at == row.starts_at
+            ):
+                merged[-1] = prev.model_copy(update={"ends_at": row.ends_at})
+            else:
+                merged.append(row)
+        return merged
+
     async def today(self, owner: User, target_date: date | None = None, venue_id: uuid.UUID | None = None) -> TodayOut:
         target_date = target_date or pkt_today()
         courts = await self._owner_courts(owner, venue_id)
@@ -115,6 +143,7 @@ class OwnerDashboardService:
                 if in_calendar_day or on_todays_slots:
                     bookings_today.append(b)
         bookings_by_id = {b.id: b for b in bookings_today}
+        account_names = await self._account_names({b.player_id for b in bookings_today if b.player_id is not None})
 
         # `get_day_slots` only considers LIVE_BOOKING_STATUSES (Section 32 Part 9 finding), so once a booking is
         # checked in or marked no-show its grid cell reverts to "available" -- correct for booking purposes (that
@@ -145,15 +174,25 @@ class OwnerDashboardService:
                         ends_at=slot.ends_at,
                         status=slot_status,
                         booking_id=booking.id if booking is not None else slot.booking_id,
-                        player_name=booking.player_name if booking else None,
+                        # The name the booking was made under first (walk-in / booked for a friend), then the account.
+                        player_name=(booking.player_name or account_names.get(booking.player_id)) if booking else None,
                         amount_paid=float(booking.amount_paid) if booking else None,
                         price=float(booking.price) if booking else None,
                         balance_due=float(booking.balance_due) if booking else None,
                         checked_in_at=booking.checked_in_at if booking else None,
                         checked_in_by=booking.checked_in_by if booking else None,
+                        court_id=court.id if booking is not None else None,
+                        court_name=court.name if booking is not None else None,
+                        court_sport=court.sport if booking is not None else None,
+                        booking_source=booking.source.value if booking else None,
+                        booked_at=booking.created_at if booking else None,
+                        account_name=account_names.get(booking.player_id) if booking and booking.player_id else None,
+                        player_phone=booking.player_phone if booking else None,
                     )
                 )
-            court_outs.append(TodayCourtOut(court_id=court.id, name=court.name, slots=slot_outs))
+            court_outs.append(
+                TodayCourtOut(court_id=court.id, name=court.name, sport=court.sport, slots=self._merge_booking_rows(slot_outs))
+            )
 
         total_bookings = sum(1 for b in bookings_today if b.status != BookingStatus.CANCELLED)
         total_revenue = sum(float(b.amount_paid) for b in bookings_today if b.status in REVENUE_STATUSES)
@@ -184,6 +223,7 @@ class OwnerDashboardService:
         if not court_ids:
             return []
         court_names = {c.id: c.name for c in courts}
+        court_sports = {c.id: c.sport for c in courts}
 
         result = await self.db.execute(
             select(Payment, Booking)
@@ -219,9 +259,13 @@ class OwnerDashboardService:
                     payment_id=payment.id,
                     booking_id=booking.id,
                     court_name=court_names.get(booking.court_id, ""),
+                    court_id=booking.court_id,
+                    court_sport=court_sports.get(booking.court_id),
+                    account_name=account_names.get(booking.player_id),
                     starts_at=booking.starts_at,
                     ends_at=booking.ends_at,
-                    player_name=booking.player_name,
+                    # The name the booking was made under first; the account name only if it has none.
+                    player_name=booking.player_name or account_names.get(booking.player_id),
                     player_phone=booking.player_phone,
                     ocr_verdict=payment.ocr_verdict,
                     ocr_amount=float(payment.ocr_amount) if payment.ocr_amount is not None else None,
@@ -252,6 +296,7 @@ class OwnerDashboardService:
         if not court_ids:
             return []
         court_names = {c.id: c.name for c in courts}
+        court_sports = {c.id: c.sport for c in courts}
 
         result = await self.db.execute(
             select(PaymentDispute, Booking, Venue, User)
@@ -271,18 +316,23 @@ class OwnerDashboardService:
                     id=dispute.id,
                     booking_id=booking.id,
                     court_name=court_names.get(booking.court_id, ""),
+                    court_id=booking.court_id,
+                    court_sport=court_sports.get(booking.court_id),
                     venue_name=venue.name,
-                    player_name=player.name if player else booking.player_name,
+                    # The name the booking was made under first (a friend's / a walk-in's), then the account's.
+                    player_name=booking.player_name or (player.name if player else None),
                     player_phone=player.phone if player else booking.player_phone,
                     starts_at=booking.starts_at,
                     reason=dispute.reason,
                     refund_amount=float(dispute.refund_amount or 0),
                     refund_status=dispute.refund_status,
-                    refunded_amount=None,
-                    refund_reference=None,
-                    refunded_at=None,
+                    refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
+                    remaining_amount=round(max(float(dispute.refund_amount or 0) - float(dispute.refunded_amount or 0), 0.0), 2),
+                    refund_reference=dispute.refund_reference,
+                    refunded_at=dispute.refunded_at,
                     created_at=dispute.created_at,
-                    is_overdue=(dispute.refund_amount or 0) > 0 and now - dispute.created_at >= overdue_cutoff,
+                    is_overdue=(dispute.refund_amount or 0) > (dispute.refunded_amount or 0)
+                    and now - dispute.created_at >= overdue_cutoff,
                 )
             )
         return out
@@ -323,6 +373,7 @@ class OwnerDashboardService:
             courts = [c for c in courts if c.id == court_id]
         court_ids = [c.id for c in courts]
         court_names = {c.id: c.name for c in courts}
+        court_sports = {c.id: c.sport for c in courts}
 
         today = pkt_today()
         empty_summary = LedgerSummaryOut(
@@ -357,12 +408,21 @@ class OwnerDashboardService:
         result = await self.db.execute(query.order_by(PaymentEntry.created_at.asc()))
         rows = result.all()
 
+        ledger_accounts = await self._account_names({b.player_id for _, b in rows if b.player_id is not None})
         entries: list[LedgerEntryOut] = []
         running = 0
         by_court: dict[str, int] = defaultdict(int)
         by_day: dict[str, int] = defaultdict(int)
         for entry, booking in rows:
             running += entry.amount_pkr
+            # Recognisable refund rows (no new enum value): a negative entry that is not a reversal of an
+            # earlier entry is money paid back out -- a refund.
+            if entry.reverses_entry_id is not None:
+                entry_type, entry_label = "correction", "Correction"
+            elif entry.amount_pkr < 0:
+                entry_type, entry_label = "refund", "Refund"
+            else:
+                entry_type, entry_label = "payment", "Payment"
             court_name = court_names.get(booking.court_id, "")
             by_court[court_name] += entry.amount_pkr
             by_day[pkt_date_of(entry.created_at).isoformat()] += entry.amount_pkr
@@ -371,10 +431,15 @@ class OwnerDashboardService:
                     entry_id=entry.id,
                     recorded_at=entry.created_at,
                     court=court_name,
+                    court_id=booking.court_id,
+                    court_sport=court_sports.get(booking.court_id),
                     booking_id=booking.id,
                     starts_at=booking.starts_at,
-                    player=booking.player_name,
+                    player=booking.player_name or ledger_accounts.get(booking.player_id),
                     method=entry.method.value,
+                    entry_type=entry_type,
+                    label=entry_label,
+                    note=entry.note,
                     amount_pkr=entry.amount_pkr,
                     running_total=running,
                     booking_status=booking.status.value,
@@ -395,8 +460,20 @@ class OwnerDashboardService:
             )
         )
         refund_pending = await self.db.scalar(
-            select(func.coalesce(func.sum(Booking.amount_paid), 0))
-            .join(PaymentDispute, PaymentDispute.booking_id == Booking.id)
+            # Remaining refund still owed (refund_amount minus whatever partial refunds were already paid),
+            # not the booking's amount_paid.
+            select(
+                func.coalesce(
+                    func.sum(
+                        func.greatest(
+                            func.coalesce(PaymentDispute.refund_amount, 0) - func.coalesce(PaymentDispute.refunded_amount, 0),
+                            0,
+                        )
+                    ),
+                    0,
+                )
+            )
+            .join(Booking, Booking.id == PaymentDispute.booking_id)
             .where(Booking.court_id.in_(court_ids), PaymentDispute.resolved.is_(False))
         )
 
@@ -430,7 +507,7 @@ class OwnerDashboardService:
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(
-            ["recorded_at", "court", "booking_starts_at", "player", "method", "amount_pkr", "running_total", "booking_status"]
+            ["recorded_at", "court", "booking_starts_at", "player", "type", "method", "amount_pkr", "running_total", "booking_status", "note"]
         )
         for row in ledger.entries:
             writer.writerow(
@@ -439,10 +516,12 @@ class OwnerDashboardService:
                     row.court,
                     row.starts_at.isoformat(),
                     row.player or "",
+                    row.label,
                     row.method,
                     row.amount_pkr,
                     row.running_total,
                     row.booking_status,
+                    row.note or "",
                 ]
             )
         return buf.getvalue()

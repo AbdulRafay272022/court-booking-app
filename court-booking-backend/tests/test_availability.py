@@ -67,8 +67,12 @@ async def test_basic_slot_generation(
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["slot_minutes"] == 60
-    assert len(body["slots"]) == 17
+    # Section 32 Part 4c: ONE fixed 30-minute grid for every court; the court's 60 minutes is its MINIMUM booking.
+    assert body["slot_minutes"] == 30
+    assert body["min_booking_minutes"] == 60 and body["min_slots"] == 2
+    assert len(body["slots"]) == 34  # 06:00-23:00 = 17 hours = 34 half-hour slots
+    # a 30-minute slot of a court priced PKR 3000 per hour is half of it
+    assert all(s["price"] == 1500.0 for s in body["slots"])
     assert all(s["status"] == "available" for s in body["slots"])
 
 
@@ -85,15 +89,22 @@ async def test_ninety_minute_slots(
     resp = await client.get(
         f"/api/v1/courts/{court.id}/availability", params={"date": target_date.isoformat()}
     )
-    slots = resp.json()["slots"]
-    assert len(slots) == 11
-    # Schedule hours (06:00-22:30) are PKT; returned starts_at is UTC (PKT-5).
-    expected_starts = ["01:00", "02:30", "04:00", "05:30", "07:00", "08:30", "10:00", "11:30", "13:00", "14:30", "16:00"]
-    for slot, expected_start in zip(slots, expected_starts):
-        assert slot["starts_at"][11:16] == expected_start
+    body = resp.json()
+    slots = body["slots"]
+    # 30-minute grid whatever the court's length; 90 minutes is the MINIMUM booking (3 slots).
+    assert body["slot_minutes"] == 30 and body["min_booking_minutes"] == 90 and body["min_slots"] == 3
+    assert len(slots) == 33  # 06:00-22:30 = 16.5 hours
+    # Schedule hours (06:00-22:30) are PKT; returned starts_at is UTC (PKT-5): 01:00, 01:30, 02:00 ...
+    for i, slot in enumerate(slots):
         starts = datetime.fromisoformat(slot["starts_at"])
         ends = datetime.fromisoformat(slot["ends_at"])
-        assert (ends - starts).total_seconds() == 90 * 60
+        assert (ends - starts).total_seconds() == 30 * 60
+        assert starts == datetime.fromisoformat(slots[0]["starts_at"]) + timedelta(minutes=30 * i)
+    assert slots[0]["starts_at"][11:16] == "01:00"
+    # PKR 4000 per 90 minutes: a slot is a third (1333.33), and three of them cost exactly 4000
+    assert slots[0]["price"] == 1333.33
+    quote = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": slots[0]["starts_at"], "slot_count": 3})
+    assert quote.json()["price"] == 4000.0
 
 
 async def test_blackout_overlay(
@@ -204,13 +215,14 @@ async def test_pricing_overlay_weekend_peak_vs_default(
     # Pricing rule windows (17:00-23:00) are PKT; returned starts_at is UTC
     # (PKT-5), so 18:00 PKT / 10:00 PKT show up as 13:00 / 05:00 UTC.
     sat_by_start = {s["starts_at"][11:16]: s for s in sat_resp.json()["slots"]}
-    assert sat_by_start["13:00"]["price"] == 5000.0
-    assert sat_by_start["05:00"]["price"] == 3000.0
+    # a 30-minute slot is half of the 60-minute price
+    assert sat_by_start["13:00"]["price"] == 2500.0
+    assert sat_by_start["05:00"]["price"] == 1500.0
 
     mon_resp = await client.get(
         f"/api/v1/courts/{court.id}/availability", params={"date": monday.isoformat()}
     )
-    assert all(s["price"] == 3000.0 for s in mon_resp.json()["slots"])
+    assert all(s["price"] == 1500.0 for s in mon_resp.json()["slots"])
 
 
 async def test_advance_amount_calculation(
@@ -227,8 +239,9 @@ async def test_advance_amount_calculation(
         f"/api/v1/courts/{court.id}/availability", params={"date": target_date.isoformat()}
     )
     slot = resp.json()["slots"][0]
-    assert slot["price"] == 4000.0
-    assert slot["advance_amount"] == 2000.0
+    # a 30-minute slot of a PKR 4000 / 60-minute court: half the price, half the advance
+    assert slot["price"] == 2000.0
+    assert slot["advance_amount"] == 1000.0
 
 
 async def test_no_schedule_means_no_slots(client, make_user, make_venue, make_court, next_weekday):
@@ -266,8 +279,8 @@ async def test_date_range_query_respects_each_days_schedule(
     body = resp.json()
     assert len(body["days"]) == 7
     slot_counts = {d["date"]: len(d["slots"]) for d in body["days"]}
-    assert slot_counts[start.isoformat()] == 3  # Monday: 06:00-09:00
-    assert slot_counts[(start + timedelta(days=2)).isoformat()] == 6  # Wednesday: 06:00-12:00
+    assert slot_counts[start.isoformat()] == 6  # Monday: 06:00-09:00, 30-minute slots
+    assert slot_counts[(start + timedelta(days=2)).isoformat()] == 12  # Wednesday: 06:00-12:00
     assert slot_counts[(start + timedelta(days=1)).isoformat()] == 0  # Tuesday: closed
 
 
@@ -305,7 +318,7 @@ async def test_venue_wide_availability_covers_all_courts(
     body = resp.json()
     assert len(body["courts"]) == 2
     for court_availability in body["courts"]:
-        assert len(court_availability["slots"]) == 2
+        assert len(court_availability["slots"]) == 4  # 06:00-08:00 in 30-minute slots
 
 
 async def test_availability_performance_28_day_range(
@@ -330,7 +343,7 @@ async def test_availability_performance_28_day_range(
 
     assert resp.status_code == 200
     total_slots = sum(len(d["slots"]) for d in resp.json()["days"])
-    assert total_slots == 28 * 17
+    assert total_slots == 28 * 34
     # Generous margin over the spec's 200ms target since this also pays for
     # the HTTP round-trip and JSON (de)serialization in the test process.
     assert elapsed_ms < 2000, f"28-day availability took {elapsed_ms:.0f}ms"

@@ -19,11 +19,23 @@ class TodaySlotOut(BaseModel):
     # Section 32 Part 9: so Today can show "Checked in 7:05 PM" / offer Check in or Mark no-show.
     checked_in_at: datetime | None = None
     checked_in_by: str | None = None
+    # Owner "Today" detail (items 8-10): which court (and its sport), how and when the booking was made. All None on an
+    # open/closed slot. `player_name` is the name the booking was made under (a walk-in's or a "booked for a friend" name),
+    # falling back to the account name; `account_name` is the registered account that made it (None for a walk-in with
+    # no account), so the owner can see both when they differ.
+    court_id: uuid.UUID | None = None
+    court_name: str | None = None
+    court_sport: str | None = None
+    booking_source: str | None = None  # "app" | "whatsapp" | "walkin" | "phone"
+    booked_at: datetime | None = None  # bookings.created_at
+    account_name: str | None = None
+    player_phone: str | None = None
 
 
 class TodayCourtOut(BaseModel):
     court_id: uuid.UUID
     name: str
+    sport: str | None = None
     slots: list[TodaySlotOut]
 
 
@@ -44,6 +56,11 @@ class PendingApprovalOut(BaseModel):
     payment_id: uuid.UUID
     booking_id: uuid.UUID
     court_name: str
+    # Items 8/10: carried explicitly so screens never match on court name; player_name is the name the booking
+    # was made under (account name only as a fallback), account_name the registered account.
+    court_id: uuid.UUID | None = None
+    court_sport: str | None = None
+    account_name: str | None = None
     starts_at: datetime
     ends_at: datetime
     player_name: str | None
@@ -65,6 +82,8 @@ class LedgerEntryOut(BaseModel):
     entry_id: uuid.UUID
     recorded_at: datetime
     court: str
+    court_id: uuid.UUID | None = None
+    court_sport: str | None = None
     booking_id: uuid.UUID
     starts_at: datetime
     player: str | None
@@ -72,6 +91,11 @@ class LedgerEntryOut(BaseModel):
     # Part 10's refund_amount-on-the-row is intentionally dropped here; wiring a paid refund to
     # appear as a real negative payment_entry is a deliberate follow-up (see batch-review notes).
     method: str
+    # "payment" | "refund" | "correction" with a ready-made label ("Payment" / "Refund" / "Correction"); the
+    # note carries the refund reference or the credited-amount audit text.
+    entry_type: str = "payment"
+    label: str = "Payment"
+    note: str | None = None
     amount_pkr: int
     running_total: int
     booking_status: str
@@ -85,8 +109,8 @@ class LedgerSummaryOut(BaseModel):
     collected_this_month: int
     # Money owed for BOOKED/COMPLETED slots whose balance isn't fully collected yet.
     outstanding_balance: float
-    # Money paid on bookings with an unresolved payment_disputes row (a cancelled/expired booking a
-    # player likely paid real money for and hasn't been refunded).
+    # Remaining refund still owed on unresolved payment_disputes rows (refund_amount minus any partial
+    # refunds already paid).
     cancelled_refund_pending: float
     # Net total of `entries` below (respects the caller's date range and filters).
     total_in_range: int

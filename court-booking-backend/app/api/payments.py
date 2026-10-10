@@ -9,7 +9,7 @@ from app.models.payment_entry import PaymentEntry
 from app.models.user import User
 from app.models.venue import Venue
 from app.schemas.booking import BookingOut
-from app.schemas.payment import PaymentOut, PaymentRejectIn, PaymentSubmitResponse, ProofUrlOut
+from app.schemas.payment import PaymentApproveIn, PaymentOut, PaymentRejectIn, PaymentSubmitResponse, ProofUrlOut
 from app.schemas.payment_entry import PaymentEntryIn, PaymentEntryOut, PaymentEntryResponse, PaymentEntryReverseIn
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
@@ -105,7 +105,11 @@ async def submit_payment_proof(
 
 @router.post("/payments/{payment_id}/approve", response_model=PaymentSubmitResponse)
 async def approve_payment(
-    payment_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+    payment_id: uuid.UUID,
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    payload: PaymentApproveIn | None = None,
 ) -> PaymentSubmitResponse:
     payment_service = PaymentService(db, settings)
     payment = await payment_service.get_payment(payment_id)
@@ -114,7 +118,9 @@ async def approve_payment(
         payment.booking_id, owner, permission="approve_payments"
     )
 
-    payment = await payment_service.approve_payment(payment, booking, owner)
+    payment = await payment_service.approve_payment(
+        payment, booking, owner, amount_pkr=payload.amount_pkr if payload else None
+    )
     await db.refresh(booking)
 
     court = await db.get(Court, booking.court_id)

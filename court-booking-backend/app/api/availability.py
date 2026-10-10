@@ -15,9 +15,19 @@ from app.schemas.availability import (
     RangeAvailabilityOut,
     VenueAvailabilityOut,
 )
-from app.services.availability_service import AvailabilityService
+from app.services import slot_compat
+from app.services.availability_service import GRID_MINUTES, AvailabilityService, min_slots
+from app.services.slot_compat import LegacySlotUnits
 
 router = APIRouter(tags=["availability"])
+
+# TRANSITION (delete with app/services/slot_compat.py once the new EAS build is out everywhere): every `legacy` flag below is
+# True for a request WITHOUT the `X-Slot-Grid: 30` header (an app build from before the 30-minute grid), which gets the old
+# per-court-slot-length slots and old-unit `slot_count` / `slot_minutes`.
+
+
+def _grid_minutes(court: Court, legacy: bool) -> int:
+    return int(court.slot_minutes) if legacy else GRID_MINUTES
 
 
 @router.get("/courts/{court_id}/availability")
@@ -25,6 +35,7 @@ async def get_court_availability(
     court_id: uuid.UUID,
     db: DbSession,
     viewer: OptionalCurrentUser,
+    legacy: LegacySlotUnits,
     date: date | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
@@ -33,9 +44,10 @@ async def get_court_availability(
     court = await service.get_court(court_id)
 
     if date is not None:
-        slots = await service.get_day_slots(court, date, viewer_id=viewer.id if viewer else None)
+        slots = await service.get_day_slots(court, date, viewer_id=viewer.id if viewer else None, legacy_units=legacy)
         return DayAvailabilityOut(
-            court_id=str(court_id), date=date, slot_minutes=court.slot_minutes, slots=slots
+            court_id=str(court_id), date=date, slot_minutes=_grid_minutes(court, legacy),
+            min_booking_minutes=court.slot_minutes, min_slots=min_slots(court), slots=slots
         )
 
     if start_date is None or end_date is None:
@@ -50,17 +62,23 @@ async def get_court_availability(
     while current <= end_date:
         days.append(
             DateSlots(
-                date=current, slots=await service.get_day_slots(court, current, viewer_id=viewer.id if viewer else None)
+                date=current,
+                slots=await service.get_day_slots(
+                    court, current, viewer_id=viewer.id if viewer else None, legacy_units=legacy
+                ),
             )
         )
         current += timedelta(days=1)
 
-    return RangeAvailabilityOut(court_id=str(court_id), slot_minutes=court.slot_minutes, days=days)
+    return RangeAvailabilityOut(
+        court_id=str(court_id), slot_minutes=_grid_minutes(court, legacy), min_booking_minutes=court.slot_minutes,
+        min_slots=min_slots(court), days=days,
+    )
 
 
 @router.get("/venues/{venue_id}/availability", response_model=VenueAvailabilityOut)
 async def get_venue_availability(
-    venue_id: uuid.UUID, date: date, db: DbSession, viewer: OptionalCurrentUser
+    venue_id: uuid.UUID, date: date, db: DbSession, viewer: OptionalCurrentUser, legacy: LegacySlotUnits
 ) -> VenueAvailabilityOut:
     service = AvailabilityService(db)
     result = await db.execute(select(Court).where(Court.venue_id == venue_id, Court.is_active.is_(True)))
@@ -68,10 +86,11 @@ async def get_venue_availability(
 
     court_availabilities = []
     for court in courts:
-        slots = await service.get_day_slots(court, date, viewer_id=viewer.id if viewer else None)
+        slots = await service.get_day_slots(court, date, viewer_id=viewer.id if viewer else None, legacy_units=legacy)
         court_availabilities.append(
             CourtAvailabilityOut(
-                court_id=str(court.id), court_name=court.name, slot_minutes=court.slot_minutes, slots=slots
+                court_id=str(court.id), court_name=court.name, slot_minutes=_grid_minutes(court, legacy),
+                min_booking_minutes=court.slot_minutes, min_slots=min_slots(court), slots=slots
             )
         )
 
@@ -83,20 +102,32 @@ async def quote_booking(
     court_id: uuid.UUID,
     db: DbSession,
     starts_at: datetime,
-    slot_count: int = Query(default=1, ge=1, le=16),
+    legacy: LegacySlotUnits,
+    slot_count: int | None = Query(default=None, ge=1, le=16),
 ) -> BookingQuoteOut:
-    """What a booking of `slot_count` consecutive slots from `starts_at` costs, before anything is held."""
+    """What a booking of `slot_count` consecutive 30-minute slots from `starts_at` costs, before anything is held.
+    Omitted `slot_count` = the court's minimum booking (min_slots). TRANSITION: a legacy request counts `slot_count` in the
+    court's own slot length (omitted = 1) and gets the old-unit `slot_count` / `slot_minutes` back."""
     if starts_at.tzinfo is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="starts_at must include a UTC offset")
     service = AvailabilityService(db)
     court = await service.get_court(court_id)
-    quote = await service.quote_range(court, starts_at, slot_count)
+    if legacy:
+        new_count = slot_compat.to_new_slot_count(court, slot_count)
+    else:
+        new_count = slot_count if slot_count is not None else min_slots(court)
+    quote = await service.quote_range(court, starts_at, new_count, legacy_units=legacy)
+    shown = slot_compat.legacy_quote_fields(court, quote.slot_count) if legacy else {
+        "slot_count": quote.slot_count, "slot_minutes": GRID_MINUTES
+    }
     return BookingQuoteOut(
         court_id=str(court_id),
         starts_at=quote.starts_at,
         ends_at=quote.ends_at,
-        slot_count=quote.slot_count,
-        slot_minutes=court.slot_minutes,
+        slot_count=shown["slot_count"],
+        slot_minutes=shown["slot_minutes"],
+        min_booking_minutes=court.slot_minutes,
+        min_slots=min_slots(court),
         duration_minutes=quote.duration_minutes,
         price=quote.price,
         advance_amount=quote.advance_amount,
@@ -109,6 +140,7 @@ async def get_court_month_summary(
     court_id: uuid.UUID,
     response: Response,
     db: DbSession,
+    legacy: LegacySlotUnits,
     month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM"),
 ) -> CourtMonthSummaryOut:
     """One row per day of the month with a state (open/few/full/closed, plus past/beyond) for the calendar dots
@@ -120,7 +152,9 @@ async def get_court_month_summary(
     venue = await db.get(Venue, court.venue_id)
     year, mon = (int(x) for x in month.split("-"))
     summary = await service.month_summary(
-        court, date(year, mon, 1), venue.booking_horizon_days if venue is not None else 90
+        court, date(year, mon, 1), venue.booking_horizon_days if venue is not None else 90, legacy_units=legacy
     )
     response.headers["Cache-Control"] = "public, max-age=30"
+    # TRANSITION: the body depends on the X-Slot-Grid header, so a shared cache must key on it (delete with slot_compat.py)
+    response.headers["Vary"] = slot_compat.SLOT_GRID_HEADER
     return summary

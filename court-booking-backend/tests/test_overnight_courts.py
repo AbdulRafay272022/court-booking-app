@@ -54,7 +54,8 @@ async def _grid(client, court, day: date, headers=None):
     return resp.json()["slots"]
 
 
-async def _hold(client, court, headers, starts, slot_count=1):
+async def _hold(client, court, headers, starts, slot_count=2):
+    """slot_count counts 30-minute slots (Part 4c); the default 2 is the 60-minute minimum of the helper's courts."""
     return await client.post(
         "/api/v1/bookings/hold", headers=headers,
         json={"court_id": str(court.id), "starts_at": _iso(starts), "slot_count": slot_count},
@@ -71,14 +72,14 @@ async def test_a_3pm_to_3am_court_has_a_grid_that_runs_across_midnight(
     thu = _next_weekday(THURSDAY)
     slots = await _grid(client, court, thu)
 
-    assert len(slots) == 12  # 3 PM ... 2 AM starts
+    assert len(slots) == 24  # 3:00 PM ... 2:30 AM half-hour starts (12 hours)
     assert slots[0]["starts_at"] == _iso(_at(thu, 15)) and slots[-1]["ends_at"] == _iso(_at(thu, 27))  # 3 AM Friday
-    assert [s["after_midnight"] for s in slots] == [False] * 9 + [True] * 3
-    assert slots[9]["starts_at"] == _iso(_at(thu, 24))  # 12:00 AM Friday is the first slot after midnight
+    assert [s["after_midnight"] for s in slots] == [False] * 18 + [True] * 6
+    assert slots[18]["starts_at"] == _iso(_at(thu, 24))  # 12:00 AM Friday is the first slot after midnight
     # Friday's own tab is Friday's schedule: it starts at 3 PM, and does NOT repeat Thursday's after-midnight slots
     fri = await _grid(client, court, thu + timedelta(days=1))
     assert fri[0]["starts_at"] == _iso(_at(thu + timedelta(days=1), 15)) and not any(s["after_midnight"] and s["starts_at"] < fri[0]["starts_at"] for s in fri)
-    assert len(fri) == 12
+    assert len(fri) == 24
 
 
 async def test_a_6pm_to_6am_court_and_a_24_hour_court_and_a_midnight_close(
@@ -88,18 +89,18 @@ async def test_a_6pm_to_6am_court_and_a_24_hour_court_and_a_midnight_close(
     _o, night = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923090000002",
                              open_=time(18, 0), close=time(6, 0))
     slots = await _grid(client, night, thu)
-    assert len(slots) == 12 and slots[0]["starts_at"] == _iso(_at(thu, 18)) and slots[-1]["ends_at"] == _iso(_at(thu, 30))
+    assert len(slots) == 24 and slots[0]["starts_at"] == _iso(_at(thu, 18)) and slots[-1]["ends_at"] == _iso(_at(thu, 30))
 
     _o, always = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923090000003",
                               open_=time(6, 0), close=time(6, 0))  # open == close: open 24 hours
     slots = await _grid(client, always, thu)
-    assert len(slots) == 24 and slots[0]["starts_at"] == _iso(_at(thu, 6)) and slots[-1]["ends_at"] == _iso(_at(thu, 30))
-    assert sum(s["after_midnight"] for s in slots) == 6  # 12 AM to 6 AM belong to Thursday's schedule
+    assert len(slots) == 48 and slots[0]["starts_at"] == _iso(_at(thu, 6)) and slots[-1]["ends_at"] == _iso(_at(thu, 30))
+    assert sum(s["after_midnight"] for s in slots) == 12  # 12 AM to 6 AM belong to Thursday's schedule
 
     _o, midnight = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923090000004",
                                 open_=time(6, 0), close=time(0, 0))  # closes at midnight
     slots = await _grid(client, midnight, thu)
-    assert len(slots) == 18  # 6 AM ... 11 PM: the 11 PM-12 AM slot the old 23:59 workaround lost is back
+    assert len(slots) == 36  # 6:00 AM ... 11:30 PM: the 11 PM-12 AM slots the old 23:59 workaround lost are back
     assert slots[-1]["ends_at"] == _iso(_at(thu, 24)) and not slots[-1]["after_midnight"]
 
 
@@ -110,9 +111,10 @@ async def test_a_90_minute_overnight_court_walks_the_same_grid(
                              open_=time(18, 0), close=time(3, 0), slot_minutes=90)
     thu = _next_weekday(THURSDAY)
     slots = await _grid(client, court, thu)
-    assert len(slots) == 6  # 9 hours / 1.5
-    assert slots[3]["starts_at"] == _iso(_at(thu, 22, 30)) and slots[4]["starts_at"] == _iso(_at(thu, 24))  # 12:00 AM
-    assert slots[4]["after_midnight"] is True and slots[3]["after_midnight"] is False
+    # 6 PM - 3 AM = 9 hours: the same 30-minute grid as every other court (90 minutes is only this court's MINIMUM booking)
+    assert len(slots) == 18
+    assert slots[9]["starts_at"] == _iso(_at(thu, 22, 30)) and slots[12]["starts_at"] == _iso(_at(thu, 24))  # 12:00 AM
+    assert slots[12]["after_midnight"] is True and slots[11]["after_midnight"] is False
 
 
 # ---- bookings across midnight ----------------------------------------------------------------------------
@@ -154,16 +156,16 @@ async def test_two_bookings_either_side_of_midnight_and_one_across_it(
 
     assert (await _hold(client, court, ha, _at(thu, 23))).status_code == 201   # 11 PM - 12 AM
     assert (await _hold(client, court, hb, _at(thu, 24))).status_code == 201   # 12 AM - 1 AM, side by side, no clash
-    across = await _hold(client, court, hc, _at(thu, 22), slot_count=2)        # 10 PM - 12 AM touches the first
+    across = await _hold(client, court, hc, _at(thu, 22), slot_count=4)        # 10 PM - 12 AM touches the first
     assert across.status_code == 409 and across.json()["error"]["code"] == "SLOT_ALREADY_TAKEN"
-    free_across = await _hold(client, court, hc, _at(thu, 21), slot_count=2)   # 9 PM - 11 PM is clear
+    free_across = await _hold(client, court, hc, _at(thu, 21), slot_count=4)   # 9 PM - 11 PM is clear
     assert free_across.status_code == 201
 
     # one booking that itself crosses midnight: 1 AM - 3 AM is two slots after midnight; 11 PM-1 AM needs 23:00 free
     d = await make_user("+923090000012", role=UserRole.PLAYER)
     hd = await make_auth_headers(d)
     fri_night = _next_weekday(THURSDAY, 10)
-    crossing = await _hold(client, court, hd, _at(fri_night, 23), slot_count=2)  # 11 PM Thursday -> 1 AM Friday
+    crossing = await _hold(client, court, hd, _at(fri_night, 23), slot_count=4)  # 11 PM Thursday -> 1 AM Friday
     assert crossing.status_code == 201, crossing.text
     assert crossing.json()["booking"]["ends_at"] == _iso(_at(fri_night, 25)) and crossing.json()["booking"]["price"] == 2000.0
 
@@ -212,13 +214,20 @@ async def test_a_peak_window_from_10pm_to_2am_prices_the_slots_on_both_sides_of_
     for s in await _grid(client, court, thu):
         local = utc_to_pkt_naive(datetime.fromisoformat(s["starts_at"].replace("Z", "+00:00")))
         price_by_hour[local.hour] = s["price"]
-    assert [price_by_hour[h] for h in (18, 19, 20, 21)] == [1000.0] * 4
-    assert [price_by_hour[h] for h in (22, 23, 0, 1)] == [3000.0] * 4   # 10 PM, 11 PM, 12 AM, 1 AM
-    assert price_by_hour[2] == 1000.0                                    # 2-3 AM is outside the window
+    # half-hour slots of a PKR 1000/hour court cost 500; of the 3000/hour late peak, 1500
+    assert [price_by_hour[h] for h in (18, 19, 20, 21)] == [500.0] * 4
+    assert [price_by_hour[h] for h in (22, 23, 0, 1)] == [1500.0] * 4   # 10 PM, 11 PM, 12 AM, 1 AM
+    assert price_by_hour[2] == 500.0                                    # 2-3 AM is outside the window
 
-    # a booking that straddles midnight is charged slot by slot: 11 PM (3000) + 12 AM (3000)
-    q = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(thu, 23)), "slot_count": 2})
+    # a booking that straddles midnight is charged slot by slot: 11 PM-1 AM = 4 x 1500
+    q = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(thu, 23)), "slot_count": 4})
     assert q.status_code == 200 and q.json()["price"] == 6000.0
+    # half-hour boundaries of the window: 9:30 PM (500) + 10:00, 10:30, 11:00 PM (1500 each) = 5000
+    q = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(thu, 21, 30)), "slot_count": 4})
+    assert q.status_code == 200 and q.json()["price"] == 5000.0
+    # ends exactly at the window's end: 1:00-2:00 AM (2 x 1500) then 2:00-2:30 (500) = 3500 for 90 minutes
+    q = await client.get(f"/api/v1/courts/{court.id}/quote", params={"starts_at": _iso(_at(thu, 25)), "slot_count": 3})
+    assert q.status_code == 200 and q.json()["price"] == 3500.0
 
 
 def test_rule_windows_the_ways_an_owner_can_write_them():
@@ -270,17 +279,19 @@ async def test_the_service_agrees_for_holds_walk_ins_and_quotes(
     one_am = _at(thu, 25)
     assert await service.schedule_day_of(court, one_am) == thu
     assert await service.is_slot_grid_aligned(court, one_am) is True
-    assert await service.is_slot_grid_aligned(court, _at(thu, 25, 30)) is False   # off the grid
+    assert await service.is_slot_grid_aligned(court, _at(thu, 25, 30)) is True    # 1:30 AM is on the 30-minute grid
+    assert await service.is_slot_grid_aligned(court, _at(thu, 25, 10)) is False   # off the grid
     assert await service.is_slot_grid_aligned(court, _at(thu, 27)) is False        # 3 AM: closed
-    price, _adv = await service.price_for_range_with_advance(court, one_am, one_am + timedelta(hours=1))
-    assert price == 1000.0
+    quote = await service.quote_range(court, one_am, 2)
+    assert quote.price == 1000.0 and quote.duration_minutes == 60
 
     # the calendar-day view ("what is free on Friday?") = Thursday's tail + Friday's slots up to midnight
     friday = thu + timedelta(days=1)
     calendar = await service.get_slots_starting_on(court, friday)
     starts = [utc_to_pkt_naive(s.starts_at) for s in calendar]
-    assert starts[0] == datetime.combine(friday, time(0, 0)) and starts[2] == datetime.combine(friday, time(2, 0))
-    assert starts[3] == datetime.combine(friday, time(15, 0)) and starts[-1] == datetime.combine(friday, time(23, 0))
+    assert starts[0] == datetime.combine(friday, time(0, 0)) and starts[4] == datetime.combine(friday, time(2, 0))
+    assert starts[5] == datetime.combine(friday, time(2, 30)) and starts[6] == datetime.combine(friday, time(15, 0))
+    assert starts[-1] == datetime.combine(friday, time(23, 30))
     assert all(s.date() == friday for s in starts)
 
 

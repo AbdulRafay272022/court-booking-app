@@ -222,6 +222,7 @@ async def owner_mark_refund_paid(
         screenshot_key = await upload_private_proof(screenshot_bytes, screenshot.filename or "refund.jpg", screenshot.content_type)
 
     admin_service = AdminService(db, settings)
+    already_refunded = float(dispute.refunded_amount or 0)
     dispute = await admin_service.mark_refund_paid(
         dispute, actor=owner, amount=amount, reference=reference, screenshot_key=screenshot_key
     )
@@ -234,7 +235,7 @@ async def owner_mark_refund_paid(
             await NotificationService(db, settings).notify_refund_paid(
                 user=player,
                 court_name=court.name if court else "",
-                amount=float(dispute.refunded_amount or 0),
+                amount=float(dispute.refunded_amount or 0) - already_refunded,
                 reference=reference,
             )
 
@@ -250,6 +251,7 @@ async def owner_mark_refund_paid(
         refund_amount=float(dispute.refund_amount or 0),
         refund_status=dispute.refund_status,
         refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
+        remaining_amount=round(max(float(dispute.refund_amount or 0) - float(dispute.refunded_amount or 0), 0.0), 2),
         refund_reference=dispute.refund_reference,
         refunded_at=dispute.refunded_at,
         created_at=dispute.created_at,

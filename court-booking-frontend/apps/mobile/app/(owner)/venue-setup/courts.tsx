@@ -146,7 +146,7 @@ export default function VenueCourtsScreen() {
             Your courts and prices
           </Text>
           <Text className="font-plex-medium text-owner-ink-muted text-[15px]">
-            Each court has its own slot length, opening hours and prices. We build its schedule from them.
+            Each court has its own minimum booking time, opening hours and prices. We build its schedule from them.
           </Text>
         </View>
 

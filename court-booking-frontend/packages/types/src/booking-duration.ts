@@ -1,7 +1,18 @@
 import type { Slot } from "./availability";
 import { formatTime24As12, parseTime24 } from "./datetime";
 
-/** Slot lengths an owner may choose per court (90 is here for padel). Mirrors the backend's ALLOWED_SLOT_MINUTES. */
+/** The ONE slot grid of every court (Section 32 Part 4c): slots are 30 minutes, whatever the court's own setting. Mirrors
+ * the backend's GRID_MINUTES. */
+export const GRID_MINUTES = 30;
+
+/** How many consecutive 30-minute slots a court's minimum booking time is (60 min -> 2, 90 -> 3, 120 -> 4). Mirrors the
+ * backend's min_slots(). */
+export function minSlotsFor(minBookingMinutes: number): number {
+  return Math.max(1, Math.ceil(minBookingMinutes / GRID_MINUTES));
+}
+
+/** Minimum booking times an owner may choose per court (90 is here for padel). The court's `slot_minutes` setting IS its
+ * minimum booking time now; the slot grid itself is always 30 minutes. Mirrors the backend's ALLOWED_SLOT_MINUTES. */
 export const SLOT_MINUTES_OPTIONS = [30, 60, 90, 120] as const;
 
 /** Longest single booking a player can make, whatever the court's slot length. Mirrors the backend's
@@ -74,29 +85,37 @@ export function slotPreviewText(open24: string, close24: string, slotMinutes: nu
 }
 
 export interface DurationChoice {
-  /** How many consecutive slots this length takes. */
+  /** How many consecutive 30-minute slots this length takes. */
   slotCount: number;
   minutes: number;
   label: string;
+  /** Total of the slots' own prices (a client-side estimate for the row; the server quote is the final word). */
+  price: number;
   /** When it would end (an ISO instant, the last slot's ends_at). */
   endsAt: string;
 }
 
 /**
- * The booking lengths a player can pick when they tap `slots[index]`: one slot, two slots ... as long as every
- * following slot is open and directly follows the last (no gap, nothing booked or blocked in between) and the
- * total stays within MAX_BOOKING_MINUTES. Always includes at least the tapped slot. The price and the final say
- * still come from the server (GET /courts/:id/quote); this only decides which chips to offer.
+ * The booking lengths that can start at `slots[index]` on the 30-minute grid: `minSlots` slots (the court's minimum
+ * booking time), then one more slot at a time, as long as every slot is open and directly follows the last (no gap,
+ * nothing booked or blocked in between) and the total stays within MAX_BOOKING_MINUTES. EMPTY when the minimum does
+ * not fit from here (a lone free half hour on a 60-minute court, or too close to closing time). Lengths are measured
+ * from the slots themselves. The price and the final say still come from the server (GET /courts/:id/quote); this
+ * only decides which choices to offer. Used by the player picker (chips) and the owner walk-in (slot selection).
  */
-export function durationChoices(slots: Slot[], index: number, slotMinutes: number, maxMinutes = MAX_BOOKING_MINUTES): DurationChoice[] {
+export function durationChoices(slots: Slot[], index: number, minSlots = 1, maxMinutes = MAX_BOOKING_MINUTES): DurationChoice[] {
   const choices: DurationChoice[] = [];
+  let minutes = 0;
+  let price = 0;
   for (let i = index, count = 1; i < slots.length; i++, count++) {
     const slot = slots[i];
     if (slot.status !== "available") break;
     if (i > index && slots[i - 1].ends_at !== slot.starts_at) break;
-    const minutes = count * slotMinutes;
+    minutes += Math.round((Date.parse(slot.ends_at) - Date.parse(slot.starts_at)) / 60000);
+    price += slot.price;
     if (count > 1 && minutes > maxMinutes) break;
-    choices.push({ slotCount: count, minutes, label: formatDuration(minutes), endsAt: slot.ends_at });
+    if (count < minSlots) continue;
+    choices.push({ slotCount: count, minutes, label: formatDuration(minutes), endsAt: slot.ends_at, price: Math.round(price * 100) / 100 });
   }
   return choices;
 }
@@ -112,3 +131,25 @@ export function cancellationPolicyText(
   }
   return "You can cancel any time before your booking starts.";
 }
+
+/**
+ * The slots the owner walk-in screen OFFERS (mirrors the backend rule, error WALKIN_IN_PAST): a slot whose 30 minutes have
+ * already ended is not offered; the slot in progress (started, not ended) still is, because owners log people who have just
+ * arrived. Judged by the real instant (`ends_at` against `now`), so an overnight court's 1:00 AM slot, which belongs to the
+ * PREVIOUS schedule day, is judged by when it actually happens.
+ *
+ * `todaySlots` is the schedule day being viewed. For TODAY (`includeYesterdayTail`) the previous schedule day's after-midnight
+ * slots are added first: at 1:10 AM an overnight court is still open on yesterday's schedule, and its 1:00 AM slot is the one
+ * in progress. A date picker that never goes before today still reaches it this way.
+ */
+export function walkinSlots(
+  todaySlots: Slot[],
+  previousDaySlots: Slot[] | undefined,
+  includeYesterdayTail: boolean,
+  now: number | Date = Date.now(),
+): Slot[] {
+  const nowMs = typeof now === "number" ? now : now.getTime();
+  const tail = includeYesterdayTail ? (previousDaySlots ?? []).filter((s) => s.after_midnight) : [];
+  return [...tail, ...todaySlots].filter((s) => Date.parse(s.ends_at) > nowMs);
+}
+

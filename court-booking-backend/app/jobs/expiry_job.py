@@ -45,7 +45,7 @@ async def expire_stale_bookings(session_factory: async_sessionmaker = AsyncSessi
                         user=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
                     )
             if court:
-                await waitlist_service.notify_matching_entries(court, booking.starts_at)
+                await waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
 
         logger.info("expiry_job.completed", expired_count=len(expired))
         return len(expired)

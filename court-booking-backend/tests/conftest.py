@@ -95,6 +95,16 @@ def app(db_session_factory):
 
 @pytest.fixture
 async def client(app) -> AsyncGenerator[AsyncClient, None]:
+    # Every current web/mobile request carries X-Slot-Grid: 30 (the 30-minute grid); without it the backend serves the
+    # pre-Part-4c LEGACY units (app/services/slot_compat.py). The default test client is a current client.
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", headers={"X-Slot-Grid": "30"}) as ac:
+        yield ac
+
+
+@pytest.fixture
+async def legacy_client(app) -> AsyncGenerator[AsyncClient, None]:
+    """TRANSITION: an app build from before the 30-minute grid -- no X-Slot-Grid header (delete with slot_compat.py)."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

@@ -59,7 +59,7 @@ export default function OwnerRefundsPage() {
               <div className="flex flex-col gap-0.5 min-w-0">
                 <p className="font-bold truncate">{refund.player_name ?? refund.player_phone ?? "Player"}</p>
                 <p className="text-owner-ink-muted text-[13px]">
-                  {courtLabel(refund.court_name, sports.byName(refund.court_name, refund.venue_name))} · {formatWhen(refund.starts_at)}
+                  {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))} · {formatWhen(refund.starts_at)}
                 </p>
                 {refund.is_overdue ? (
                   <p className="text-[12px] font-semibold" style={{ color: "#A8432C" }}>
@@ -68,7 +68,7 @@ export default function OwnerRefundsPage() {
                 ) : null}
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className="font-mono font-bold text-[15px]">PKR {formatPKR(refund.refund_amount)}</span>
+                <span className="font-mono font-bold text-[15px]">PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))}{(refund.refunded_amount ?? 0) > 0 ? <span className="block text-[11px] font-semibold text-owner-ink-faint">remaining of PKR {formatPKR(refund.refund_amount)}</span> : null}</span>
                 <button
                   onClick={() => setOpenId(refund.id)}
                   className="px-4 h-10 rounded-lg text-white font-semibold text-[13.5px]"
@@ -100,7 +100,7 @@ export default function OwnerRefundsPage() {
 function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; onClose: () => void; onDone: () => void }) {
   const sports = useOwnerCourtSports();
   const [reference, setReference] = useState("");
-  const [amount, setAmount] = useState(String(Math.round(refund.refund_amount)));
+  const [amount, setAmount] = useState(String(Math.round((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))));
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,7 +137,7 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
         <div>
           <h2 className="text-lg font-bold">Mark refund as sent</h2>
           <p className="text-owner-ink-faint text-[13px]">
-            {refund.player_name ?? refund.player_phone} · {courtLabel(refund.court_name, sports.byName(refund.court_name, refund.venue_name))} · owed PKR {formatPKR(refund.refund_amount)}
+            {refund.player_name ?? refund.player_phone} · {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))} · remaining PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))} of PKR {formatPKR(refund.refund_amount)}
           </p>
         </div>
 

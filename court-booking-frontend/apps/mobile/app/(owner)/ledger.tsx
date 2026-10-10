@@ -121,7 +121,7 @@ export default function LedgerScreen() {
             ) : null}
             {summary.cancelled_refund_pending > 0 ? (
               <Text className="font-plex-medium text-[12.5px]" style={{ color: "#8C3823" }}>
-                PKR {formatPKR(summary.cancelled_refund_pending)} may be owed back (cancelled, unresolved)
+                PKR {formatPKR(summary.cancelled_refund_pending)} still owed back in refunds
               </Text>
             ) : null}
           </View>
@@ -170,14 +170,18 @@ export default function LedgerScreen() {
                     <View className="flex-row gap-1.5 flex-wrap">
                       <Badge label={statusStyle.label} bg={statusStyle.bg} fg={statusStyle.fg} />
                       <Badge label={METHOD_LABEL[entry.method] ?? entry.method.toUpperCase()} bg="#F4F6F7" fg="#5B7079" />
-                      {isCorrection ? <Badge label="CORRECTION" bg="#F8E5E0" fg="#8C3823" /> : null}
+                      {entry.entry_type === "refund" ? <Badge label="REFUND" bg="#F8E5E0" fg="#8C3823" /> : null}
+                      {entry.entry_type === "correction" ? <Badge label="CORRECTION" bg="#F8E5E0" fg="#8C3823" /> : null}
                     </View>
                   </View>
                   <View className="items-end gap-0.5">
                     <Text className="font-mono-semibold text-sm" style={{ color: isCorrection ? "#8C3823" : "#141A1D" }}>
                       {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
                     </Text>
-                    <Text className="font-mono-medium text-owner-ink-faint text-[11px]">{courtLabel(entry.court, sportForCourtName(courts, entry.court))}</Text>
+                    <Text className="font-mono-medium text-owner-ink-faint text-[11px]">{courtLabel(entry.court, entry.court_sport ?? sportForCourtName(courts, entry.court))}</Text>
+                    {entry.entry_type === "refund" && entry.note ? (
+                      <Text className="font-plex-medium text-owner-ink-faint text-[11px]">{entry.note}</Text>
+                    ) : null}
                     {!isCorrection ? (
                       <Pressable onPress={() => setCorrecting(entry)} hitSlop={8}>
                         <Text className="font-plex-semibold text-[11px]" style={{ color: "#8C3823" }}>

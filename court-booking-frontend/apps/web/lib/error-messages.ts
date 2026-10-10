@@ -23,6 +23,7 @@ const MESSAGES: Record<string, string> = {
   SLOT_ALREADY_TAKEN: "Someone just booked this slot. Pick another one.",
   INVALID_SLOT_TIME: "That time isn't available anymore — please pick a slot from the list.",
   SLOT_IN_PAST: "That time has already passed.",
+  WALKIN_IN_PAST: "That time has already passed. Record a walk-in for the slot happening now or a later one.",
   SLOT_BLOCKED: "This slot isn't available right now.",
   ALREADY_YOUR_SLOT: "This slot is already yours.",
   BOOKING_NOT_FOUND: "We couldn't find that booking.",
