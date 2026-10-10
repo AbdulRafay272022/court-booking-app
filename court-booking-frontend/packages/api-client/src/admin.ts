@@ -1,4 +1,6 @@
 import type {
+  PremiumFeature,
+  PremiumFeatureUpdate,
   AdminBooking,
   AdminOverview,
   AdminDashboard,
@@ -16,6 +18,11 @@ export function createAdminApi(client: ApiClient) {
     stats: () => client.request<PlatformStats>("/admin/stats"),
 
     overview: () => client.request<AdminOverview>("/admin/overview"),
+
+    /** Owner premium billing price list. */
+    premiumFeatures: () => client.request<PremiumFeature[]>("/admin/premium-features"),
+    updatePremiumFeature: (key: string, body: PremiumFeatureUpdate) =>
+      client.request<PremiumFeature>(`/admin/premium-features/${key}`, { method: "PATCH", body: JSON.stringify(body) }),
 
     dashboard: () => client.request<AdminDashboard>("/admin/dashboard"),
 

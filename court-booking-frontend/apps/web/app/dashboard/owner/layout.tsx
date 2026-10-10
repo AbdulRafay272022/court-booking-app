@@ -35,6 +35,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
     ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: "Reviews" }] : []),
     { href: "/dashboard/owner/settings", label: "Venue settings" },
     ...(!isStaff ? [{ href: "/dashboard/owner/staff", label: "Staff" }] : []),
+    ...(!isStaff ? [{ href: "/dashboard/owner/premium", label: "Premium" }] : []),
     { href: "/account", label: "Account" },
   ];
   const { venues: pickerVenues, activeVenue, activeVenueId, setVenueId } = useOwnerVenues();

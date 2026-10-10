@@ -9,6 +9,7 @@ import { createFeatureFlagsApi } from "./feature-flags";
 import { createOwnersApi } from "./owners";
 import { createStaffApi } from "./staff";
 import { createPaymentsApi } from "./payments";
+import { createPremiumApi } from "./premium";
 import { createReviewsApi } from "./reviews";
 import { createUsersApi } from "./users";
 import { createVenuesApi } from "./venues";
@@ -28,6 +29,7 @@ export * from "./owners";
 export * from "./admin";
 export * from "./feature-flags";
 export * from "./staff";
+export * from "./premium";
 export * from "./users";
 export * from "./session";
 export * from "./venue-draft";
@@ -49,6 +51,7 @@ export function createCourtBookingApi(config: ApiClientConfig) {
     admin: createAdminApi(client),
     featureFlags: createFeatureFlagsApi(client),
     staff: createStaffApi(client),
+    premium: createPremiumApi(client),
     users: createUsersApi(client),
   };
 }

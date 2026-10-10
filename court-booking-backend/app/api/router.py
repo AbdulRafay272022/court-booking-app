@@ -8,6 +8,7 @@ from app.api import (
     chat,
     courts,
     feature_flags,
+    owner_premium,
     owners,
     payments,
     reviews,
@@ -29,6 +30,7 @@ api_router.include_router(bookings.router)
 api_router.include_router(payments.router)
 api_router.include_router(waitlist.router)
 api_router.include_router(reviews.router)
+api_router.include_router(owner_premium.router)
 api_router.include_router(owners.router)
 api_router.include_router(admin.router)
 api_router.include_router(chat.router)
