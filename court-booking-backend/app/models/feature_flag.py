@@ -31,6 +31,9 @@ class FeatureFlagKey(str, enum.Enum):
     WAITLIST = "waitlist"                            # "Notify me" on booked slots
     MARKETING_ANNOUNCEMENTS = "marketing_announcements"  # owner paid broadcast (Tier 3)
     DIGEST_REMINDERS = "digest_reminders"           # owner daily digest + booking reminder jobs
+    # Owner premium billing. NOT a kill switch: ships OFF and a MISSING row also means off (the one flag that fails closed),
+    # so no owner is cut off until an admin turns enforcement on deliberately.
+    OWNER_BILLING_ENFORCED = "owner_billing_enforced"
 
 
 # key -> (human label, one-line description) for the seed and the admin panel.
@@ -88,6 +91,10 @@ FEATURE_FLAG_SEED: dict[str, tuple[str, str]] = {
     FeatureFlagKey.DIGEST_REMINDERS.value: (
         "Digest & reminders",
         "Owner daily digest and booking reminder jobs. OFF: those scheduled messages stop sending.",
+    ),
+    FeatureFlagKey.OWNER_BILLING_ENFORCED.value: (
+        "Owner billing enforcement",
+        "ON: premium features need a paid plan or the free trial. OFF (default): every owner keeps every feature, nothing is charged.",
     ),
 }
 
