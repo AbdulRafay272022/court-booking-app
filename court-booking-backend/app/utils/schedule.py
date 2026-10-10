@@ -98,3 +98,12 @@ def overlap_error(templates: Mapping[int, _Template], day_names: tuple[str, ...]
 
 def _clock(t: time) -> str:
     return f"{t.hour % 12 or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
+
+
+def rule_specificity(day_of_week: list[int] | None, start_time: time | None, end_time: time | None) -> int:
+    """How narrowly a pricing rule is aimed: +1 for naming specific days (a rule covering all seven days names none) and
+    +1 for a time window. A rule with days AND a time window (2) beats days only or a window only (1), which beats an
+    all-day, all-days rate (0), whatever order the owner saved them in. Ties fall back to the saved priority number."""
+    names_days = bool(day_of_week) and len(set(day_of_week)) < 7
+    has_window = start_time is not None or end_time is not None
+    return int(names_days) + int(has_window)

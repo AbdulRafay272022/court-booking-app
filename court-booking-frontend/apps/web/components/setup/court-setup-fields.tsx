@@ -7,6 +7,7 @@ import {
   WEEKDAY_NUMBERS,
   WEEKEND_NUMBERS,
   courtSetupProblem,
+  hiddenRates,
   formatDuration,
   formatTime24As12,
   hoursKind,
@@ -36,6 +37,7 @@ export function CourtSetupFields({
 }) {
   const problem = courtSetupProblem(value);
   const hoursProblem = problem && !/price/i.test(problem) ? problem : null;
+  const hidden = hiddenRates(value);
 
   function updateRule(id: string, patch: Partial<PricingRuleDraft>) {
     onChange({ pricingRules: value.pricingRules.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
@@ -151,6 +153,11 @@ export function CourtSetupFields({
               <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
             </div>
             <RuleDays rule={rule} onChange={(dayOfWeek) => updateRule(rule.id, { dayOfWeek })} />
+            {hidden[rule.id] ? (
+              <p role="alert" className="text-[12.5px] font-semibold text-owner-danger">
+                {hidden[rule.id].message}
+              </p>
+            ) : null}
           </div>
         ))}
         <button

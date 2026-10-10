@@ -6,6 +6,7 @@ import {
   DAY_LABELS,
   backendWeekdayOf,
   buildPricingRules,
+  hiddenRates,
   buildSchedules,
   cloneCourtSetup,
   courtSetupFromCourt,
@@ -241,4 +242,23 @@ test("rules come back from the API in any order but are edited and re-saved lowe
   };
   const saved = buildPricingRules(courtSetupFromCourt(court));
   assert.deepEqual(saved.map((r) => [r.name, r.priority, r.price_per_slot]), [["All day", 0, 3000], ["Peak", 1, 4000]]);
+});
+
+test("hiddenRates flags a rate that another rate always replaces (Court 2 as it was saved)", () => {
+  const r = (id: string, name: string, days: number[] | null, start: string | null, end: string | null, price: string) =>
+    ({ id, name, pricePerSlot: price, dayOfWeek: days, startTime: start, endTime: end });
+  // new backend: the narrow rules win whatever the order, so nothing is hidden
+  assert.deepEqual(hiddenRates({ pricingRules: [
+    r("a", "Premium", [5], "18:00", "23:59", "8000"), r("b", "Peak", [4, 6], "18:00", "23:00", "7000"),
+    r("c", "Weekends", [4, 5, 6], null, null, "6500"), r("d", "All day", [0, 1, 2, 3], null, null, "5000"),
+  ] }), {});
+  // two equally specific, overlapping rates: the one lower in the list wins, the other is hidden
+  const hidden = hiddenRates({ pricingRules: [r("x", "Evenings", null, "18:00", "23:00", "4000"), r("y", "Also evenings", null, "18:00", "23:00", "5000")] });
+  assert.deepEqual(Object.keys(hidden), ["x"]);
+  assert.match(hidden.x.message, /hidden by "Also evenings" below it/);
+  // a narrower rate completely covering a broader-but-smaller one hides it, and the message says moving it will not help
+  const narrower = hiddenRates({ pricingRules: [r("p", "Sat 7 PM", [5], "19:00", "20:00", "9000"), r("q", "Saturday evening", [5], "19:00", "20:00", "9500"), r("z", "All day", null, null, null, "3000")] });
+  assert.ok(narrower.p && !narrower.q && !narrower.z);
+  // a rate with no price is not saved, so it is ignored
+  assert.deepEqual(hiddenRates({ pricingRules: [r("m", "Empty", null, "18:00", "23:00", ""), r("n", "All day", null, null, null, "3000")] }), {});
 });
