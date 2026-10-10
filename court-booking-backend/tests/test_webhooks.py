@@ -257,7 +257,7 @@ async def test_incoming_image_submits_payment_for_held_booking(
         refreshed_booking = await session.get(Booking, booking.id)
         assert refreshed_booking.status == BookingStatus.PAYMENT_SUBMITTED
 
-    assert "thanks" in sent[0]["body"].lower()
+    assert "thank you" in sent[0]["body"].lower()
 
 
 async def test_button_reply_confirms_booking(
