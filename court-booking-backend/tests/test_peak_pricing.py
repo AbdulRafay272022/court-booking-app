@@ -98,3 +98,66 @@ async def test_peak_applies_for_an_older_app_build_too(
                                     json={"court_id": str(court.id), "starts_at": _at(day, 19, 0)})
     assert hold.status_code == 201, hold.text
     assert hold.json()["booking"]["price"] == 4000
+
+
+# --- specificity-based precedence (a narrower rule beats a broader one whatever order it was saved in) ---------------
+
+from types import SimpleNamespace  # noqa: E402
+
+from app.services.availability_service import AvailabilityService  # noqa: E402
+from app.utils.schedule import rule_specificity  # noqa: E402
+
+
+def _rule(name, priority, days, start, end, price):
+    return SimpleNamespace(name=name, priority=priority, day_of_week=days, start_time=start, end_time=end,
+                           price_per_slot=price, is_active=True)
+
+
+# Court 2 as saved in production: the narrow rules were saved with the LOWEST priority numbers.
+COURT_2 = [
+    _rule("saturday Premium time", 0, [5], time(18), time(23, 59), 8000),
+    _rule("Weekends Peak hours", 1, [4, 6], time(18), time(23), 7000),
+    _rule("Weekends", 2, [4, 5, 6], None, None, 6500),
+    _rule("All day", 3, [0, 1, 2, 3], None, None, 5000),
+]
+
+
+def _price(rules, dow, hh, mm=0):
+    start = hh * 60 + mm
+    rule = AvailabilityService.match_rule_minutes(rules, dow, start, start + 30)
+    return rule.price_per_slot if rule else None
+
+
+def test_specificity_scores():
+    assert rule_specificity(None, None, None) == 0
+    assert rule_specificity([0, 1, 2, 3, 4, 5, 6], None, None) == 0  # all seven days names no day
+    assert rule_specificity([5, 6], None, None) == 1
+    assert rule_specificity(None, time(18), time(23)) == 1
+    assert rule_specificity([5], time(18), None) == 2
+
+
+def test_court_2_as_saved_in_production_now_prices_its_peak_hours():
+    assert _price(COURT_2, 5, 6) == 6500        # Saturday 6 AM: Weekends rate (what the owner saw, correctly)
+    assert _price(COURT_2, 5, 19) == 8000       # Saturday 7 PM: Premium
+    assert _price(COURT_2, 4, 19) == 7000       # Friday 7 PM: Weekends Peak hours
+    assert _price(COURT_2, 6, 19) == 7000       # Sunday 7 PM
+    assert _price(COURT_2, 4, 12) == 6500       # Friday noon: Weekends
+    assert _price(COURT_2, 0, 19) == 5000       # Monday 7 PM: All day
+    assert _price(COURT_2, 5, 23, 30) == 6500   # Saturday 11:30 PM: Premium ends 11:59 PM, so the Weekends rate (unchanged)
+
+
+def test_save_order_no_longer_decides_between_a_narrow_and_a_broad_rule():
+    base = _rule("All day", 0, None, None, None, 3000)
+    peak = _rule("Peak", 1, None, time(18), time(23), 4000)
+    for rules in ([base, peak], [peak, base]):
+        assert _price(rules, 1, 19) == 4000
+        assert _price(rules, 1, 12) == 3000
+    # even with the peak given the LOWEST priority number
+    assert _price([_rule("Peak", 0, None, time(18), time(23), 4000), _rule("All day", 9, None, None, None, 3000)], 1, 19) == 4000
+
+
+def test_equally_specific_rules_still_use_the_priority_number():
+    a = _rule("Weekend evenings", 1, [5, 6], time(18), time(23), 5000)
+    b = _rule("Saturday evenings", 2, [5], time(18), time(23), 6000)
+    assert _price([a, b], 5, 19) == 6000  # same specificity: the higher priority wins
+    assert _price([a, b], 6, 19) == 5000

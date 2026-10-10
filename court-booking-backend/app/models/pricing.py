@@ -10,7 +10,7 @@ from app.models.mixins import TimestampMixin, UUIDPkMixin
 
 
 class PricingRule(UUIDPkMixin, TimestampMixin, Base):
-    """Rules are evaluated in priority order (highest first); the first rule
+    """Rules are evaluated most specific first (days + a time window, then one of them, then all-day), then priority (highest first); the first rule
     whose day/time window matches a slot sets its price."""
 
     __tablename__ = "pricing_rules"

@@ -150,3 +150,83 @@ export function courtSetupFromCourt(court: Pick<Court, "slot_minutes" | "schedul
         : [makePricingRule("All day")],
   };
 }
+
+// ---- which rates can never be charged -----------------------------------------------------------------------
+
+const DAY_MIN = 1440;
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** +1 for naming specific days (all seven names none), +1 for a time window. Mirrors the backend's rule_specificity. */
+function specificity(r: PricingRuleDraft): number {
+  const namesDays = !!r.dayOfWeek && r.dayOfWeek.length > 0 && new Set(r.dayOfWeek).size < 7;
+  return (namesDays ? 1 : 0) + (r.startTime || r.endTime ? 1 : 0);
+}
+
+/** Does the rate's time window contain the slot [s, e) (minutes from the schedule day's midnight)? Mirrors the backend's rule_matches_window. */
+function windowContains(r: PricingRuleDraft, s: number, e: number): boolean {
+  if (!r.startTime && !r.endTime) return true;
+  const rs = r.startTime ? toMinutes(r.startTime) : 0;
+  let windows: Array<[number, number]>;
+  if (!r.endTime) {
+    windows = [[rs, 3 * DAY_MIN], [rs + DAY_MIN, 3 * DAY_MIN]];
+  } else {
+    let re = toMinutes(r.endTime);
+    if (!r.startTime) windows = [[0, re || DAY_MIN]];
+    else {
+      if (re <= rs) re += DAY_MIN;
+      windows = [[rs, re], [rs + DAY_MIN, re + DAY_MIN]];
+    }
+  }
+  return windows.some(([ws, we]) => ws <= s && e <= we);
+}
+
+export interface HiddenRate {
+  /** The rate that is charged instead, everywhere this one would have applied. */
+  byName: string;
+  /** True when the hiding rate is narrower (more specific), so moving this one in the list would not help. */
+  byNarrower: boolean;
+  message: string;
+}
+
+/**
+ * Rates an owner has entered that can NEVER be charged because another rate always takes their place (the backend picks the
+ * most specific rate first -- days + a time window, then one of them, then all-day -- and among equally specific rates the
+ * one lower in the list). Keyed by rate id; rates without a price are ignored, as they are not saved. Used for the
+ * "this rate is hidden" warning in the wizard and Venue Settings.
+ */
+export function hiddenRates(setup: Pick<CourtSetup, "pricingRules">): Record<string, HiddenRate> {
+  const priced = setup.pricingRules.filter((r) => Number(r.pricePerSlot) > 0).map((r, priority) => ({ r, priority }));
+  const rank = (x: { r: PricingRuleDraft; priority: number }) => specificity(x.r) * 1000 + x.priority;
+  const ordered = [...priced].sort((a, b) => rank(b) - rank(a));
+  const everWins = new Set<string>();
+  const coveredBy = new Map<string, string>(); // rate id -> the rate that won where it matched
+  for (let dow = 0; dow < 7; dow++) {
+    for (let s = 0; s < 2 * DAY_MIN; s += 30) {
+      const matching = ordered.filter((x) => (!x.r.dayOfWeek || x.r.dayOfWeek.length === 0 || x.r.dayOfWeek.includes(dow)) && windowContains(x.r, s, s + 30));
+      if (matching.length === 0) continue;
+      const winner = matching[0];
+      everWins.add(winner.r.id);
+      for (const loser of matching.slice(1)) if (!coveredBy.has(loser.r.id)) coveredBy.set(loser.r.id, winner.r.id);
+    }
+  }
+  const byId = new Map(priced.map((x) => [x.r.id, x]));
+  const out: Record<string, HiddenRate> = {};
+  for (const { r } of priced) {
+    if (everWins.has(r.id) || !coveredBy.has(r.id)) continue;
+    const hider = byId.get(coveredBy.get(r.id)!)!.r;
+    const byNarrower = specificity(hider) > specificity(r);
+    const hn = hider.name || "another rate";
+    out[r.id] = {
+      byName: hn,
+      byNarrower,
+      message: byNarrower
+        ? `This rate is never used: "${hn}" is narrower and covers all of it. Change this rate's days or times.`
+        : `This rate is hidden by "${hn}" below it, so players are never charged it. Move it below "${hn}", or change its days or times.`,
+    };
+  }
+  return out;
+}

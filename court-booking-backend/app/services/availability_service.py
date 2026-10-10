@@ -16,6 +16,7 @@ from app.models.schedule import ScheduleTemplate
 from app.schemas.availability import CourtMonthSummaryOut, DaySummaryOut, SlotOut
 from app.services.feature_flag_service import flag_on
 from app.utils.schedule import (
+    rule_specificity,
     minutes_from_midnight,
     opening_day_of,
     rule_matches_window,
@@ -97,10 +98,16 @@ class AvailabilityService:
     def match_rule_minutes(
         rules: list[PricingRule], day_of_week: int, slot_start_min: int, slot_end_min: int
     ) -> PricingRule | None:
-        """First matching rule wins, evaluated in descending priority order. `day_of_week` is the OPENING day's weekday
+        """First matching rule wins: the most specific rule first (days + a time window, then one of them, then an all-day rate),
+        then by descending priority number among equally specific rules. `day_of_week` is the OPENING day's weekday
         (Monday = 0) and the slot minutes count from that day's midnight (>= 1440 after midnight), so a rule window may
         cross midnight (see utils.schedule.rule_matches_window)."""
-        for rule in sorted((r for r in rules if r.is_active), key=lambda r: r.priority, reverse=True):
+        ranked = sorted(
+            (r for r in rules if r.is_active),
+            key=lambda r: (rule_specificity(r.day_of_week, r.start_time, r.end_time), r.priority),
+            reverse=True,
+        )
+        for rule in ranked:
             if rule.day_of_week and day_of_week not in rule.day_of_week:
                 continue
             if not rule_matches_window(rule.start_time, rule.end_time, slot_start_min, slot_end_min):
