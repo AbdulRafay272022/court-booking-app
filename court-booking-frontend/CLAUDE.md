@@ -22,7 +22,7 @@ backend-adjacent.
 
 > **UPDATE 2026-09-24:** read `../docs/SECTION_32_PLAN.md`'s "SESSION HANDOFF (2026-09-24)" section and the
 > backend `CLAUDE.md`'s matching update FIRST -- they cover the current state of Parts 5/9/10/7 (each on its
-> own unmerged branch, pushed to `origin`, none merged into `main` yet) and the mistakes this session had to
+> own unmerged branch, pushed to `origin`, none merged into `main` yet -- SUPERSEDED: all of Section 32 and the auth hardening are merged and deployed, see the STATUS note at the top of the backend `CLAUDE.md`) and the mistakes this session had to
 > correct along the way. Frontend-relevant summary: `section-32-part-9` (pushed, fully verified) added real
 > QR check-in screens on both platforms (web `dashboard/owner/checkin/{qr,page,manual}.tsx`, mobile
 > `(owner)/checkin{-qr,-scan,}.tsx`, player `booking/[id]/checkin.tsx` on both); `section-32-part-10` (pushed,
@@ -972,7 +972,7 @@ this part found and fixed).
   -- no physical device or emulator in this environment, same limitation as every other camera/native
   feature in this project.
 
-## Post-Section-32 auth hardening (2026-09-26/27, branch `post-qa-auth-fixes`, not merged)
+## Post-Section-32 auth hardening (2026-09-26/27, branch `post-qa-auth-fixes`, MERGED to `main` 2026-09-27 as `c67d9f4`)
 
 Four QA rounds against the Section 26 login / signup / OTP flow, stacked on the same feature branch off
 `main` (`de136ed` -> `857e963` -> `6568e9c` -> `04d3c00`). Backend half and the full round-by-round breakdown
