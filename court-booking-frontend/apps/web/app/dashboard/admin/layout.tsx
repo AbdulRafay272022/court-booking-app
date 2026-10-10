@@ -7,6 +7,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { Logo } from "@/components/auth/logo";
 
 const NAV = [
+  { href: "/dashboard/admin/overview", label: "Overview" },
   { href: "/dashboard/admin/venues", label: "Venues" },
   { href: "/dashboard/admin/feature-flags", label: "Feature flags" },
 ];

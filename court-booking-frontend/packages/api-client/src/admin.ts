@@ -1,5 +1,6 @@
 import type {
   AdminBooking,
+  AdminOverview,
   AdminDashboard,
   AdminUser,
   Dispute,
@@ -13,6 +14,8 @@ import { toQuery } from "./util";
 export function createAdminApi(client: ApiClient) {
   return {
     stats: () => client.request<PlatformStats>("/admin/stats"),
+
+    overview: () => client.request<AdminOverview>("/admin/overview"),
 
     dashboard: () => client.request<AdminDashboard>("/admin/dashboard"),
 
