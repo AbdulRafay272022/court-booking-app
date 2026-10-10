@@ -81,15 +81,51 @@ async def test_a_flag_that_is_not_one_of_the_six_is_never_billed(db_session, see
 # --- once enforced: trial, paid, grace, lapsed -----------------------------------------------------------------------------
 
 
-async def test_a_new_owner_has_a_fifteen_day_trial_of_everything(db_session, seed, make_user):
+async def test_signing_up_does_not_start_a_trial(db_session, seed, make_user):
+    """The trial starts when the owner switches a feature on, never by itself: a brand-new owner who has not enabled anything
+    is simply not entitled once billing is enforced (their trial is still waiting for them)."""
     await seed(enforced=True)
-    owner = await make_user("+923098000010", role=UserRole.OWNER, created_at=datetime(2026, 12, 1, 9, 0, tzinfo=timezone.utc))
-    last = date(2026, 12, 15)  # sign-up day is day 1, so day 15 is 15 December
-    for key in SELLABLE_KEYS:
-        st = await _state(db_session, owner, today=last, key=key)
-        assert (st.entitled, st.reason, st.until) == (True, "trial", last)
+    owner = await make_user("+923098000010", role=UserRole.OWNER)  # signed up just now
+    st = await _state(db_session, owner, today=date.today())
+    assert (st.entitled, st.reason) == (False, "not_purchased")
+
+
+async def test_the_trial_is_fifteen_days_from_the_day_the_owner_enabled_that_feature(
+    db_session, db_session_factory, seed, old_owner
+):
+    await seed(enforced=True)
+    owner = await old_owner()
+    enabled = datetime(2026, 12, 1, 9, 0, tzinfo=timezone.utc)  # 2:00 PM on 1 December in Karachi: day 1
+    await _buy(db_session_factory, owner, paid_through=None, enabled_at=enabled)
+    last = date(2026, 12, 15)  # day 15
+    on_last = await _state(db_session, owner, today=last)
+    assert (on_last.entitled, on_last.reason, on_last.until) == (True, "trial", last)
+    assert (await _state(db_session, owner, today=date(2026, 12, 1))).reason == "trial"
     over = await _state(db_session, owner, today=last + timedelta(days=1))
-    assert (over.entitled, over.reason) == (False, "not_purchased")
+    assert (over.entitled, over.reason) == (False, "unpaid")  # trial over, nothing paid
+
+
+async def test_each_feature_has_its_own_trial_from_its_own_enable_date(db_session, db_session_factory, seed, old_owner):
+    await seed(enforced=True)
+    owner = await old_owner()
+    await _buy(db_session_factory, owner, key="ai_chat_booking", enabled_at=datetime(2026, 12, 1, 9, tzinfo=timezone.utc))
+    await _buy(db_session_factory, owner, key="auto_approve", enabled_at=datetime(2026, 12, 10, 9, tzinfo=timezone.utc))
+    today = date(2026, 12, 20)
+    assert (await _state(db_session, owner, today=today, key="ai_chat_booking")).entitled is False  # its 15 days ended on the 15th
+    assert (await _state(db_session, owner, today=today, key="auto_approve")).reason == "trial"  # runs to 24 December
+
+
+async def test_a_cancelled_feature_does_not_get_a_second_trial(db_session, db_session_factory, seed, old_owner):
+    """The row is kept when an owner cancels, so switching the feature on again finds the old row (and its old enable date)."""
+    await seed(enforced=True)
+    owner = await old_owner()
+    await _buy(db_session_factory, owner, enabled_at=datetime(2026, 11, 1, 9, tzinfo=timezone.utc), status="cancelled")
+    assert (await _state(db_session, owner, today=date(2026, 12, 10))).entitled is False
+    async with db_session_factory() as session:
+        session.add(OwnerFeature(owner_id=owner.id, feature_key=KEY, price_pkr=1))
+        with pytest.raises(IntegrityError):  # one row per owner per feature: there is no way to start a second trial
+            await session.flush()
+        await session.rollback()
 
 
 async def test_paid_then_grace_then_lapsed_then_paid_again(db_session, db_session_factory, seed, old_owner):
