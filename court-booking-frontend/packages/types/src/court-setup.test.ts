@@ -230,3 +230,15 @@ test("a range that ends the next day names the day; a slot after midnight says w
   assert.equal(formatSlotTimes({ starts_at: fri0100, ends_at: fri0200, after_midnight: true }), "Fri 1:00 AM to 2:00 AM");
   assert.equal(formatSlotTimes({ starts_at: thu2300, ends_at: midnight, after_midnight: false }), "11:00 PM to 12:00 AM");
 });
+
+test("rules come back from the API in any order but are edited and re-saved lowest priority first, so peak keeps beating the base rate", () => {
+  const rule = (id: string, name: string, priority: number, price: number, start: string | null, end: string | null) =>
+    ({ id, name, priority, day_of_week: null, start_time: start, end_time: end, price_per_slot: price, floodlight_surcharge: 0, advance_percentage: 100, is_active: true });
+  const court = {
+    slot_minutes: 60,
+    schedule_templates: [],
+    pricing_rules: [rule("2", "Peak", 1, 4000, "18:00:00", "23:00:00"), rule("1", "All day", 0, 3000, null, null)], // peak listed first
+  };
+  const saved = buildPricingRules(courtSetupFromCourt(court));
+  assert.deepEqual(saved.map((r) => [r.name, r.priority, r.price_per_slot]), [["All day", 0, 3000], ["Peak", 1, 4000]]);
+});

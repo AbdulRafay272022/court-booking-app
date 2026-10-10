@@ -137,8 +137,9 @@ export function courtSetupFromCourt(court: Pick<Court, "slot_minutes" | "schedul
     closeTime: first?.close ?? fallback.closeTime,
     perDayOverrides: byDay,
     pricingRules:
+      // lowest priority first: buildPricingRules saves priority = list position, so this order must be the ranking
       court.pricing_rules.length > 0
-        ? court.pricing_rules.map((r, i) => ({
+        ? [...court.pricing_rules].sort((a, b) => a.priority - b.priority).map((r, i) => ({
             id: `existing-${i}`,
             name: r.name,
             pricePerSlot: String(r.price_per_slot),

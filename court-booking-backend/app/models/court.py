@@ -81,8 +81,10 @@ class Court(UUIDPkMixin, TimestampMixin, Base):
     schedule_templates: Mapped[list["ScheduleTemplate"]] = relationship(  # noqa: F821
         back_populates="court", cascade="all, delete-orphan"
     )
+    # lowest priority first: Venue Settings saves rules back with priority = list position, so the order the API returns
+    # them in IS the ranking (a later rule wins where two overlap). Unordered, a re-save could rank the base rate above peak.
     pricing_rules: Mapped[list["PricingRule"]] = relationship(  # noqa: F821
-        back_populates="court", cascade="all, delete-orphan"
+        back_populates="court", cascade="all, delete-orphan", order_by="PricingRule.priority, PricingRule.created_at"
     )
     blackouts: Mapped[list["Blackout"]] = relationship(  # noqa: F821
         back_populates="court", cascade="all, delete-orphan"
