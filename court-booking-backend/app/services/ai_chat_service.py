@@ -21,6 +21,7 @@ from app.services.ai.tools import BOOKING_TOOLS
 from app.services.ai.usage import log_ai_usage
 from app.services.availability_service import GRID_MINUTES, MAX_BOOKING_MINUTES, AvailabilityService, min_slots
 from app.services.booking_service import BookingService
+from app.services.entitlement_service import EntitlementService
 from app.services.feature_flag_service import flag_on
 from app.services.player_name import clean_player_name, tidy_player_name
 from app.services.venue_service import VenueService
@@ -496,6 +497,7 @@ class AIChatService:
                 if fixed != text:
                     logger.warning("ai_chat.reply_sanitized", before=text[:200])
                     text = fixed
+                text, actions = await self._drop_unbookable_actions(text, actions)
                 return ChatResult(reply=text, actions=actions, model=model_tier, tool_calls=tool_calls_made)
 
             assistant_content: list[dict] = []
@@ -763,7 +765,36 @@ class AIChatService:
         )
         actions.append(ChatAction(type="decline", label="No, thanks", data={}))
 
+    async def _ai_booking_allowed(self, court_id: object) -> bool:
+        """Owner premium billing: may the assistant propose or hold a slot at this court's venue?"""
+        try:
+            court_uuid = uuid.UUID(str(court_id))
+        except ValueError:
+            return True  # not a real court id: let the tool report its own error
+        return await EntitlementService(self.db, self.settings).court_entitled(court_uuid, "ai_chat_booking")
+
+    async def _drop_unbookable_actions(self, text: str, actions: list[ChatAction]) -> tuple[str, list[ChatAction]]:
+        """Remove a Yes/No proposal for a court whose owner lacks AI chat booking, and say where to book instead."""
+        keep: list[ChatAction] = []
+        dropped = False
+        for action in actions:
+            if action.type == "confirm_booking" and not await self._ai_booking_allowed(action.data.get("court_id")):
+                dropped = True
+                continue
+            keep.append(action)
+        if dropped:
+            keep = [a for a in keep if a.type != "decline"]
+            text = (text + "\n" if text else "") + "This venue takes bookings in the Maidan app, so please book it there."
+        return text, keep
+
     async def _execute_tool(self, user: User, name: str, tool_input: dict, actions: list[ChatAction]) -> dict:
+        if name in ("propose_booking_confirmation", "hold_slot") and not await self._ai_booking_allowed(tool_input.get("court_id")):
+            return {
+                "error": "The assistant is not set up to take bookings for this venue. Do NOT propose or hold a slot here. "
+                "Tell the player kindly that this venue takes bookings in the Maidan app or website, and that you can still "
+                "share its courts, available times and prices.",
+                "status_code": 403,
+            }
         try:
             if name == "search_venues":
                 return await self._tool_search_venues(tool_input)

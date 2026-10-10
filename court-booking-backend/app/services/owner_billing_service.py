@@ -10,6 +10,7 @@ would be a lie. Paying an invoice (and moving `paid_through`) is step 3; this mo
 
 import calendar
 import uuid
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import status
@@ -28,9 +29,21 @@ from app.models.owner_billing import (
     PremiumFeature,
 )
 from app.models.user import User
+import structlog
+
 from app.services.audit_service import AuditService
 from app.services.entitlement_service import SELLABLE_KEYS, EntitlementService
+from app.services.notification_service import NotificationService
 from app.utils.timezone import pkt_today
+
+logger = structlog.get_logger(__name__)
+
+# one message per owner per kind per period; the notice level decides which
+REMINDER_EVENTS = {
+    "info": ("premium_renewal_reminder", "Premium renewal due"),
+    "urgent": ("premium_payment_overdue", "Premium payment overdue"),
+    "off": ("premium_feature_lapsed", "Premium feature switched off"),
+}
 
 INVOICE_LEAD_DAYS = 7  # an invoice is issued this many days before the period it pays for starts
 
@@ -274,3 +287,63 @@ class OwnerBillingService:
             except Exception:  # noqa: BLE001 -- one owner's failure never stops the others
                 await self.db.rollback()
         return {"enforced": True, "owners_checked": len(owner_ids), "invoices_issued": issued}
+
+    # ---- the daily lapse job ----------------------------------------------------------------------------------------------
+
+    async def refresh_statuses(self, *, today: date | None = None) -> dict:
+        """Write down where each switched-on feature stands: active while covered, past_due during the grace days (it still
+        works), lapsed after. The gates read the dates, not this column, so a late run changes nothing for anyone; it keeps
+        the admin's lists honest. A cancelled feature is left alone. A no-op while enforcement is off."""
+        today = today or pkt_today()
+        if not await self.entitlements.enforced():
+            return {"changed": 0}
+        changed = 0
+        for row, _feature in await self.entitlements.billable_rows():
+            end = self.entitlements.covered_until(row)
+            if today <= end:
+                new = OwnerFeatureStatus.ACTIVE.value
+            elif today <= end + self.entitlements.grace():
+                new = OwnerFeatureStatus.PAST_DUE.value
+            else:
+                new = OwnerFeatureStatus.LAPSED.value
+            if row.status != new:
+                row.status = new
+                changed += 1
+        await self.db.commit()
+        return {"changed": changed}
+
+    async def send_reminders(self, *, today: date | None = None) -> dict:
+        """A push/WhatsApp message when a period is about to end, when payment is overdue, and when a feature has switched
+        off: one per owner per kind per period (de-duplicated through notification_log, so running the job twice, or late,
+        never repeats it). WhatsApp outside its 24-hour window may not deliver, which is why the in-app banner is the reliable
+        warning; this is the nudge on top of it."""
+        today = today or pkt_today()
+        if not await self.entitlements.enforced():
+            return {"sent": 0}
+        by_owner: dict[uuid.UUID, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+        for row, feature in await self.entitlements.billable_rows():
+            notice = self.entitlements.notice_for(row, feature.label, today)
+            if notice is not None:
+                by_owner[row.owner_id][notice.level].append((row, notice))
+        notifier = NotificationService(self.db, self.settings)
+        sent = 0
+        for owner_id, groups in by_owner.items():
+            owner = await self.db.get(User, owner_id)
+            if owner is None:
+                continue
+            for level, items in groups.items():
+                event, title = REMINDER_EVENTS[level]
+                anchor = min(self.entitlements.covered_until(r) for r, _n in items)
+                reference = uuid.uuid5(owner_id, f"premium:{event}:{anchor.isoformat()}")
+                try:
+                    if await notifier.has_sent(owner_id, event, reference):
+                        continue
+                    await notifier._send_push_and_whatsapp(
+                        owner, event, title, " ".join(n.message for _r, n in items), reference_id=reference
+                    )
+                    await self.db.commit()
+                    sent += 1
+                except Exception:  # noqa: BLE001 -- one owner's failure never stops the others
+                    logger.warning("owner_billing.reminder_failed", owner_id=str(owner_id), exc_info=True)
+                    await self.db.rollback()
+        return {"sent": sent}

@@ -7,6 +7,7 @@ from app.database import AsyncSessionLocal
 from app.services.feature_flag_service import flag_on
 from app.models.user import User, UserRole
 from app.services.growth_service import GrowthService
+from app.services.entitlement_service import EntitlementService
 from app.services.notification_service import NotificationService
 
 logger = structlog.get_logger(__name__)
@@ -33,11 +34,15 @@ async def send_owner_daily_digests(session_factory: async_sessionmaker = AsyncSe
         if not await flag_on(db, "digest_reminders"):
             return {"sent": 0, "failed": [], "skipped": "digest_reminders flag off"}
         notifications = NotificationService(db, settings)
+        entitlements = EntitlementService(db, settings)
         growth_service = GrowthService(db)
         owners_result = await db.execute(select(User).where(User.role == UserRole.OWNER))
         owners = owners_result.scalars().all()
 
         for owner in owners:
+            # Owner premium billing: no "Digest & reminders" for this owner => no digest (same as the global switch off).
+            if not await entitlements.owner_entitled(owner.id, "digest_reminders"):
+                continue
             digests = await growth_service.owner_digest(owner.id)
             if not digests:
                 continue

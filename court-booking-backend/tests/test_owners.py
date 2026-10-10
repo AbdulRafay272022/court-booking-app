@@ -472,18 +472,6 @@ async def test_growth_suggestions_shown_for_underbooked_slot_with_enough_data(
     assert all(s["day_of_week"] != tuesday_dow for s in body["underbooked_slots"])
 
 
-async def test_growth_requires_pro_tier(client, make_user, make_venue, make_court, make_auth_headers):
-    owner = await make_user("+923011000060", role=UserRole.OWNER)
-    venue = await make_venue(owner, plan_tier=PlanTier.FREE)
-    await make_court(venue)
-
-    owner_headers = await make_auth_headers(owner)
-    resp = await client.get(
-        "/api/v1/owners/growth", headers=owner_headers, params={"venue_id": str(venue.id)}
-    )
-    assert resp.status_code == 403
-
-
 async def test_multi_venue_owner_today_and_ledger_filter_by_venue(
     client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_auth_headers
 ):

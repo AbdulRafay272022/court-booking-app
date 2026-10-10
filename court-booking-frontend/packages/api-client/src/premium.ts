@@ -1,4 +1,4 @@
-import type { OwnerPremium } from "@court-booking/types";
+import type { OwnerPremium, PremiumNotice } from "@court-booking/types";
 import type { ApiClient } from "./client";
 
 export function createPremiumApi(client: ApiClient) {
@@ -7,6 +7,9 @@ export function createPremiumApi(client: ApiClient) {
     get: () => client.request<OwnerPremium>("/owners/premium"),
 
     /** Set the COMPLETE list of features the owner wants on. Enabling starts a free trial; leaving one out cancels it. */
+    /** Banners about premium payments (empty while billing is not enforced). */
+    notices: () => client.request<PremiumNotice[]>("/owners/premium/notices"),
+
     /** Upload the screenshot of a payment for an invoice. An admin checks it. `file` is a uri string on native, a Blob/File on web. */
     submitInvoiceProof: (
       invoiceId: string,

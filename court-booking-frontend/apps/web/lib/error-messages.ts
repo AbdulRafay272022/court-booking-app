@@ -46,6 +46,7 @@ const MESSAGES: Record<string, string> = {
   INVOICE_NOT_PAYABLE: "This invoice is not waiting for a payment right now.",
   PAYMENT_ALREADY_REVIEWED: "This payment was already reviewed.",
   PAYMENT_ALREADY_SUBMITTED: "A payment screenshot for this is already being checked.",
+  PREMIUM_FEATURE_REQUIRED: "This is a premium feature. Switch it on under Premium to use it.",
   REFUND_ALREADY_MARKED: "This refund has already been marked as paid.",
   REFUND_EXCEEDS_OWED_AMOUNT: "That's more than what's owed on this booking.",
   RATE_LIMITED: "You're doing that too much — please slow down a little.",

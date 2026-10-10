@@ -56,11 +56,14 @@ export default function GrowthScreen() {
           <View className="w-[46px] h-[46px] rounded-full items-center justify-center" style={{ backgroundColor: "#FBF0DD" }}>
             <StarBadgeIcon size={22} />
           </View>
-          <Text className="font-plex-bold text-owner-ink text-base text-center">Growth insights are a Pro feature</Text>
+          <Text className="font-plex-bold text-owner-ink text-base text-center">Growth suggestions are a premium feature</Text>
           <Text className="font-plex-medium text-owner-ink-faint text-sm text-center leading-[1.5]">
-            Upgrade {activeVenue?.name ?? "this venue"} to Pro or Business to see which slots are underbooked and get
-            pricing suggestions to fill them.
+            Switch on Growth suggestions under Premium to see which slots at {activeVenue?.name ?? "this venue"} are
+            underbooked and get pricing suggestions to fill them.
           </Text>
+          <Pressable onPress={() => router.push("/(owner)/premium")} className="h-11 px-4 rounded-[10px] items-center justify-center" style={{ backgroundColor: "#0E6274" }}>
+            <Text className="font-plex-semibold text-white text-[13.5px]">Go to Premium</Text>
+          </Pressable>
         </View>
       ) : query.isError ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
@@ -108,7 +111,7 @@ export default function GrowthScreen() {
           <View className="flex-row items-center gap-2.5 px-1 pt-1.5">
             <StarBadgeIcon size={15} />
             <Text className="font-plex-medium text-owner-ink-faint text-[12px] flex-1">
-              These insights come with your Pro plan
+              These insights come with your Growth suggestions feature
             </Text>
           </View>
         </ScrollView>

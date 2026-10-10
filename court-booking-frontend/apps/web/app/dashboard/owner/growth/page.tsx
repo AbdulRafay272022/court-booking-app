@@ -60,11 +60,14 @@ export default function OwnerGrowthPage() {
               <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.6-6.2 4.6 2.4-7.4L2 9.4h7.6z" />
             </svg>
           </div>
-          <p className="font-bold">Growth insights are a Pro feature</p>
+          <p className="font-bold">Growth suggestions are a premium feature</p>
           <p className="text-owner-ink-faint text-sm max-w-sm">
-            Upgrade {activeVenue?.name ?? "this venue"} to Pro or Business to see which slots are underbooked and get
-            pricing suggestions to fill them.
+            Switch on Growth suggestions under Premium to see which slots at {activeVenue?.name ?? "this venue"} are
+            underbooked and get pricing suggestions to fill them.
           </p>
+          <a href="/dashboard/owner/premium" className="text-sm font-semibold underline" style={{ color: "#0E6274" }}>
+            Go to Premium
+          </a>
         </div>
       ) : query.isError ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
@@ -112,7 +115,7 @@ export default function OwnerGrowthPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9C5C0A" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.6-6.2 4.6 2.4-7.4L2 9.4h7.6z" />
             </svg>
-            These insights come with your Pro plan
+            These insights come with your Growth suggestions feature
           </p>
         </div>
       )}

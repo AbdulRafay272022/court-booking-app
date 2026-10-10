@@ -10,7 +10,7 @@ from app.models.fcm_token import FCMToken
 from app.models.message import Message
 from app.models.notification import NotificationLog
 from app.models.user import User
-from app.models.venue import PlanTier, Venue
+from app.models.venue import Venue
 from app.services.apns import send_apns
 from app.services.fcm import PushOutcome, send_push
 from app.services.feature_flag_service import flag_on
@@ -31,13 +31,6 @@ def _when(starts_at: "datetime | str", ends_at: "datetime | None" = None) -> str
     if isinstance(starts_at, datetime):
         return format_when_range(starts_at, ends_at) if ends_at else format_when(starts_at)
     return starts_at
-
-
-MARKETING_CAP_BY_TIER = {
-    PlanTier.FREE: "MARKETING_CAP_FREE",
-    PlanTier.PRO: "MARKETING_CAP_PRO",
-    PlanTier.BUSINESS: "MARKETING_CAP_BUSINESS",
-}
 
 
 class MarketingSendLimitExceeded(Exception):
@@ -498,7 +491,8 @@ class NotificationService:
         return count or 0
 
     def _marketing_cap(self, venue: Venue) -> int:
-        return getattr(self.settings, MARKETING_CAP_BY_TIER[venue.plan_tier])
+        # plan_tier is retired: the Announcements premium feature includes one monthly allowance (what Pro used to get).
+        return self.settings.MARKETING_CAP_PRO
 
     async def can_send_marketing(self, venue: Venue) -> bool:
         cap = self._marketing_cap(venue)
@@ -508,7 +502,7 @@ class NotificationService:
 
     async def send_marketing_announcement(self, *, venue: Venue, user: User, title: str, body: str) -> None:
         if not await self.can_send_marketing(venue):
-            raise MarketingSendLimitExceeded(f"Venue {venue.id} has hit its {venue.plan_tier.value} monthly cap")
+            raise MarketingSendLimitExceeded(f"Venue {venue.id} has hit its monthly announcement allowance")
 
         await self._send_push_tier(user, "tournament_announcement", title, body, reference_id=venue.id)
         await self.whatsapp.send_text(user.phone, body)

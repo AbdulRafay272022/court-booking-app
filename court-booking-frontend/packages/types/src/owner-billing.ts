@@ -114,6 +114,15 @@ export function selectionTotal(features: OwnerPremiumFeature[], selected: Readon
   return features.reduce((sum, f) => (selected.has(f.key) ? sum + (f.enabled ? (f.your_price_pkr ?? f.monthly_price_pkr) : f.monthly_price_pkr) : sum), 0);
 }
 
+/** A banner about a premium payment: a period ending within a week (info), an overdue payment that still works (urgent), or a feature
+ * that has switched off (off). Wording is ready-made by the server. */
+export interface PremiumNotice {
+  level: "info" | "urgent" | "off";
+  feature_key: string;
+  label: string;
+  message: string;
+}
+
 /** Admin side: a payment an owner made (or an admin recorded) against a premium invoice. */
 export interface AdminOwnerPayment {
   id: string;

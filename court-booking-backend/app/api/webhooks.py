@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.venue import Venue
 from app.services.ai_chat_service import AIChatService, explicit_proposal_data, is_plain_affirmative
 from app.services.booking_service import BookingService, booking_source_ctx
+from app.services.entitlement_service import EntitlementService
 from app.services.notification_service import NotificationService
 from app.services.payment_service import PaymentService
 from app.services.reply_text import looks_like_roman_urdu, payment_proof_reply
@@ -334,6 +335,11 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
                 starts_at_str, count_str = starts_at_str.rsplit("|x", 1)
                 slot_count = int(count_str)
             booking_service = BookingService(db, settings)
+            if not await EntitlementService(db, settings).court_entitled(uuid.UUID(court_id_str), "ai_chat_booking"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="booking through chat is not available for this venue, please book it in the Maidan app",
+                )
             proposed_name, name_is_own = await _proposed_player_name(db, user, court_id_str, starts_at_str)
             booking = await booking_service.create_hold(
                 user,
