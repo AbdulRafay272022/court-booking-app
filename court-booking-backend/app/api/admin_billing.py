@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.dependencies import AppSettings, DbSession, RequireAdmin
 from app.models.owner_billing import OwnerInvoice, OwnerInvoiceLine, OwnerPayment
 from app.models.user import User
+from app.schemas.admin_billing_report import BillingSummaryOut, OwnerBillingDetailOut, OwnerBillingRowOut
 from app.schemas.owner_billing import (
     AdminOwnerInvoiceOut,
     AdminOwnerPaymentOut,
@@ -16,6 +17,7 @@ from app.schemas.owner_billing import (
     RejectPaymentIn,
     ReversePaymentIn,
 )
+from app.services.admin_billing_report_service import AdminBillingReportService
 from app.services.owner_payment_service import OwnerPaymentService
 from app.utils.s3 import signed_private_url
 
@@ -164,3 +166,29 @@ async def record_owner_payment(
     """A payment received outside the app (cash, a bank transfer), recorded onto an invoice that is waiting for payment."""
     payment = await OwnerPaymentService(db, settings).record_payment(invoice_id, admin, method=payload.method, note=payload.note)
     return (await _payment_out(db, [payment]))[0]
+
+
+# ---- reports (read-only) -----------------------------------------------------------------------------------------------
+
+
+@router.get("/owner-billing/summary", response_model=BillingSummaryOut)
+async def owner_billing_summary(db: DbSession, settings: AppSettings, admin: RequireAdmin) -> BillingSummaryOut:
+    """The revenue dashboard: money collected by month, recurring vs trial vs at-risk value, unpaid invoices, and a
+    per-feature breakdown."""
+    return await AdminBillingReportService(db, settings).summary()
+
+
+@router.get("/owner-billing/owners", response_model=list[OwnerBillingRowOut])
+async def owner_billing_owners(
+    db: DbSession, settings: AppSettings, admin: RequireAdmin, search: str | None = Query(None, max_length=60)
+) -> list[OwnerBillingRowOut]:
+    """Every owner who has switched on a premium feature or been invoiced, worst standing first."""
+    return await AdminBillingReportService(db, settings).owners(search=search)
+
+
+@router.get("/owner-billing/owners/{owner_id}", response_model=OwnerBillingDetailOut)
+async def owner_billing_detail(
+    owner_id: uuid.UUID, db: DbSession, settings: AppSettings, admin: RequireAdmin
+) -> OwnerBillingDetailOut:
+    """One owner's features (with trial / paid-through dates), invoices and every payment against them."""
+    return await AdminBillingReportService(db, settings).owner_detail(owner_id)
