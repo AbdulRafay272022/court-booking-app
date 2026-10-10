@@ -17,12 +17,6 @@ class VenueStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
-class PlanTier(str, enum.Enum):
-    FREE = "free"
-    PRO = "pro"
-    BUSINESS = "business"
-
-
 class Venue(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "venues"
 
@@ -73,12 +67,6 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
     # calendar stops there and holds beyond it are refused; an owner's walk-in is not limited by it.
     booking_horizon_days: Mapped[int] = mapped_column(
         Integer, default=90, server_default=text("90"), nullable=False
-    )
-    plan_tier: Mapped[PlanTier] = mapped_column(
-        pg_enum(PlanTier, "plan_tier"),
-        default=PlanTier.FREE,
-        server_default="free",
-        nullable=False,
     )
     # A per-venue token meant to be printed/posted physically at the venue
     # (one QR per location, not per court, since multiple courts commonly

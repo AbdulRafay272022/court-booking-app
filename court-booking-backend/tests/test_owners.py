@@ -7,7 +7,6 @@ from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.payment import Payment
 from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import UserRole
-from app.models.venue import PlanTier
 from app.utils.timezone import pkt_time_to_utc, pkt_today
 
 
@@ -378,7 +377,7 @@ async def test_growth_suggestions_guardrail_insufficient_history(
 ):
     owner = await make_user("+923011000040", role=UserRole.OWNER)
     customer = await make_user("+923011000041", role=UserRole.PLAYER)
-    venue = await make_venue(owner, plan_tier=PlanTier.PRO)
+    venue = await make_venue(owner)
     court = await make_court(venue, created_at=datetime.now(timezone.utc) - timedelta(days=20))
 
     async with db_session_factory() as session:
@@ -413,7 +412,7 @@ async def test_growth_suggestions_shown_for_underbooked_slot_with_enough_data(
 ):
     owner = await make_user("+923011000050", role=UserRole.OWNER)
     customer = await make_user("+923011000051", role=UserRole.PLAYER)
-    venue = await make_venue(owner, plan_tier=PlanTier.PRO)
+    venue = await make_venue(owner)
     # Court has been open for the full 180-day lookback window.
     court = await make_court(venue, created_at=datetime.now(timezone.utc) - timedelta(days=200))
 

@@ -8,7 +8,7 @@ checks the window and falls back to these when it's closed.
 Each entry's `category` mirrors what Meta itself categorizes the template
 as, which is also what drives WhatsApp's per-message cost: `authentication`
 and `utility` are cheap (~$0.004 at the time this was written), `marketing`
-is materially more (~$0.025) and is gated by `plan_tier` (see
+is materially more (~$0.025) and is gated by the Announcements premium feature and a monthly cap (see
 notification_service.can_send_marketing). `render` builds the plain-text
 equivalent used for local logging/no-op dev mode and for the `messages.content`
 audit trail -- the actual Cloud API call sends structured `{{n}}` component
