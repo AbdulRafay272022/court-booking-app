@@ -72,6 +72,9 @@ class Settings(BaseSettings):
 
     # Booking
     BOOKING_HOLD_MINUTES: int = 15
+    # Owner premium billing (only has any effect once the `owner_billing_enforced` feature flag is turned on).
+    OWNER_TRIAL_DAYS: int = 15  # every owner account gets all premium features free for this many days from sign-up
+    OWNER_BILLING_GRACE_DAYS: int = 7  # a feature keeps working this long after its paid period ends
     PAYMENT_REVIEW_HOURS: int = 2  # owner-action expiry after a proof is submitted
     NO_SHOW_GRACE_MINUTES: int = 60  # how long past starts_at before an unchecked-in booking is a no-show
 
