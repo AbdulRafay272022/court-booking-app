@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, durationChoices, formatDuration, minSlotsFor, monthOf, pktDateString, weekOf } from "@court-booking/types";
+import { addDays, durationChoices, formatDuration, minSlotsFor, monthOf, pktDateString, upcomingSlots, weekOf } from "@court-booking/types";
 import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -60,7 +60,14 @@ export function CourtDayPopup({
 
   const today = pktDateString();
   const tomorrow = addDays(today, 1);
-  const week = useMemo(() => weekOf(date), [date]);
+  // Nothing before today is offered: the strip starts at today even when the tapped date's week began earlier.
+  const week = useMemo(() => weekOf(date).filter((d) => d >= today), [date, today]);
+  // The clock that decides which of today's slots have already gone; ticks so an open popup keeps up.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   function tabLabel(d: string) {
     if (d === today) return "Today";
@@ -80,7 +87,7 @@ export function CourtDayPopup({
     queryFn: () => api.availability.forCourtOnDate(courtId, date),
     placeholderData: undefined,
   });
-  const slots = dayQuery.data?.slots ?? [];
+  const slots = useMemo(() => upcomingSlots(dayQuery.data?.slots ?? [], now), [dayQuery.data, now]);
   const minSlots = minSlotsFor(slotMinutes);
 
   // Drives the small availability dot on each week-strip pill. Shares the calendar's query key, so it's already
@@ -194,7 +201,7 @@ export function CourtDayPopup({
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-7 gap-1 shrink-0">
+              <div className="grid gap-1 shrink-0" style={{ gridTemplateColumns: `repeat(${week.length}, minmax(0, 1fr))` }}>
                 {week.map((d) => {
                   const isPast = d < today;
                   const selected = d === date;
@@ -234,7 +241,7 @@ export function CourtDayPopup({
                 {dayQuery.isLoading ? (
                   <p className="text-center py-10 text-player-ink-faint">Loading…</p>
                 ) : slots.length === 0 ? (
-                  <p className="text-center py-8 text-[13.5px] text-player-ink-faint">Closed this day.</p>
+                  <p className="text-center py-8 text-[13.5px] text-player-ink-faint">{(dayQuery.data?.slots.length ?? 0) > 0 ? "No more times left today." : "Closed this day."}</p>
                 ) : (
                   slots.map((slot, index) => {
                     // on the 30-minute grid a free slot is only a place a booking can START when the court's minimum

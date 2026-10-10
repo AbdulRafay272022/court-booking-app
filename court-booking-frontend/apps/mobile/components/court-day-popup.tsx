@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { courtLabel } from "@/components/court-label";
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, durationChoices, formatDuration, minSlotsFor, monthOf, pktDateString, weekOf } from "@court-booking/types";
+import { addDays, durationChoices, formatDuration, minSlotsFor, monthOf, pktDateString, upcomingSlots, weekOf } from "@court-booking/types";
 import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -58,7 +58,14 @@ export function CourtDayPopup({
 
   const today = pktDateString();
   const tomorrow = addDays(today, 1);
-  const week = useMemo(() => weekOf(date), [date]);
+  // Nothing before today is offered: the strip starts at today even when the tapped date's week began earlier.
+  const week = useMemo(() => weekOf(date).filter((d) => d >= today), [date, today]);
+  // The clock that decides which of today's slots have already gone; ticks so an open popup keeps up.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   function tabLabel(d: string) {
     if (d === today) return "TODAY";
@@ -78,7 +85,7 @@ export function CourtDayPopup({
     queryFn: () => api.availability.forCourtOnDate(courtId, date),
     placeholderData: undefined,
   });
-  const slots = dayQuery.data?.slots ?? [];
+  const slots = useMemo(() => upcomingSlots(dayQuery.data?.slots ?? [], now), [dayQuery.data, now]);
   const minSlots = minSlotsFor(slotMinutes);
 
   // Drives the availability dot on each week-strip pill; shares the calendar's query key so it's already cached.
@@ -222,7 +229,7 @@ export function CourtDayPopup({
                 ) : (
                   <ScrollView contentContainerClassName="gap-2.5 pb-2">
                     {slots.length === 0 ? (
-                      <Text className="font-figtree-medium text-player-ink-faint text-sm text-center py-8">Closed this day.</Text>
+                      <Text className="font-figtree-medium text-player-ink-faint text-sm text-center py-8">{(dayQuery.data?.slots.length ?? 0) > 0 ? "No more times left today." : "Closed this day."}</Text>
                     ) : (
                       slots.map((slot, slotIndex) => {
                         const mineBookingId =

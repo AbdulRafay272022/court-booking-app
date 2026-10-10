@@ -153,3 +153,13 @@ export function walkinSlots(
   return [...tail, ...todaySlots].filter((s) => Date.parse(s.ends_at) > nowMs);
 }
 
+
+/**
+ * The slots a PLAYER can still use at `now`: drops slots that have already ended, and free slots that have already started
+ * (the server refuses a hold whose start is not in the future). A slot that is under way but taken (somebody's booking, a
+ * blackout, the player's own) stays so the list still tells the truth about it. A future day passes through untouched.
+ */
+export function upcomingSlots(slots: Slot[], now: number | Date = Date.now()): Slot[] {
+  const nowMs = typeof now === "number" ? now : now.getTime();
+  return slots.filter((s) => Date.parse(s.ends_at) > nowMs && (s.status !== "available" || Date.parse(s.starts_at) > nowMs));
+}
