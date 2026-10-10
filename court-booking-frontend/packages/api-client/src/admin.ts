@@ -1,5 +1,8 @@
 import type {
   AdminOwnerInvoice,
+  BillingSummary,
+  OwnerBillingDetail,
+  OwnerBillingRow,
   AdminOwnerPayment,
   RecordablePaymentMethod,
   PremiumFeature,
@@ -39,6 +42,11 @@ export function createAdminApi(client: ApiClient) {
         method: "POST",
         body: JSON.stringify({ method, note: note || null }),
       }),
+    /** Revenue dashboard and per-owner billing (read-only). */
+    billingSummary: () => client.request<BillingSummary>("/admin/owner-billing/summary"),
+    billingOwners: (search?: string) =>
+      client.request<OwnerBillingRow[]>(`/admin/owner-billing/owners${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+    billingOwner: (ownerId: string) => client.request<OwnerBillingDetail>(`/admin/owner-billing/owners/${ownerId}`),
     updatePremiumFeature: (key: string, body: PremiumFeatureUpdate) =>
       client.request<PremiumFeature>(`/admin/premium-features/${key}`, { method: "PATCH", body: JSON.stringify(body) }),
 

@@ -109,10 +109,12 @@ class EntitlementService:
         )
         if row is None:
             return Entitlement(key, False, "not_purchased")
-        paid_through = row.paid_through
-        trial_end = self.trial_last_day(row)
+        return self.row_state(row, today)
 
-        # the day-by-day picture, best case first
+    def row_state(self, row: OwnerFeature, today: date) -> Entitlement:
+        """The day-by-day picture for one switched-on feature, best case first. Pure (no queries), so the admin billing
+        reports classify an owner exactly the way the gates do."""
+        key, paid_through, trial_end = row.feature_key, row.paid_through, self.trial_last_day(row)
         if today <= trial_end:
             return Entitlement(key, True, "trial", max(d for d in (trial_end, paid_through) if d is not None))
         if paid_through is None:

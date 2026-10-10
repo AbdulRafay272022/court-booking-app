@@ -12,6 +12,7 @@ const NAV = [
   { href: "/dashboard/admin/feature-flags", label: "Feature flags" },
   { href: "/dashboard/admin/pricing", label: "Premium pricing" },
   { href: "/dashboard/admin/premium-payments", label: "Premium payments" },
+  { href: "/dashboard/admin/billing", label: "Premium revenue" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -39,7 +40,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           Log out
         </button>
       </header>
-      <nav className="flex gap-1 px-4 sm:px-8 bg-owner-surface border-b border-owner-border">
+      <nav className="flex gap-1 px-4 sm:px-8 bg-owner-surface border-b border-owner-border overflow-x-auto whitespace-nowrap">
         {NAV.map((item) => {
           const active = pathname?.startsWith(item.href);
           return (

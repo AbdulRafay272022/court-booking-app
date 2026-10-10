@@ -161,3 +161,121 @@ export interface AdminOwnerInvoice {
 }
 
 export type RecordablePaymentMethod = "bank_transfer" | "cash" | "other";
+
+// ---- admin revenue dashboard + per-owner billing view (read-only) ----
+
+export interface BillingMonthCollected {
+  month: string; // "2026-10"
+  collected_pkr: number;
+}
+
+export interface BillingInvoiceTotals {
+  count: number;
+  total_pkr: number;
+}
+
+export interface FeatureRevenue {
+  key: string;
+  label: string;
+  list_price_pkr: number;
+  is_sellable: boolean;
+  owners_on: number;
+  on_trial: number;
+  paying: number;
+  overdue: number;
+  off: number;
+  recurring_pkr: number;
+}
+
+export interface BillingOwnerCounts {
+  with_premium: number;
+  on_trial_only: number;
+  paying: number;
+  overdue: number;
+  off: number;
+}
+
+export interface BillingSummary {
+  generated_at: string;
+  enforced: boolean;
+  collected_this_month_pkr: number;
+  collected_last_month_pkr: number;
+  collected_all_time_pkr: number;
+  months: BillingMonthCollected[];
+  recurring_pkr: number;
+  trial_value_pkr: number;
+  at_risk_pkr: number;
+  outstanding: BillingInvoiceTotals;
+  overdue: BillingInvoiceTotals;
+  screenshots_to_check: number;
+  owners: BillingOwnerCounts;
+  by_feature: FeatureRevenue[];
+  notes: string[];
+}
+
+export type OwnerBillingState = "off" | "overdue" | "trial" | "paying" | "none";
+
+export interface OwnerBillingRow {
+  owner_id: string;
+  name: string | null;
+  phone: string;
+  features_on: number;
+  monthly_pkr: number;
+  state: OwnerBillingState;
+  outstanding_pkr: number;
+  collected_pkr: number;
+  last_payment_at: string | null;
+  next_due: string | null;
+}
+
+export interface OwnerFeatureBilling {
+  key: string;
+  label: string;
+  price_pkr: number;
+  state: "trial" | "paid" | "grace" | "lapsed" | "unpaid";
+  entitled: boolean;
+  status: string;
+  renewing: boolean;
+  enabled_at: string;
+  trial_ends_on: string;
+  paid_through: string | null;
+  works_until: string | null;
+}
+
+export interface OwnerPaymentRow {
+  id: string;
+  amount_pkr: number;
+  method: string;
+  status: "submitted" | "approved" | "rejected" | "reversal";
+  note: string | null;
+  reference: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface OwnerInvoiceDetail {
+  id: string;
+  period_start: string;
+  period_end: string;
+  total_pkr: number;
+  status: string;
+  due_date: string;
+  paid_at: string | null;
+  created_at: string;
+  lines: InvoiceLine[];
+  payments: OwnerPaymentRow[];
+}
+
+export interface OwnerBillingDetail {
+  owner_id: string;
+  name: string | null;
+  phone: string;
+  email: string | null;
+  enforced: boolean;
+  monthly_pkr: number;
+  outstanding_pkr: number;
+  collected_pkr: number;
+  features: OwnerFeatureBilling[];
+  invoices: OwnerInvoiceDetail[];
+}
