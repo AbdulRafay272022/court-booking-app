@@ -13,6 +13,78 @@ export interface AdminDashboard {
   disputes_open: number;
 }
 
+/** GET /admin/overview -- the read-only cross-platform picture (days are Pakistan days, money whole PKR). */
+export interface AdminCourtActivity {
+  venue_id: string;
+  venue_name: string;
+  venue_status: string;
+  court_id: string;
+  court_name: string;
+  sport: string;
+  owner_id: string;
+  owner_name: string | null;
+  owner_phone: string;
+  state: "active" | "suspended" | "not_live";
+  bookings_today: number;
+  bookings_7_days: number;
+  last_booking_at: string | null;
+  idle: boolean;
+  days_since_last_booking: number | null;
+}
+
+export interface AdminPeriodFigures {
+  today: number;
+  last_7_days: number;
+  last_30_days: number;
+}
+
+export interface AdminOverview {
+  generated_at: string;
+  idle_days: number;
+  window_days: number;
+  courts: AdminCourtActivity[];
+  users: {
+    total_players: number;
+    total_owners: number;
+    total_staff: number;
+    total_admins: number;
+    new_players_7_days: number;
+    new_players_30_days: number;
+    new_owners_7_days: number;
+    new_owners_30_days: number;
+    active_30_days: number;
+    active_30_days_of_total: number;
+  };
+  usage: {
+    bookings: AdminPeriodFigures;
+    gmv_pkr: AdminPeriodFigures;
+    collected_pkr: AdminPeriodFigures;
+    chat_messages_app: AdminPeriodFigures;
+    chat_messages_whatsapp: AdminPeriodFigures;
+    ai_model_calls_30_days: number;
+    ai_tokens_30_days: number;
+    payments_approved_30_days: number;
+    payments_rejected_30_days: number;
+    payments_pending_30_days: number;
+    payments_auto_approved_30_days: number;
+    payment_approval_rate: number | null;
+  };
+  underperforming: Array<{
+    venue_id: string;
+    venue_name: string;
+    court_id: string;
+    court_name: string;
+    sport: string;
+    owner_name: string | null;
+    booking_rate: number;
+    booked_hours: number;
+    open_hours: number;
+    days_measured: number;
+    weakest_slots: Array<{ day_of_week: number; hour: number; booking_rate: number }>;
+  }>;
+  notes: string[];
+}
+
 /** GET /admin/stats */
 export interface PlatformStats {
   total_users: number;

@@ -22,9 +22,11 @@ from app.schemas.admin import (
     RefundQueueEntryOut,
     SuspendUserIn,
 )
+from app.schemas.admin_overview import AdminOverviewOut
 from app.schemas.feature_flag import FeatureFlagOut, FeatureFlagUpdateIn
 from app.schemas.review import ReviewOut
 from app.schemas.venue import VenueOut
+from app.services.admin_overview_service import AdminOverviewService
 from app.services.admin_service import AdminService
 from app.services.audit_service import AuditService
 from app.services.growth_service import GrowthService
@@ -51,6 +53,12 @@ async def update_feature_flag(
     key: str, payload: FeatureFlagUpdateIn, flags: FeatureFlags, admin: RequireAdmin
 ) -> FeatureFlagOut:
     return await flags.set_flag(key, payload.enabled, admin.id)
+
+
+@router.get("/overview", response_model=AdminOverviewOut)
+async def admin_overview(db: DbSession, admin: RequireAdmin) -> AdminOverviewOut:
+    """Read-only platform overview (venues/courts, users, usage, underperforming courts). No writes, no actions."""
+    return await AdminOverviewService(db).overview()
 
 
 @router.get("/dashboard", response_model=AdminDashboardOut)
