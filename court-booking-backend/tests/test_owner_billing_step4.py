@@ -1,5 +1,5 @@
 """Owner premium billing, step 4: every premium feature is gated by the OWNER's entitlement (with the same fallback as the global
-switch being off), plan_tier is retired, and the daily job writes down who is past due / lapsed and sends reminders."""
+switch being off), the old plan tier is retired, and the daily job writes down who is past due / lapsed and sends reminders."""
 
 import io
 from datetime import date, datetime, time, timedelta, timezone
@@ -14,7 +14,6 @@ from app.models.feature_flag import FeatureFlag
 from app.models.notification import NotificationLog
 from app.models.owner_billing import OwnerFeature, PremiumFeature
 from app.models.user import UserRole
-from app.models.venue import PlanTier
 from app.services.ai.base import PaymentExtraction
 from app.services.ai_chat_service import AIChatService
 from app.services.entitlement_service import SELLABLE_KEYS, EntitlementService
@@ -51,13 +50,13 @@ def png(color=(120, 40, 200)) -> bytes:
     return buf.getvalue()
 
 
-# --- Growth suggestions (replaces the Pro/Business plan_tier gate) -----------------------------------------------------------
+# --- Growth suggestions (replaces the old Pro/Business tier gate) -----------------------------------------------------------
 
 
 async def test_growth_needs_the_feature_once_billing_is_enforced(client, billing, make_user, make_venue, make_court, make_auth_headers):
     await billing.on()
     owner = await make_user("+923096000001", role=UserRole.OWNER)
-    venue = await make_venue(owner, plan_tier=PlanTier.BUSINESS)  # the old tier no longer matters
+    venue = await make_venue(owner)
     await make_court(venue)
     headers = await make_auth_headers(owner)
     resp = await client.get("/api/v1/owners/growth", headers=headers, params={"venue_id": str(venue.id)})
@@ -72,7 +71,7 @@ async def test_growth_needs_the_feature_once_billing_is_enforced(client, billing
 async def test_growth_is_open_to_every_owner_while_billing_is_not_enforced(client, billing, make_user, make_venue, make_court, make_auth_headers):
     await billing.on(enforced=False)
     owner = await make_user("+923096000002", role=UserRole.OWNER)
-    venue = await make_venue(owner, plan_tier=PlanTier.FREE)
+    venue = await make_venue(owner)
     await make_court(venue)
     resp = await client.get("/api/v1/owners/growth", headers=await make_auth_headers(owner), params={"venue_id": str(venue.id)})
     assert resp.status_code == 200
@@ -105,7 +104,7 @@ async def test_announcements_need_the_feature_and_use_one_monthly_allowance(
     await billing.on()
     owner, player, venue, court = await _venue_with_one_past_player(
         client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers,
-        ("+923096000010", "+923096000011"), plan_tier=PlanTier.FREE,  # the Free tier used to mean a cap of 0
+        ("+923096000010", "+923096000011"),
     )
     async with db_session_factory() as session:
         session.add(Booking(court_id=court.id, player_id=player.id, starts_at=datetime.now(timezone.utc) + timedelta(days=2),

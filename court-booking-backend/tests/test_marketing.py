@@ -2,7 +2,6 @@ from datetime import date, timedelta
 
 from app.config import get_settings
 from app.models.user import UserRole
-from app.models.venue import PlanTier
 
 
 async def _hold_and_book(client, court, headers, days_ahead=1):
@@ -35,7 +34,7 @@ async def test_pro_tier_venue_can_send_marketing(
 
     owner = await make_user("+923012000003", role=UserRole.OWNER)
     player = await make_user("+923012000004", role=UserRole.PLAYER)
-    venue = await make_venue(owner, plan_tier=PlanTier.PRO)
+    venue = await make_venue(owner)
     court = await make_court(venue)
     await _open_all_week(make_schedule, court)
     await make_pricing_rule(court, price_per_slot=1000)
@@ -66,7 +65,7 @@ async def test_pro_tier_venue_at_monthly_cap_rejected(
 
     owner = await make_user("+923012000005", role=UserRole.OWNER)
     player = await make_user("+923012000006", role=UserRole.PLAYER)
-    venue = await make_venue(owner, plan_tier=PlanTier.PRO)
+    venue = await make_venue(owner)
     court = await make_court(venue)
     await _open_all_week(make_schedule, court)
     await make_pricing_rule(court, price_per_slot=1000)
@@ -87,7 +86,7 @@ async def test_pro_tier_venue_at_monthly_cap_rejected(
 async def test_non_owner_cannot_send_announcement(client, make_user, make_venue, make_auth_headers):
     owner = await make_user("+923012000007", role=UserRole.OWNER)
     other_owner = await make_user("+923012000008", role=UserRole.OWNER)
-    venue = await make_venue(owner, plan_tier=PlanTier.PRO)
+    venue = await make_venue(owner)
     headers = await make_auth_headers(other_owner)
 
     resp = await client.post(

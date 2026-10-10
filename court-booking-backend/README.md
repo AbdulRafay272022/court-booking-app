@@ -156,9 +156,9 @@ Two things to check by hand afterward, both PostGIS/GeoAlchemy2 quirks:
 Alembic is configured (`alembic/env.py`) to ignore tables it didn't create
 (PostGIS's own `tiger`/`topology` schema tables), so autogenerate won't ever
 propose dropping them. Postgres ENUM columns (`user_role`, `venue_status`,
-`booking_status`, `booking_source`, `cancelled_by`, `plan_tier`) also aren't
+`booking_status`, `booking_source`, `cancelled_by`) also aren't
 auto-dropped on downgrade by Alembic — the initial migration (and
-`ca2c0190ac2a_add_venue_plan_tier.py`, for the one added later) does it
+`ca2c0190ac2a_add_venue_plan_tier.py`, for one added later; that column was dropped again by `b7d2e4f6a801`) does it
 explicitly at the end of `downgrade()`; carry that pattern forward if you add
 a new enum. Adding an enum column to an *existing* table (unlike a brand-new
 table, where `op.create_table` creates the type as a side effect) also needs
@@ -177,7 +177,7 @@ write, never a migration.
 The schema mirrors this shape, table by table:
 
 - `users` (argon2id `password_hash`, `email` with a case-insensitive unique index on `lower(email)`, `city`, `gender`, `phone_verified_at`), `sessions` (per-device, revocable, 8h), `otp_requests` (purpose-bound: signup / reverify / password_reset / phone_change; phone_change codes are also bound to the requesting `user_id`), `login_attempts` (failed-password rate limit) — password login; OTP only proves phone ownership
-- `venues` (slug, geo `location`, `sports[]`, encrypted `bank_details` JSONB, approval workflow, `plan_tier`), `courts`
+- `venues` (slug, geo `location`, `sports[]`, encrypted `bank_details` JSONB, approval workflow), `courts`
 - `schedule_templates`, `pricing_rules`, `blackouts` — the availability inputs
 - `bookings` — the core state machine (see below)
 - `payments` — proof submissions with OCR extraction + perceptual-hash duplicate detection (partial unique index: at most one row with `review_verdict IS NULL` per booking)
@@ -425,8 +425,8 @@ The schema mirrors this shape, table by table:
   `notification_log` lookup before sending — `jobs/expiry_job.escalate_pending_payment_reviews`
   fires whichever steps are due (both at once, if the job hasn't run in a
   while) each time it runs. Tier 3 (`POST /venues/{id}/announcements`, paid
-  marketing) is gated by `venues.plan_tier` against a monthly send cap
-  (`MARKETING_CAP_FREE/PRO/BUSINESS`) computed by counting
+  marketing) is gated by the owner's Announcements premium feature against one monthly
+  send cap (`MARKETING_CAP_PRO`) computed by counting
   `notification_log` rows for that venue this calendar month — no separate
   counter to keep in sync or reset. Every send is logged to `notification_log`
   regardless of tier, for delivery/cost reporting.
@@ -586,9 +586,9 @@ The schema mirrors this shape, table by table:
   (+`/ledger/export` as CSV) includes every booking in the date range
   regardless of status — a cancelled/held booking just contributes ¤0, so
   the row count reflects total activity, not just revenue-generating bookings.
-  `GET /growth` is gated to `plan_tier` Pro/Business (403 if a specific
-  `venue_id` is Free tier; silently excluded from the aggregate view
-  otherwise).
+  `GET /growth` is gated by the owner's Growth suggestions premium feature (403
+  `PREMIUM_FEATURE_REQUIRED` for a specific `venue_id`; empty in the aggregate
+  view otherwise).
 
 - **Growth suggestions are nightly-materialized, not computed live**
   (Section 14). `growth_job.compute_slot_stats` (run as part of
