@@ -194,7 +194,7 @@ export function CourtDayPopup({
             </div>
           ) : (
             <>
-              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+              <div className="grid grid-cols-7 gap-1 shrink-0">
                 {week.map((d) => {
                   const isPast = d < today;
                   const selected = d === date;
@@ -206,7 +206,7 @@ export function CourtDayPopup({
                       disabled={isPast}
                       onClick={() => setDate(d)}
                       aria-pressed={selected}
-                      className="flex-1 min-w-[46px] flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors"
+                      className="min-w-0 flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors"
                       style={{
                         background: selected ? "#EF5A2C" : "#FFFFFF",
                         border: `1px solid ${selected ? "#EF5A2C" : "#E5DED8"}`,
@@ -214,7 +214,7 @@ export function CourtDayPopup({
                         cursor: isPast ? "default" : "pointer",
                       }}
                     >
-                      <span className="text-[10.5px] font-bold tracking-wide" style={{ color: selected ? "rgba(255,255,255,0.9)" : "#5C544D" }}>
+                      <span className="text-[10px] font-bold leading-none whitespace-nowrap" style={{ color: selected ? "rgba(255,255,255,0.9)" : "#5C544D" }}>
                         {tabLabel(d)}
                       </span>
                       <span className="font-mono text-[15px] font-extrabold" style={{ color: selected ? "#FFFFFF" : "#141A1D" }}>
