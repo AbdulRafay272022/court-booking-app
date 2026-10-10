@@ -17,11 +17,20 @@ This file is different: it's the build history and the working conventions —
 read it to pick up where things left off and to work the way this project has
 been worked so far.
 
-## START HERE -- post-Section-32 auth hardening (2026-09-27, branch `post-qa-auth-fixes`)
+## STATUS (corrected 2026-10-10): everything below is MERGED to `main` and deployed
+
+> `post-qa-auth-fixes` was merged on 2026-09-27 (merge `c67d9f4`); the Section 32 part branches, the post-batch UI backlog and
+> `booking-ledger-fixes-2026-09-30` are merged too. Where a block below says "unmerged" / "not merged" it was true when written
+> and is history now; `git merge-base --is-ancestor <branch> main` is the way to check. Latest on `main` (2026-10-10, no
+> migrations): pricing rules returned in priority order + owner walk-in picker 15 days; booking-popup day tabs fix; **pricing
+> precedence by specificity** (see "PRICING PRECEDENCE" below) with a hidden-rate warning in the wizard and Venue Settings;
+> the popup hides past days and elapsed slots. Mobile still needs an EAS build for the frontend items.
+
+## START HERE -- post-Section-32 auth hardening (2026-09-27, branch `post-qa-auth-fixes`, MERGED `c67d9f4`)
 
 > Read this before the older 2026-09-23 handoff below. Section 32 (Parts 1-12) and the 8-item
 > post-batch UI backlog are on production (`main` = `9d2f233`, mirrors prod; see MEMORY.md).
-> `post-qa-auth-fixes` (unmerged, tip `04d3c00` after this doc-update commit) hardens the
+> `post-qa-auth-fixes` (MERGED to `main` 2026-09-27 as `c67d9f4`; it was unmerged, tip `04d3c00`, when this was written) hardens the
 > Section 26 auth flow against a QA sweep of the login / signup / OTP paths. Four QA rounds
 > stacked on the same branch (`de136ed` -> `857e963` -> `6568e9c` -> `04d3c00`), each pushed to
 > the QA session between rounds:
@@ -68,8 +77,8 @@ been worked so far.
 >    still not done; Expo web can't exercise these. Same standing limit as every other native
 >    feature in this project.
 >
-> **Item C (on-box nginx / client-IP verification) still needs a real deploy-time check**
-> before this branch is merged and deployed. The Dockerfile change (`--proxy-headers
+> **Item C (on-box nginx / client-IP verification): the branch has since been merged and deployed, but no record exists that this
+> check was ever done on the live box -- do it.** The Dockerfile change (`--proxy-headers
 > --forwarded-allow-ips *` + `app/utils/client_ip.py` reading `X-Real-IP` / last-hop XFF) has
 > unit-test coverage but has not been exercised against the real nginx / EC2 setup. See the
 > Round 2 commit body and `test_qa_retest_C_client_ip_prefers_nginx_headers` for what to
