@@ -164,7 +164,7 @@ async def cancel_booking(
                     user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
                 )
         waitlist_service = WaitlistService(db, settings)
-        await waitlist_service.notify_matching_entries(court, booking.starts_at)
+        await waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
 
     return BookingResponse(booking=BookingOut.model_validate(booking))
 

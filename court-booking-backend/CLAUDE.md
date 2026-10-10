@@ -293,6 +293,8 @@ not offered (`walkinSlots` in packages/types, which also adds the previous sched
 the server message is shown if it still comes back. Tests: `tests/test_walkin_not_in_past.py` (clock frozen via
 `app.services.booking_service.utc_now`).
 
+**POST-LEDGER FIXES (2026-10-10, same branch, NO schema change):** (1) `reject_payment` now writes a `payment_disputes` row (`reason="payment_rejected"`, `refund_amount=0`, same convention as `payment_review_expired`) unless the proof was flagged a duplicate, so a rejection never erases the trail of a transfer that may have been real. (2) `WaitlistService.notify_matching_entries(court, start, end)` notifies EVERY active entry whose slot starts inside the freed range [start, end) (callers pass `booking.starts_at, booking.ends_at`); `advance_stale_notifications` now checks "still taken" by overlap, not start equality. Known gap closed. (3) `OwnerDashboardService._merge_booking_rows` collapses back-to-back cells of one booking into one Today row (`starts_at` of the first cell, `ends_at` of the last); display only. Both Today screens show the range under the title. Tests: `tests/test_post_ledger_fixes.py` (3 of 5 fail on the old code); `test_money_correctness` reject test updated to the new rule.
+
 **SECTION 32 PART 10 (built and tested 2026-09-24, branch `section-32-part-10`, NOT merged to `main`, NOT deployed).**
 Manual refunds (no payment gateway) reuse `payment_disputes` (Section 23 finding #5 / Section 24 finding #13) rather
 than a new table -- migration `a3f7c9d2e185` adds `refund_amount`/`refund_status`/`refunded_amount`/`refund_reference`/

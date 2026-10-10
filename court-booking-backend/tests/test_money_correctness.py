@@ -374,12 +374,13 @@ async def test_player_cancel_of_paid_booking_refunds_the_real_amount_not_the_adv
     assert float(disputes[0].refund_amount) == 5000.0
 
 
-async def test_owner_rejecting_a_payment_creates_no_refund_and_no_ledger_entry(
+async def test_owner_rejecting_a_payment_creates_no_ledger_entry_but_leaves_a_zero_amount_trail(
     client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule,
     make_auth_headers, monkeypatch,
 ):
-    """Decision: a rejected proof was never credited (no ledger row), so there is nothing in the ledger to
-    refund; the reject path is unchanged (the owner tells the player out of band). Documented, not changed."""
+    """A rejected proof was never credited (no ledger row), so no money is OWED in the ledger. But rejection does not
+    prove no money moved, so (owner decision, post-ledger fixes) it leaves a `payment_rejected` trail in the dispute
+    queue -- amount 0, like `payment_review_expired` -- for an admin to chase."""
     _mock_upload(monkeypatch)
     _mock_ocr(monkeypatch, 5000)
     s = await _setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, 23)
@@ -389,7 +390,9 @@ async def test_owner_rejecting_a_payment_creates_no_refund_and_no_ledger_entry(
     )
     assert rej.status_code == 200
     assert await _entries(db_session_factory, booking["id"]) == []
-    assert await _disputes(db_session_factory, booking["id"]) == []
+    disputes = await _disputes(db_session_factory, booking["id"])
+    assert [d.reason for d in disputes] == ["payment_rejected"]
+    assert float(disputes[0].refund_amount) == 0.0 and disputes[0].resolved is False
 
 
 async def test_partial_refunds_keep_the_dispute_open_until_fully_refunded(

@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDayHeader, formatPKR, formatTime, formatWhen } from "@/lib/format";
+import { formatDayHeader, formatPKR, formatTime, formatTimeRange, formatWhen } from "@/lib/format";
 import { bookingSourceLabel } from "@court-booking/types";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
@@ -225,6 +225,9 @@ export default function OwnerTodayScreen() {
                   </Text>
                   {slot.booking_id ? (
                     <>
+                      <Text className="font-plex-semibold text-xs" style={{ color: "#101C21" }} testID="today-row-range">
+                        {formatTimeRange(slot.starts_at, slot.ends_at)}
+                      </Text>
                       <Text className="font-plex-medium text-xs text-owner-ink-faint" testID="today-row-origin">
                         {[
                           bookingSourceLabel(slot.booking_source) ? `Booked via ${bookingSourceLabel(slot.booking_source)}` : null,

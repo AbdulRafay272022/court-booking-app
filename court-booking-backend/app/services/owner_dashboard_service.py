@@ -78,6 +78,25 @@ class OwnerDashboardService:
         result = await self.db.execute(select(User.id, User.name).where(User.id.in_(user_ids)))
         return {uid: name for uid, name in result.all() if name}
 
+    @staticmethod
+    def _merge_booking_rows(rows: list[TodaySlotOut]) -> list[TodaySlotOut]:
+        """One display row per booking: the grid is 30 minutes, so a 1-hour booking arrives as two cells carrying the
+        same booking_id. Back-to-back cells of one booking collapse into a single row spanning the whole booking
+        ("6:00 PM - 7:00 PM"). Display only -- the bookings themselves are untouched, and free/closed cells never merge."""
+        merged: list[TodaySlotOut] = []
+        for row in rows:
+            prev = merged[-1] if merged else None
+            if (
+                prev is not None
+                and row.booking_id is not None
+                and prev.booking_id == row.booking_id
+                and prev.ends_at == row.starts_at
+            ):
+                merged[-1] = prev.model_copy(update={"ends_at": row.ends_at})
+            else:
+                merged.append(row)
+        return merged
+
     async def today(self, owner: User, target_date: date | None = None, venue_id: uuid.UUID | None = None) -> TodayOut:
         target_date = target_date or pkt_today()
         courts = await self._owner_courts(owner, venue_id)
@@ -171,7 +190,9 @@ class OwnerDashboardService:
                         player_phone=booking.player_phone if booking else None,
                     )
                 )
-            court_outs.append(TodayCourtOut(court_id=court.id, name=court.name, sport=court.sport, slots=slot_outs))
+            court_outs.append(
+                TodayCourtOut(court_id=court.id, name=court.name, sport=court.sport, slots=self._merge_booking_rows(slot_outs))
+            )
 
         total_bookings = sum(1 for b in bookings_today if b.status != BookingStatus.CANCELLED)
         total_revenue = sum(float(b.amount_paid) for b in bookings_today if b.status in REVENUE_STATUSES)

@@ -13,6 +13,7 @@ from app.config import Settings
 from app.errors import AppError, ErrorCode
 from app.models.booking import Booking, BookingStatus, CancelledBy
 from app.models.court import Court
+from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
 from app.models.user import User
 from app.models.venue import Venue
@@ -670,6 +671,22 @@ class PaymentService:
         # the player starts over with a fresh hold if they want to try again.
         await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason)
 
+        # Safety net: the owner rejected the proof, but "rejected" does not prove no money moved (the transfer may have
+        # been real and the rejection for another reason -- wrong amount, wrong account, a stale screenshot). Leave a
+        # trail in the same queue as an expired review so an admin can chase it. Refund owed is 0 for the same reason as
+        # `payment_review_expired`: nothing was ever recorded as paid in this app. A duplicate of an earlier receipt is
+        # not flagged -- that image's money is already accounted for on the earlier payment.
+        if not payment.is_duplicate:
+            self.db.add(
+                PaymentDispute(
+                    booking_id=booking.id,
+                    payment_id=payment.id,
+                    player_id=booking.player_id,
+                    reason="payment_rejected",
+                    refund_amount=0,
+                )
+            )
+
         if booking.player_id is not None:
             player = await self.db.get(User, booking.player_id)
             if player is not None:
@@ -678,7 +695,7 @@ class PaymentService:
 
         court = await self.db.get(Court, booking.court_id)
         if court is not None:
-            await self.waitlist_service.notify_matching_entries(court, booking.starts_at)
+            await self.waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
 
         await self.db.commit()
         await self.db.refresh(payment)

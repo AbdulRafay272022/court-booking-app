@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { RecordPaymentSheet } from "@/components/owner/record-payment-sheet";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDateString, formatPKR, formatTime, formatWhen } from "@/lib/format";
+import { formatDateString, formatPKR, formatTime, formatTimeRange, formatWhen } from "@/lib/format";
 import { bookingSourceLabel } from "@court-booking/types";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
@@ -163,6 +163,11 @@ export default function OwnerTodayPage() {
                   {slot.booking_id || activeCourt === "all" ? `${courtLabel(slot.courtName, slot.courtSport)} · ` : ""}{slot.player_name ?? statusLabel(slot.status)}
                 </p>
                 <p className="text-xs text-owner-ink-faint">{statusSubtitle(slot.status)}</p>
+                {slot.booking_id ? (
+                  <p className="text-xs font-semibold" data-testid="today-row-range">
+                    {formatTimeRange(slot.starts_at, slot.ends_at)}
+                  </p>
+                ) : null}
                 {slot.booking_id ? (
                   <>
                     <p className="text-xs text-owner-ink-faint" data-testid="today-row-origin">
