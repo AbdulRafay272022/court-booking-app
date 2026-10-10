@@ -343,19 +343,18 @@ async def _availability_then_reply(db_session, make_user, make_venue, make_court
     return court, target, result
 
 
-async def test_reply_naming_one_offered_slot_gets_a_yes_no_proposal_even_if_the_model_skipped_the_tool(
+async def test_reply_naming_one_offered_slot_gets_no_proposal_until_a_duration_is_known(
     db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
-    """Production chat 2026-09-20: the model asked to book in plain text without calling
-    propose_booking_confirmation, so the player's 'yes' had nothing to confirm. The service now ties
-    a booking question that names exactly one slot from THIS turn's availability to that slot."""
-    court, target, result = await _availability_then_reply(
+    """Production chat 2026-09-20 added a safety net: a plain-text 'shall I book it?' that names exactly one slot got a Yes/No
+    proposal. On 2026-09-29 that same net turned a 'how long do you want to play?' question into a proposal, so a typed 'Yes, book it'
+    held the court's minimum with no duration chosen and no summary. The net now only attaches once a duration is known for the
+    slot (quote_booking, or a start-to-end range): see tests/test_chatbot_log_fixes.py for the case where it does."""
+    _court, _target, result = await _availability_then_reply(
         db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch,
         ("+923014000040", "+923014000041"), "5:00 PM to 6:00 PM available hai, PKR 3,000. Kya main book kar doon?",
     )
-    assert [a.type for a in result.actions] == ["confirm_booking", "decline"]
-    assert {k: result.actions[0].data[k] for k in ("court_id", "starts_at")} == {"court_id": str(court.id), "starts_at": target.isoformat() + "T12:00:00+00:00"}
-    assert result.actions[0].data["label"]  # the exact slot is stored with the proposal
+    assert result.actions == []
 
 
 async def test_no_proposal_is_attached_when_the_reply_is_ambiguous_or_not_about_booking(

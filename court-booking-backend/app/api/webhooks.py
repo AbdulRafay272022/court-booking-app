@@ -19,6 +19,7 @@ from app.services.ai_chat_service import AIChatService, explicit_proposal_data, 
 from app.services.booking_service import BookingService, booking_source_ctx
 from app.services.notification_service import NotificationService
 from app.services.payment_service import PaymentService
+from app.services.reply_text import looks_like_roman_urdu, payment_proof_reply
 from app.services.venue_service import VenueService
 from app.services.whatsapp_service import WhatsAppService, mask_phone
 from app.utils.timezone import format_duration, format_pkr, format_pkt_slot
@@ -287,15 +288,17 @@ async def _handle_image(db: DbSession, settings: AppSettings, user: User, image_
                     ocr_verdict=payment.ocr_verdict,
                 )
 
-    verdict_text = {
-        "match": "✅ The amount matches what's expected.",
-        "mismatch": "⚠️ The amount doesn't quite match what's expected -- the owner will take a closer look.",
-        "unreadable": "I couldn't read the amount clearly, but I've passed it to the venue owner to verify.",
-    }.get(payment.ocr_verdict, "")
-    if booking.status == BookingStatus.BOOKED:
-        reply = f"Got it, thanks! {verdict_text} Your booking is confirmed. \U0001f389"
-    else:
-        reply = f"Got it, thanks! {verdict_text} The venue owner will review and confirm shortly."
+    recent_player_texts = (
+        await db.scalars(
+            select(Message.content)
+            .where(Message.sender_id == user.id, Message.channel == "whatsapp", Message.sender_type == "player", Message.message_type == "text")
+            .order_by(Message.created_at.desc())
+            .limit(6)
+        )
+    ).all()
+    reply = payment_proof_reply(
+        payment.ocr_verdict, booked=booking.status == BookingStatus.BOOKED, roman_urdu=looks_like_roman_urdu(list(recent_player_texts))
+    )
 
     sent = await whatsapp.send_text(user.phone, reply)
     await _record_message(

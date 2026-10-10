@@ -33,6 +33,7 @@ from app.utils.timezone import (
     format_slot_label,
     format_time,
     pkt_time_to_utc,
+    pkt_today,
     utc_to_pkt_naive,
 )
 
@@ -46,7 +47,7 @@ MAX_TOOL_ITERATIONS = 8
 COMPLEX_TIER_TURN_THRESHOLD = 6  # len(history) messages (~3 user/assistant pairs)
 
 SYSTEM_PROMPT = """You are the booking assistant for a Pakistani sports-court booking platform \
-(badminton, futsal, padel, tennis, cricket nets, ground, football full-field). You help players find venues and book courts.
+(the sports actually on offer are listed in "Sports on this platform" at the end of these instructions). You help players find venues and book courts.
 
 Persona: polite, warm, brief and professional. The same reply must work for a security guard \
 sent to book, a student, and a busy executive -- short sentences, simple words, no jargon. Reply \
@@ -57,8 +58,11 @@ prices and bookings comes from your tools -- never invent a venue, address, pric
 or a booking confirmation.
 
 Rules:
-1. Ask for only ONE missing thing at a time, in this order: sport/area, then which court, then the
-   date, then the start time, then HOW LONG they want to play. Don't ask for something a tool or the
+1. Ask for only ONE missing thing at a time, in this order: sport, then which court (when the sport has
+   more than one), then the date, then the start time, then HOW LONG they want to play. Never choose a
+   sport, venue, court, date or time FOR the player: if they have not said which sport they want in this
+   chat, your whole reply is one question asking which sport (name only the sports listed at the end),
+   BEFORE you call check_availability or offer any slot. Don't ask for something a tool or the
    player already told you, and never ask the same question twice. If the player hasn't given the
    duration, ask "How long do you want to play?" and offer the court's `durations` from
    get_venue_courts (use each one's label); then call quote_booking and give the total exactly as
@@ -126,10 +130,46 @@ Rules:
    length since, do NOT call hold_slot: state the exact slot again (call propose_booking_confirmation) and
    ask for confirmation. Only a yes to an exact slot you stated in the immediately preceding message
    books it.
+17. Which slot? If you listed more than one slot (or court) and the player says "this", "isko", "yeh", "woh"
+   or "book it" without naming a time, ASK which one they mean ("Kaun sa slot: 5:00 PM ya 6:00 PM?"). Never
+   pick the first or last one yourself. Likewise, when their requested time was not available and you
+   offered alternatives, wait for them to choose one.
+18. AM or PM. An hour without a day-part ("9", "9 baje", "9 ki") could be morning or evening: ask "Subah (AM)
+   ya shaam/raat (PM)?" in their language. Only skip the question when they said subah/savere/dopahar/shaam/
+   raat/morning/afternoon/evening/night/tonight ("aaj raat 9" is 9 PM) or wrote AM/PM, or the hour is 13 or
+   more. Never assume.
+19. "Which courts / what is available?" Call get_venue_courts, then check_availability for EACH court of the
+   sport they chose, and list every court with its name and up to six slot labels. Never repeat an earlier
+   answer in place of this.
+20. Write words properly even when the player abbreviates ("kal" not "Kl", "aaj" not "Aj", "please" not
+   "plz"): never copy their shorthand back.
+21. Sports. Only talk about the sports in "Sports on this platform". If asked for another sport (cricket,
+   say), say plainly that it is not available yet and list the ones that are; do not ask for an area for it.
+   In a greeting, welcome them and ask which of those sports they want.
 """
 
 
-def build_system_prompt(now_utc: datetime, user_name: str | None = None, turn_hint: str | None = None) -> str:
+def _calendar_block(now_utc: datetime) -> str:
+    """A ready-made table of the next days in Pakistan time. "kal" was resolved to the wrong date by the model (it said
+    9 October when today was 7 October), so it is never asked to do date arithmetic: it looks the day up here."""
+    today = pkt_today(now_utc)
+    names = {0: "aaj / today", 1: "kal / tomorrow", 2: "parson / the day after tomorrow"}
+    rows = []
+    for i in range(0, 10):
+        d = today + timedelta(days=i)
+        rows.append(f"- {names.get(i, 'in ' + str(i) + ' days')}: {d.strftime('%a')} {d.day} {d.strftime('%b')} {d.year} = {d.isoformat()}")
+    return (
+        "Calendar in Pakistan (look dates up here, never work them out yourself; the year is "
+        f"{today.year}, never any other):\n" + "\n".join(rows) + "\n"
+    )
+
+
+def build_system_prompt(
+    now_utc: datetime,
+    user_name: str | None = None,
+    turn_hint: str | None = None,
+    available_sports: list[str] | None = None,
+) -> str:
     """The model has no clock: without this, "Wednesday" resolved to the wrong week and one
     conversation offered a slot on "15 May" in September. Pakistan time, because that is how
     players (and venue owners) talk."""
@@ -140,6 +180,12 @@ def build_system_prompt(now_utc: datetime, user_name: str | None = None, turn_hi
         + ".\n"
         + 'Interpret "today", "tomorrow", "tonight", "aaj", "kal" and weekday names relative to THIS, '
         + "and pass check_availability a YYYY-MM-DD date in Pakistan's calendar. Never guess a date.\n"
+        + _calendar_block(now_utc)
+        + (
+            "Sports on this platform: " + ", ".join(available_sports) + ".\n"
+            if available_sports
+            else "Sports on this platform: none are listed yet; say so if asked.\n"
+        )
         + (
             f'Player account name: "{tidy_player_name(user_name)}" (on file).\n'
             if tidy_player_name(user_name)
@@ -180,6 +226,21 @@ def _strip_button_talk(text: str) -> str:
     return cleaned.strip()
 
 
+_SHORTHAND = (
+    (re.compile(r"\bKl\b"), "Kal"),
+    (re.compile(r"\bkl\b"), "kal"),
+    (re.compile(r"\bAj\b"), "Aaj"),
+    (re.compile(r"\baj\b"), "aaj"),
+)
+
+
+def _fix_shorthand(text: str) -> str:
+    """The model sometimes copies the player's texting shorthand back ("Kl 9:00 AM ..."); write it out properly."""
+    for pattern, full in _SHORTHAND:
+        text = pattern.sub(full, text)
+    return text
+
+
 def sanitize_reply(text: str) -> str:
     """Everything a player must never SEE, applied to every outgoing assistant reply as a safety
     net (the real fixes are the ready-made tool strings + the system prompt): 24-hour/UTC times
@@ -187,6 +248,7 @@ def sanitize_reply(text: str) -> str:
     text = enforce_display_format(text)
     text = _strip_markdown(text)
     text = _strip_button_talk(text)
+    text = _fix_shorthand(text)
     return text
 
 
@@ -242,6 +304,72 @@ def explicit_proposal_data(message: Message | None) -> dict | None:
         if data.get("court_id") and data.get("starts_at") and reply_states_slot(message.content, data.get("label")):
             return data
     return None
+
+
+# --- text checks used by the server-side guards -------------------------------------------------------------------------------
+
+_DAYPART_RE = re.compile(
+    r"(?i)\b(subah|subha|savere|sawere|dopahar|dopehar|shaam|sham|raat|rat|morning|afternoon|evening|night|tonight|noon|din)\b"
+    r"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b"
+)
+_BARE_HOUR_RE = re.compile(
+    r"(?i)(?<![\d:])(\d{1,2})(?::[0-5]\d)?\s*(?:baje|bajay|bajey|bje|ki\b|ka\b|se\b|tak\b|o'?clock)"
+    r"|\bat\s+(\d{1,2})(?::[0-5]\d)?\b(?!\s*(?:hours?|hrs?|min))"
+)
+_SLOT_RANGE_RE = re.compile(r"\d{1,2}:\d{2} (?:AM|PM) to \d{1,2}:\d{2} (?:AM|PM)")
+_DEICTIC_WORDS = frozenset("isko ise iss yeh ye yahi wahi woh wo this that it".split())
+_PICK_WORDS = frozenset("pehla pehle pehli first last second doosra dosra aakhri tisra third".split())
+_SPORT_HINT_RE = re.compile(r"(?i)pad[e]?l|f[u]?r?t+[s]?al|futs|foot|cricket|crick|circ|tennis|badmin|ground|\bnets?\b")
+
+
+def ambiguous_hours(text: str) -> set[int]:
+    """Hours (0-11, as hour % 12) the player wrote WITHOUT saying morning or evening ("9 ki", "at 9", "9 baje") in a
+    message that has no day-part word or AM/PM anywhere. Empty when the message is clear or has no clock hour. 13+ is
+    never ambiguous."""
+    if not text or _DAYPART_RE.search(text):
+        return set()
+    hours = set()
+    for m in _BARE_HOUR_RE.finditer(text):
+        h = int(m.group(1) or m.group(2))
+        if 1 <= h <= 12:
+            hours.add(h % 12)
+    return hours
+
+
+def points_at_listed_slot(text: str) -> bool:
+    """"isko book krdo" / "book this": the player points at something without naming a time or position."""
+    words = re.sub(r"[^a-z0-9\s]", " ", (text or "").lower()).split()
+    if not words or len(words) > 8 or any(ch.isdigit() for ch in text or ""):
+        return False
+    if any(w in _PICK_WORDS for w in words):
+        return False
+    return any(w in _DEICTIC_WORDS for w in words)
+
+
+def _text_of(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def _current_and_previous_text(messages: list[dict]) -> tuple[str, str]:
+    """(the player's latest typed message, the assistant's text right before it) from the conversation handed to the model."""
+    latest_idx = None
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if m.get("role") == "user" and isinstance(m.get("content"), str):
+            latest_idx = i
+            break
+    if latest_idx is None:
+        return "", ""
+    previous = ""
+    for j in range(latest_idx - 1, -1, -1):
+        if messages[j].get("role") == "assistant":
+            previous = _text_of(messages[j].get("content"))
+            break
+    return messages[latest_idx]["content"], previous
 
 
 @dataclass
@@ -300,7 +428,7 @@ class AIChatService:
         result = await self.db.execute(
             select(Message)
             .where(Message.sender_id == user.id, Message.channel == channel, Message.message_type == "text")
-            .order_by(Message.created_at.desc())
+            .order_by(Message.created_at.desc(), Message.sender_type.asc())  # on a tie the reply ("ai") is the newer row
             .limit(limit)
         )
         rows = list(reversed(result.scalars().all()))
@@ -340,8 +468,11 @@ class AIChatService:
         actions: list[ChatAction] = []
         tool_calls_made: list[str] = []
         offered: dict[tuple[str, str], str] = {}  # (court_id, starts_at) -> PKT label, from check_availability
+        quoted: dict[tuple[str, str], int] = {}  # (court_id, starts_at) -> slot_count, once a DURATION is known for that slot
         turn_hint = await self._bare_yes_hint(user, channel, message)
-        system_prompt = build_system_prompt(datetime.now(timezone.utc), user.name, turn_hint)
+        system_prompt = build_system_prompt(
+            datetime.now(timezone.utc), user.name, turn_hint, await self._available_sports()
+        )
 
         for _ in range(MAX_TOOL_ITERATIONS):
             reply = await provider.chat(system_prompt, messages, tools, model_tier)
@@ -356,7 +487,7 @@ class AIChatService:
 
             if not reply.tool_calls:
                 text = (reply.text or "").strip()
-                self._attach_proposal_for_named_slot(text, offered, actions)
+                self._attach_proposal_for_named_slot(text, offered, actions, quoted)
                 text = self._ensure_exact_slot_stated(text, actions)
                 # Safety net only (the real fixes are the ready-made tool strings + the system
                 # prompt): a player must never SEE a 24-hour/UTC time, leaked markdown, or any
@@ -389,6 +520,15 @@ class AIChatService:
                 if tc.name == "check_availability":
                     for slot in result.get("slots", []):
                         offered[(str(tc.arguments.get("court_id")), slot["starts_at"])] = slot["label"]
+                    rr = result.get("requested_range") or {}
+                    if rr.get("available") and rr.get("starts_at"):
+                        key = (str(tc.arguments.get("court_id")), rr["starts_at"])
+                        offered[key] = rr["label"]
+                        quoted[key] = int(rr["slot_count"])
+                elif tc.name == "quote_booking" and result.get("ok"):
+                    quoted[(str(tc.arguments.get("court_id")), self._iso_key(tc.arguments.get("starts_at")))] = int(
+                        result["slot_count"]
+                    )
                 tool_results.append(
                     {
                         "type": "tool_result",
@@ -404,6 +544,24 @@ class AIChatService:
             model=model_tier,
             tool_calls=tool_calls_made,
         )
+
+    @staticmethod
+    def _iso_key(value: object) -> str:
+        """A starts_at in the one spelling check_availability / the quote use, so keys from different tools meet."""
+        try:
+            return datetime.fromisoformat(str(value)).isoformat()
+        except ValueError:
+            return str(value)
+
+    async def _available_sports(self) -> list[str]:
+        """The sports that really exist on the platform right now (approved venues' sports), for the system prompt, so the
+        assistant never offers badminton or cricket nets that no venue has."""
+        rows, _total = await self.venue_service.list_venues(limit=200)
+        found: dict[str, str] = {}
+        for venue, _dist in rows:
+            for sport in venue.sports or []:
+                found.setdefault(str(sport).strip().lower(), str(sport).strip().title())
+        return sorted(found.values())
 
     async def _latest_ai_message(self, user: User, channel: str) -> Message | None:
         return (
@@ -442,7 +600,41 @@ class AIChatService:
         """"Server-side guards on the two booking tools, so the rules do not depend on the model obeying the prompt.
         Returns an error result for the model to act on, or None to let the call through (possibly after filling in
         arguments). Only the model-driven path goes through here; the HTTP/WhatsApp button paths are explicit taps."""
+        latest, previous = _current_and_previous_text(messages)
+        if name == "check_availability":
+            # The player has to have said WHICH sport/court before slots are looked up for them, at a venue with a choice.
+            try:
+                court = await self.availability.get_court(uuid.UUID(str(args.get("court_id"))))
+            except (ValueError, HTTPException):
+                return None
+            if await self._sport_choice_missing(court, messages):
+                return {
+                    "error": "The player has not said which sport they want. Do NOT look up slots or suggest a court yet: "
+                    "reply with ONE short question asking which sport (name only the sports listed in your instructions).",
+                    "status_code": 409,
+                }
+            start_time = args.get("start_time")
+            if start_time:
+                try:
+                    wanted = self._parse_clock(start_time)
+                except ValueError:
+                    wanted = None
+                if wanted is not None and wanted.hour % 12 in ambiguous_hours(latest):
+                    return self._ask_am_or_pm()
+            return None
         if name == "propose_booking_confirmation":
+            if points_at_listed_slot(latest) and len(_SLOT_RANGE_RE.findall(previous)) >= 2:
+                return {
+                    "error": 'The player said "this" but your last message listed several slots. Do NOT pick one. Ask which '
+                    "slot they mean, naming the choices, and propose only after they answer.",
+                    "status_code": 409,
+                }
+            try:
+                start = datetime.fromisoformat(str(args.get("starts_at")))
+                if start.tzinfo is not None and utc_to_pkt_naive(start).hour % 12 in ambiguous_hours(latest):
+                    return self._ask_am_or_pm()
+            except ValueError:
+                pass
             # A player with no name on their account is asked for one -- once -- before a slot is proposed.
             if (
                 not (user.name or "").strip()
@@ -481,6 +673,28 @@ class AIChatService:
         return None
 
     @staticmethod
+    def _ask_am_or_pm() -> dict:
+        return {
+            "error": "The player gave an hour without saying morning or evening. Do NOT assume. Ask ONE short question in "
+            'their language: "Subah (AM) ya shaam/raat (PM)?" and continue after they answer.',
+            "status_code": 409,
+        }
+
+    async def _sport_choice_missing(self, court: Court, messages: list[dict]) -> bool:
+        """True when the venue offers more than one sport and nothing the player has typed in this chat names a sport, a court
+        or the venue: the assistant must ask instead of choosing for them."""
+        venue = await self.db.get(Venue, court.venue_id)
+        rows = await self.db.scalars(select(Court.sport).where(Court.venue_id == court.venue_id, Court.is_active.is_(True)))
+        sports = {str(sport).lower() for sport in rows}
+        if len(sports) < 2:
+            return False
+        said = " ".join(_text_of(m.get("content")) for m in messages if m.get("role") == "user" and isinstance(m.get("content"), str)).lower()
+        if _SPORT_HINT_RE.search(said):
+            return False
+        names = [str(court.sport or "").lower(), str(court.name or "").lower(), str(venue.name or "").lower() if venue else ""]
+        return not any(n and n in said for n in names)
+
+    @staticmethod
     def _name_already_asked(messages: list[dict]) -> bool:
         """True when any earlier assistant message in this conversation (incl. this turn) already asks about a name."""
         for m in messages:
@@ -512,7 +726,10 @@ class AIChatService:
 
     @staticmethod
     def _attach_proposal_for_named_slot(
-        text: str, offered: dict[tuple[str, str], str], actions: list[ChatAction]
+        text: str,
+        offered: dict[tuple[str, str], str],
+        actions: list[ChatAction],
+        quoted: dict[tuple[str, str], int] | None = None,
     ) -> None:
         """Safety net for a model that asks "shall I book 10:00 PM - 11:00 PM?" in plain text instead of
         calling propose_booking_confirmation (Gemini flash-lite often does). Without a proposal there
@@ -531,11 +748,17 @@ class AIChatService:
         if len(matches) != 1:
             return
         court_id, starts_at = matches[0]
+        # Only once a DURATION is known for this slot (quoted, or a start-to-end range was checked). Without it the text is
+        # just asking "how long?" about a slot it named, and a Yes button would book the court's minimum without anyone
+        # having picked a length or seen a summary (seen on WhatsApp 2026-09-29).
+        slot_count = (quoted or {}).get((court_id, starts_at))
+        if slot_count is None:
+            return
         actions.append(
             ChatAction(
                 type="confirm_booking",
                 label="Yes, book it",
-                data={"court_id": court_id, "starts_at": starts_at, "label": offered[matches[0]]},
+                data={"court_id": court_id, "starts_at": starts_at, "slot_count": slot_count, "label": offered[matches[0]]},
             )
         )
         actions.append(ChatAction(type="decline", label="No, thanks", data={}))
@@ -616,6 +839,13 @@ class AIChatService:
     async def _tool_check_availability(self, tool_input: dict) -> dict:
         court = await self.availability.get_court(uuid.UUID(tool_input["court_id"]))
         target_date = date_cls.fromisoformat(tool_input["date"])
+        if target_date < pkt_today():
+            # a model once asked for 3 Oct 2020 and a booking was proposed for it; a past date is never a booking date
+            return {
+                "error": f"{target_date.isoformat()} is in the past. Today is {pkt_today().isoformat()} in Pakistan. "
+                "Use a date from the Calendar in your instructions.",
+                "status_code": 400,
+            }
         # Slots that START on this Pakistan date, including the after-midnight tail of an overnight court's previous day.
         # Only starts where the court's minimum booking fits (a lone free half hour on a 60-minute court is not offered).
         runs = await self.availability.get_startable_runs_starting_on(court, target_date)
@@ -736,6 +966,8 @@ class AIChatService:
                 "That exact time is not an available slot. Call check_availability and choose one "
                 "of the slots it returns (use its starts_at value unchanged).",
             )
+        if starts_at <= datetime.now(timezone.utc):
+            raise AppError(400, ErrorCode.SLOT_IN_PAST, "That start time has already passed.")
         slot_count = self._slot_count_for(court, tool_input.get("duration_minutes"))
         return court, await self.availability.quote_range(court, starts_at, slot_count)
 
@@ -754,6 +986,7 @@ class AIChatService:
     def _quote_result(quote) -> dict:
         return {
             "label": format_slot_label(quote.starts_at, quote.ends_at),
+            "slot_count": quote.slot_count,
             "duration_text": format_duration(quote.duration_minutes),
             "total_price_text": format_pkr(quote.price),
             "advance_text": format_pkr(quote.advance_amount),

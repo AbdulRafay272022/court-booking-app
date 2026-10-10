@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter
-from sqlalchemy import select
+from sqlalchemy import case, select
 
 from app.dependencies import AppSettings, ChatRateLimit, CurrentUser, DbSession, PageParams
 from app.models.court import Court
@@ -25,10 +26,15 @@ async def send_chat_message(
 ) -> ChatMessageOut:
     chat_service = AIChatService(db, settings)
     history = await chat_service.load_history(user, "app")
+    asked_at = datetime.now(timezone.utc)
     result = await chat_service.process_message(user=user, message=payload.message, history=history)
+    # Both rows are inserted in ONE transaction, so the database's own created_at (the transaction start) would be identical
+    # for the question and its reply and the history could list the reply first. Stamp them explicitly, in order.
+    answered_at = max(datetime.now(timezone.utc), asked_at + timedelta(milliseconds=1))
 
     db.add(
         Message(
+            created_at=asked_at,
             booking_id=payload.booking_id,
             venue_id=payload.venue_id,
             sender_id=user.id,
@@ -39,6 +45,7 @@ async def send_chat_message(
     )
     db.add(
         Message(
+            created_at=answered_at,
             booking_id=payload.booking_id,
             venue_id=payload.venue_id,
             sender_id=user.id,  # thread owner, not literal sender -- see Message.sender_id
@@ -96,7 +103,8 @@ async def get_chat_history(
         query = query.where(Message.venue_id == venue_id)
     if booking_id is not None:
         query = query.where(Message.booking_id == booking_id)
-    query = query.order_by(Message.created_at.asc()).offset(page.offset).limit(page.page_size)
+    # rows written before the explicit stamps share one timestamp per exchange: the player's message comes first on a tie
+    query = query.order_by(Message.created_at.asc(), case((Message.sender_type == "player", 0), else_=1)).offset(page.offset).limit(page.page_size)
 
     result = await db.execute(query)
     return [ChatHistoryItemOut.model_validate(m) for m in result.scalars().all()]
