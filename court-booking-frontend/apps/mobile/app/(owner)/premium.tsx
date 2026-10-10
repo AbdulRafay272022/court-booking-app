@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { premiumStateText, selectionTotal } from "@court-booking/types";
-import type { OwnerInvoice } from "@court-booking/types";
+import type { OwnerInvoice, PlatformPaymentDetails } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -148,11 +149,102 @@ export default function OwnerPremiumScreen() {
                     {l.description ?? l.feature_key}: PKR {formatPKR(l.amount_pkr)}
                   </Text>
                 ))}
+                {inv.status === "issued" ? (
+                  <PayBox
+                    invoice={inv}
+                    instructions={data.payment_instructions}
+                    onPaid={(fresh) => queryClient.setQueryData(["owner-premium"], fresh)}
+                  />
+                ) : null}
               </View>
             ))
           )}
         </ScrollView>
       )}
     </SafeAreaView>
+  );
+}
+
+
+function PayBox({
+  invoice,
+  instructions,
+  onPaid,
+}: {
+  invoice: OwnerInvoice;
+  instructions: PlatformPaymentDetails | null;
+  onPaid: (fresh: Awaited<ReturnType<typeof api.premium.get>>) => void;
+}) {
+  const [picked, setPicked] = useState<{ uri: string; blob?: Blob; name: string; type: string } | null>(null);
+  const [progress, setProgress] = useState(0);
+  const upload = useMutation({
+    mutationFn: (p: { uri: string; blob?: Blob; name: string; type: string }) =>
+      api.premium.submitInvoiceProof(invoice.id, p.blob ?? p.uri, p.name, p.type, setProgress),
+    onSuccess: (fresh) => {
+      setPicked(null);
+      onPaid(fresh);
+    },
+    onSettled: () => setProgress(0),
+  });
+
+  async function pickImage() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") {
+      Alert.alert("Permission needed", "Allow access so you can attach your payment screenshot.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    setPicked({ uri: asset.uri, blob: asset.file, name: asset.fileName ?? "proof.jpg", type: asset.mimeType ?? "image/jpeg" });
+  }
+
+  const rows: Array<[string, string]> = instructions
+    ? ([
+        ["Bank", instructions.bank],
+        ["Account title", instructions.account_title],
+        ["Account number", instructions.account_number],
+        ["IBAN", instructions.iban],
+      ] as Array<[string, string]>).filter(([, v]) => !!v)
+    : [];
+
+  return (
+    <View className="mt-2 rounded-[10px] border border-owner-border px-3.5 py-3 gap-2" style={{ backgroundColor: "#F7FAFB" }}>
+      {invoice.last_rejection_reason ? (
+        <Text className="font-plex-semibold text-owner-danger text-[12px]">
+          Your last screenshot was not accepted: {invoice.last_rejection_reason}. Please upload it again.
+        </Text>
+      ) : null}
+      <Text className="font-plex-semibold text-owner-ink text-[13px]">
+        Pay PKR {formatPKR(invoice.total_pkr)} by bank transfer, then upload the screenshot
+      </Text>
+      {instructions ? (
+        rows.map(([label, value]) => (
+          <View key={label} className="flex-row gap-2">
+            <Text className="font-plex-medium text-owner-ink-faint text-[12px] w-28">{label}</Text>
+            <Text className="font-mono text-owner-ink text-[12px] flex-1">{value}</Text>
+          </View>
+        ))
+      ) : (
+        <Text className="font-plex-medium text-owner-ink-faint text-[12px]">Payment details are not available yet. Please contact support.</Text>
+      )}
+      {picked ? <Image source={{ uri: picked.uri }} style={{ width: "100%", height: 160, borderRadius: 8 }} resizeMode="contain" /> : null}
+      <View className="flex-row gap-2">
+        <Pressable onPress={pickImage} className="h-11 px-4 rounded-[10px] border border-owner-border items-center justify-center">
+          <Text className="font-plex-semibold text-owner-ink text-[13px]">{picked ? "Choose another" : "Choose screenshot"}</Text>
+        </Pressable>
+        <Pressable
+          disabled={!picked || upload.isPending}
+          onPress={() => picked && upload.mutate(picked)}
+          className="h-11 px-4 rounded-[10px] items-center justify-center"
+          style={{ backgroundColor: "#0E6274", opacity: !picked || upload.isPending ? 0.4 : 1 }}
+        >
+          <Text className="font-plex-semibold text-white text-[13px]">
+            {upload.isPending ? `Sending… ${Math.round(progress * 100)}%` : "Send screenshot"}
+          </Text>
+        </Pressable>
+      </View>
+      {upload.isError ? <Text className="font-plex-semibold text-owner-danger text-[12px]">{friendlyErrorMessage(upload.error)}</Text> : null}
+    </View>
   );
 }

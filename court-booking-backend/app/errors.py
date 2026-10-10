@@ -69,6 +69,8 @@ class ErrorCode:
     # Owner premium billing
     FEATURE_NOT_AVAILABLE = "FEATURE_NOT_AVAILABLE"  # not one of the sellable features, or not priced yet
     INVALID_PRICE = "INVALID_PRICE"
+    INVOICE_NOT_FOUND = "INVOICE_NOT_FOUND"
+    INVOICE_NOT_PAYABLE = "INVOICE_NOT_PAYABLE"  # not waiting for a payment (already paid, being checked, void)
 
     # Venue
     VENUE_NOT_APPROVED = "VENUE_NOT_APPROVED"

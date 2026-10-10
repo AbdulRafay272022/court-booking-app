@@ -82,6 +82,10 @@ APNS_KEY=$(ssm_get "$P/secrets/APNS_KEY")
 APNS_KEY_ID=$(ssm_get "$P/secrets/APNS_KEY_ID")
 APNS_TEAM_ID=$(ssm_get "$P/secrets/APNS_TEAM_ID")
 SENTRY_DSN=$(ssm_get "$P/secrets/SENTRY_DSN")
+PLATFORM_BANK_NAME=$(ssm_get "$P/secrets/PLATFORM_BANK_NAME")
+PLATFORM_ACCOUNT_TITLE=$(ssm_get "$P/secrets/PLATFORM_ACCOUNT_TITLE")
+PLATFORM_ACCOUNT_NUMBER=$(ssm_get "$P/secrets/PLATFORM_ACCOUNT_NUMBER")
+PLATFORM_IBAN=$(ssm_get "$P/secrets/PLATFORM_IBAN")
 ENV
   # .env.web is only read by `docker compose` for the web container; the
   # browser-side API URL is baked at IMAGE BUILD time (see the web

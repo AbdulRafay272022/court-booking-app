@@ -1,4 +1,7 @@
 import type {
+  AdminOwnerInvoice,
+  AdminOwnerPayment,
+  RecordablePaymentMethod,
   PremiumFeature,
   PremiumFeatureUpdate,
   AdminBooking,
@@ -21,6 +24,21 @@ export function createAdminApi(client: ApiClient) {
 
     /** Owner premium billing price list. */
     premiumFeatures: () => client.request<PremiumFeature[]>("/admin/premium-features"),
+    /** Owner premium payments by status ("submitted" is the review queue) and invoices waiting for payment. */
+    ownerPayments: (status: "submitted" | "approved" | "rejected" | "reversal" = "submitted") =>
+      client.request<AdminOwnerPayment[]>(`/admin/owner-payments?status=${status}`),
+    approveOwnerPayment: (id: string) => client.request<AdminOwnerPayment>(`/admin/owner-payments/${id}/approve`, { method: "POST" }),
+    rejectOwnerPayment: (id: string, reason: string) =>
+      client.request<AdminOwnerPayment>(`/admin/owner-payments/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+    reverseOwnerPayment: (id: string, reason: string) =>
+      client.request<AdminOwnerPayment>(`/admin/owner-payments/${id}/reverse`, { method: "POST", body: JSON.stringify({ reason }) }),
+    ownerInvoices: (status: AdminOwnerInvoice["status"] = "issued") =>
+      client.request<AdminOwnerInvoice[]>(`/admin/owner-invoices?status=${status}`),
+    recordOwnerPayment: (invoiceId: string, method: RecordablePaymentMethod, note?: string) =>
+      client.request<AdminOwnerPayment>(`/admin/owner-invoices/${invoiceId}/record-payment`, {
+        method: "POST",
+        body: JSON.stringify({ method, note: note || null }),
+      }),
     updatePremiumFeature: (key: string, body: PremiumFeatureUpdate) =>
       client.request<PremiumFeature>(`/admin/premium-features/${key}`, { method: "PATCH", body: JSON.stringify(body) }),
 

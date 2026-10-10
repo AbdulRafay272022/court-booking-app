@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { premiumStateText, selectionTotal } from "@court-booking/types";
-import type { OwnerInvoice } from "@court-booking/types";
+import type { OwnerInvoice, PlatformPaymentDetails } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -144,10 +144,79 @@ export default function OwnerPremiumPage() {
                   </li>
                 ))}
               </ul>
+              {inv.status === "issued" ? (
+                <PayBox invoice={inv} instructions={data.payment_instructions} onPaid={(fresh) => qc.setQueryData(["owner-premium"], fresh)} />
+              ) : null}
             </div>
           ))
         )}
       </section>
+    </div>
+  );
+}
+
+
+function PayBox({
+  invoice,
+  instructions,
+  onPaid,
+}: {
+  invoice: OwnerInvoice;
+  instructions: PlatformPaymentDetails | null;
+  onPaid: (fresh: Awaited<ReturnType<typeof api.premium.get>>) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState(0);
+  const upload = useMutation({
+    mutationFn: (f: File) => api.premium.submitInvoiceProof(invoice.id, f, f.name, f.type || "image/jpeg", setProgress),
+    onSuccess: (fresh) => {
+      setFile(null);
+      onPaid(fresh);
+    },
+    onSettled: () => setProgress(0),
+  });
+
+  return (
+    <div className="mt-2 rounded-lg border border-owner-border px-4 py-3 flex flex-col gap-2" style={{ background: "#F7FAFB" }}>
+      {invoice.last_rejection_reason ? (
+        <p role="alert" className="text-xs font-semibold text-owner-danger">
+          Your last screenshot was not accepted: {invoice.last_rejection_reason}. Please upload it again.
+        </p>
+      ) : null}
+      <p className="text-sm font-semibold">Pay PKR {formatPKR(invoice.total_pkr)} by bank transfer, then upload the screenshot</p>
+      {instructions ? (
+        <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          {instructions.bank ? (<><dt className="text-owner-ink-faint">Bank</dt><dd className="font-mono">{instructions.bank}</dd></>) : null}
+          {instructions.account_title ? (<><dt className="text-owner-ink-faint">Account title</dt><dd className="font-mono">{instructions.account_title}</dd></>) : null}
+          {instructions.account_number ? (<><dt className="text-owner-ink-faint">Account number</dt><dd className="font-mono">{instructions.account_number}</dd></>) : null}
+          {instructions.iban ? (<><dt className="text-owner-ink-faint">IBAN</dt><dd className="font-mono">{instructions.iban}</dd></>) : null}
+        </dl>
+      ) : (
+        <p className="text-xs text-owner-ink-faint">Payment details are not available yet. Please contact support.</p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          data-testid={`proof-${invoice.id}`}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          className="text-xs"
+        />
+        <button
+          data-testid={`send-proof-${invoice.id}`}
+          disabled={!file || upload.isPending}
+          onClick={() => file && upload.mutate(file)}
+          className="h-10 px-4 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+          style={{ background: "#0E6274" }}
+        >
+          {upload.isPending ? `Sending… ${Math.round(progress * 100)}%` : "Send screenshot"}
+        </button>
+      </div>
+      {upload.isError ? (
+        <p role="alert" className="text-xs font-semibold text-owner-danger">
+          {friendlyErrorMessage(upload.error)}
+        </p>
+      ) : null}
     </div>
   );
 }

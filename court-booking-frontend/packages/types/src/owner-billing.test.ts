@@ -41,3 +41,9 @@ test("the total keeps locked prices for what is already on and uses today's pric
   assert.equal(selectionTotal(features, new Set(["b", "c"])), 2500);
   assert.equal(selectionTotal(features, new Set()), 0);
 });
+
+test("paying ahead during the free trial is visible: 'Free trial until X. Paid until Y.'", () => {
+  const text = premiumStateText(feature({ state: "trial", trial_ends_on: "2026-10-24", paid_through: "2026-10-31" }), true);
+  assert.match(text, /Free trial until .*24 Oct\. Paid until .*31 Oct/);
+  assert.doesNotMatch(premiumStateText(feature({ state: "trial", trial_ends_on: "2026-10-24", paid_through: null }), true), /Paid until/);
+});

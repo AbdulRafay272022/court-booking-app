@@ -34,6 +34,16 @@ export interface OwnerInvoice {
   due_date: string;
   created_at: string;
   lines: InvoiceLine[];
+  /** Why the last screenshot was not accepted, while the invoice waits for a new one. */
+  last_rejection_reason: string | null;
+}
+
+/** Where an owner pays the platform; null until the operator has configured the receiving account. */
+export interface PlatformPaymentDetails {
+  bank: string;
+  account_title: string;
+  account_number: string;
+  iban: string;
 }
 
 export type PremiumState =
@@ -61,6 +71,7 @@ export interface OwnerPremiumFeature {
 }
 
 export interface OwnerPremium {
+  payment_instructions: PlatformPaymentDetails | null;
   enforced: boolean;
   trial_days: number;
   grace_days: number;
@@ -80,8 +91,11 @@ export function premiumStateText(f: OwnerPremiumFeature, enforced: boolean, tria
   }
   if (!enforced) return f.trial_ends_on ? `Switched on. Free trial until ${formatDateString(f.trial_ends_on)}.` : "Switched on.";
   switch (f.state) {
-    case "trial":
-      return f.trial_ends_on ? `Free trial until ${formatDateString(f.trial_ends_on)}.` : "Free trial.";
+    case "trial": {
+      const trial = f.trial_ends_on ? `Free trial until ${formatDateString(f.trial_ends_on)}.` : "Free trial.";
+      // an invoice paid ahead of the end of the trial: say so, or the owner cannot tell their payment landed
+      return f.paid_through && f.trial_ends_on && f.paid_through > f.trial_ends_on ? `${trial} Paid until ${formatDateString(f.paid_through)}.` : trial;
+    }
     case "paid":
       return f.paid_through ? `Paid until ${formatDateString(f.paid_through)}.` : "Paid.";
     case "grace":
@@ -99,3 +113,42 @@ export function premiumStateText(f: OwnerPremiumFeature, enforced: boolean, tria
 export function selectionTotal(features: OwnerPremiumFeature[], selected: ReadonlySet<string>): number {
   return features.reduce((sum, f) => (selected.has(f.key) ? sum + (f.enabled ? (f.your_price_pkr ?? f.monthly_price_pkr) : f.monthly_price_pkr) : sum), 0);
 }
+
+/** Admin side: a payment an owner made (or an admin recorded) against a premium invoice. */
+export interface AdminOwnerPayment {
+  id: string;
+  invoice_id: string;
+  owner_id: string;
+  owner_name: string | null;
+  owner_phone: string;
+  amount_pkr: number;
+  method: string;
+  status: "submitted" | "approved" | "rejected" | "reversal";
+  note: string | null;
+  reference: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  proof_url: string | null;
+  invoice_period_start: string;
+  invoice_period_end: string;
+  invoice_total_pkr: number;
+  lines: InvoiceLine[];
+  reversed: boolean;
+}
+
+export interface AdminOwnerInvoice {
+  id: string;
+  owner_id: string;
+  owner_name: string | null;
+  owner_phone: string;
+  period_start: string;
+  period_end: string;
+  total_pkr: number;
+  status: OwnerInvoice["status"];
+  due_date: string;
+  created_at: string;
+  lines: InvoiceLine[];
+}
+
+export type RecordablePaymentMethod = "bank_transfer" | "cash" | "other";
