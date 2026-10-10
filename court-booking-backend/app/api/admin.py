@@ -24,6 +24,7 @@ from app.schemas.admin import (
 )
 from app.schemas.admin_overview import AdminOverviewOut
 from app.schemas.feature_flag import FeatureFlagOut, FeatureFlagUpdateIn
+from app.schemas.owner_billing import PremiumFeatureOut, PremiumFeatureUpdateIn
 from app.schemas.review import ReviewOut
 from app.schemas.venue import VenueOut
 from app.services.admin_overview_service import AdminOverviewService
@@ -31,6 +32,7 @@ from app.services.admin_service import AdminService
 from app.services.audit_service import AuditService
 from app.services.growth_service import GrowthService
 from app.services.notification_service import NotificationService
+from app.services.owner_billing_service import OwnerBillingService
 from app.services.review_service import ReviewService
 from app.services.venue_service import VenueService
 
@@ -53,6 +55,22 @@ async def update_feature_flag(
     key: str, payload: FeatureFlagUpdateIn, flags: FeatureFlags, admin: RequireAdmin
 ) -> FeatureFlagOut:
     return await flags.set_flag(key, payload.enabled, admin.id)
+
+
+# --- owner premium billing: the price list -----------------------------------
+@router.get("/premium-features", response_model=list[PremiumFeatureOut])
+async def list_premium_features(db: DbSession, settings: AppSettings, admin: RequireAdmin) -> list[PremiumFeatureOut]:
+    return await OwnerBillingService(db, settings).list_features()
+
+
+@router.patch("/premium-features/{key}", response_model=PremiumFeatureOut)
+async def update_premium_feature(
+    key: str, payload: PremiumFeatureUpdateIn, db: DbSession, settings: AppSettings, admin: RequireAdmin
+) -> PremiumFeatureOut:
+    """Set a feature's monthly price and whether owners can buy it. Existing owners keep the price they signed up at."""
+    return await OwnerBillingService(db, settings).update_feature(
+        key, admin, monthly_price_pkr=payload.monthly_price_pkr, is_sellable=payload.is_sellable
+    )
 
 
 @router.get("/overview", response_model=AdminOverviewOut)

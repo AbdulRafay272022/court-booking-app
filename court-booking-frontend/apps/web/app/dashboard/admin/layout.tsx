@@ -10,6 +10,7 @@ const NAV = [
   { href: "/dashboard/admin/overview", label: "Overview" },
   { href: "/dashboard/admin/venues", label: "Venues" },
   { href: "/dashboard/admin/feature-flags", label: "Feature flags" },
+  { href: "/dashboard/admin/pricing", label: "Premium pricing" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

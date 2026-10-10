@@ -14,7 +14,7 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useAuthStore } from "@/lib/auth-store";
 import { openSupportWhatsApp } from "@/lib/support";
 import { confirmLogout } from "@/lib/logout";
-import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, QrIcon, RefreshIcon, StarBadgeIcon, PersonIcon } from "@/components/icons";
+import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, QrIcon, RefreshIcon, StarBadgeIcon, PersonIcon, StarIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { RecordPaymentSheet } from "@/components/record-payment-sheet";
 import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
@@ -354,6 +354,11 @@ export default function OwnerTodayScreen() {
         {isOwner ? (
           <IconButton onPress={() => router.push("/(owner)/staff")}>
             <PersonIcon size={18} color="#5B7079" />
+          </IconButton>
+        ) : null}
+        {isOwner ? (
+          <IconButton onPress={() => router.push("/(owner)/premium")}>
+            <StarIcon size={16} color="#5B7079" />
           </IconButton>
         ) : null}
         <IconButton onPress={() => router.push("/(owner)/venue-settings")}>

@@ -66,6 +66,10 @@ class ErrorCode:
     PHOTO_LIMIT_REACHED = "PHOTO_LIMIT_REACHED"
     INVALID_PHOTO = "INVALID_PHOTO"
 
+    # Owner premium billing
+    FEATURE_NOT_AVAILABLE = "FEATURE_NOT_AVAILABLE"  # not one of the sellable features, or not priced yet
+    INVALID_PRICE = "INVALID_PRICE"
+
     # Venue
     VENUE_NOT_APPROVED = "VENUE_NOT_APPROVED"
     VENUE_NOT_FOUND = "VENUE_NOT_FOUND"

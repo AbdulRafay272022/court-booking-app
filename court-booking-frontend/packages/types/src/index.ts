@@ -10,6 +10,7 @@ export * from "./chat";
 export * from "./review";
 export * from "./owner";
 export * from "./admin";
+export * from "./owner-billing";
 export * from "./feature-flag";
 export * from "./staff";
 export * from "./errors";
