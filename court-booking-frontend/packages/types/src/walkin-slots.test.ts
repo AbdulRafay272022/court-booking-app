@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { Slot } from "./availability";
-import { walkinSlots } from "./booking-duration";
+import { upcomingSlots, walkinSlots } from "./booking-duration";
 
 // PKT = UTC+5. A helper for a 30-minute slot starting at the given PKT wall clock on 2026-10-10 (+ dayOffset days).
 function slot(hh: number, mm: number, opts: { dayOffset?: number; after_midnight?: boolean } = {}): Slot {
@@ -46,4 +46,23 @@ test("overnight court: the previous schedule day's after-midnight slots are offe
   assert.equal(walkinSlots(today, yesterday, false, at(1, 10)).length, 2);
   // by 3 PM today the tail is gone
   assert.deepEqual(starts(walkinSlots(today, yesterday, true, at(15, 10))), starts(today));
+});
+
+test("upcomingSlots: at 8:00 AM the 6:00 and 6:30 AM slots are gone and 8:00 AM onward stays", () => {
+  const day = [slot(6, 0), slot(6, 30), slot(7, 30), slot(8, 0), slot(8, 30), slot(22, 0)];
+  const left = upcomingSlots(day, at(8, 0));
+  assert.deepEqual(left.map((s) => s.starts_at), [slot(8, 30), slot(22, 0)].map((s) => s.starts_at)); // 8:00 itself has started
+});
+
+test("upcomingSlots: a free slot already under way is hidden, but a taken one still under way stays", () => {
+  const free = slot(8, 0);
+  const mine = { ...slot(8, 0), status: "booked" as const, is_mine: true };
+  assert.equal(upcomingSlots([free], at(8, 10)).length, 0);
+  assert.equal(upcomingSlots([mine], at(8, 10)).length, 1);
+  assert.equal(upcomingSlots([mine], at(8, 30)).length, 0); // ended
+});
+
+test("upcomingSlots: a future day is returned whole", () => {
+  const tomorrow = [slot(6, 0, { dayOffset: 1 }), slot(6, 30, { dayOffset: 1 })];
+  assert.equal(upcomingSlots(tomorrow, at(23, 59)).length, 2);
 });
