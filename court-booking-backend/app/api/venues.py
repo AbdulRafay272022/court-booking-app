@@ -100,8 +100,8 @@ async def list_venues(
         raise bad("min_price and max_price must not be negative")
     if min_price is not None and max_price is not None and min_price > max_price:
         raise bad("min_price must not be greater than max_price")
-    if sort is not None and sort not in ("distance", "price"):
-        raise bad("sort must be 'distance' or 'price'")
+    if sort is not None and sort not in ("distance", "price", "rating"):
+        raise bad("sort must be 'distance', 'price' or 'rating'")
     if sort == "distance" and (lat is None or lng is None):
         raise bad("sort=distance needs lat and lng")
     amenity_keys = [a.strip().lower() for a in amenities.split(",") if a.strip()] if amenities else None
@@ -125,7 +125,7 @@ async def list_venues(
         duration_minutes=duration_minutes,
         sort=sort,
     )
-    venues = [await service.to_list_item(venue, distance=distance, sport=sport) for venue, distance in rows]
+    venues = await service.to_list_items(rows, sport=sport)
     return VenueListResponse(venues=venues, total=total, page=page)
 
 
