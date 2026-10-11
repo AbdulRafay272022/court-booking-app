@@ -26,3 +26,26 @@ export interface UpdateReviewInput {
   rating: number;
   comment?: string;
 }
+
+export interface ReviewStats {
+  /** Visible reviews only (an admin's list also carries hidden ones, which never count). */
+  count: number;
+  /** Mean rating, or null with no reviews. */
+  average: number | null;
+  /** Reviews per star, index 0 = 5 stars ... index 4 = 1 star. */
+  distribution: number[];
+}
+
+/** Average and per-star breakdown of a venue's visible reviews. The backend list is uncapped, so this is exact. */
+export function reviewStats(reviews: Pick<Review, "rating" | "is_hidden">[]): ReviewStats {
+  const distribution = [0, 0, 0, 0, 0];
+  let sum = 0;
+  let count = 0;
+  for (const r of reviews) {
+    if (r.is_hidden || !Number.isInteger(r.rating) || r.rating < 1 || r.rating > 5) continue;
+    distribution[5 - r.rating] += 1;
+    sum += r.rating;
+    count += 1;
+  }
+  return { count, average: count ? sum / count : null, distribution };
+}
