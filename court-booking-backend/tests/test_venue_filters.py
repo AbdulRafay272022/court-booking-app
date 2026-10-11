@@ -532,3 +532,13 @@ async def test_overnight_court_slot_after_midnight(client, owner, make_venue, ma
     assert _names(await client.get(URL, params=_avail(d, "01:00"))) == ["Night Owl"]
     assert _names(await client.get(URL, params=_avail(d, "22:00"))) == ["Night Owl"]
     assert _names(await client.get(URL, params=_avail(d, "12:00"))) == []
+
+
+async def test_list_items_carry_their_amenities(client, owner, make_venue):
+    o = await owner()
+    await make_venue(o, name="Has", amenities=["floodlights", "parking"])
+    await make_venue(o, name="Null", amenities=None)
+
+    venues = {v["name"]: v for v in (await client.get(URL)).json()["venues"]}
+    assert venues["Has"]["amenities"] == ["floodlights", "parking"]
+    assert venues["Null"]["amenities"] == []

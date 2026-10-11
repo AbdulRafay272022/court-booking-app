@@ -5,6 +5,7 @@ import type { VenueListResponse } from "@court-booking/types";
 import { serverApi } from "@/lib/server-api";
 import { SiteHeader } from "@/components/nav-auth";
 import { FilterBar } from "@/components/discovery/filter-bar";
+import { AmenityBadges } from "@/components/amenity-badges";
 import { activeFilterCount, filtersToApiParams, parseFilters } from "@/lib/discovery-filters";
 import { formatDistance, formatPKR } from "@/lib/format";
 
@@ -104,6 +105,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
                   {[v.area ?? v.city, formatDistance(v.distance_meters)].filter(Boolean).join(" · ")}
                 </p>
                 <p className="text-xs text-player-ink-fainter">{v.sports.join(" · ")}</p>
+                <AmenityBadges amenities={v.amenities} max={3} />
                 {v.min_price != null ? (
                   <p className="text-[13.5px] font-semibold text-player-ink" data-testid="from-price">
                     from PKR <span className="font-mono">{formatPKR(v.min_price)}</span>

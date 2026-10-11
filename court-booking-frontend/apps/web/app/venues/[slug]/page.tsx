@@ -1,7 +1,7 @@
 import { SiteHeader } from "@/components/nav-auth";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { amenityLabel } from "@court-booking/types";
+import { AmenityBadges } from "@/components/amenity-badges";
 import { serverApi } from "@/lib/server-api";
 import { capitalize } from "@/lib/format";
 import { safeJsonLd } from "@/lib/safe-json";
@@ -89,15 +89,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
             <p className="text-[16.5px] text-player-ink-muted">
               {venue.courts.length} {venue.sports.map(capitalize).join("/")} court{venue.courts.length === 1 ? "" : "s"} · {venue.address}
             </p>
-            {venue.amenities && venue.amenities.length > 0 ? (
-              <div className="flex gap-2 flex-wrap">
-                {venue.amenities.map((a) => (
-                  <span key={a} className="px-3 py-1.5 rounded-lg bg-player-surface-2 text-[13.5px] font-semibold text-player-ink-muted">
-                    {amenityLabel(a)}
-                  </span>
-                ))}
-              </div>
-            ) : null}
+            <AmenityBadges amenities={venue.amenities} size="md" />
           </div>
 
           <VenueScheduleClient venueId={venue.id} venueName={venue.name} sports={venue.sports} courts={venue.courts.filter((c) => c.is_active)} horizonDays={venue.booking_horizon_days} />

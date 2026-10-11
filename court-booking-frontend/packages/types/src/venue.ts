@@ -17,6 +17,8 @@ export interface VenueSummary {
   city: string;
   area: string | null;
   sports: string[];
+  /** Amenity keys (see AMENITY_OPTIONS); empty when the venue lists none. */
+  amenities: string[];
   photo_urls: string[];
   status: VenueStatus;
   average_rating: number | null;
