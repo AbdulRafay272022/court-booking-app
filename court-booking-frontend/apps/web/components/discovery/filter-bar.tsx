@@ -413,6 +413,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
           <select aria-label="Sort by" className={`${field} !w-auto`} value={filters.sort ?? ""} onChange={(e) => set({ sort: (e.target.value || undefined) as DiscoveryFilters["sort"] })}>
             <option value="">Best match</option>
             <option value="price">Price: low to high</option>
+            <option value="rating">Rating: high to low</option>
             {filters.lat !== undefined ? <option value="distance">Nearest</option> : null}
           </select>
         </div>

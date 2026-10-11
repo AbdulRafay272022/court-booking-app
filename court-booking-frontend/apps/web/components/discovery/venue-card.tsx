@@ -3,6 +3,7 @@ import type { VenueSummary } from "@court-booking/types";
 import { AmenityBadges } from "@/components/amenity-badges";
 import { FavoriteButton } from "@/components/favorite-button";
 import { formatDistance, formatPKR } from "@/lib/format";
+import { availabilityTag, settingLabel } from "@/lib/venue-tags";
 
 /** Photo-less cards get one of the brand colours, picked from the venue id so a venue keeps its colour between visits. */
 const FALLBACKS = ["bg-khelo-ink", "bg-khelo-teal", "bg-khelo-orange-text", "bg-khelo-orange-label"] as const;
@@ -22,11 +23,13 @@ function StarIcon() {
 
 /**
  * One result card on /search. A server component: everything it shows comes from the list response (no per-venue
- * requests). The design's "Aaj khali / Kam slots" tag and Indoor/Outdoor tag are left out: the list response carries
- * neither today's availability nor the setting.
+ * requests). The design's "Aaj khali / Kam slots" tag and Indoor/Outdoor tag show only when the list response carries
+ * `today_free_slots` / `has_indoor` / `has_outdoor`; a missing or null value shows nothing.
  */
 export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: string }) {
   const place = [v.area ?? v.city, formatDistance(v.distance_meters)].filter(Boolean).join(" · ");
+  const setting = settingLabel(v);
+  const availability = availabilityTag(v.today_free_slots);
   return (
     // The heart is a sibling of the link, not inside it (a button inside an anchor is invalid HTML and would open the venue).
     <div data-testid="venue-card" className="khelo-card group relative flex flex-col overflow-hidden rounded-3xl bg-khelo-surface">
@@ -65,6 +68,20 @@ export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: strin
             ) : null}
           </div>
           {place ? <div className="text-[14px] text-khelo-muted-2">{place}</div> : null}
+          {availability || setting ? (
+            <div className="flex flex-wrap gap-2" data-testid="venue-tags">
+              {availability ? (
+                <span
+                  className={`rounded-full px-2.5 py-1.5 text-[12px] font-extrabold ${
+                    availability.tone === "plenty" ? "bg-khelo-success-bg text-khelo-success-text" : "bg-khelo-warning-bg text-khelo-warning-text"
+                  }`}
+                >
+                  {availability.label}
+                </span>
+              ) : null}
+              {setting ? <span className="rounded-full bg-khelo-page px-2.5 py-1.5 text-[12px] font-bold text-khelo-muted">{setting}</span> : null}
+            </div>
+          ) : null}
           <AmenityBadges amenities={v.amenities} max={2} tone="khelo" />
           <div className="mt-auto flex items-center justify-between border-t border-khelo-divider pt-3.5">
             {v.min_price != null ? (
