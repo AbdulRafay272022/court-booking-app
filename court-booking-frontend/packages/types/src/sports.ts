@@ -19,5 +19,8 @@ export const AMENITY_OPTIONS = [
 ] as const;
 
 export function amenityLabel(key: string): string {
-  return AMENITY_OPTIONS.find((a) => a.key === key)?.label ?? key.replace(/_/g, " ");
+  const known = AMENITY_OPTIONS.find((a) => a.key === key)?.label;
+  if (known) return known;
+  const text = key.replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

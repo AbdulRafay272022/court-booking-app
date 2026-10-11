@@ -216,6 +216,7 @@ class VenueListItemOut(BaseModel):
     city: str
     area: str | None
     sports: list[str]
+    amenities: list[str] = Field(default_factory=list)  # for the amenity badges on result cards
     photo_urls: list[str] = Field(default_factory=list)
     status: VenueStatus
     average_rating: float | None = None

@@ -137,6 +137,7 @@ async def list_venues(
                 city=venue.city,
                 area=venue.area,
                 sports=venue.sports,
+                amenities=venue.amenities or [],
                 photo_urls=VenueService.photo_urls(venue),
                 status=venue.status,
                 average_rating=avg,
