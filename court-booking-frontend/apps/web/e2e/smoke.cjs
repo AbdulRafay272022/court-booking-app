@@ -17,6 +17,8 @@ const PLACEHOLDER_PATTERNS = [
   { name: "bracket placeholder", re: /\[[A-Z][A-Z ]{3,}\]/ },
   { name: "literal 00+", re: /00\+/ },
   { name: "word Maidan", re: /\bMaidan\b/i },
+  // UTF-8 text that was decoded as Latin-1/CP1252 (e.g. a middle dot showing as "A-circumflex" + dot), or the replacement character.
+  { name: "garbled text encoding (mojibake)", re: /Â|â€|Ã[-¿ -ÿ‘-›]|�/ },
 ];
 
 /** Returns the names of the placeholder patterns that match `text`. */

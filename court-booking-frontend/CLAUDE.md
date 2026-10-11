@@ -1073,7 +1073,7 @@ in a browser; copy checks and screenshot comparisons were done that way.
   has no availability, indoor or coordinates), a "Rating" sort.
 - **Login**: only the UI changed (new `components/auth-v2/*`), the API payloads are byte-identical to before EXCEPT one fix: a fresh login now honours `?next=` (the old page dropped it).
   Signup dropped only the client-side "Confirm password" box. `/verify`, `/forgot-password`, `/reset-password` still use the old `AuthShell`.
-- **QA**: `node e2e/smoke.cjs` (BASE_URL=...) checks all 9 routes at 360/768/1280 (no overflow, one h1, header, no console errors, no placeholder text). Turbopack cannot build through
+- **QA**: `node e2e/smoke.cjs` (BASE_URL=...) checks all 9 routes at 360/768/1280 (no overflow, one h1, header, no console errors, no placeholder text), no garbled text encoding). The garbled-encoding check exists because a Search-card file shipped with a middle dot that had been decoded as Latin-1 (it renders as an A-circumflex followed by a dot). It only shows when a venue lists 2 or more sports, so it passed every local test and appeared on production. When a script writes non-ASCII characters, use unicode escapes or open files with encoding utf-8. Turbopack cannot build through
   `node_modules` junctions in a worktree: build in the main checkout.
 
 ## How this project gets worked (recipe for the next sprint)

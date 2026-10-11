@@ -26,7 +26,7 @@ function StarIcon() {
  * neither today's availability nor the setting.
  */
 export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: string }) {
-  const place = [v.area ?? v.city, formatDistance(v.distance_meters)].filter(Boolean).join(" Â· ");
+  const place = [v.area ?? v.city, formatDistance(v.distance_meters)].filter(Boolean).join(" · ");
   return (
     // The heart is a sibling of the link, not inside it (a button inside an anchor is invalid HTML and would open the venue).
     <div data-testid="venue-card" className="khelo-card group relative flex flex-col overflow-hidden rounded-3xl bg-khelo-surface">
@@ -47,7 +47,7 @@ export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: strin
           )}
           {v.sports.length > 0 ? (
             <span className="absolute left-3.5 top-3.5 max-w-[calc(100%-84px)] truncate rounded-full bg-khelo-ink/80 px-3 py-[7px] text-[12px] font-bold capitalize text-white">
-              {v.sports.join(" Â· ")}
+              {v.sports.join(" · ")}
             </span>
           ) : null}
         </div>
