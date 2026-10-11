@@ -8,7 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const ROUTES = ["/", "/features", "/for-owners", "/about", "/blog", "/contact", "/login", "/signup", "/search"];
+const ROUTES = ["/", "/features", "/for-owners", "/about", "/blog", "/contact", "/login", "/signup", "/search", "/forgot-password", "/verify?phone=%2B923001234567", "/reset-password?phone=%2B923001234567"];
 const WIDTHS = [360, 768, 1280];
 const HEIGHT = 900;
 
@@ -44,7 +44,7 @@ function loadPlaywright() {
 }
 
 function slug(route) {
-  return route === "/" ? "home" : route.replace(/^\//, "").replace(/\//g, "-");
+  return route === "/" ? "home" : route.split("?")[0].replace(/^\//, "").replace(/\//g, "-");
 }
 
 async function checkPage(browser, baseUrl, route, width, outDir) {

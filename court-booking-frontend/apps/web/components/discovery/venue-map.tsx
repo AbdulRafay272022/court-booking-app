@@ -9,11 +9,14 @@ import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import type { MapVenue } from "@/lib/map-venues";
 import { formatPKR } from "@/lib/format";
 
+// A static image import is a plain URL string or an object with `src`, depending on the bundler path; accept both.
+const urlOf = (m: unknown): string => (typeof m === "string" ? m : ((m as { src?: string; default?: { src?: string } }).src ?? (m as { default?: { src?: string } }).default?.src ?? ""));
+
 // Leaflet builds its default icon URLs from its own CSS at runtime, which the bundler breaks; point it at the bundled files.
 const pinIcon = L.icon({
-  iconUrl: markerIcon.src,
-  iconRetinaUrl: markerIcon2x.src,
-  shadowUrl: markerShadow.src,
+  iconUrl: urlOf(markerIcon),
+  iconRetinaUrl: urlOf(markerIcon2x),
+  shadowUrl: urlOf(markerShadow),
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
