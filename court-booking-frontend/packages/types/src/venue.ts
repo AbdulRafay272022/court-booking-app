@@ -27,6 +27,13 @@ export interface VenueSummary {
   distance_meters: number | null;
   /** Lowest starting price (PKR per slot) among the venue's active courts (of the requested sport when filtered); null if none priced. */
   min_price: number | null;
+  /** Optional until the list API sends them: the venue has at least one indoor / outdoor court. */
+  has_indoor?: boolean;
+  has_outdoor?: boolean;
+  /** Free 30-minute slots left today across the venue's courts; null when it can't be worked out. */
+  today_free_slots?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /**

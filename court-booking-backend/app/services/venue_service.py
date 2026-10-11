@@ -1,5 +1,7 @@
+import re
+import struct
 import uuid
-from datetime import date, time
+from datetime import date, datetime, time, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, text
@@ -18,6 +20,7 @@ from app.services.availability_service import AvailabilityService
 from app.services.notification_service import NotificationService
 from app.utils.encryption import decrypt_json, encrypt_json
 from app.utils.geo import distance_meters, within_radius
+from app.utils.timezone import utc_to_pkt_naive
 from app.utils.s3 import public_url, upload_public_photo
 from app.utils.text import slugify
 
@@ -231,7 +234,7 @@ class VenueService:
         court_level = (
             min_price is not None or max_price is not None or indoor is not None or on_date is not None
         )
-        in_python = court_level or sort == "price"
+        in_python = court_level or sort in ("price", "rating")
 
         query = base_query.options(selectinload(Venue.courts).selectinload(Court.pricing_rules))
         distance_col = None
@@ -293,6 +296,15 @@ class VenueService:
                 return (p is None, p if p is not None else 0.0)
 
             candidates.sort(key=price_key)  # stable: ties keep the distance / newest-first order from SQL
+        if sort == "rating":
+            # best average first, then most reviews; unrated venues last (stable: ties keep distance / newest-first)
+            ratings = await self.rating_summaries([v.id for v, _d in candidates])
+
+            def rating_key(row: tuple[Venue, float | None]) -> tuple[bool, float, int]:
+                avg, count = ratings[row[0].id]
+                return (avg is None, -(avg or 0.0), -count)
+
+            candidates.sort(key=rating_key)
         return candidates[offset : offset + limit], len(candidates)
 
     @staticmethod
@@ -339,12 +351,79 @@ class VenueService:
         ).one()
         return (round(float(avg), 2) if avg is not None else None, int(count or 0))
 
-    async def to_list_item(self, venue: Venue, *, distance: float | None = None, sport: str | None = None):
-        """The search-card shape (VenueListItemOut) for one venue -- shared by GET /venues and a player's favorites so the two
-        can never drift. Needs `venue.courts[*].pricing_rules` loaded (for min_price)."""
+    async def rating_summaries(self, venue_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[float | None, int]]:
+        """rating_summary for many venues in ONE grouped query (visible reviews only)."""
+        out: dict[uuid.UUID, tuple[float | None, int]] = {vid: (None, 0) for vid in venue_ids}
+        if not venue_ids:
+            return out
+        rows = await self.db.execute(
+            select(Review.venue_id, func.avg(Review.rating), func.count(Review.id))
+            .where(Review.venue_id.in_(venue_ids), Review.is_hidden.is_(False))
+            .group_by(Review.venue_id)
+        )
+        for vid, avg, count in rows.all():
+            out[vid] = (round(float(avg), 2) if avg is not None else None, int(count or 0))
+        return out
+
+    @staticmethod
+    def coordinates(venue: Venue) -> tuple[float | None, float | None]:
+        """(latitude, longitude) of the stored POINT, or (None, None) when missing/unreadable. No query, no shapely: the
+        column loads as EWKB (a GeoAlchemy2 WKBElement), or as EWKT text on a venue created in this same session."""
+        loc = venue.location
+        try:
+            if isinstance(loc, str):
+                m = re.search(r"POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)", loc, re.I)
+                return (float(m.group(2)), float(m.group(1))) if m else (None, None)
+            raw = loc.data
+            data = bytes.fromhex(raw) if isinstance(raw, str) else bytes(raw)
+            endian = "<" if data[0] == 1 else ">"
+            (geom_type,) = struct.unpack_from(endian + "I", data, 1)
+            offset = 5 + (4 if geom_type & 0x20000000 else 0)  # skip the SRID when present
+            x, y = struct.unpack_from(endian + "dd", data, offset)
+            return float(y), float(x)
+        except Exception:
+            return None, None
+
+    async def to_list_items(self, rows: list[tuple[Venue, float | None]], *, sport: str | None = None):
+        """to_list_item for a whole page with a FIXED number of queries (ratings 1, today's free slots 4), independent
+        of the page size. today_free_slots is null if that computation fails. Used by GET /venues and favorites."""
+        ratings = await self.rating_summaries([v.id for v, _d in rows])
+        courts = [c for v, _d in rows for c in v.courts if c.is_active]
+        counts: dict[uuid.UUID, int] | None
+        try:
+            now = datetime.now(timezone.utc)
+            counts = await AvailabilityService(self.db).free_slot_counts_on(courts, utc_to_pkt_naive(now).date(), now)
+        except Exception:  # a counting problem must never break the search page
+            counts = None
+        return [
+            await self.to_list_item(
+                v,
+                distance=d,
+                sport=sport,
+                rating=ratings[v.id],
+                today_free_slots=(
+                    sum(counts.get(c.id, 0) for c in v.courts if c.is_active) if counts is not None else None
+                ),
+            )
+            for v, d in rows
+        ]
+
+    async def to_list_item(
+        self,
+        venue: Venue,
+        *,
+        distance: float | None = None,
+        sport: str | None = None,
+        rating: tuple[float | None, int] | None = None,
+        today_free_slots: int | None = None,
+    ):
+        """The search-card shape (VenueListItemOut) for one venue; prefer to_list_items for a page (no per-venue queries).
+        Needs `venue.courts[*].pricing_rules` loaded (for min_price)."""
         from app.schemas.venue import VenueListItemOut
 
-        avg, count = await self.rating_summary(venue.id)
+        avg, count = rating if rating is not None else await self.rating_summary(venue.id)
+        active = [c for c in venue.courts if c.is_active]
+        lat, lng = self.coordinates(venue)
         return VenueListItemOut(
             id=venue.id,
             name=venue.name,
@@ -359,6 +438,11 @@ class VenueService:
             review_count=count,
             distance_meters=distance,
             min_price=VenueService.min_price(venue, sport),
+            has_indoor=any(c.is_indoor for c in active),
+            has_outdoor=any(not c.is_indoor for c in active),
+            today_free_slots=today_free_slots,
+            latitude=lat,
+            longitude=lng,
         )
 
     async def average_rating(self, venue_id: uuid.UUID) -> float | None:

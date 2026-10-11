@@ -225,6 +225,14 @@ class VenueListItemOut(BaseModel):
     # Lowest starting price (PKR per slot) among the venue's active courts, only courts of the requested sport
     # when the `sport` filter is given; null when no active court has an active pricing rule.
     min_price: float | None = None
+    # Phase 2 search: derived from the venue's ACTIVE courts (is_indoor); both false when it has none.
+    has_indoor: bool = False
+    has_outdoor: bool = False
+    # Bookable start slots still free TODAY (Pakistan time) over the venue's active courts; null if not computable.
+    today_free_slots: int | None = None
+    # Public venue coordinates (the point the radius filter uses); null if missing.
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class VenueAreasOut(BaseModel):

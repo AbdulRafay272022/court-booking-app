@@ -93,7 +93,7 @@ export default function PlayerCheckinScreen() {
         !permission ? null : !permission.granted ? (
           <View className="flex-1 items-center justify-center px-6 gap-4">
             <Text className="font-figtree-medium text-player-ink-faint text-[14px] text-center">
-              Maidan needs camera access to scan the venue's check-in code.
+              Khelo needs camera access to scan the venue's check-in code.
             </Text>
             <Pressable onPress={requestPermission} className="rounded-xl px-5 items-center justify-center" style={{ height: 48, backgroundColor: "#EF5A2C" }}>
               <Text className="font-figtree-semibold text-white text-[14px]">Allow camera</Text>

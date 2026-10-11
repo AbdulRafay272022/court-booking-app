@@ -45,23 +45,23 @@ export function DurationSheet({
   const quote = quoteQuery.data;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="khelo fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-khelo-ink/50 font-[family-name:var(--font-khelo-body-x)] text-khelo-ink" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`Book ${courtLabel(courtName, courtSport)}`}
-        className="w-full sm:max-w-md bg-player-surface rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-5"
+        className="w-full sm:max-w-md bg-khelo-surface rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">{courtLabel(courtName, courtSport).toUpperCase()}</span>
-            <span className="text-[17px] font-bold">{formatDate(slot.starts_at)}</span>
+            <span className="text-[11px] font-extrabold tracking-widest text-khelo-orange-label">{courtLabel(courtName, courtSport).toUpperCase()}</span>
+            <span className="font-khelo-display text-[19px] font-extrabold">{formatDate(slot.starts_at)}</span>
             <span className="font-mono text-[14.5px] font-semibold" data-testid="sheet-time-range">
               {quote ? formatTimeRange(quote.starts_at, quote.ends_at) : formatTimeRange(slot.starts_at, choices.find((c) => c.slotCount === slotCount)?.endsAt ?? slot.ends_at)}
             </span>
           </div>
-          <button onClick={onClose} aria-label="Close" className="w-10 h-10 rounded-xl bg-player-surface-2 font-bold">
+          <button onClick={onClose} aria-label="Close" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-khelo-page font-bold text-khelo-ink">
             ✕
           </button>
         </div>
@@ -76,12 +76,9 @@ export function DurationSheet({
                   key={c.slotCount}
                   onClick={() => setSlotCount(c.slotCount)}
                   aria-pressed={selected}
-                  className="h-11 px-4 rounded-xl text-[13.5px] font-bold"
-                  style={{
-                    background: selected ? "#141A1D" : "#FFFFFF",
-                    color: selected ? "#FFFFFF" : "#141A1D",
-                    border: selected ? "1px solid #141A1D" : "1px solid #E0D9D4",
-                  }}
+                  className={`khelo-btn h-11 rounded-full border-[1.5px] px-4 text-[13.5px] font-bold text-khelo-ink ${
+                    selected ? "border-khelo-orange bg-khelo-orange" : "border-khelo-border bg-khelo-surface"
+                  }`}
                 >
                   {c.label}
                 </button>
@@ -90,23 +87,23 @@ export function DurationSheet({
           </div>
         </div>
 
-        <div className="rounded-2xl bg-player-accent-soft border border-player-accent-soft-border p-4 flex flex-col gap-1.5" data-testid="sheet-total">
+        <div className="rounded-2xl bg-khelo-warm-2 border border-khelo-warm p-4 flex flex-col gap-1.5" data-testid="sheet-total">
           {quoteQuery.isError ? (
-            <p className="text-player-danger text-[13.5px] font-semibold">{friendlyErrorMessage(quoteQuery.error)}</p>
+            <p className="text-khelo-orange-label text-[13.5px] font-semibold">{friendlyErrorMessage(quoteQuery.error)}</p>
           ) : !quote ? (
-            <p className="text-player-ink-faint text-[13.5px]">Working out the price…</p>
+            <p className="text-khelo-muted text-[13.5px]">Working out the price…</p>
           ) : (
             <>
               <div className="flex items-baseline justify-between">
-                <span className="text-[13px] font-semibold text-player-ink-faint">Total for {formatDuration(quote.duration_minutes)}</span>
+                <span className="text-[13px] font-semibold text-khelo-muted">Total for {formatDuration(quote.duration_minutes)}</span>
                 <span className="font-mono text-[22px] font-bold">PKR {formatPKR(quote.price)}</span>
               </div>
               {quote.advance_amount < quote.price ? (
-                <p className="text-[12.5px] font-medium text-player-ink-faint">
+                <p className="text-[12.5px] font-medium text-khelo-muted">
                   Pay PKR {formatPKR(quote.advance_amount)} now to hold it; PKR {formatPKR(quote.balance_due)} at the venue.
                 </p>
               ) : (
-                <p className="text-[12.5px] font-medium text-player-ink-faint">You pay this now to hold the court.</p>
+                <p className="text-[12.5px] font-medium text-khelo-muted">You pay this now to hold the court.</p>
               )}
             </>
           )}
@@ -115,7 +112,7 @@ export function DurationSheet({
         <button
           onClick={() => quote && onContinue({ slotCount: quote.slot_count, minutes: quote.duration_minutes, price: quote.price })}
           disabled={!quote}
-          className="h-12 rounded-xl bg-player-accent text-white font-bold text-[15px] disabled:opacity-50"
+          className="khelo-btn min-h-12 rounded-[14px] bg-khelo-orange text-[15px] font-extrabold text-khelo-ink disabled:opacity-50"
         >
           Continue
         </button>

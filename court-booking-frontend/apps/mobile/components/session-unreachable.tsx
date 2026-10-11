@@ -14,7 +14,7 @@ export function SessionUnreachable({ onRetry }: { onRetry: () => void }) {
         <Logo size={64} />
         <View style={{ alignItems: "center", gap: 8 }}>
           <Text className="font-figtree-extrabold" style={{ fontSize: 21, color: playerColors.ink }}>
-            Can't reach Maidan right now
+            Can't reach Khelo right now
           </Text>
           <Text className="font-figtree-medium" style={{ fontSize: 15, lineHeight: 22, textAlign: "center", color: playerColors.inkMuted }}>
             You're still signed in. Check your connection and we'll pick up where you left off.

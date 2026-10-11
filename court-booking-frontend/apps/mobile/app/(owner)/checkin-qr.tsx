@@ -33,7 +33,7 @@ export default function CheckinQrScreen() {
           <View className="items-center gap-1.5">
             <Text className="font-plex-bold text-owner-ink text-[17px] text-center">{activeVenue?.name}</Text>
             <Text className="font-plex-medium text-owner-ink-faint text-[13px] text-center max-w-[280px]">
-              Print or display this at your entrance. Players open Maidan, tap "Scan to check in" on their
+              Print or display this at your entrance. Players open Khelo, tap "Scan to check in" on their
               booking, and scan this code -- no owner action needed.
             </Text>
           </View>

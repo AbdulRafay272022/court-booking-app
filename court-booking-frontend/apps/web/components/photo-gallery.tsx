@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 export function PhotoGallery({
   photos,
   alt,
-  fallback = "linear-gradient(135deg,#F2784F,#C8431C)",
+  fallbackClass = "bg-khelo-teal",
   aspectClass = "aspect-[4/3] md:aspect-[16/9]",
   thumbSize = 72,
   className = "",
@@ -19,7 +19,7 @@ export function PhotoGallery({
 }: {
   photos: string[];
   alt: string;
-  fallback?: string;
+  fallbackClass?: string;
   /** Tailwind aspect-ratio classes for the frame. */
   aspectClass?: string;
   thumbSize?: number;
@@ -55,9 +55,15 @@ export function PhotoGallery({
         if (e.key === "ArrowRight") go(1);
       }}
     >
-      <div className={`relative w-full overflow-hidden rounded-2xl bg-player-surface-2 ${aspectClass}`}>
+      <div className={`relative w-full overflow-hidden rounded-3xl bg-khelo-ink ${aspectClass}`}>
         {count === 0 ? (
-          <div className="absolute inset-0" style={{ background: fallback }} role="img" aria-label={alt} />
+          <div className={`absolute inset-0 ${fallbackClass}`} role="img" aria-label={alt}>
+            <svg aria-hidden="true" width="100%" height="100%" viewBox="0 0 280 170" fill="none" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 opacity-25">
+              <rect x="30" y="25" width="220" height="120" rx="10" stroke="white" strokeWidth="3" />
+              <line x1="140" y1="25" x2="140" y2="145" stroke="white" strokeWidth="3" />
+              <circle cx="140" cy="85" r="22" stroke="white" strokeWidth="3" />
+            </svg>
+          </div>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img key={photos[current]} src={photos[current]} alt={`${alt} photo ${current + 1} of ${count}`} className="absolute inset-0 w-full h-full object-cover" data-testid="gallery-main" />
@@ -68,7 +74,7 @@ export function PhotoGallery({
               type="button"
               aria-label="Previous photo"
               onClick={() => go(-1)}
-              className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/55 text-white text-lg leading-none flex items-center justify-center hover:bg-black/70"
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-khelo-ink/80 text-white text-xl leading-none flex items-center justify-center hover:bg-khelo-ink"
             >
               ‹
             </button>
@@ -76,11 +82,11 @@ export function PhotoGallery({
               type="button"
               aria-label="Next photo"
               onClick={() => go(1)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/55 text-white text-lg leading-none flex items-center justify-center hover:bg-black/70"
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-khelo-ink/80 text-white text-xl leading-none flex items-center justify-center hover:bg-khelo-ink"
             >
               ›
             </button>
-            <span className="absolute right-2.5 bottom-2.5 px-2 py-0.5 rounded-full bg-black/55 text-white text-[12px] font-semibold font-mono">
+            <span className="absolute right-2.5 bottom-2.5 px-2.5 py-1 rounded-full bg-khelo-ink/80 text-white text-[12px] font-bold">
               {current + 1} / {count}
             </span>
           </>
@@ -103,8 +109,8 @@ export function PhotoGallery({
               aria-selected={i === current}
               aria-label={`Show photo ${i + 1}`}
               onClick={() => setIndex(i)}
-              className={`shrink-0 snap-start rounded-lg overflow-hidden border-2 ${i === current ? "border-player-accent" : "border-transparent opacity-75 hover:opacity-100"}`}
-              style={{ width: thumbSize, height: Math.round(thumbSize * 0.75) }}
+              className={`shrink-0 snap-start rounded-xl overflow-hidden border-2 ${i === current ? "border-khelo-orange" : "border-transparent opacity-75 hover:opacity-100"}`}
+              style={{ width: Math.max(44, thumbSize), height: Math.max(44, Math.round(thumbSize * 0.75)) }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />

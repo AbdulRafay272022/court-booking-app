@@ -180,7 +180,7 @@ class WhatsAppService:
         approved Utility template exist (switch to `send_registered_template` then). Callers must
         never let a failure here affect the phone change itself."""
         body = (
-            f"Your Maidan account's phone number was just changed to the number ending "
+            f"Your Khelo account's phone number was just changed to the number ending "
             f"{str(new_phone)[-4:]}. If this wasn't you, contact support immediately."
         )
         return await self.send_text(old_phone, body)

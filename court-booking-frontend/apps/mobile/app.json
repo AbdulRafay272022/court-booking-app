@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Maidan",
+    "name": "Khelo",
     "slug": "maidan",
     "scheme": "maidan",
     "version": "1.0.0",
@@ -59,13 +59,13 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Maidan uses your location to pin your venue's exact spot for players."
+          "locationWhenInUsePermission": "Khelo uses your location to pin your venue's exact spot for players."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Maidan uses your camera to scan a check-in QR code."
+          "cameraPermission": "Khelo uses your camera to scan a check-in QR code."
         }
       ]
     ],

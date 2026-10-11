@@ -7,6 +7,8 @@ import { KheloPage } from "@/components/site/page-shell";
 import { buttonClasses } from "@/components/site/button";
 import { FilterBar } from "@/components/discovery/filter-bar";
 import { VenueCard } from "@/components/discovery/venue-card";
+import { ResultsView } from "@/components/discovery/results-view";
+import { mapVenuesFor } from "@/lib/map-venues";
 import { activeFilterCount, filtersToApiParams, parseFilters } from "@/lib/discovery-filters";
 
 export async function generateMetadata({ searchParams }: PageProps<"/search">): Promise<Metadata> {
@@ -39,6 +41,9 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   // Opening a venue from here keeps the sport the player was looking at (the venue page preselects it). The value is
   // percent-encoded: "Football (full-field)" has spaces and parentheses.
   const sportQuery = filters.sport ? `?sport=${encodeURIComponent(filters.sport)}` : "";
+  const hrefFor = (v: { slug: string }) => `/venues/${v.slug}${sportQuery}`;
+  // The List/Map toggle is offered only when most of this page's venues carry coordinates.
+  const map = mapVenuesFor(venues, hrefFor);
 
   return (
     <KheloPage app>
@@ -72,11 +77,16 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-[22px]">
-              {venues.map((v) => (
-                <VenueCard key={v.id} venue={v} href={`/venues/${v.slug}${sportQuery}`} />
-              ))}
-            </div>
+            <ResultsView
+              pins={map.offerMap ? map.pins : null}
+              list={
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-[22px]">
+                  {venues.map((v) => (
+                    <VenueCard key={v.id} venue={v} href={hrefFor(v)} />
+                  ))}
+                </div>
+              }
+            />
           )}
         </FilterBar>
       </Suspense>

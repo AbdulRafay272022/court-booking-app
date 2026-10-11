@@ -438,6 +438,67 @@ class AvailabilityService:
             s for s in startable_slots(court, today, now) if not s.after_midnight
         ]
 
+    async def free_slot_counts_on(
+        self, courts: list[Court], calendar_date: date, now_utc: datetime | None = None
+    ) -> dict[uuid.UUID, int]:
+        """Bulk form of `len(get_startable_starting_on(court, date, now))`: per court, how many slots that START on this
+        Pakistan calendar date a minimum-length booking could begin at (same build_day_slots / startable_slots rules, so
+        booked, held, blocked and closed slots never count, and slots already started do not count). The data for ALL
+        courts is read in four queries total, whatever the number of courts."""
+        if not courts:
+            return {}
+        now = now_utc or datetime.now(timezone.utc)
+        court_ids = [c.id for c in courts]
+        window_start = pkt_time_to_utc(calendar_date - timedelta(days=1), time.min)
+        window_end = pkt_time_to_utc(calendar_date + timedelta(days=1), time.min)
+        templates: dict[uuid.UUID, dict[int, ScheduleTemplate]] = {cid: {} for cid in court_ids}
+        for t in (
+            await self.db.execute(
+                select(ScheduleTemplate).where(
+                    ScheduleTemplate.court_id.in_(court_ids), ScheduleTemplate.is_active.is_(True)
+                )
+            )
+        ).scalars():
+            templates[t.court_id][t.day_of_week] = t
+        rules: dict[uuid.UUID, list[PricingRule]] = {cid: [] for cid in court_ids}
+        for r in (await self.db.execute(select(PricingRule).where(PricingRule.court_id.in_(court_ids)))).scalars():
+            rules[r.court_id].append(r)
+        blackouts: dict[uuid.UUID, list[Blackout]] = {cid: [] for cid in court_ids}
+        for bl in (
+            await self.db.execute(
+                select(Blackout).where(
+                    Blackout.court_id.in_(court_ids), Blackout.starts_at < window_end, Blackout.ends_at > window_start
+                )
+            )
+        ).scalars():
+            blackouts[bl.court_id].append(bl)
+        bookings: dict[uuid.UUID, list[Booking]] = {cid: [] for cid in court_ids}
+        for b in (
+            await self.db.execute(
+                select(Booking).where(
+                    Booking.court_id.in_(court_ids),
+                    Booking.status.in_(LIVE_BOOKING_STATUSES),
+                    Booking.starts_at < window_end,
+                    Booking.ends_at > window_start,
+                )
+            )
+        ).scalars():
+            bookings[b.court_id].append(b)
+
+        counts: dict[uuid.UUID, int] = {}
+        for court in courts:
+            tmpls = templates[court.id]
+
+            def day_slots(day: date, _c: Court = court, _t=tmpls) -> list[SlotOut]:
+                return self.build_day_slots(_c, day, _t.get(day.weekday()), rules[_c.id], blackouts[_c.id], bookings[_c.id])
+
+            previous = day_slots(calendar_date - timedelta(days=1))
+            today = day_slots(calendar_date)
+            counts[court.id] = len([s for s in startable_slots(court, previous, now) if s.after_midnight]) + len(
+                [s for s in startable_slots(court, today, now) if not s.after_midnight]
+            )
+        return counts
+
     async def courts_bookable_at(
         self,
         courts: list[Court],

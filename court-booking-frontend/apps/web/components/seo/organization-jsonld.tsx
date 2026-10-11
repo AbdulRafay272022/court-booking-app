@@ -12,7 +12,7 @@ export function OrganizationJsonLd() {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "Khelo",
-    ...(siteUrl ? { url: siteUrl, logo: `${siteUrl}/icon.svg` } : {}),
+    ...(siteUrl ? { url: siteUrl, logo: `${siteUrl}/brand/khelo-logo-icon.svg` } : {}),
     parentOrganization: { "@type": "Organization", name: "Logic Link System" },
   };
   return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(data) }} />;

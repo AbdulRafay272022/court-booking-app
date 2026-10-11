@@ -22,7 +22,7 @@ export async function registerForPushNotifications(): Promise<void> {
       // Android 13+ shows no permission prompt until at least one channel exists, and
       // FCM messages name this channel (see backend) -- so create it before asking.
       await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
-        name: "Maidan notifications",
+        name: "Khelo notifications",
         importance: Notifications.AndroidImportance.HIGH,
       });
     }

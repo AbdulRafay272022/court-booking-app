@@ -20,10 +20,20 @@ export default function OpengraphImage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 36 }}>
-          <svg width="170" height="170" viewBox="0 0 34 34" fill="none">
-            <rect width="34" height="34" rx="10" fill="#FF6A2B" />
-            <rect x="7" y="9" width="20" height="16" rx="2" stroke="#0C1F1D" strokeWidth="2.2" />
-            <path d="M17 9v16M7 17h20" stroke="#0C1F1D" strokeWidth="2.2" />
+          <svg width="170" height="170" viewBox="0 0 512 512">
+            <defs>
+              <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="#F2703D" />
+                <stop offset="1" stopColor="#E44E1F" />
+              </linearGradient>
+            </defs>
+            <rect width="512" height="512" rx="120" fill="url(#bg)" />
+            <g fill="none" stroke="#FFFFFF" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="92" y="136" width="328" height="240" rx="20" />
+              <line x1="256" y1="136" x2="256" y2="376" />
+              <circle cx="256" cy="256" r="46" />
+            </g>
+            <circle cx="256" cy="256" r="9" fill="#FFFFFF" />
           </svg>
           <div style={{ fontSize: 150, fontWeight: 800, letterSpacing: -4, lineHeight: 1 }}>Khelo</div>
         </div>
