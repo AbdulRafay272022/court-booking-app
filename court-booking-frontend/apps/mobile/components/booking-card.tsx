@@ -309,7 +309,7 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
             </Pressable>
           ) : null}
           {v.canCancel ? (
-            <Pressable onPress={v.handleCancel} disabled={v.cancelling} className="py-2 active:opacity-70">
+            <Pressable onPress={v.handleCancel} disabled={v.cancelling} className="min-h-11 justify-center active:opacity-70">
               <Text className="font-figtree-semibold text-[13px]" style={{ color: "#A8432C" }}>
                 {v.cancelling ? "Cancelling…" : "Cancel booking"}
               </Text>

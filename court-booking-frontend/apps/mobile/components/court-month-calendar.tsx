@@ -193,6 +193,7 @@ function NavButton({ dir, disabled, onPress }: { dir: "prev" | "next"; disabled:
       disabled={disabled}
       onPress={onPress}
       accessibilityLabel={dir === "prev" ? "Previous month" : "Next month"}
+      hitSlop={8}
       className="w-7 h-7 rounded-lg items-center justify-center"
       style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5DED8", opacity: disabled ? 0.35 : 1 }}
     >
