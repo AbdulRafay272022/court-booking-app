@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { countByGroup, isActiveBooking, nextBooking, statusGroup, type Booking, type StatusGroup } from "@court-booking/types";
 import { api } from "@/lib/api";
-import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
-import { SiteHeader } from "@/components/nav-auth";
+import { KheloPage } from "@/components/site/page-shell";
+import { Button } from "@/components/site/button";
+import { Container } from "@/components/site/primitives";
 import { BookingCard, NextBookingCard } from "@/components/bookings/booking-card";
 import { SavedVenues } from "@/components/bookings/saved-venues";
 
@@ -34,18 +34,16 @@ const FILTERS: Record<Tab, { key: Filter; label: string }[]> = {
 };
 
 const chip = (on: boolean) =>
-  `inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13.5px] font-semibold transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent ${
-    on
-      ? "border-player-accent bg-player-accent text-white shadow-[0_4px_12px_-4px_rgba(239,90,44,0.6)]"
-      : "border-player-border bg-player-surface text-player-ink-muted hover:border-player-accent hover:bg-player-accent-soft hover:text-player-accent-hover"
+  `khelo-btn inline-flex min-h-11 items-center gap-2 rounded-full border-[1.5px] px-[18px] py-2 text-[14px] font-bold ${
+    on ? "border-khelo-ink bg-khelo-ink text-white" : "border-khelo-border bg-khelo-surface text-khelo-ink"
   }`;
 
 function Stat({ label, value, hint, tone }: { label: string; value: number; hint: string; tone?: "warn" }) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl border border-player-border-light bg-player-surface p-5 shadow-[0_1px_2px_rgba(20,26,29,0.04)]" data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}>
-      <span className="text-[11.5px] font-bold uppercase tracking-[0.12em] text-player-ink-faint">{label}</span>
-      <span className={`font-mono text-3xl font-extrabold leading-none ${tone === "warn" && value > 0 ? "text-player-warn" : ""}`}>{value}</span>
-      <span className="text-[12.5px] text-player-ink-fainter">{hint}</span>
+    <div className="flex flex-col gap-1 rounded-3xl bg-khelo-surface p-4 shadow-[0_1px_2px_rgba(12,31,29,0.06)] sm:p-5" data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <span className="text-[11.5px] font-extrabold uppercase tracking-[0.8px] text-khelo-muted-2">{label}</span>
+      <span className={`font-khelo-display text-3xl font-extrabold leading-none ${tone === "warn" && value > 0 ? "text-khelo-warning-text" : ""}`}>{value}</span>
+      <span className="text-[13px] text-khelo-muted-2">{hint}</span>
     </div>
   );
 }
@@ -54,7 +52,7 @@ function ListSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2" aria-hidden="true">
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="h-48 animate-pulse rounded-2xl bg-player-surface-2" />
+        <div key={i} className="h-48 animate-pulse rounded-3xl bg-khelo-divider" />
       ))}
     </div>
   );
@@ -99,22 +97,23 @@ export default function BookingsPage() {
   }
 
   return (
-    <>
-      <SiteHeader />
-      <div className="border-b border-player-accent-soft-border" style={{ background: "linear-gradient(180deg,#FFF3EE 0%,#FAF8F6 100%)" }}>
-        <div className="mx-auto flex max-w-5xl flex-wrap items-end justify-between gap-4 px-6 pb-8 pt-10 md:px-10">
+    <KheloPage>
+      <div className="border-b border-khelo-divider bg-khelo-warm-2">
+        <Container className="flex flex-wrap items-end justify-between gap-4 pb-8 pt-10">
           <div className="flex flex-col gap-1.5">
-            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-player-accent-hover">Your dashboard</p>
-            <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">{firstName ? `Hi, ${firstName}` : "Your bookings"}</h1>
-            <p className="text-[16px] text-player-ink-muted">Everything you&apos;ve booked, in one place.</p>
+            <p className="text-[13px] font-extrabold uppercase tracking-[1.5px] text-khelo-orange-label">Your dashboard</p>
+            <h1 className="font-khelo-display text-[34px] font-extrabold leading-[1.05] tracking-[-1.5px] md:text-5xl">
+              {firstName ? `Hi, ${firstName}` : "Your bookings"}
+            </h1>
+            <p className="text-[17px] text-khelo-muted">Everything you&apos;ve booked, in one place.</p>
           </div>
-          <Link href="/search" className="rounded-xl bg-player-accent px-5 py-3 text-[14px] font-bold text-white shadow-[0_8px_20px_-8px_rgba(239,90,44,0.8)] transition-colors hover:bg-player-accent-hover">
+          <Button href="/search" size="md">
             Find a court
-          </Link>
-        </div>
+          </Button>
+        </Container>
       </div>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-8 md:px-10">
+      <Container className="flex flex-col gap-8 py-8">
         <div className="grid grid-cols-3 gap-3 sm:gap-4">
           <Stat label="Upcoming" value={activeUpcoming.length} hint="games booked" />
           <Stat label="Pending" value={pendingCount} hint="need your action" tone="warn" />
@@ -126,7 +125,7 @@ export default function BookingsPage() {
         <SavedVenues />
 
         <section className="flex flex-col gap-5" aria-label="Your bookings">
-          <div className="flex flex-wrap items-center gap-3 border-b border-player-border-light pb-4">
+          <div className="flex flex-wrap items-center gap-3 border-b border-khelo-divider pb-4">
             <div className="flex gap-2" role="tablist" aria-label="Upcoming or past">
               {(["upcoming", "past"] as const).map((t) => (
                 <button
@@ -134,8 +133,8 @@ export default function BookingsPage() {
                   role="tab"
                   aria-selected={tab === t}
                   onClick={() => switchTab(t)}
-                  className={`rounded-full px-5 py-2.5 text-[14px] font-bold transition-colors ${
-                    tab === t ? "bg-player-ink text-white" : "bg-player-surface-2 text-player-ink-muted hover:bg-player-accent-soft hover:text-player-accent-hover"
+                  className={`khelo-btn inline-flex min-h-11 items-center rounded-full px-6 py-2.5 text-[15px] font-extrabold ${
+                    tab === t ? "bg-khelo-ink text-white" : "bg-khelo-booked-bg text-khelo-ink"
                   }`}
                 >
                   {t === "upcoming" ? "Upcoming" : "Past"}
@@ -146,47 +145,53 @@ export default function BookingsPage() {
               {FILTERS[tab].map((f) => (
                 <button key={f.key} className={chip(filter === f.key)} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)} data-testid={`filter-${f.key}`}>
                   {f.label}
-                  <span className={`font-mono text-[12px] ${filter === f.key ? "text-white/80" : "text-player-ink-fainter"}`}>{counts[f.key]}</span>
+                  <span className={`text-[12px] ${filter === f.key ? "text-white/80" : "text-khelo-muted-2"}`}>{counts[f.key]}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {query.isLoading ? (
-            <ListSkeleton />
-          ) : query.isError && list.length === 0 ? (
-            <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="player" />
-          ) : shown.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-player-border-light bg-player-surface px-6 py-14 text-center" data-testid="bookings-empty">
-              <h2 className="text-lg font-extrabold">
-                {filter !== "all" ? "Nothing here with that status" : tab === "upcoming" ? "Nothing booked yet" : "No past bookings"}
-              </h2>
-              <p className="max-w-sm text-player-ink-muted">
-                {filter !== "all"
-                  ? "Try another status, or show all."
-                  : tab === "upcoming"
-                    ? "Find a court and book your first slot."
-                    : "Games you've played show up here."}
-              </p>
-              {filter !== "all" ? (
-                <button onClick={() => setFilter("all")} className="rounded-full bg-player-ink px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-player-accent-hover">
-                  Show all
-                </button>
-              ) : tab === "upcoming" ? (
-                <Link href="/search" className="rounded-full bg-player-accent px-6 py-3 text-[14px] font-bold text-white hover:bg-player-accent-hover">
-                  Find a court
-                </Link>
-              ) : null}
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {shown.map((b) => (
-                <BookingCard key={b.id} booking={b} review={reviewByBooking.get(b.id)} onChanged={refetchAll} />
-              ))}
-            </div>
-          )}
+          <div aria-live="polite">
+            {query.isLoading ? (
+              <ListSkeleton />
+            ) : query.isError && list.length === 0 ? (
+              <div role="alert" className="flex flex-col items-center gap-3 rounded-3xl bg-khelo-surface px-6 py-14 text-center">
+                <h2 className="font-khelo-display text-xl font-extrabold">Something went wrong</h2>
+                <p className="max-w-sm text-khelo-muted">{friendlyErrorMessage(query.error)}</p>
+                <Button variant="dark" onClick={() => query.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : shown.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-3xl bg-khelo-surface px-6 py-14 text-center" data-testid="bookings-empty">
+                <h2 className="font-khelo-display text-xl font-extrabold">
+                  {filter !== "all" ? "Nothing here with that status" : tab === "upcoming" ? "Nothing booked yet" : "No past bookings"}
+                </h2>
+                <p className="max-w-sm text-khelo-muted">
+                  {filter !== "all"
+                    ? "Try another status, or show all."
+                    : tab === "upcoming"
+                      ? "Find a court and book your first slot."
+                      : "Games you've played show up here."}
+                </p>
+                {filter !== "all" ? (
+                  <Button variant="dark" onClick={() => setFilter("all")}>
+                    Show all
+                  </Button>
+                ) : tab === "upcoming" ? (
+                  <Button href="/search">Find a court</Button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {shown.map((b) => (
+                  <BookingCard key={b.id} booking={b} review={reviewByBooking.get(b.id)} onChanged={refetchAll} />
+                ))}
+              </div>
+            )}
+          </div>
         </section>
-      </main>
-    </>
+      </Container>
+    </KheloPage>
   );
 }
