@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { ErrorState } from "@/components/error-state";
 import { BookingCard, NextBookingCard } from "@/components/booking-card";
+import { SavedVenues } from "@/components/saved-venues";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { SearchIcon } from "@/components/icons";
 import { EmptyState } from "../_components";
@@ -121,6 +122,8 @@ export default function PlayerBookingsScreen() {
         </View>
 
         {next ? <NextBookingCard booking={next} onChanged={refetchAll} /> : null}
+
+        <SavedVenues />
 
         <View className="gap-3.5 pt-1">
           <View className="flex-row gap-2" accessibilityRole="tablist">

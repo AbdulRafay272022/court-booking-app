@@ -13,6 +13,7 @@ import { ErrorState } from "@/components/error-state";
 import { CourtMonthCalendar } from "@/components/court-month-calendar";
 import { CourtDayPopup } from "@/components/court-day-popup";
 import { CourtHoursPanel } from "@/components/court-hours-panel";
+import { FavoriteButton } from "@/components/favorite-button";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { VenueReviews } from "@/components/venue-reviews";
 import { courtLabel } from "@/components/court-label";
@@ -94,6 +95,7 @@ export default function VenueDetailScreen() {
               {[venue.area ?? venue.city, formatDistance(venue.distance_meters)].filter(Boolean).join(" · ")}
             </Text>
           </View>
+          <FavoriteButton venueId={venue.id} venueName={venue.name} variant="pill" />
         </View>
 
         {venue.sports.length > 1 ? (

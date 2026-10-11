@@ -1,8 +1,9 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { LocationPinIcon, StarIcon } from "@/components/icons";
 import { AmenityBadges } from "@/components/amenity-badges";
+import { FavoriteButton } from "@/components/favorite-button";
 import { formatDistance } from "@/lib/format";
 import type { VenueSummary } from "@court-booking/types";
 import { formatPKR } from "@/lib/format";
@@ -33,17 +34,20 @@ export function SportChip({
   );
 }
 
-/** The brand orange, as a fill for a photo placeholder (same two stops as the web). Drawn with react-native-svg, no extra package. */
+/** The brand orange, as a fill for a photo placeholder (same two stops as the web). Drawn with react-native-svg, no extra package.
+ * Each instance gets its own gradient id: on web, screens stay mounted (hidden) behind the one on top, and with a shared id the browser
+ * resolves `url(#id)` to a copy inside a hidden screen and paints nothing. */
 export function BrandGradient() {
+  const id = `brandOrange${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="none">
       <Defs>
-        <LinearGradient id="brandOrange" x1="0" y1="0" x2="1" y2="1">
+        <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0" stopColor="#F2784F" />
           <Stop offset="1" stopColor="#C8431C" />
         </LinearGradient>
       </Defs>
-      <Rect width="100%" height="100%" fill="url(#brandOrange)" />
+      <Rect width="100%" height="100%" fill={`url(#${id})`} />
     </Svg>
   );
 }
@@ -52,6 +56,8 @@ export function VenueCard({ venue, onPress }: { venue: VenueSummary; onPress: ()
   const place = [venue.area ?? venue.city, formatDistance(venue.distance_meters)].filter(Boolean).join(" · ");
   const photo = venue.photo_urls?.[0];
   return (
+    // The heart is a sibling of the card's press target, not inside it, so tapping it never opens the venue.
+    <View>
     <Pressable
       onPress={onPress}
       accessibilityLabel={`${venue.name}, open venue`}
@@ -130,6 +136,10 @@ export function VenueCard({ venue, onPress }: { venue: VenueSummary; onPress: ()
         </View>
       </View>
     </Pressable>
+    <View style={{ position: "absolute", left: 12, top: 12, zIndex: 10 }}>
+      <FavoriteButton venueId={venue.id} venueName={venue.name} />
+    </View>
+    </View>
   );
 }
 
