@@ -90,8 +90,15 @@ ENV
   # .env.web is only read by `docker compose` for the web container; the
   # browser-side API URL is baked at IMAGE BUILD time (see the web
   # Dockerfile) -- this only feeds Next's server-side fetches at runtime.
+  # The five site-content values below are PUBLIC contact info (not secrets). The web app reads them at request time, so changing a line
+  # here and re-running `bootstrap.sh env` + recreating the web container is enough (no image rebuild). Unset/empty = that content is hidden.
   cat > "$APP_DIR/.env.web" <<ENVWEB
 NEXT_PUBLIC_API_BASE_URL=https://${API_HOST}
+NEXT_PUBLIC_SUPPORT_WHATSAPP=923345634571
+NEXT_PUBLIC_SUPPORT_EMAIL=info@khelo.pk
+NEXT_PUBLIC_SUPPORT_HOURS=Roz 10am se 3am
+NEXT_PUBLIC_OWNER_PRICING_TEXT=14 din free trial
+NEXT_PUBLIC_SITE_URL=https://${WEB_HOST}
 ENVWEB
   chmod 600 "$APP_DIR/.env" "$APP_DIR/.env.web"
   echo "wrote $APP_DIR/.env and .env.web (AI provider: ${provider})"

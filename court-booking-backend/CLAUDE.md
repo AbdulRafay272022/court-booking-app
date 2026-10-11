@@ -396,7 +396,7 @@ the time) with `alembic check` clean throughout.
    (`shouldRefreshSoon` should be false). A second tab holding the old token would be logged out. Look at
    what `expiresAt` the store holds after `restoreSession` (`apps/web/app/providers.tsx`).
 6. **Mobile** needs a new EAS build for any of today's fixes (no `eas.json`, no `android.package`, never
-   device-tested); `SUPPORT_WHATSAPP_NUMBER` is still the placeholder `+923000000000` in both `lib/support.ts`.
+   device-tested); `SUPPORT_WHATSAPP_NUMBER` in both `lib/support.ts` is now the real support number (+923345634571, set 2026-10-12; it was a placeholder).
 7. Ops leftovers: Sentry DSN unset (errors are invisible), RDS backups 1 day (Free-plan limit) and the
    dry-run restore was never done, sslip.io hostnames, Meta business verification + templates.
 8. Small: the assistant sometimes writes `**bold**` (WhatsApp shows it literally); `WhatsAppService._send`

@@ -957,8 +957,8 @@ not duplicated, for two more cases:**
   us" link now exists on the highest-stakes screen (payment/pay) on both
   mobile and web, plus the player profile (mobile) and owner sidebar
   (web). `SUPPORT_WHATSAPP_NUMBER` in each app's `lib/support.ts` is a
-  **placeholder** (`+923000000000`) — replace with the pilot's real
-  support number before launch. Routes through the same WhatsApp number
+  the pilot's real support number (`+923345634571`, set 2026-10-12;
+  it used to be a placeholder). Routes through the same WhatsApp number
   already used for OTP/chat/notifications, so it lands in the existing
   inbound-message pipeline (`app/api/webhooks.py`) with no new backend
   support system needed.

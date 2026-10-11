@@ -287,9 +287,8 @@ here rather than as a new "Sprint N":
   (`SUPPORT_WHATSAPP_NUMBER` + a `wa.me` link helper) — wired into the
   player profile screen and owner `today.tsx` header (mobile), and the
   owner dashboard sidebar + the payment `pay` screen header (web, the
-  highest-stakes screen in the app). **`SUPPORT_WHATSAPP_NUMBER` is a
-  placeholder (`+923000000000`)** — replace with the pilot's real support
-  number before launch; grep both `lib/support.ts` files for the `TODO`.
+  highest-stakes screen in the app). **`SUPPORT_WHATSAPP_NUMBER` is now the
+  real support number (`+923345634571`, set 2026-10-12; it used to be the `+923000000000` placeholder)** in both `lib/support.ts` files.
 - Backend now has a second, player-facing check-in path
   (`POST /bookings/{id}/checkin/self`, a per-venue QR token) alongside
   the existing owner-scans-the-player's-QR flow — **no frontend UI exists
@@ -1464,8 +1463,7 @@ the repo's Variables page.
   request-timeout behavior; delete the script when done, same convention
   as the Playwright scratch-driver scripts below.
 - **`SUPPORT_WHATSAPP_NUMBER` in both `apps/mobile/lib/support.ts` and
-  `apps/web/lib/support.ts` is a placeholder (`+923000000000`) — replace
-  before launch.** Deliberately routes through the same WhatsApp number
+  `apps/web/lib/support.ts` is the real number `+923345634571` (set 2026-10-12; it was a `+923000000000` placeholder).** Deliberately routes through the same WhatsApp number
   already used for OTP/notifications/chat (not a new support channel) so
   it lands in the backend's existing inbound-message pipeline with zero
   new backend work — see the backend's `AUDIT_FINDINGS.md` finding #22.
@@ -1562,8 +1560,7 @@ directly rather than more frontend code:
   still `localhost` is out of date. What's genuinely still missing: no
   `eas.json`, and `app.json` has no `android.package` /
   `ios.bundleIdentifier`. `SUPPORT_WHATSAPP_NUMBER` in both `lib/support.ts`
-  files is also still the `+923000000000` placeholder -- needs the real
-  number from the project owner. If the API hostname ever changes
+  files is now the real number `+923345634571` (set 2026-10-12). If the API hostname ever changes
   (sslip.io → a real domain), `app.json` needs updating too, and the web
   image needs a rebuild (see the `NEXT_PUBLIC_API_BASE_URL` note above).
 - **The web Dockerfile's builder stage must be `FROM deps`, not a fresh image
