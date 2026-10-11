@@ -3,6 +3,7 @@ export * from "./venue";
 export * from "./court";
 export * from "./availability";
 export * from "./booking";
+export * from "./booking-dashboard";
 export * from "./payment";
 export * from "./payment-entry";
 export * from "./waitlist";
