@@ -23,22 +23,22 @@ export function CourtHoursPanel({ court, horizonDays }: { court: Court; horizonD
   const horizon = bookingHorizonText(horizonDays);
 
   return (
-    <div className="rounded-xl border border-player-border-light px-3.5 py-3 flex flex-col gap-2.5" data-testid={`court-hours-${court.name}`}>
+    <div className="rounded-2xl border border-khelo-divider bg-khelo-page px-3.5 py-3 flex flex-col gap-2.5" data-testid={`court-hours-${court.name}`}>
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-bold tracking-widest text-player-ink-fainter">BOOKING HOURS</span>
+        <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">BOOKING HOURS</span>
         {lines.map((l) => (
           <p key={l.days} className="flex justify-between gap-3 text-[13px]" data-testid="hours-line">
-            <span className="font-semibold text-player-ink-muted">{l.days}</span>
-            <span className={l.closed ? "text-player-ink-faint" : "font-mono text-player-ink"}>{l.hours}</span>
+            <span className="font-semibold text-khelo-muted">{l.days}</span>
+            <span className={l.closed ? "text-khelo-muted-2" : "font-mono text-khelo-ink"}>{l.hours}</span>
           </p>
         ))}
       </div>
-      {horizon ? <p className="text-[12.5px] font-medium text-player-ink-faint" data-testid="horizon-text">{horizon}</p> : null}
+      {horizon ? <p className="text-[12.5px] font-medium text-khelo-muted-2" data-testid="horizon-text">{horizon}</p> : null}
       {blackouts.length > 0 ? (
         <div className="flex flex-col gap-1" data-testid="blackout-list">
-          <span className="text-[11px] font-bold tracking-widest text-player-ink-fainter">CLOSED / UNAVAILABLE</span>
+          <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">CLOSED / UNAVAILABLE</span>
           {blackouts.map((b) => (
-            <p key={b.id} className="text-[13px] text-player-ink-muted">
+            <p key={b.id} className="text-[13px] text-khelo-muted">
               <span className="font-semibold">{b.label}</span> · {b.when}
             </p>
           ))}

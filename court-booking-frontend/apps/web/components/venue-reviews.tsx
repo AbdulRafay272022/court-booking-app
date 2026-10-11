@@ -24,13 +24,13 @@ function Stars({ value, size = 16, label }: { value: number; size?: number; labe
   const pct = Math.max(0, Math.min(5, value)) * 20;
   return (
     <span role="img" aria-label={label ?? `${value} out of 5 stars`} className="relative inline-flex">
-      <span className="inline-flex text-player-border">
+      <span className="inline-flex text-khelo-border">
         {[0, 1, 2, 3, 4].map((i) => (
           <StarShape key={i} size={size} />
         ))}
       </span>
       <span className="absolute inset-y-0 left-0 overflow-hidden whitespace-nowrap" style={{ width: `${pct}%` }}>
-        <span className="inline-flex text-player-accent">
+        <span className="inline-flex text-khelo-orange">
           {[0, 1, 2, 3, 4].map((i) => (
             <StarShape key={i} size={size} />
           ))}
@@ -41,11 +41,11 @@ function Stars({ value, size = 16, label }: { value: number; size?: number; labe
 }
 
 const AVATAR_TONES = [
-  "bg-player-accent-soft text-player-accent-hover",
-  "bg-player-teal-soft text-player-teal",
-  "bg-player-success-soft text-player-success-dark",
-  "bg-player-warn-soft text-player-warn",
-  "bg-player-surface-2 text-player-ink-muted",
+  "bg-khelo-warm text-khelo-orange-label",
+  "bg-khelo-mint text-khelo-teal",
+  "bg-khelo-success-bg text-khelo-success-text",
+  "bg-khelo-warning-bg text-khelo-warning-text",
+  "bg-khelo-page text-khelo-muted",
 ];
 
 function Avatar({ name }: { name: string }) {
@@ -69,15 +69,15 @@ function when(iso: string): string {
 function Summary({ average, count, distribution }: { average: number; count: number; distribution: number[] }) {
   return (
     <div
-      className="grid gap-6 sm:grid-cols-[auto_1fr] items-center bg-player-surface border border-player-border-light rounded-2xl p-5 sm:p-6 shadow-[0_1px_2px_rgba(20,26,29,0.04)]"
+      className="grid gap-6 sm:grid-cols-[auto_1fr] items-center bg-khelo-surface border border-khelo-divider rounded-3xl p-5 sm:p-6"
       data-testid="review-summary"
     >
-      <div className="flex flex-col items-center sm:items-start gap-1.5 sm:pr-6 sm:border-r border-player-border-light">
+      <div className="flex flex-col items-center sm:items-start gap-1.5 sm:pr-6 sm:border-r border-khelo-divider">
         <span className="text-5xl font-extrabold tracking-tight leading-none" data-testid="review-average">
           {average.toFixed(1)}
         </span>
         <Stars value={average} size={20} label={`${average.toFixed(1)} out of 5 stars`} />
-        <span className="text-[13px] text-player-ink-faint">
+        <span className="text-[13px] text-khelo-muted-2">
           {count} review{count === 1 ? "" : "s"}
         </span>
       </div>
@@ -86,11 +86,11 @@ function Summary({ average, count, distribution }: { average: number; count: num
           const star = 5 - i;
           return (
             <li key={star} className="flex items-center gap-3 text-[13px]" data-testid={`review-bar-${star}`}>
-              <span className="w-9 shrink-0 font-semibold text-player-ink-muted">{star} ★</span>
-              <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-player-surface-2">
-                <span className="block h-full rounded-full bg-player-accent" style={{ width: `${count ? (n / count) * 100 : 0}%` }} />
+              <span className="w-9 shrink-0 font-semibold text-khelo-muted">{star} ★</span>
+              <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-khelo-page">
+                <span className="block h-full rounded-full bg-khelo-orange" style={{ width: `${count ? (n / count) * 100 : 0}%` }} />
               </span>
-              <span className="w-7 shrink-0 text-right font-mono text-player-ink-faint">{n}</span>
+              <span className="w-7 shrink-0 text-right font-mono text-khelo-muted-2">{n}</span>
             </li>
           );
         })}
@@ -128,20 +128,20 @@ export function VenueReviews({ venueId }: { venueId: string }) {
 
   return (
     <section className="flex flex-col gap-5" data-testid="venue-reviews">
-      <h2 className="text-xl font-bold">Reviews{stats.count ? ` (${stats.count})` : ""}</h2>
+      <h2 className="font-khelo-display text-[26px] font-extrabold tracking-[-0.5px]">Reviews{stats.count ? ` (${stats.count})` : ""}</h2>
 
       {query.isLoading ? (
         <div className="flex flex-col gap-4 animate-pulse" aria-hidden="true">
-          <div className="h-40 rounded-2xl bg-player-surface-2" />
-          <div className="h-28 rounded-2xl bg-player-surface-2" />
+          <div className="h-40 rounded-3xl bg-khelo-divider" />
+          <div className="h-28 rounded-3xl bg-khelo-divider" />
         </div>
       ) : reviews.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-10 px-6 text-center bg-player-surface border border-player-border-light rounded-2xl">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-player-accent-soft text-player-accent">
+        <div className="flex flex-col items-center gap-2 py-10 px-6 text-center bg-khelo-surface border border-khelo-divider rounded-3xl">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-khelo-warm text-khelo-orange">
             <StarShape size={24} />
           </span>
           <p className="font-bold">No reviews yet</p>
-          <p className="text-[14px] text-player-ink-faint max-w-xs">Played here? You can rate your game from My bookings once it&apos;s done.</p>
+          <p className="text-[14px] text-khelo-muted-2 max-w-xs">Played here? You can rate your game from My bookings once it&apos;s done.</p>
         </div>
       ) : (
         <>
@@ -154,7 +154,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                 <li
                   key={r.id}
                   data-testid="review-card"
-                  className="bg-player-surface border border-player-border-light rounded-2xl p-5 flex flex-col gap-3 shadow-[0_1px_2px_rgba(20,26,29,0.04)]"
+                  className="bg-khelo-surface border border-khelo-divider rounded-3xl p-5 flex flex-col gap-3"
                   style={r.is_hidden ? { opacity: 0.55 } : undefined}
                 >
                   <div className="flex items-center gap-3">
@@ -162,9 +162,9 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                     <div className="flex flex-col min-w-0">
                       <span className="font-bold text-[15px] truncate">
                         {name}
-                        {r.is_hidden ? <span className="ml-2 text-[11px] font-bold text-player-ink-fainter">HIDDEN</span> : null}
+                        {r.is_hidden ? <span className="ml-2 text-[11px] font-bold text-khelo-muted-2">HIDDEN</span> : null}
                       </span>
-                      <span className="text-[12.5px] text-player-ink-fainter">
+                      <span className="text-[12.5px] text-khelo-muted-2">
                         {when(r.created_at)}
                         {r.updated_at ? " · edited" : ""}
                       </span>
@@ -173,15 +173,15 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                       <Stars value={r.rating} />
                     </span>
                   </div>
-                  {r.comment ? <p className="text-[15px] leading-relaxed text-player-ink-muted">{r.comment}</p> : null}
+                  {r.comment ? <p className="text-[15px] leading-relaxed text-khelo-muted">{r.comment}</p> : null}
                   {r.owner_reply ? (
-                    <div className="rounded-xl bg-player-surface-2 px-4 py-3 flex flex-col gap-1">
-                      <p className="text-[12px] font-bold tracking-wide text-player-ink-faint uppercase">Reply from the venue</p>
-                      <p className="text-[14px] text-player-ink-muted">{r.owner_reply}</p>
+                    <div className="rounded-xl bg-khelo-page px-4 py-3 flex flex-col gap-1">
+                      <p className="text-[12px] font-bold tracking-wide text-khelo-muted-2 uppercase">Reply from the venue</p>
+                      <p className="text-[14px] text-khelo-muted">{r.owner_reply}</p>
                     </div>
                   ) : null}
                   {isAdmin ? (
-                    <button onClick={() => toggleHidden(r)} className="self-start text-[12.5px] font-semibold text-player-accent-hover hover:underline">
+                    <button onClick={() => toggleHidden(r)} className="inline-flex min-h-11 items-center self-start text-[13px] font-bold text-khelo-orange-label hover:underline">
                       {r.is_hidden ? "Unhide" : "Hide"}
                     </button>
                   ) : null}
@@ -194,7 +194,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
-              className="self-center px-6 py-2.5 rounded-full border border-player-border bg-player-surface text-[14px] font-bold text-player-ink hover:border-player-accent hover:text-player-accent-hover transition-colors"
+              className="self-center inline-flex min-h-11 items-center px-6 py-2.5 rounded-full border border-khelo-border bg-khelo-surface text-[14px] font-bold text-khelo-ink hover:border-khelo-orange hover:text-khelo-orange-label transition-colors"
             >
               {showAll ? "Show fewer" : `Show all ${reviews.length} reviews`}
             </button>

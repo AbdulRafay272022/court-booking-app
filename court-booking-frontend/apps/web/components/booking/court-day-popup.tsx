@@ -22,8 +22,8 @@ const OTHER_STATUS_LABEL: Record<string, string> = {
   blocked: "Unavailable",
 };
 
-// Day-state dot colours for the week strip (match the calendar + the approved mockup).
-const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "#1E9E5A", few: "#D6900A", full: "#C43A3A" };
+// Day-state dot colours for the week strip (the same tokens as the month calendar).
+const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "bg-khelo-success-text", few: "bg-khelo-warning-text", full: "bg-khelo-muted-3" };
 
 /**
  * The popup a tapped calendar date opens (Section 32 Part 4b UPDATE), scoped to ONE court: a centered dialog on
@@ -157,9 +157,12 @@ export function CourtDayPopup({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
+      <div className="khelo fixed inset-0 z-50 flex items-end md:items-center justify-center bg-khelo-ink/50 font-[family-name:var(--font-khelo-body-x)] text-khelo-ink" onClick={onClose}>
         <div
-          className="bg-player-surface w-full md:w-[420px] rounded-t-3xl md:rounded-2xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${courtName} availability`}
+          className="bg-khelo-surface w-full md:w-[440px] rounded-t-3xl md:rounded-3xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4"
           style={{ maxHeight: "86vh" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -169,21 +172,19 @@ export function CourtDayPopup({
                 type="button"
                 onClick={() => setView("month")}
                 aria-label="Back to month view"
-                className="w-10 h-10 rounded-xl flex items-center justify-center font-bold"
-                style={{ background: "#F4EFEC" }}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-khelo-page text-lg font-bold text-khelo-ink"
               >
                 ‹
               </button>
             ) : (
-              <span className="w-10" />
+              <span className="w-11" />
             )}
-            <span className="font-bold text-[15px] text-player-ink"><CourtLabel name={courtName} sport={courtSport} /></span>
+            <span className="font-khelo-display text-[16px] font-extrabold text-khelo-ink"><CourtLabel name={courtName} sport={courtSport} /></span>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="w-10 h-10 rounded-xl flex items-center justify-center font-bold"
-              style={{ background: "#F4EFEC" }}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-khelo-page text-lg font-bold text-khelo-ink"
             >
               ✕
             </button>
@@ -213,35 +214,27 @@ export function CourtDayPopup({
                       disabled={isPast}
                       onClick={() => setDate(d)}
                       aria-pressed={selected}
-                      className="min-w-0 flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors"
-                      style={{
-                        background: selected ? "#EF5A2C" : "#FFFFFF",
-                        border: `1px solid ${selected ? "#EF5A2C" : "#E5DED8"}`,
-                        opacity: isPast ? 0.4 : 1,
-                        cursor: isPast ? "default" : "pointer",
-                      }}
+                      className={`min-w-0 flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-2xl border-[1.5px] py-2.5 transition-colors ${
+                        selected ? "border-khelo-orange bg-khelo-orange text-khelo-ink" : "border-khelo-border bg-khelo-surface text-khelo-ink"
+                      } ${isPast ? "opacity-40" : "cursor-pointer"}`}
                     >
-                      <span className="text-[10px] font-bold leading-none whitespace-nowrap" style={{ color: selected ? "rgba(255,255,255,0.9)" : "#5C544D" }}>
+                      <span className={`text-[11px] font-bold leading-none whitespace-nowrap ${selected ? "text-khelo-ink" : "text-khelo-muted"}`}>
                         {tabLabel(d)}
                       </span>
-                      <span className="font-mono text-[15px] font-extrabold" style={{ color: selected ? "#FFFFFF" : "#141A1D" }}>
+                      <span className="font-mono text-[15px] font-extrabold">
                         {String(Number(d.slice(8))).padStart(2, "0")}
                       </span>
-                      <span
-                        className="w-[5px] h-[5px] rounded-full"
-                        style={{ background: selected ? (dot ? "#FFFFFF" : "transparent") : (dot ?? "transparent") }}
-                        aria-hidden
-                      />
+                      <span className={`h-[5px] w-[5px] rounded-full ${selected ? (dot ? "bg-khelo-ink" : "bg-transparent") : (dot ?? "bg-transparent")}`} aria-hidden />
                     </button>
                   );
                 })}
               </div>
 
-              <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#E5DED8] [&::-webkit-scrollbar-track]:bg-transparent">
+              <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-khelo-border [&::-webkit-scrollbar-track]:bg-transparent">
                 {dayQuery.isLoading ? (
-                  <p className="text-center py-10 text-player-ink-faint">Loading…</p>
+                  <p className="text-center py-10 text-khelo-muted-2">Loading…</p>
                 ) : slots.length === 0 ? (
-                  <p className="text-center py-8 text-[13.5px] text-player-ink-faint">{(dayQuery.data?.slots.length ?? 0) > 0 ? "No more times left today." : "Closed this day."}</p>
+                  <p className="text-center py-8 text-[13.5px] text-khelo-muted-2">{(dayQuery.data?.slots.length ?? 0) > 0 ? "No more times left today." : "Closed this day."}</p>
                 ) : (
                   slots.map((slot, index) => {
                     // on the 30-minute grid a free slot is only a place a booking can START when the court's minimum
@@ -252,7 +245,7 @@ export function CourtDayPopup({
                     const isBooked = slot.status === "booked";
                     const dividerBefore = slot.after_midnight && !slots[index - 1]?.after_midnight;
                     const divider = dividerBefore ? (
-                      <span className="text-[10.5px] font-bold tracking-[0.14em] text-player-ink-fainter">AFTER MIDNIGHT</span>
+                      <span className="text-[11px] font-extrabold tracking-[0.14em] text-khelo-muted-2">AFTER MIDNIGHT</span>
                     ) : null;
                     if (slot.is_mine && slot.booking_id && (isBooked || slot.status === "held" || slot.status === "payment_submitted")) {
                       const pending = !isBooked;
@@ -261,11 +254,12 @@ export function CourtDayPopup({
                           {divider}
                           <button
                             onClick={() => handleTapSlot(index, slot.booking_id)}
-                            className="flex items-center justify-between px-3.5 py-3 rounded-xl text-left"
-                            style={{ background: pending ? "#FFF6E5" : "#EAF5EF", border: pending ? "1px solid #F3DDAE" : "1px solid #BFE0CE" }}
+                            className={`flex min-h-12 items-center justify-between rounded-2xl border-[1.5px] px-3.5 py-3 text-left ${
+                              pending ? "border-khelo-warning bg-khelo-warning-bg" : "border-khelo-success bg-khelo-success-bg"
+                            }`}
                           >
-                            <span className="font-mono text-[13px] font-semibold text-player-ink">{formatSlotTimes(slot)}</span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: pending ? "#F7E4BE" : "#D6EDDE", color: pending ? "#9A6208" : "#1F7A52" }}>
+                            <span className="font-mono text-[13px] font-semibold text-khelo-ink">{formatSlotTimes(slot)}</span>
+                            <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-extrabold ${pending ? "bg-khelo-warning text-khelo-ink" : "bg-khelo-success-text text-white"}`}>
                               {pending ? "PAYMENT PENDING" : "YOUR BOOKING"}
                             </span>
                           </button>
@@ -283,18 +277,15 @@ export function CourtDayPopup({
                           disabled={!isOpen}
                           title={slot.status === "blocked" && slot.reason ? slot.reason : tooShort ? `Needs at least ${formatDuration(slotMinutes)} free` : undefined}
                           data-testid={isOpen ? "slot-open" : undefined}
-                          className="flex items-center justify-between px-3.5 py-3 rounded-xl text-left"
-                          style={{
-                            background: isOpen ? "#FFFFFF" : "#F3EEE9",
-                            border: `1px solid ${isOpen ? "#cfe9d9" : "#E5DED8"}`,
-                            opacity: slot.status === "blocked" ? 0.6 : 1,
-                            cursor: isOpen ? "pointer" : "default",
-                          }}
+                          className={`flex min-h-12 items-center justify-between rounded-2xl border-[1.5px] px-3.5 py-3 text-left ${
+                            isOpen
+                              ? "cursor-pointer border-khelo-teal/30 bg-khelo-mint hover:border-khelo-orange"
+                              : tooShort
+                                ? "cursor-default border-khelo-border bg-khelo-page"
+                                : "cursor-default border-transparent bg-khelo-booked-bg"
+                          }`}
                         >
-                          <span
-                            className="font-mono text-[13px] font-semibold"
-                            style={{ color: isOpen ? "#141A1D" : "#9A9791", textDecoration: isBooked ? "line-through" : "none" }}
-                          >
+                          <span className={`font-mono text-[13px] font-semibold ${isOpen ? "text-khelo-ink" : "text-khelo-muted"} ${isBooked ? "line-through" : ""}`}>
                             {formatSlotTimes(slot)}
                           </span>
                           <span className="flex items-center gap-2">
@@ -305,21 +296,20 @@ export function CourtDayPopup({
                                   if (!onWaitlist) handleJoinWaitlist(slot.starts_at);
                                 }}
                                 disabled={onWaitlist || joining}
-                                className="h-7 px-2.5 rounded-full text-[11px] font-bold"
-                                style={{ background: onWaitlist ? "#F4EFEC" : "#FFF3EE", color: onWaitlist ? "#7A7068" : "#C8431C" }}
+                                className={`h-11 rounded-full px-3 text-[11.5px] font-extrabold ${onWaitlist ? "bg-khelo-page text-khelo-muted" : "bg-khelo-warm-2 text-khelo-orange-label"}`}
                               >
                                 {joining ? "…" : onWaitlist ? "On waitlist" : "Notify me"}
                               </button>
                             ) : null}
                             {isOpen ? (
                               <>
-                                <span className="font-mono text-[12px] font-semibold text-player-ink-faint">
+                                <span className="font-mono text-[12px] font-semibold text-khelo-muted">
                                   PKR {formatPKR(startChoices[0].price)}{minSlots > 1 ? ` · ${formatDuration(startChoices[0].minutes)}` : ""}
                                 </span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#E3F7EB", color: "#1E9E5A" }}>Open</span>
+                                <span className="rounded-full bg-khelo-surface px-2.5 py-1 text-[10.5px] font-extrabold text-khelo-success-text">Open</span>
                               </>
                             ) : (
-                              <span className="text-[11px] font-bold" style={{ color: "#9A9791" }}>
+                              <span className="text-[11.5px] font-bold text-khelo-muted">
                                 {tooShort ? "Too short" : OTHER_STATUS_LABEL[slot.status] ?? slot.status}
                               </span>
                             )}
