@@ -18,7 +18,7 @@ import { PhotoGallery } from "@/components/photo-gallery";
 import { courtLabel } from "@/components/court-label";
 import { decodeSportParam, findSport, sameSport } from "@/lib/sport";
 import { AmenityBadges } from "@/components/amenity-badges";
-import { EmptyState, gradientFor, SportChip } from "../_components";
+import { BrandGradient, EmptyState, SportChip } from "../_components";
 
 /**
  * Calendar-first venue page (Section 32 Part 4b UPDATE, 2026-09-22 -- replaces the earlier slot-list-first
@@ -109,8 +109,9 @@ export default function VenueDetailScreen() {
         {photos.length > 0 ? (
           <PhotoGallery photos={photos} label={venue.name} />
         ) : (
-          <View className="h-[100px] rounded-[14px] items-start justify-end p-4" style={{ backgroundColor: gradientFor(venue.id) }}>
-            <Text className="font-figtree-bold text-white text-[13px]" style={{ opacity: 0.85 }}>
+          <View className="h-[120px] rounded-[16px] overflow-hidden items-start justify-end p-4">
+            <BrandGradient />
+            <Text className="font-figtree-bold text-white text-[13px] capitalize" style={{ opacity: 0.9 }}>
               {venue.sports.join(" · ")}
             </Text>
           </View>

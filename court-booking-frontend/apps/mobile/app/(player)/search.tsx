@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -8,10 +8,10 @@ import { SPORT_OPTIONS } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { FilterSheet } from "@/components/filter-sheet";
-import { ChevronLeftIcon } from "@/components/icons";
+import { ChevronLeftIcon, SearchIcon } from "@/components/icons";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { EMPTY_FILTERS, activeFilterChips, filtersToParams, filtersToQuery, parseFilters, type VenueFilters } from "@/lib/venue-filters";
-import { EmptyState, SportChip, VenueCard } from "./_components";
+import { EmptyState, SportChip, VenueCard, VenueCardSkeleton } from "./_components";
 
 const DEFAULT_CITY = "Karachi";
 
@@ -63,7 +63,7 @@ export default function SearchScreen() {
             onPress={() => setSheetOpen(true)}
             accessibilityLabel="Open filters"
             className="h-11 px-4 rounded-full flex-row items-center gap-1.5"
-            style={{ backgroundColor: nonSportChips.length > 0 ? "#141A1D" : "#F4EFEC" }}
+            style={({ pressed }) => ({ backgroundColor: nonSportChips.length > 0 ? "#EF5A2C" : "#F4EFEC", opacity: pressed ? 0.85 : 1 })}
           >
             <Text className="font-figtree-bold text-[13px]" style={{ color: nonSportChips.length > 0 ? "#FFFFFF" : "#5C544D" }}>
               Filters{nonSportChips.length > 0 ? ` (${nonSportChips.length})` : ""}
@@ -99,13 +99,16 @@ export default function SearchScreen() {
       </View>
 
       {query.isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#EF5A2C" />
-        </View>
+        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-4" scrollEnabled={false}>
+          {[0, 1].map((i) => (
+            <VenueCardSkeleton key={i} />
+          ))}
+        </ScrollView>
       ) : query.isError && venues.length === 0 ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="player" />
       ) : venues.length === 0 ? (
         <EmptyState
+          icon={<SearchIcon size={26} color="#EF5A2C" />}
           title={chips.length > 0 ? "No venues match these filters" : `No courts in ${areaLabel} yet`}
           subtitle={
             chips.length > 0
@@ -115,7 +118,7 @@ export default function SearchScreen() {
           action={chips.length > 0 ? { label: "Clear all filters", onPress: () => applyFilters(EMPTY_FILTERS) } : undefined}
         />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-3">
+        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-4">
           {venues.map((v) => (
             <VenueCard
               key={v.id}
