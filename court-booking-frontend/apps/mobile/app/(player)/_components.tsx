@@ -19,13 +19,12 @@ export function SportChip({
   return (
     <Pressable
       onPress={onPress}
-      className="px-4 rounded-full items-center justify-center"
-      style={({ pressed }) => ({
+      className="px-4 rounded-full items-center justify-center active:opacity-80"
+      style={{
         minHeight: 44,
-        backgroundColor: selected ? "#EF5A2C" : pressed ? "#FFF3EE" : "#F4EFEC",
-        opacity: pressed ? 0.85 : 1,
+        backgroundColor: selected ? "#EF5A2C" : "#F4EFEC",
         ...(selected ? { shadowColor: "#EF5A2C", shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 } : null),
-      })}
+      }}
     >
       <Text className="font-figtree-semibold text-[13.5px]" style={{ color: selected ? "#FFFFFF" : "#5C544D" }}>
         {label}
@@ -148,17 +147,20 @@ export function VenueCardSkeleton() {
     return () => loop.stop();
   }, [opacity]);
   return (
-    <Animated.View style={{ opacity }} className="bg-player-surface border border-player-border-light rounded-[20px] overflow-hidden" accessibilityLabel="Loading venues">
-      <View className="h-44 bg-player-surface-2" />
-      <View className="p-5 gap-3">
-        <View className="h-5 w-2/3 rounded bg-player-surface-2" />
-        <View className="h-4 w-1/3 rounded bg-player-surface-2" />
-        <View className="flex-row gap-2">
-          <View className="h-6 w-20 rounded-md bg-player-surface-2" />
-          <View className="h-6 w-16 rounded-md bg-player-surface-2" />
+    // NativeWind does not style an Animated.View from className: the animation sits on the wrapper, the look on the inner View.
+    <Animated.View style={{ opacity }} accessibilityLabel="Loading venues">
+      <View className="bg-player-surface border border-player-border-light rounded-[20px] overflow-hidden">
+        <View className="h-44 bg-player-surface-2" />
+        <View className="p-5 gap-3">
+          <View className="h-5 w-2/3 rounded bg-player-surface-2" />
+          <View className="h-4 w-1/3 rounded bg-player-surface-2" />
+          <View className="flex-row gap-2">
+            <View className="h-6 w-20 rounded-md bg-player-surface-2" />
+            <View className="h-6 w-16 rounded-md bg-player-surface-2" />
+          </View>
+          <View className="h-px bg-player-border-light mt-1" />
+          <View className="h-5 w-1/2 rounded bg-player-surface-2" />
         </View>
-        <View className="h-px bg-player-border-light mt-1" />
-        <View className="h-5 w-1/2 rounded bg-player-surface-2" />
       </View>
     </Animated.View>
   );
@@ -183,8 +185,7 @@ export function EmptyState({
       {action ? (
         <Pressable
           onPress={action.onPress}
-          className="mt-2 h-12 px-6 rounded-full bg-player-accent items-center justify-center"
-          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+          className="mt-2 h-12 px-6 rounded-full bg-player-accent items-center justify-center active:opacity-80"
         >
           <Text className="font-figtree-bold text-white text-[14.5px]">{action.label}</Text>
         </Pressable>

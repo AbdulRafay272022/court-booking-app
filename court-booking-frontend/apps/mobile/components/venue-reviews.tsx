@@ -182,8 +182,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
             <Pressable
               onPress={() => setShowAll((v) => !v)}
               accessibilityLabel={showAll ? "Show fewer reviews" : `Show all ${reviews.length} reviews`}
-              className="self-center h-11 px-6 rounded-full border border-player-border bg-player-surface items-center justify-center"
-              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+              className="self-center h-11 px-6 rounded-full border border-player-border bg-player-surface items-center justify-center active:opacity-70"
             >
               <Text className="font-figtree-bold text-player-ink text-[14px]">{showAll ? "Show fewer" : `Show all ${reviews.length} reviews`}</Text>
             </Pressable>
