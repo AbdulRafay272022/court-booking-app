@@ -291,7 +291,7 @@ async def test_the_assistant_will_not_propose_or_hold_for_an_owner_without_the_f
     actions: list = []
     for tool in ("propose_booking_confirmation", "hold_slot"):
         out = await service._execute_tool(player, tool, {"court_id": str(court.id), "starts_at": starts_at}, actions)
-        assert out["status_code"] == 403 and "Maidan app" in out["error"], tool
+        assert out["status_code"] == 403 and "Khelo app" in out["error"], tool
     assert actions == []
     assert (await db_session.execute(select(Booking))).scalars().all() == []
 
@@ -310,7 +310,7 @@ async def test_a_yes_no_proposal_for_such_a_court_is_dropped_and_the_player_is_p
     service = AIChatService(db_session, get_settings())
     proposal = [ChatAction("confirm_booking", "Yes, book it", {"court_id": str(court.id), "starts_at": "x"}), ChatAction("decline", "No, thanks", {})]
     text, kept = await service._drop_unbookable_actions("Shall I book it? Reply Yes or No", proposal)
-    assert kept == [] and "Maidan app" in text
+    assert kept == [] and "Khelo app" in text
 
 
 async def test_a_typed_yes_or_old_button_cannot_book_at_such_a_venue(
@@ -331,7 +331,7 @@ async def test_a_typed_yes_or_old_button_cannot_book_at_such_a_venue(
     player = await make_user("+923096000064", role=UserRole.PLAYER, name="Ali")
     starts = pkt_time_to_utc(pkt_today() + timedelta(days=1), time(10, 0)).isoformat()
     await _handle_button_reply(db_session, get_settings(), player, f"confirm:{court.id}:{starts}")
-    assert replies and "not available for this venue" in replies[-1] and "Maidan app" in replies[-1]
+    assert replies and "not available for this venue" in replies[-1] and "Khelo app" in replies[-1]
     assert (await db_session.execute(select(Booking))).scalars().all() == []
 
 

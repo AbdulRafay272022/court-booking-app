@@ -41,15 +41,15 @@ export const fontFor = (tone: Tone, weight: "medium" | "semibold" | "bold" | "ex
 
 /* -------------------------------------------------------------------------- logo */
 
-/** The real Maidan logo (icon + wordmark lockup) from docs/maidan-logo-full-*-v2.svg, rasterized to
+/** The real Khelo logo (icon + wordmark lockup) from the original brand mark + Bricolage Grotesque wordmark, rasterized to
  * assets/brand/*.png at 2x (1440x460). `size` is the HEIGHT in px. Light screens use the light lockup;
  * `onDark` selects the white-wordmark variant. `tone` is accepted for call-site compatibility -- the lockup
  * is the same brand mark in both design systems. */
 export function Logo({ size = 52, onDark = false }: { tone?: Tone; size?: number; onDark?: boolean }) {
   return (
     <Image
-      accessibilityLabel="Maidan"
-      source={onDark ? require("../../assets/brand/maidan-logo-full-dark.png") : require("../../assets/brand/maidan-logo-full-light.png")}
+      accessibilityLabel="Khelo"
+      source={onDark ? require("../../assets/brand/khelo-logo-full-dark.png") : require("../../assets/brand/khelo-logo-full-light.png")}
       resizeMode="contain"
       style={{ height: size, width: Math.round((size * 720) / 230) }}
     />

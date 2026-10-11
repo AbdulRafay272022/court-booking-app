@@ -81,7 +81,7 @@ export default function LoginScreen() {
       subtitle="Log in with your mobile number and password."
       footer={
         <Text className="font-figtree-medium" style={{ fontSize: 14, color: playerColors.inkMuted }}>
-          New to Maidan?{" "}
+          New to Khelo?{" "}
           <Text
             onPress={() => router.push("/(auth)/signup")}
             className="font-figtree-bold"

@@ -338,7 +338,7 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
             if not await EntitlementService(db, settings).court_entitled(uuid.UUID(court_id_str), "ai_chat_booking"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="booking through chat is not available for this venue, please book it in the Maidan app",
+                    detail="booking through chat is not available for this venue, please book it in the Khelo app",
                 )
             proposed_name, name_is_own = await _proposed_player_name(db, user, court_id_str, starts_at_str)
             booking = await booking_service.create_hold(
