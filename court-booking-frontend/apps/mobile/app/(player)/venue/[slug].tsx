@@ -17,7 +17,7 @@ import { CourtHoursPanel } from "@/components/court-hours-panel";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { courtLabel } from "@/components/court-label";
 import { decodeSportParam, findSport, sameSport } from "@/lib/sport";
-import { amenityLabel } from "@court-booking/types";
+import { AmenityBadges } from "@/components/amenity-badges";
 import { EmptyState, gradientFor, SportChip } from "../_components";
 
 /**
@@ -115,15 +115,7 @@ export default function VenueDetailScreen() {
             </Text>
           </View>
         )}
-        {venue.amenities && venue.amenities.length > 0 ? (
-          <View className="flex-row flex-wrap gap-1.5">
-            {venue.amenities.map((a) => (
-              <View key={a} className="px-2.5 py-1 rounded-full bg-player-surface-2">
-                <Text className="font-figtree-semibold text-player-ink-muted text-[12px]">{amenityLabel(a)}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+        <AmenityBadges amenities={venue.amenities} size="md" />
         {courts.length === 0 ? (
           <EmptyState title="No active courts" subtitle="This venue hasn't published any courts for this sport yet." />
         ) : (

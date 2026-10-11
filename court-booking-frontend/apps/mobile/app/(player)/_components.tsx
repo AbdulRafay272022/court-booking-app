@@ -1,5 +1,6 @@
 import { Image, Pressable, Text, View } from "react-native";
 import { StarIcon } from "@/components/icons";
+import { AmenityBadges } from "@/components/amenity-badges";
 import { formatDistance } from "@/lib/format";
 import type { VenueSummary } from "@court-booking/types";
 import { formatPKR } from "@/lib/format";
@@ -67,6 +68,7 @@ export function VenueCard({ venue, onPress }: { venue: VenueSummary; onPress: ()
             </View>
           ) : null}
         </View>
+        <AmenityBadges amenities={venue.amenities} max={2} />
         {venue.min_price != null ? (
           <Text className="font-mono-semibold text-player-ink text-[13px]">
             from PKR {formatPKR(venue.min_price)}
