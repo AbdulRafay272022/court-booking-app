@@ -1,19 +1,33 @@
-import { SiteHeader } from "@/components/nav-auth";
+import { KheloPage } from "@/components/site/page-shell";
 import { VenueCardSkeleton } from "@/components/discovery/venue-card";
 
+/** Shown while a fresh load waits on the venue list: the title band, a bar-shaped placeholder and 6 cards. */
 export default function SearchLoading() {
   return (
-    <>
-      <SiteHeader />
-      <main className="px-6 md:px-14 py-10 flex flex-col gap-7" aria-busy="true">
-        <div className="h-8 w-64 rounded bg-player-surface-2 animate-pulse" />
-        <div className="h-44 rounded-2xl bg-player-surface-2 animate-pulse" />
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }, (_, i) => (
-            <VenueCardSkeleton key={i} />
-          ))}
+    <KheloPage app>
+      <div aria-busy="true" role="status" aria-label="Loading venues">
+        <div className="bg-khelo-ink text-white">
+          <div className="mx-auto w-full max-w-[1240px] px-6 pb-[30px] pt-7">
+            <div className="text-[12px] font-extrabold uppercase tracking-[1.5px] text-khelo-orange">Find a court</div>
+            <div className="mt-3 h-10 w-64 max-w-full animate-pulse rounded-lg bg-white/10" />
+          </div>
         </div>
-      </main>
-    </>
+        <div className="border-b border-khelo-divider bg-khelo-surface">
+          <div className="mx-auto flex w-full max-w-[1240px] gap-2.5 overflow-hidden px-6 py-3.5">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="h-11 w-28 shrink-0 animate-pulse rounded-full bg-khelo-divider" />
+            ))}
+          </div>
+        </div>
+        <div className="mx-auto w-full max-w-[1240px] px-6 pb-[72px] pt-7">
+          <div className="h-6 w-28 animate-pulse rounded bg-khelo-divider" />
+          <div className="mt-[22px] grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-[22px]">
+            {Array.from({ length: 6 }, (_, i) => (
+              <VenueCardSkeleton key={i} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </KheloPage>
   );
 }
