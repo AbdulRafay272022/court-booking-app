@@ -1011,6 +1011,24 @@ summary, in the order the rounds fixed each concern:
   2. **Real native device / emulator testing** (WhatsApp deep-link, push notifications) -- still not done;
      Expo web can't exercise these. Same standing limit as every other native feature in this project.
 
+## Mobile player UI pass (2026-10-11, branches `mobile-ui-step-2..6`, not merged/EAS-built at time of writing)
+
+Mobile equivalents of the web player UI pass (web is live; see the web `Player UI` commits `407d312..cc762fa`). Step 1 (cursors) has no
+native equivalent -- a phone has no pointer -- so it became press feedback + touch-target checks. What exists now, all player-side:
+- `components/amenity-badges.tsx` (icons + "+N", same labels as web via shared `amenityLabel`), `components/venue-reviews.tsx` (summary with
+  partial-fill stars and per-star bars from the shared `reviewStats`, avatars, reply box, show-all), `components/booking-card.tsx`
+  (`BookingCard`, `NextBookingCard`, `StatusPill`, `RateGame`), and a rewritten `app/(player)/_components.tsx` (`VenueCard`, `VenueCardSkeleton`,
+  `BrandGradient`, `SportChip`, `EmptyState` with `icon`). Chat (`booking/[id]/chat.tsx`) and the Bookings tab (the player dashboard) were rewritten
+  in place; the hold/cancel/rate/check-in logic is unchanged. Dashboard grouping/next-booking/countdown come from `packages/types/src/booking-dashboard.ts`.
+- **NativeWind traps found while verifying on Expo web (screenshots, not tsc, caught both):** (1) a `Pressable` with BOTH `className` and a
+  function `style={({pressed}) => ...}` loses ALL its styling -- use a static `style` plus `active:opacity-80` / `active:bg-...` classes for press
+  feedback, and keep function styles only on a Pressable that has no className; (2) `className` is NOT applied to `Animated.View` -- put animation on
+  a wrapper (`opacity`) and the look on an inner `View`, or give the Animated.View explicit style numbers.
+- Photo placeholders use `BrandGradient` (react-native-svg gradient; no `expo-linear-gradient` is installed, and adding a native package needs an EAS build).
+- Verified on **Expo web only** (Playwright, 390px, local backend + scratch Postgres). `Alert.alert` is a no-op there, so the cancel/refund dialogs were
+  not driven; they were moved unchanged. Not verified on a device: real touch feel, safe-area/keyboard behaviour in the chat on iOS/Android, shadows
+  (`elevation`) on Android, font rendering, and anything needing the native build.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before
