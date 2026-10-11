@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# smoke-test screenshots (e2e/smoke.cjs)
+design-review/
