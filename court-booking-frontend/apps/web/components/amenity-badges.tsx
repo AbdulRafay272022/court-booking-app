@@ -82,7 +82,12 @@ export function AmenityBadges({
         );
       })}
       {hidden > 0 ? (
-        <li className={`inline-flex items-center font-semibold bg-player-surface-2 text-player-ink-muted ${chip}`}>+{hidden}</li>
+        <li
+          title={list.slice(shown.length).map(amenityLabel).join(", ")}
+          className={`inline-flex items-center font-semibold bg-player-surface-2 text-player-ink-muted ${chip}`}
+        >
+          +{hidden}
+        </li>
       ) : null}
     </ul>
   );
