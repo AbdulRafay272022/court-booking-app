@@ -19,7 +19,7 @@ const SLOT_CLASS: Record<SlotState, string> = {
 /** The phone illustration: static and decorative (a sample venue and sample slots, not real data). */
 function PhoneMock() {
   return (
-    <div aria-hidden="true" className="box-border w-[320px] max-w-full rounded-[40px] border-[6px] border-[#1C3B38] bg-khelo-surface p-3.5 text-khelo-ink shadow-[0_40px_80px_rgba(0,0,0,.45)]">
+    <div aria-hidden="true" className="box-border w-[320px] max-w-full rounded-[40px] border-[6px] border-khelo-frame bg-khelo-surface p-3.5 text-khelo-ink shadow-[0_40px_80px_rgba(0,0,0,.45)]">
       <div className="rounded-[28px] bg-khelo-page px-[18px] pb-[22px] pt-5">
         <div className="flex items-center justify-between">
           <div>
@@ -27,7 +27,7 @@ function PhoneMock() {
             <div className="font-khelo-display text-[22px] font-extrabold">Test Arena One</div>
           </div>
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-khelo-surface">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF6A2B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-khelo-orange)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 21s-7-4.5-9-9.2C1.7 8 4 5 7 5c2 0 3.5 1 5 3 1.5-2 3-3 5-3 3 0 5.300 3 4 6.800-2 4.700-9 9.200-9 9.200z" />
             </svg>
           </div>
@@ -65,11 +65,11 @@ export function Hero() {
   return (
     <section id="top" className="relative overflow-hidden bg-khelo-ink text-white">
       <svg aria-hidden="true" width="1400" height="760" viewBox="0 0 1400 760" fill="none" className="pointer-events-none absolute -right-[260px] -top-10 opacity-[.12]">
-        <rect x="200" y="100" width="1000" height="560" rx="24" stroke="#fff" strokeWidth="3" />
-        <line x1="700" y1="100" x2="700" y2="660" stroke="#fff" strokeWidth="3" />
-        <circle cx="700" cy="380" r="110" stroke="#fff" strokeWidth="3" />
-        <rect x="200" y="260" width="150" height="240" stroke="#fff" strokeWidth="3" />
-        <rect x="1050" y="260" width="150" height="240" stroke="#fff" strokeWidth="3" />
+        <rect x="200" y="100" width="1000" height="560" rx="24" stroke="white" strokeWidth="3" />
+        <line x1="700" y1="100" x2="700" y2="660" stroke="white" strokeWidth="3" />
+        <circle cx="700" cy="380" r="110" stroke="white" strokeWidth="3" />
+        <rect x="200" y="260" width="150" height="240" stroke="white" strokeWidth="3" />
+        <rect x="1050" y="260" width="150" height="240" stroke="white" strokeWidth="3" />
       </svg>
       <Container className="relative flex flex-wrap items-center gap-12 pb-[88px] pt-14">
         <div className="min-w-0 flex-[1_1_440px]">

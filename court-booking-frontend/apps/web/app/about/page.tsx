@@ -41,7 +41,7 @@ export default function AboutPage() {
           </p>
         </div>
         <div className="rounded-[28px] bg-khelo-teal p-7 text-white md:p-9">
-          <div className="text-[13px] font-extrabold uppercase tracking-[1.5px] text-[#BFF3EC]">Hal</div>
+          <div className="text-[13px] font-extrabold uppercase tracking-[1.5px] text-khelo-mint-text">Hal</div>
           <h2 className="mt-3 font-khelo-display text-[30px] font-extrabold leading-[1.1] tracking-[-1px] md:text-[34px]">Ek calendar, ek chat</h2>
           <p className="mt-3.5 leading-[1.7] text-white/90">
             Players live calendar dekh kar chat se book karte hain. Owners ek dashboard se payment approve karte hain aur khali slots ke liye mashwara

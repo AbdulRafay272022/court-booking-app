@@ -158,7 +158,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
     <>
       {/* COMPACT TITLE BAND */}
       <section aria-label="Find a court" className="bg-khelo-ink text-white">
-        <div className="mx-auto flex w-full max-w-[1240px] flex-wrap items-end justify-between gap-4 px-6 pb-[30px] pt-7">
+        <div className="mx-auto flex w-full max-w-[1288px] flex-wrap items-end justify-between gap-4 px-6 pb-[30px] pt-7">
           <div>
             <div className="text-[12px] font-extrabold uppercase tracking-[1.5px] text-khelo-orange">Find a court</div>
             <h1 className="mt-2 font-khelo-display text-[32px] font-extrabold leading-[1.05] tracking-[-1.2px] sm:text-[38px]">{city} mein courts</h1>
@@ -184,7 +184,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
 
       {/* STICKY FILTER BAR */}
       <div className="sticky top-0 z-10 border-b border-khelo-divider bg-khelo-surface shadow-[0_6px_20px_rgba(12,31,29,0.06)]" data-testid="filter-bar" aria-busy={pending}>
-        <div className="mx-auto w-full max-w-[1240px] px-6 py-3.5">
+        <div className="mx-auto w-full max-w-[1288px] px-6 py-3.5">
           <div className="-mx-0.5 flex gap-2.5 overflow-x-auto -my-1 px-0.5 py-1.5 [scrollbar-width:none]" role="group" aria-label="Sport">
             <button type="button" className={`${toggle(!filters.sport)} shrink-0 !px-5 !py-3 !text-[15px] ${!filters.sport ? "!border-khelo-orange !bg-khelo-orange !text-khelo-ink" : ""}`} aria-pressed={!filters.sport} onClick={() => set({ sport: undefined })}>
               All sports
@@ -386,7 +386,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
       </div>
 
       {/* RESULTS */}
-      <div className="mx-auto w-full max-w-[1240px] px-6 pb-[72px] pt-7">
+      <div className="mx-auto w-full max-w-[1288px] px-6 pb-[72px] pt-7">
         <div className="flex flex-wrap items-center justify-between gap-3.5" data-testid="active-filters">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="mr-1 text-[18px] font-extrabold" data-testid="result-count" aria-live="polite">

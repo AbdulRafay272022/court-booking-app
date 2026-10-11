@@ -40,9 +40,9 @@ export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: strin
             <img src={v.photo_urls[0]} alt={v.name} width={560} height={340} loading="lazy" className="h-full w-full object-cover" />
           ) : (
             <svg aria-hidden="true" width="100%" height="170" viewBox="0 0 280 170" fill="none" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 opacity-25">
-              <rect x="30" y="25" width="220" height="120" rx="10" stroke="#fff" strokeWidth="3" />
-              <line x1="140" y1="25" x2="140" y2="145" stroke="#fff" strokeWidth="3" />
-              <circle cx="140" cy="85" r="22" stroke="#fff" strokeWidth="3" />
+              <rect x="30" y="25" width="220" height="120" rx="10" stroke="white" strokeWidth="3" />
+              <line x1="140" y1="25" x2="140" y2="145" stroke="white" strokeWidth="3" />
+              <circle cx="140" cy="85" r="22" stroke="white" strokeWidth="3" />
             </svg>
           )}
           {v.sports.length > 0 ? (
@@ -65,7 +65,7 @@ export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: strin
             ) : null}
           </div>
           {place ? <div className="text-[14px] text-khelo-muted-2">{place}</div> : null}
-          <AmenityBadges amenities={v.amenities} max={2} />
+          <AmenityBadges amenities={v.amenities} max={2} tone="khelo" />
           <div className="mt-auto flex items-center justify-between border-t border-khelo-divider pt-3.5">
             {v.min_price != null ? (
               <div data-testid="from-price">

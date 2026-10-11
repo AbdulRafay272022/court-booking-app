@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/site/button";
 import { Badge, Container, Eyebrow, FaqItem, SectionTitle } from "@/components/site/primitives";
 
-const WRAP = "mx-auto w-full max-w-[1200px] px-6 pb-6 pt-[88px]";
+const WRAP = "mx-auto w-full max-w-[1248px] px-6 pb-6 pt-[88px]";
 
 /* ---------- How it works ---------- */
 
@@ -32,7 +32,7 @@ export function HowItWorks() {
 
 /* ---------- Features ---------- */
 
-function Icon({ children, stroke = "#0E7C74" }: { children: ReactNode; stroke?: string }) {
+function Icon({ children, stroke = "var(--color-khelo-teal)" }: { children: ReactNode; stroke?: string }) {
   return (
     <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
@@ -77,7 +77,7 @@ export function Features() {
         />
         <FeatureCard
           tone="orange"
-          icon={<Icon stroke="#0C1F1D"><path d="M12 21s-7-4.500-9-9.200C1.700 8 4 5 7 5c2 0 3.500 1 5 3 1.500-2 3-3 5-3 3 0 5.300 3 4 6.800-2 4.700-9 9.200-9 9.200z" /></Icon>}
+          icon={<Icon stroke="var(--color-khelo-ink)"><path d="M12 21s-7-4.500-9-9.200C1.700 8 4 5 7 5c2 0 3.500 1 5 3 1.500-2 3-3 5-3 3 0 5.300 3 4 6.800-2 4.700-9 9.200-9 9.200z" /></Icon>}
           title="Favorite venues"
           body="Pasandida courts save karo aur dobara booking ek tap par."
         />
@@ -112,7 +112,7 @@ export function Owners() {
     <section id="owners" aria-labelledby="owners-title" className="mt-[88px] bg-khelo-teal text-white">
       <Container className="flex flex-wrap items-center gap-14 py-[88px]">
         <div className="min-w-0 flex-[1_1_420px]">
-          <div className="text-[13px] font-extrabold uppercase tracking-[1.5px] text-[#BFF3EC]">FOR VENUE OWNERS</div>
+          <div className="text-[13px] font-extrabold uppercase tracking-[1.5px] text-khelo-mint-text">FOR VENUE OWNERS</div>
           <h2 id="owners-title" className="mt-3 font-khelo-display text-[36px] font-extrabold leading-[1.03] tracking-[-1.5px] min-[761px]:text-[52px]">Apna court list karo. Khali slots bharo.</h2>
           <p className="mt-[22px] max-w-[520px] text-[18px] leading-[1.65] text-white/[.88]">
             Ek dashboard mein saari bookings, payments aur revenue. Khelo dekhta hai kaun se slots nahi bik rahe aur discount lagane ka mashwara deta hai.
@@ -121,7 +121,7 @@ export function Owners() {
             {OWNER_POINTS.map((p) => (
               <li key={p} className="flex items-center gap-3">
                 <span aria-hidden="true" className="inline-flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full bg-khelo-orange">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0C1F1D" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-khelo-ink)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10" /></svg>
                 </span>
                 {p}
               </li>
@@ -150,7 +150,7 @@ export function Owners() {
             </div>
             <div aria-hidden="true" className="mt-3.5 flex h-[90px] items-end gap-2 px-1">
               {BARS.map((b, i) => (
-                <div key={i} style={{ height: `${b.h}%` }} className={`flex-1 rounded-lg ${b.on ? "bg-khelo-teal" : "bg-[#CFE9E5]"}`} />
+                <div key={i} style={{ height: `${b.h}%` }} className={`flex-1 rounded-lg ${b.on ? "bg-khelo-teal" : "bg-khelo-chart"}`} />
               ))}
             </div>
             <div className="mt-[18px] rounded-[18px] border-[1.5px] border-khelo-orange bg-khelo-warm-2 p-4">
@@ -179,7 +179,7 @@ const FAQS = [
 
 export function Faq() {
   return (
-    <section id="faq" aria-labelledby="faq-title" className="mx-auto w-full max-w-[860px] px-6 pb-6 pt-[88px]">
+    <section id="faq" aria-labelledby="faq-title" className="mx-auto w-full max-w-[908px] px-6 pb-6 pt-[88px]">
       <Eyebrow>FAQ</Eyebrow>
       <SectionTitle id="faq-title" className="mt-3">Aam sawal</SectionTitle>
       <div className="mt-8 flex flex-col gap-3">
@@ -197,7 +197,7 @@ export function Faq() {
 
 export function FinalCta() {
   return (
-    <section id="cta" aria-labelledby="cta-title" className="mx-auto w-full max-w-[1200px] px-6 py-[88px]">
+    <section id="cta" aria-labelledby="cta-title" className="mx-auto w-full max-w-[1248px] px-6 py-[88px]">
       <div className="rounded-[36px] bg-khelo-orange px-6 py-14 text-center text-khelo-ink min-[761px]:px-10 min-[761px]:py-16">
         <h2 id="cta-title" className="m-0 font-khelo-display text-[38px] font-extrabold leading-none tracking-[-1.5px] min-[761px]:text-[60px] min-[761px]:tracking-[-2px]">Agla match, ek tap door.</h2>
         <p className="mx-auto mt-[18px] max-w-[520px] text-[18px] leading-[1.6] opacity-85">Khelo par account banao aur apne area ka pehla court book karo.</p>

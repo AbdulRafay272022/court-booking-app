@@ -6,21 +6,21 @@ const searchHref = (sport: string) => `/search?sport=${encodeURIComponent(sport)
 
 const ICON_FUTSAL = (
   <svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true">
-    <circle cx="28" cy="28" r="22" stroke="#FF6A2B" strokeWidth="3" />
-    <path d="M28 14l9 7-3.500 11h-11L19 21z" fill="#FF6A2B" />
+    <circle cx="28" cy="28" r="22" stroke="var(--color-khelo-orange)" strokeWidth="3" />
+    <path d="M28 14l9 7-3.500 11h-11L19 21z" fill="var(--color-khelo-orange)" />
   </svg>
 );
 const ICON_PADEL = (
   <svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true">
-    <rect x="10" y="6" width="26" height="30" rx="13" stroke="#0C1F1D" strokeWidth="3" />
-    <path d="M23 36v14" stroke="#0C1F1D" strokeWidth="3" strokeLinecap="round" />
-    <circle cx="44" cy="40" r="6" fill="#0C1F1D" />
+    <rect x="10" y="6" width="26" height="30" rx="13" stroke="var(--color-khelo-ink)" strokeWidth="3" />
+    <path d="M23 36v14" stroke="var(--color-khelo-ink)" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="44" cy="40" r="6" fill="var(--color-khelo-ink)" />
   </svg>
 );
 const ICON_CRICKET = (
   <svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true">
-    <rect x="22" y="6" width="12" height="44" rx="6" stroke="#fff" strokeWidth="3" />
-    <circle cx="44" cy="44" r="5" fill="#fff" />
+    <rect x="22" y="6" width="12" height="44" rx="6" stroke="white" strokeWidth="3" />
+    <circle cx="44" cy="44" r="5" fill="white" />
   </svg>
 );
 
@@ -46,7 +46,7 @@ export function Sports({ sports }: { sports: readonly string[] }) {
   const featured = preferred.length === 3 ? preferred : sports.slice(0, 3);
   const more = sports.filter((s) => !featured.includes(s));
   return (
-    <section id="sports" aria-labelledby="sports-title" className="mx-auto w-full max-w-[1200px] px-6 pb-6 pt-[88px]">
+    <section id="sports" aria-labelledby="sports-title" className="mx-auto w-full max-w-[1248px] px-6 pb-6 pt-[88px]">
       <Eyebrow>CHOOSE YOUR GAME</Eyebrow>
       <SectionTitle id="sports-title" className="mt-3 max-w-[700px]">Ek app, har court</SectionTitle>
       <div className="mt-10 grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-5">

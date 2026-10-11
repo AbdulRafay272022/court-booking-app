@@ -16,7 +16,7 @@ export function FeatureRow({ eyebrow, title, body, reverse = false, children }: 
     </div>
   );
   return (
-    <section className={`mx-auto flex w-full max-w-[1200px] items-center gap-14 px-6 pt-[88px] ${reverse ? "flex-wrap-reverse" : "flex-wrap"}`}>
+    <section className={`mx-auto flex w-full max-w-[1248px] items-center gap-14 px-6 pt-[88px] ${reverse ? "flex-wrap-reverse" : "flex-wrap"}`}>
       {reverse ? (
         <>
           {children}
@@ -118,7 +118,7 @@ const SMALL_FEATURES: { title: string; body: string }[] = [
 
 export function SmallFeatures() {
   return (
-    <section aria-labelledby="more-features" className="mx-auto w-full max-w-[1200px] px-6 pt-24">
+    <section aria-labelledby="more-features" className="mx-auto w-full max-w-[1248px] px-6 pt-24">
       <h2 id="more-features" className="font-khelo-display text-[32px] font-extrabold leading-[1.05] tracking-[-1.3px] md:text-[44px]">
         Aur bhi bohat kuch
       </h2>

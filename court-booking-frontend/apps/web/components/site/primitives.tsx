@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-/** Page width: 1200px content with 24px gutters (the header and the app screens use the 1240 `wide` variant). */
+/** Page width: 1200px of CONTENT plus 24px gutters each side (= 1248 outer, because the design's containers are content-box and Tailwind is
+ *  border-box); the header and the app screens use the 1240-content `wide` variant (1288 outer). */
 export function Container({ children, wide = false, className = "" }: { children: ReactNode; wide?: boolean; className?: string }) {
-  return <div className={`mx-auto w-full px-6 ${wide ? "max-w-[1240px]" : "max-w-[1200px]"} ${className}`}>{children}</div>;
+  return <div className={`mx-auto w-full px-6 ${wide ? "max-w-[1288px]" : "max-w-[1248px]"} ${className}`}>{children}</div>;
 }
 
 const SECTION_TONES = {
@@ -38,7 +39,7 @@ export function Section({
 
 /** The small uppercase label above a heading. Teal on light backgrounds, orange on dark ones. */
 export function Eyebrow({ children, tone = "teal" }: { children: ReactNode; tone?: "teal" | "orange" | "light" }) {
-  const color = tone === "orange" ? "text-khelo-orange" : tone === "light" ? "text-white/80" : "text-khelo-teal";
+  const color = tone === "orange" ? "text-khelo-orange" : tone === "light" ? "text-khelo-mint-text" : "text-khelo-teal";
   return <div className={`text-[13px] font-extrabold uppercase tracking-[1.5px] ${color}`}>{children}</div>;
 }
 
@@ -102,14 +103,14 @@ export function Badge({ children, tone = "mint", className = "" }: { children: R
 /** One FAQ entry: a native <details>, no JS. The plus rotates to an x when open. */
 export function FaqItem({ question, children, defaultOpen = false }: { question: string; children: ReactNode; defaultOpen?: boolean }) {
   return (
-    <details open={defaultOpen} className="rounded-[20px] bg-khelo-surface px-[26px] py-[22px]">
-      <summary className="flex items-center justify-between gap-4 text-[18px] font-extrabold">
+    <details open={defaultOpen} className="rounded-[20px] bg-khelo-surface">
+      <summary className="flex min-h-11 items-center justify-between gap-4 rounded-[20px] px-[26px] py-[22px] text-[18px] font-extrabold">
         {question}
         <span aria-hidden="true" className="khelo-plus text-[28px] leading-none text-khelo-orange-text">
           +
         </span>
       </summary>
-      <div className="mt-3.5 leading-[1.7] text-khelo-muted">{children}</div>
+      <div className="px-[26px] pb-[22px] leading-[1.7] text-khelo-muted">{children}</div>
     </details>
   );
 }

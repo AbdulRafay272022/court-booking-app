@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 function CourtLines() {
   return (
     <svg aria-hidden="true" width="900" height="700" viewBox="0 0 900 700" fill="none" className="pointer-events-none absolute -bottom-[120px] -right-[300px] opacity-10">
-      <rect x="40" y="60" width="800" height="560" rx="24" stroke="#fff" strokeWidth="3" />
-      <line x1="440" y1="60" x2="440" y2="620" stroke="#fff" strokeWidth="3" />
-      <circle cx="440" cy="340" r="100" stroke="#fff" strokeWidth="3" />
+      <rect x="40" y="60" width="800" height="560" rx="24" stroke="white" strokeWidth="3" />
+      <line x1="440" y1="60" x2="440" y2="620" stroke="white" strokeWidth="3" />
+      <circle cx="440" cy="340" r="100" stroke="white" strokeWidth="3" />
     </svg>
   );
 }

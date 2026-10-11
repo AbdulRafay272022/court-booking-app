@@ -7,7 +7,9 @@ const figtree = Figtree({ variable: "--font-figtree-x", subsets: ["latin"], weig
 const plexSans = IBM_Plex_Sans({ variable: "--font-plex-x", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 const plexMono = IBM_Plex_Mono({ variable: "--font-mono-x", subsets: ["latin"], weight: ["400", "500", "600"] });
 // Khelo website + app screens (display = headlines, body = text). Self-hosted by next/font at build time.
-const kheloDisplay = Bricolage_Grotesque({ variable: "--font-khelo-display-x", subsets: ["latin"], weight: ["600", "800"] });
+// The design loads Bricolage Grotesque with its optical-size axis (glyphs tighten at large sizes), so load the variable font with `opsz`
+// (weights 200-800 come with it); a static 600/800 instance has the default optical size and sets visibly wider.
+const kheloDisplay = Bricolage_Grotesque({ variable: "--font-khelo-display-x", subsets: ["latin"], axes: ["opsz"] });
 const kheloBody = Plus_Jakarta_Sans({ variable: "--font-khelo-body-x", subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] });
 
 export const metadata: Metadata = {

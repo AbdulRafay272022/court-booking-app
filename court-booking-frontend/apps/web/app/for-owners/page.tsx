@@ -19,7 +19,9 @@ export const metadata: Metadata = {
 };
 
 export default function ForOwnersPage() {
-  const { ownerPricingText } = getSiteConfig();
+  const { ownerPricingText, supportWhatsapp, supportEmail } = getSiteConfig();
+  // /contact has nothing to offer until a WhatsApp number or email is configured, so the button is hidden until then.
+  const canContact = Boolean(supportWhatsapp || supportEmail);
 
   return (
     <KheloPage>
@@ -50,14 +52,16 @@ export default function ForOwnersPage() {
         <PricingBlock
           text={ownerPricingText}
           action={
-            <Button href="/contact" variant="dark" size="lg">
-              Pricing poochein
-            </Button>
+            canContact ? (
+              <Button href="/contact" variant="dark" size="lg">
+                Pricing poochein
+              </Button>
+            ) : null
           }
         />
       ) : null}
 
-      <section id="faq" aria-labelledby="owners-faq" className="mx-auto w-full max-w-[860px] px-6 pt-24">
+      <section id="faq" aria-labelledby="owners-faq" className="mx-auto w-full max-w-[908px] px-6 pt-24">
         <h2 id="owners-faq" className="font-khelo-display text-[32px] font-extrabold leading-[1.05] tracking-[-1.3px] md:text-[44px]">
           Owners ke sawal
         </h2>
@@ -72,7 +76,7 @@ export default function ForOwnersPage() {
         </div>
       </section>
 
-      <section aria-labelledby="owners-cta" className="mx-auto w-full max-w-[1200px] px-6 py-24">
+      <section aria-labelledby="owners-cta" className="mx-auto w-full max-w-[1248px] px-6 py-24">
         <div className="rounded-[36px] bg-khelo-ink px-6 py-14 text-center text-white md:px-10">
           <h2 id="owners-cta" className="font-khelo-display text-[36px] font-extrabold leading-none tracking-[-1.5px] md:text-[52px] md:tracking-[-1.8px]">
             Khali slots ko kamayi mein badlo.

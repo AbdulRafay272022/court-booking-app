@@ -31,6 +31,6 @@ export const BLOG_POSTS: readonly BlogPost[] = [
   { slug: "padel-racket-chunna", tag: "PADEL", title: "Padel racket kaise chunein", bandClass: "bg-khelo-teal", comingSoon: true },
   { slug: "team-slot-booking-tips", tag: "TIPS", title: "Apni team ke liye slot book karne ke 5 asaan tareeqe", bandClass: "bg-khelo-warning", comingSoon: true },
   { slug: "khali-slots-discount", tag: "OWNERS", title: "Khali slots ko kaise bharein: discount ki sahi strategy", bandClass: "bg-khelo-orange", comingSoon: true },
-  { slug: "online-payment-proof", tag: "GUIDE", title: "Online payment aur screenshot proof: kaise kaam karta hai", bandClass: "bg-[#6C8CFF]", comingSoon: true },
+  { slug: "online-payment-proof", tag: "GUIDE", title: "Online payment aur screenshot proof: kaise kaam karta hai", bandClass: "bg-khelo-blog-blue", comingSoon: true },
   { slug: "weekend-match-formula", tag: "COMMUNITY", title: "Weekend match organize karne ka asaan formula", bandClass: "bg-khelo-success", comingSoon: true },
 ];

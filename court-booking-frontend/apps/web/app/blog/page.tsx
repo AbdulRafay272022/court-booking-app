@@ -19,9 +19,9 @@ function FeaturedBody() {
     <>
       <div aria-hidden="true" className={`flex min-h-[300px] min-w-0 flex-[1_1_380px] items-center justify-center ${post.bandClass}`}>
         <svg width="200" height="200" viewBox="0 0 200 200" fill="none" aria-hidden="true">
-          <rect x="20" y="40" width="160" height="120" rx="12" stroke="#0C1F1D" strokeWidth="6" />
-          <path d="M100 40v120" stroke="#0C1F1D" strokeWidth="6" />
-          <circle cx="100" cy="100" r="26" stroke="#0C1F1D" strokeWidth="6" />
+          <rect x="20" y="40" width="160" height="120" rx="12" stroke="var(--color-khelo-ink)" strokeWidth="6" />
+          <path d="M100 40v120" stroke="var(--color-khelo-ink)" strokeWidth="6" />
+          <circle cx="100" cy="100" r="26" stroke="var(--color-khelo-ink)" strokeWidth="6" />
         </svg>
       </div>
       <div className="min-w-0 flex-[1_1_380px] p-7 md:p-11">

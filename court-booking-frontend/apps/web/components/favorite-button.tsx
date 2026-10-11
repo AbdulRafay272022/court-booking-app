@@ -90,9 +90,9 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
       aria-label={label}
       data-testid="favorite-button"
       title={failed ? "Couldn't update your saved venues. Try again." : undefined}
-      className={`flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-sm transition hover:scale-110 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent ${tone} ${busy ? "opacity-70" : ""}`}
+      className={`flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-sm transition hover:scale-110 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent ${tone} ${busy ? "opacity-70" : ""}`}
     >
-      <Heart filled={saved} />
+      <Heart filled={saved} size={20} />
     </button>
   );
 }

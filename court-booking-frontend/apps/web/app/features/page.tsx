@@ -56,7 +56,7 @@ export default function FeaturesPage() {
 
       <SmallFeatures />
 
-      <section aria-labelledby="features-cta" className="mx-auto w-full max-w-[1200px] px-6 py-24">
+      <section aria-labelledby="features-cta" className="mx-auto w-full max-w-[1248px] px-6 py-24">
         <div className="rounded-[36px] bg-khelo-orange px-6 py-14 text-center md:px-10">
           <h2 id="features-cta" className="font-khelo-display text-[36px] font-extrabold leading-none tracking-[-1.5px] text-khelo-ink md:text-[52px] md:tracking-[-1.8px]">
             Khud try karke dekho.

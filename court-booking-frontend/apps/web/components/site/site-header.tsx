@@ -43,8 +43,9 @@ function HamburgerIcon({ open }: { open: boolean }) {
  * The Khelo site header (dark), identical on every public page and the app screens: logo, the five section links, then
  * the account actions. `wide` is the 1240px / 16px-padding variant the design uses on Login, Signup and Search; the
  * marketing pages use 1200px / 20px. The current page's link is orange. Signed-in visitors see their own entry
- * (dashboard + account + log out) instead of Log in / Sign up. Below 760px the section links and the two secondary
- * buttons move into a menu panel opened by a 44px hamburger.
+ * (dashboard + account + log out) instead of Log in / Sign up. Below 1120px the section links and the two secondary buttons move into a
+ * menu panel opened by a 44px hamburger. (The design's only breakpoint is 760px, but the full header needs about 1100px, so between
+ * 761 and 1100 it wrapped onto two rows; collapsing earlier keeps one clean row at every width.)
  */
 export function SiteHeader({ wide = false }: { wide?: boolean }) {
   const router = useRouter();
@@ -100,12 +101,12 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
 
   return (
     <header className="khelo relative border-b border-white/10 bg-khelo-ink font-[family-name:var(--font-khelo-body-x)] text-white">
-      <div className={`mx-auto flex w-full flex-wrap items-center justify-between gap-4 px-6 ${wide ? "max-w-[1240px] py-4" : "max-w-[1200px] py-5"}`}>
+      <div className={`mx-auto flex w-full flex-wrap items-center justify-between gap-4 px-6 max-[1120px]:flex-nowrap ${wide ? "max-w-[1288px] py-4" : "max-w-[1248px] py-5"}`}>
         <Link href="/" aria-label="Khelo home">
           <Logo size={34} onDark />
         </Link>
 
-        <nav aria-label="Main" className="flex flex-wrap gap-7 text-[15px] font-semibold max-[760px]:hidden">
+        <nav aria-label="Main" className="flex flex-wrap gap-7 text-[15px] font-semibold max-[1120px]:hidden">
           {NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} aria-current={isCurrent(l.href) ? "page" : undefined} className={`khelo-navlink ${linkTone(l.href)}`}>
               {l.label}
@@ -118,18 +119,18 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
             <span className="inline-block h-11 w-24" aria-hidden="true" />
           ) : signedIn ? (
             <>
-              <Link href={dashboardHref} className={`khelo-navlink inline-flex min-h-11 items-center px-3.5 text-[14px] font-bold max-[760px]:hidden ${linkTone(dashboardHref)}`}>
+              <Link href={dashboardHref} className={`khelo-navlink inline-flex min-h-11 items-center px-3.5 text-[14px] font-bold max-[1120px]:hidden ${linkTone(dashboardHref)}`}>
                 {dashboardLabel}
               </Link>
               <Link
                 href="/account"
                 aria-label="Your account"
                 title="Your account"
-                className="khelo-btn flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-[15px] font-extrabold text-white max-[760px]:hidden"
+                className="khelo-btn flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-[15px] font-extrabold text-white max-[1120px]:hidden"
               >
                 {initial}
               </Link>
-              <button type="button" onClick={() => logout(router)} className={`${OUTLINE_PILL} cursor-pointer max-[760px]:hidden`}>
+              <button type="button" onClick={() => logout(router)} className={`${OUTLINE_PILL} cursor-pointer max-[1120px]:hidden`}>
                 Log out
               </button>
             </>
@@ -138,17 +139,21 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
               <Link href="/login" aria-current={isCurrent("/login") ? "page" : undefined} className={`khelo-navlink inline-flex min-h-11 items-center px-3.5 text-[14px] font-bold max-[460px]:hidden ${linkTone("/login")}`}>
                 Log in
               </Link>
-              <Link href="/signup" className={`${OUTLINE_PILL} max-[760px]:hidden`}>
+              <Link
+                href="/signup"
+                aria-current={isCurrent("/signup") ? "page" : undefined}
+                className={`${PILL} border-[1.5px] max-[1120px]:hidden ${isCurrent("/signup") ? "border-khelo-orange text-khelo-orange" : "border-white/35 text-white"}`}
+              >
                 Sign up
               </Link>
             </>
           )}
           {!(signedIn && user?.role === "owner") ? (
-            <Link href="/for-owners" className={`${OUTLINE_PILL} max-[760px]:hidden`}>
+            <Link href="/for-owners" className={`${OUTLINE_PILL} max-[1120px]:hidden`}>
               List your venue
             </Link>
           ) : null}
-          <Link href="/search" className={`${PILL} bg-khelo-orange font-extrabold text-khelo-ink`}>
+          <Link href="/search" className={`${PILL} bg-khelo-orange font-extrabold text-khelo-ink max-[420px]:px-3.5 max-[420px]:text-[13px] max-[350px]:hidden`}>
             Start playing
           </Link>
           <button
@@ -158,7 +163,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
             aria-expanded={open}
             aria-controls={panelId}
             onClick={() => setOpenFor(open ? null : pathname)}
-            className="hidden h-11 w-11 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-white/35 text-white max-[760px]:inline-flex"
+            className="hidden h-11 w-11 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-white/35 text-white max-[1120px]:inline-flex"
           >
             <HamburgerIcon open={open} />
           </button>

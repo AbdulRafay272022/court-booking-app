@@ -52,7 +52,7 @@ function Heading({ id, children, className = "" }: { id: string; children: React
 
 export function Benefits() {
   return (
-    <section aria-labelledby="why-khelo" className="mx-auto w-full max-w-[1200px] px-6 pt-[88px]">
+    <section aria-labelledby="why-khelo" className="mx-auto w-full max-w-[1248px] px-6 pt-[88px]">
       <Eyebrow>Why Khelo</Eyebrow>
       <Heading id="why-khelo" className="max-w-[760px]">
         Zyada bookings, kam dardsari
@@ -78,7 +78,7 @@ const STEPS: { title: string; body: string }[] = [
 
 export function Steps() {
   return (
-    <section id="how" aria-labelledby="get-started" className="mx-auto w-full max-w-[1200px] px-6 pt-24">
+    <section id="how" aria-labelledby="get-started" className="mx-auto w-full max-w-[1248px] px-6 pt-24">
       <Eyebrow>Get started</Eyebrow>
       <Heading id="get-started">Live hone ke 4 qadam</Heading>
       <ol className="m-0 mt-9 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,230px),1fr))] gap-5 p-0">
@@ -105,8 +105,8 @@ export function Steps() {
 /** Pricing block. The caller renders this ONLY when NEXT_PUBLIC_OWNER_PRICING_TEXT is set; `text` is that value. */
 export function PricingBlock({ text, action }: { text: string; action: ReactNode }) {
   return (
-    <section aria-labelledby="pricing" className="mx-auto w-full max-w-[1200px] px-6 pt-24">
-      <div className="flex flex-wrap items-center justify-between gap-8 rounded-[32px] border-2 border-dashed border-khelo-border bg-white p-6 md:p-11">
+    <section aria-labelledby="pricing" className="mx-auto w-full max-w-[1248px] px-6 pt-24">
+      <div className="flex flex-wrap items-center justify-between gap-8 rounded-[32px] border-2 border-dashed border-khelo-dash bg-white p-6 md:p-11">
         <div className="min-w-0 flex-[1_1_360px]">
           <Eyebrow>Pricing</Eyebrow>
           <h2 id="pricing" className="mt-2.5 font-khelo-display text-[28px] font-extrabold leading-[1.1] tracking-[-1px] md:text-[38px] md:leading-[1.05]">

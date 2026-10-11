@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Khelo website smoke runner (plain Node + Playwright, no test framework).
  * Usage: BASE_URL=http://localhost:3000 node e2e/smoke.cjs      (see e2e/README.md)

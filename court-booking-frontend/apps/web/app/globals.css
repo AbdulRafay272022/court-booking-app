@@ -88,6 +88,11 @@
   --color-khelo-booked-bg: #dde3e1;
   --color-khelo-booked-text: #8a9996;
   --color-khelo-whatsapp: #25d366;
+  --color-khelo-frame: #1c3b38; /* phone mockup frame */
+  --color-khelo-chart: #cfe9e5; /* inactive chart bars */
+  --color-khelo-mint-text: #bff3ec; /* light-mint label text on dark/teal */
+  --color-khelo-dash: #b9c6c3; /* dashed outlines */
+  --color-khelo-blog-blue: #6c8cff; /* one blog card band */
 
   --font-khelo-display: var(--font-khelo-display-x);
   --font-khelo-body: var(--font-khelo-body-x);
