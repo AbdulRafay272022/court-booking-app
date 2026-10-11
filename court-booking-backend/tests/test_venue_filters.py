@@ -247,7 +247,7 @@ async def test_sort_distance_needs_coordinates_and_bad_sort_rejected(client):
     resp = await client.get(URL, params={"sort": "distance"})
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
-    resp = await client.get(URL, params={"sort": "rating"})
+    resp = await client.get(URL, params={"sort": "bogus"})
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
 

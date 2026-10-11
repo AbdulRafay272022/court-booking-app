@@ -56,4 +56,4 @@ class FavoriteService:
             .all()
         )
         venue_service = VenueService(self.db, self.settings)
-        return [await venue_service.to_list_item(v) for v in venues]
+        return await venue_service.to_list_items([(v, None) for v in venues])
