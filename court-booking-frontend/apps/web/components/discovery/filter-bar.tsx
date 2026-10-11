@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AMENITY_OPTIONS, SPORT_OPTIONS, addDays, amenityLabel, formatDuration, formatTime24As12, pktDateString } from "@court-booking/types";
+import { AMENITY_OPTIONS, SPORT_OPTIONS, amenityLabel, formatDuration, formatTime24As12, pktDayTabs } from "@court-booking/types";
 import { formatDayHeader } from "@/lib/format";
 import { activeFilterCount, filtersToParams, parseFilters, type DiscoveryFilters } from "@/lib/discovery-filters";
 
@@ -41,8 +41,9 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
   const [maxText, setMaxText] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
 
-  const today = pktDateString();
-  const lastDay = addDays(today, HORIZON_DAYS - 1);
+  // The date picker is a plain list (Today, Tomorrow, Wed 14 Oct...): a native date box prints the device's own format
+  // ("dd/mm/yyyy"), which this app avoids everywhere. Pakistan calendar days, same as the venue page's day tabs.
+  const dayOptions = pktDayTabs(HORIZON_DAYS);
 
   function apply(next: DiscoveryFilters) {
     const qs = filtersToParams(next, city).toString();
@@ -229,20 +230,25 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
       <div className="flex flex-col gap-2.5">
         <span className={label}>Available on</span>
         <div className="flex gap-3 flex-wrap items-center">
-          <input
-            type="date"
+          <select
             aria-label="Date"
             className={control}
-            min={today}
-            max={lastDay}
             value={filters.date ?? ""}
             onChange={(e) => {
               const v = e.target.value;
               if (!v) return set({ date: undefined, startTime: undefined, durationMinutes: undefined });
-              if (v < today || v > lastDay) return; // typed out of range: ignore, the picker's own min/max guide the rest
               set({ date: v });
             }}
-          />
+          >
+            <option value="">Any date</option>
+            {filters.date && !dayOptions.some((d) => d.date === filters.date) ? <option value={filters.date}>{formatDayHeader(filters.date)}</option> : null}
+            {dayOptions.map((d, i) => (
+              <option key={d.date} value={d.date}>
+                {i === 0 ? "Today" : i === 1 ? "Tomorrow" : formatDayHeader(d.date)}
+                {i < 2 ? ` · ${formatDayHeader(d.date)}` : ""}
+              </option>
+            ))}
+          </select>
           <select
             aria-label="Start time"
             className={control}

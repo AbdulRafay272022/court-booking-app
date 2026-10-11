@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 export function PhotoGallery({
   photos,
   alt,
-  fallback = "linear-gradient(135deg,#12657A,#0A3E4A)",
+  fallback = "linear-gradient(135deg,#F2784F,#C8431C)",
   aspectClass = "aspect-[4/3] md:aspect-[16/9]",
   thumbSize = 72,
   className = "",

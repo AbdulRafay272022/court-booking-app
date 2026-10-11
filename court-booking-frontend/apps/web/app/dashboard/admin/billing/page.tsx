@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { BillingSummary, OwnerBillingState } from "@court-booking/types";
+import { formatMonth } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -17,9 +18,9 @@ const STATE_STYLE: Record<OwnerBillingState, { label: string; bg: string; fg: st
   none: { label: "No features", bg: "#E7ECEE", fg: "#5B7079" },
 };
 
+/** "2026-10" -> "Oct 26" (fixed month names: never the device's locale). */
 function monthLabel(m: string) {
-  const [y, mo] = m.split("-").map(Number);
-  return new Date(Date.UTC(y, mo - 1, 1)).toLocaleDateString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
+  return `${formatMonth(m).slice(0, 3)} ${m.slice(2, 4)}`;
 }
 
 export default function PremiumRevenuePage() {
