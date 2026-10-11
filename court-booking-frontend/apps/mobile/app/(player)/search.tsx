@@ -62,8 +62,8 @@ export default function SearchScreen() {
           <Pressable
             onPress={() => setSheetOpen(true)}
             accessibilityLabel="Open filters"
-            className="h-11 px-4 rounded-full flex-row items-center gap-1.5"
-            style={({ pressed }) => ({ backgroundColor: nonSportChips.length > 0 ? "#EF5A2C" : "#F4EFEC", opacity: pressed ? 0.85 : 1 })}
+            className="h-11 px-4 rounded-full flex-row items-center gap-1.5 active:opacity-80"
+            style={{ backgroundColor: nonSportChips.length > 0 ? "#EF5A2C" : "#F4EFEC" }}
           >
             <Text className="font-figtree-bold text-[13px]" style={{ color: nonSportChips.length > 0 ? "#FFFFFF" : "#5C544D" }}>
               Filters{nonSportChips.length > 0 ? ` (${nonSportChips.length})` : ""}
