@@ -339,6 +339,28 @@ class VenueService:
         ).one()
         return (round(float(avg), 2) if avg is not None else None, int(count or 0))
 
+    async def to_list_item(self, venue: Venue, *, distance: float | None = None, sport: str | None = None):
+        """The search-card shape (VenueListItemOut) for one venue -- shared by GET /venues and a player's favorites so the two
+        can never drift. Needs `venue.courts[*].pricing_rules` loaded (for min_price)."""
+        from app.schemas.venue import VenueListItemOut
+
+        avg, count = await self.rating_summary(venue.id)
+        return VenueListItemOut(
+            id=venue.id,
+            name=venue.name,
+            slug=venue.slug,
+            city=venue.city,
+            area=venue.area,
+            sports=venue.sports,
+            amenities=venue.amenities or [],
+            photo_urls=VenueService.photo_urls(venue),
+            status=venue.status,
+            average_rating=avg,
+            review_count=count,
+            distance_meters=distance,
+            min_price=VenueService.min_price(venue, sport),
+        )
+
     async def average_rating(self, venue_id: uuid.UUID) -> float | None:
         avg, _count = await self.rating_summary(venue_id)
         return avg

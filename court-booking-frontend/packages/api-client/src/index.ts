@@ -12,11 +12,13 @@ import { createPaymentsApi } from "./payments";
 import { createPremiumApi } from "./premium";
 import { createReviewsApi } from "./reviews";
 import { createUsersApi } from "./users";
+import { createFavoritesApi } from "./favorites";
 import { createVenuesApi } from "./venues";
 import { createWaitlistApi } from "./waitlist";
 
 export * from "./client";
 export * from "./auth";
+export * from "./favorites";
 export * from "./venues";
 export * from "./courts";
 export * from "./availability";
@@ -40,6 +42,7 @@ export function createCourtBookingApi(config: ApiClientConfig) {
     client,
     auth: createAuthApi(client),
     venues: createVenuesApi(client),
+    favorites: createFavoritesApi(client),
     courts: createCourtsApi(client),
     availability: createAvailabilityApi(client),
     bookings: createBookingsApi(client),

@@ -25,7 +25,6 @@ from app.schemas.venue import (
     VenueAreasOut,
     VenueCreateIn,
     VenueDetailResponse,
-    VenueListItemOut,
     VenueListResponse,
     VenueOut,
     VenuePublicOut,
@@ -126,26 +125,7 @@ async def list_venues(
         duration_minutes=duration_minutes,
         sort=sort,
     )
-    venues = []
-    for venue, distance in rows:
-        avg, count = await service.rating_summary(venue.id)
-        venues.append(
-            VenueListItemOut(
-                id=venue.id,
-                name=venue.name,
-                slug=venue.slug,
-                city=venue.city,
-                area=venue.area,
-                sports=venue.sports,
-                amenities=venue.amenities or [],
-                photo_urls=VenueService.photo_urls(venue),
-                status=venue.status,
-                average_rating=avg,
-                review_count=count,
-                distance_meters=distance,
-                min_price=VenueService.min_price(venue, sport),
-            )
-        )
+    venues = [await service.to_list_item(venue, distance=distance, sport=sport) for venue, distance in rows]
     return VenueListResponse(venues=venues, total=total, page=page)
 
 

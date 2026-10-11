@@ -1011,6 +1011,16 @@ summary, in the order the rounds fixed each concern:
   2. **Real native device / emulator testing** (WhatsApp deep-link, push notifications) -- still not done;
      Expo web can't exercise these. Same standing limit as every other native feature in this project.
 
+## Favorites, web (2026-10-11, branch `favorites-step-1`, needs backend migration `c4f1a9e2d7b3` live first; mobile NOT done yet)
+
+`api.favorites.{list,add,remove}` (`packages/api-client/src/favorites.ts`, list returns `VenueSummary[]`). Web: `lib/use-favorites.ts` is the ONE shared query
+(key `["favorites"]`, enabled only for a signed-in PLAYER) that every heart and the dashboard strip read, so they always agree; `components/favorite-button.tsx`
+(`card` = round heart in a photo corner, `pill` = labelled "Save/Saved" on the venue page; flips at once, flips back with a message if the call fails; signed
+out -> `/login?next=<page + query>`; owners/admins render nothing). The heart is a SIBLING of the card's link (a button inside an anchor is invalid HTML), so
+`VenueCard` is now a wrapper div carrying `data-testid="venue-card"`. `components/bookings/saved-venues.tsx` is the dashboard strip (between the next-up card and
+the tabs). Verified on a production build against a scratch Postgres (Playwright): save/unsave persists across reload and matches the DB rows, venue pill,
+strip un-save, failed-save rollback, signed-out redirect, owners see no hearts. On mobile the same endpoints are ready; hearts + a strip are still to build.
+
 ## Mobile player UI pass (2026-10-11, branches `mobile-ui-step-2..6`, not merged/EAS-built at time of writing)
 
 Mobile equivalents of the web player UI pass (web is live; see the web `Player UI` commits `407d312..cc762fa`). Step 1 (cursors) has no
