@@ -20,7 +20,7 @@ export default function VenueSetupLayout({ children }: { children: React.ReactNo
   return (
     <div className="min-h-screen bg-owner-bg text-owner-ink font-[family-name:var(--font-plex-x)]">
       <header className="flex items-center justify-between gap-4 px-5 sm:px-8 py-4 bg-owner-surface border-b border-owner-border">
-        <Link href="/" aria-label="Maidan home">
+        <Link href="/" aria-label="Khelo home">
           <Logo tone="owner" size={36} />
         </Link>
         <div className="flex items-center gap-3">

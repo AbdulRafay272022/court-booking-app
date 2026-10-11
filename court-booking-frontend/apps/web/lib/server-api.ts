@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "./config";
-import type { Venue, VenueListResponse, VenueAvailability } from "@court-booking/types";
+import type { PublicStats, Venue, VenueListResponse, VenueAvailability } from "@court-booking/types";
 import type { ListVenuesParams } from "@court-booking/api-client";
 
 /** For Server Components rendering PUBLIC data only (no auth) -- deliberately
@@ -21,6 +21,8 @@ export const serverApi = {
     // An availability search (date/time) must reflect bookings made moments ago, so it skips the 30s cache.
     return publicFetch<VenueListResponse>(`/venues?${usp.toString()}`, params.date ? 0 : 30);
   },
+  /** Platform counts for the home page stats strip; the backend caches 5 minutes, so does this fetch. */
+  publicStats: () => publicFetch<PublicStats>("/public/stats", 300),
   areas: () => publicFetch<{ areas: string[] }>("/venues/areas", 60),
   getVenueBySlug: (slug: string) => publicFetch<Venue>(`/venues/by-slug/${slug}`, 15),
   getVenueAvailability: (venueId: string, date: string) =>

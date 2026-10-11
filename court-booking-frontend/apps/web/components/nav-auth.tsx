@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { homeForRole } from "@/lib/use-auth-helpers";
-import { Logo } from "@/components/auth/logo";
 
 /** The right-hand side of every public page's header. Reflects the REAL session: signed-out
  * visitors see Log in / Sign up; signed-in users see who they are, a way to their own space,
@@ -59,19 +58,5 @@ export function NavAuth() {
   );
 }
 
-/** A slim header for the public pages that don't have their own (search, venue, bookings). */
-export function SiteHeader() {
-  return (
-    <header className="flex items-center gap-6 px-6 md:px-14 py-4 bg-player-surface border-b border-player-border-light">
-      <Link href="/" aria-label="Maidan home">
-        <Logo size={38} />
-      </Link>
-      <nav className="hidden md:flex gap-6 flex-1 text-[14.5px] font-semibold text-player-ink-muted">
-        <Link href="/search">Find a court</Link>
-        <Link href="/signup?role=owner">For venues</Link>
-      </nav>
-      <div className="flex-1 md:flex-none" />
-      <NavAuth />
-    </header>
-  );
-}
+/** The header for every public page (search, venue, bookings, terms, privacy ...) is the Khelo header. */
+export { SiteHeader } from "@/components/site/site-header";

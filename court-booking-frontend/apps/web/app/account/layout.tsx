@@ -19,12 +19,12 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
 
   if (!ready || !user) return <div className="min-h-screen" style={{ background: t.bg }} />;
 
-  const back = user.role === "player" ? { href: "/", label: "← Back to Maidan" } : { href: homeForRole(user.role), label: "← Back to dashboard" };
+  const back = user.role === "player" ? { href: "/", label: "← Back to Khelo" } : { href: homeForRole(user.role), label: "← Back to dashboard" };
 
   return (
     <div className={`min-h-screen ${t.fontClass}`} style={{ background: t.bg, color: t.ink }}>
       <header className="flex items-center justify-between gap-4 px-5 sm:px-8 py-4" style={{ background: t.surface, borderBottom: `1px solid ${t.border}` }}>
-        <Link href="/" aria-label="Maidan home">
+        <Link href="/" aria-label="Khelo home">
           <Logo tone={tone} size={34} />
         </Link>
         <div className="flex items-center gap-3">

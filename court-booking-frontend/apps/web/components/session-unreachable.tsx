@@ -11,7 +11,7 @@ export function SessionUnreachable({ onRetry }: { onRetry: () => void }) {
     <main className="min-h-screen flex flex-col items-center justify-center gap-6 px-6 text-center">
       <Logo size={56} />
       <div className="flex flex-col gap-2 max-w-sm">
-        <h1 className="text-xl font-extrabold tracking-tight">Can&apos;t reach Maidan right now</h1>
+        <h1 className="text-xl font-extrabold tracking-tight">Can&apos;t reach Khelo right now</h1>
         <p className="text-player-ink-muted text-[15px] leading-relaxed">
           You&apos;re still signed in. Check your connection and we&apos;ll pick up where you left off.
         </p>

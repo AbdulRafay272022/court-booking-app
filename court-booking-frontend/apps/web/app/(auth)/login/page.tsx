@@ -95,7 +95,7 @@ function LoginForm() {
       subtitle="Log in with your mobile number and password."
       footer={
         <>
-          New to Maidan?{" "}
+          New to Khelo?{" "}
           <Link href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} className="font-bold underline" style={{ color: t.accent }}>
             Create an account
           </Link>

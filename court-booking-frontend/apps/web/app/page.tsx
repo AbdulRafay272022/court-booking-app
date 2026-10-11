@@ -6,13 +6,13 @@ import { Logo } from "@/components/auth/logo";
 export const metadata: Metadata = {
   title: "Padel & Futsal Court Booking in Karachi",
   description:
-    "Maidan is a free operations tool for court venues and a real-time booking marketplace for players in DHA and Clifton, Karachi.",
+    "Khelo is a free operations tool for court venues and a real-time booking marketplace for players in DHA and Clifton, Karachi.",
 };
 
 function NavBar() {
   return (
     <header className="flex items-center gap-8 px-6 md:px-14 py-5 bg-player-surface border-b border-player-border-light">
-      <Link href="/" aria-label="Maidan home">
+      <Link href="/" aria-label="Khelo home">
         <Logo size={40} />
       </Link>
       <nav className="hidden md:flex gap-7 flex-1 text-[14.5px] font-semibold text-player-ink-muted">

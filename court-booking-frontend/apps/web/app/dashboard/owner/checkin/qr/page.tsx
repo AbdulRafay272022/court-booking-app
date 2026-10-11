@@ -33,7 +33,7 @@ export default function OwnerCheckinQrPage() {
           <div className="text-center gap-1.5 flex flex-col">
             <p className="font-bold text-[19px]">{activeVenue?.name}</p>
             <p className="text-owner-ink-faint text-[13px] max-w-sm print:hidden">
-              Print or display this at your entrance. Players open Maidan, tap &quot;Scan to check
+              Print or display this at your entrance. Players open Khelo, tap &quot;Scan to check
               in&quot; on their booking, and scan this code -- no owner action needed.
             </p>
           </div>
