@@ -243,7 +243,7 @@ export default function VenueRegisterScreen() {
         <SectionCard>
           <SectionLabel>Where players send payment</SectionLabel>
           <Text className="font-plex-medium text-owner-ink-faint text-[12.5px] leading-[18px]">
-            Players pay you directly. Maidan never holds your money — we only check that the
+            Players pay you directly. Khelo never holds your money — we only check that the
             screenshot matches what's owed. You can add this later if you'd rather skip it for now.
           </Text>
           <TextField

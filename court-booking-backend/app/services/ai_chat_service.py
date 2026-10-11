@@ -784,14 +784,14 @@ class AIChatService:
             keep.append(action)
         if dropped:
             keep = [a for a in keep if a.type != "decline"]
-            text = (text + "\n" if text else "") + "This venue takes bookings in the Maidan app, so please book it there."
+            text = (text + "\n" if text else "") + "This venue takes bookings in the Khelo app, so please book it there."
         return text, keep
 
     async def _execute_tool(self, user: User, name: str, tool_input: dict, actions: list[ChatAction]) -> dict:
         if name in ("propose_booking_confirmation", "hold_slot") and not await self._ai_booking_allowed(tool_input.get("court_id")):
             return {
                 "error": "The assistant is not set up to take bookings for this venue. Do NOT propose or hold a slot here. "
-                "Tell the player kindly that this venue takes bookings in the Maidan app or website, and that you can still "
+                "Tell the player kindly that this venue takes bookings in the Khelo app or website, and that you can still "
                 "share its courts, available times and prices.",
                 "status_code": 403,
             }

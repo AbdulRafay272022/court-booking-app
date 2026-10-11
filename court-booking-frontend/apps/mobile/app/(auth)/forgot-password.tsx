@@ -50,7 +50,7 @@ export default function ForgotPasswordScreen() {
       title={setMode ? "Set your password" : "Reset your password"}
       subtitle={
         setMode
-          ? "Maidan accounts now use a password. Confirm your number on WhatsApp, then choose one."
+          ? "Khelo accounts now use a password. Confirm your number on WhatsApp, then choose one."
           : "Enter your mobile number and we'll send a code on WhatsApp."
       }
       footer={
