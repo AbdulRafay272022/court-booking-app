@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { VenueSummary } from "@court-booking/types";
 import { AmenityBadges } from "@/components/amenity-badges";
+import { FavoriteButton } from "@/components/favorite-button";
 import { formatDistance, formatPKR } from "@/lib/format";
 
 function PinIcon() {
@@ -16,10 +17,14 @@ function PinIcon() {
 export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: string }) {
   const place = [v.area ?? v.city, formatDistance(v.distance_meters)].filter(Boolean).join(" · ");
   return (
+    // The heart is a sibling of the link, not inside it (a button inside an anchor is invalid HTML and would open the venue).
+    <div
+      data-testid="venue-card"
+      className="group relative rounded-2xl shadow-[0_1px_2px_rgba(20,26,29,0.04)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-10px_rgba(20,26,29,0.22)]"
+    >
     <Link
       href={href}
-      data-testid="venue-card"
-      className="group flex flex-col bg-player-surface border border-player-border-light rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(20,26,29,0.04)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-10px_rgba(20,26,29,0.22)] hover:border-player-accent-soft-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent"
+      className="flex h-full flex-col bg-player-surface border border-player-border-light rounded-2xl overflow-hidden group-hover:border-player-accent-soft-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent"
     >
       <div className="relative h-44 overflow-hidden bg-player-surface-2">
         {v.photo_urls?.[0] ? (
@@ -79,6 +84,10 @@ export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: strin
         </div>
       </div>
     </Link>
+    <div className="absolute left-3 top-3 z-10">
+      <FavoriteButton venueId={v.id} venueName={v.name} />
+    </div>
+    </div>
   );
 }
 

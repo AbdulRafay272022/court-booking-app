@@ -11,6 +11,7 @@ import { useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { SiteHeader } from "@/components/nav-auth";
 import { BookingCard, NextBookingCard } from "@/components/bookings/booking-card";
+import { SavedVenues } from "@/components/bookings/saved-venues";
 
 type Tab = "upcoming" | "past";
 type Filter = "all" | StatusGroup;
@@ -121,6 +122,8 @@ export default function BookingsPage() {
         </div>
 
         {next ? <NextBookingCard booking={next} onChanged={refetchAll} /> : null}
+
+        <SavedVenues />
 
         <section className="flex flex-col gap-5" aria-label="Your bookings">
           <div className="flex flex-wrap items-center gap-3 border-b border-player-border-light pb-4">

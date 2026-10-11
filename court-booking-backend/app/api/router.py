@@ -8,6 +8,7 @@ from app.api import (
     bookings,
     chat,
     courts,
+    favorites,
     feature_flags,
     owner_premium,
     owners,
@@ -24,6 +25,7 @@ api_router = APIRouter()
 
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
+api_router.include_router(favorites.router)
 api_router.include_router(venues.router)
 api_router.include_router(courts.router)
 api_router.include_router(availability.router)

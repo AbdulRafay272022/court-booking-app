@@ -2,6 +2,7 @@ import { SiteHeader } from "@/components/nav-auth";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AmenityBadges } from "@/components/amenity-badges";
+import { FavoriteButton } from "@/components/favorite-button";
 import { serverApi } from "@/lib/server-api";
 import { capitalize } from "@/lib/format";
 import { safeJsonLd } from "@/lib/safe-json";
@@ -85,6 +86,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                   {venue.review_count > 0 ? ` (${venue.review_count})` : ""}
                 </span>
               ) : null}
+              <FavoriteButton venueId={venue.id} venueName={venue.name} variant="pill" />
             </div>
             <p className="text-[16.5px] text-player-ink-muted">
               {venue.courts.length} {venue.sports.map(capitalize).join("/")} court{venue.courts.length === 1 ? "" : "s"} · {venue.address}

@@ -4,6 +4,7 @@ from app.models.blackout import Blackout
 from app.models.booking import LIVE_BOOKING_STATUSES, Booking, BookingSource, BookingStatus, CancelledBy
 from app.models.court import Court, CourtAdvanceType
 from app.models.dispute import PaymentDispute
+from app.models.favorite import FavoriteVenue
 from app.models.fcm_token import FCMToken
 from app.models.feature_flag import FEATURE_FLAG_SEED, FeatureFlag, FeatureFlagKey
 from app.models.message import Message
@@ -52,6 +53,7 @@ __all__ = [
     "CourtAdvanceType",
     "PaymentDispute",
     "FCMToken",
+    "FavoriteVenue",
     "FeatureFlag",
     "FeatureFlagKey",
     "FEATURE_FLAG_SEED",
