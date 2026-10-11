@@ -15,10 +15,14 @@ const START_TIMES = Array.from({ length: 36 }, (_, i) => {
 const DURATIONS = [60, 90, 120, 180];
 
 const pill = (on: boolean) =>
-  `px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
-    on ? "bg-player-ink text-white border-player-ink" : "bg-player-surface text-player-ink-muted border-player-border"
+  `px-4 py-2 rounded-full text-[13.5px] font-semibold border transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent ${
+    on
+      ? "bg-player-accent text-white border-player-accent shadow-[0_4px_12px_-4px_rgba(239,90,44,0.6)]"
+      : "bg-player-surface text-player-ink-muted border-player-border hover:border-player-accent hover:text-player-accent-hover hover:bg-player-accent-soft"
   }`;
-const control = "h-10 px-3 rounded-lg border border-player-border bg-player-surface text-[13.5px] text-player-ink outline-none focus:border-player-ink";
+const control =
+  "h-11 px-3.5 rounded-xl border border-player-border bg-player-surface text-[14px] text-player-ink outline-none transition-colors hover:border-player-ink-fainter focus:border-player-accent focus:ring-4 focus:ring-player-accent-soft disabled:bg-player-surface-2 disabled:text-player-ink-fainter";
+const label = "text-[11.5px] font-bold tracking-[0.12em] text-player-ink-faint uppercase";
 
 /**
  * Discovery filters for /search. ALL state lives in the URL query string (parseFilters / filtersToParams): every change
@@ -112,7 +116,7 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
   const count = activeFilterCount(filters);
 
   return (
-    <section aria-label="Filters" className="flex flex-col gap-4" data-testid="filter-bar" aria-busy={pending}>
+    <section aria-label="Filters" className="flex flex-col gap-6 bg-player-surface border border-player-border-light rounded-2xl p-5 md:p-7 shadow-[0_8px_30px_-12px_rgba(20,26,29,0.14)]" data-testid="filter-bar" aria-busy={pending}>
       {/* sport */}
       <div className="flex gap-2 flex-wrap" role="group" aria-label="Sport">
         <button type="button" className={pill(!filters.sport)} aria-pressed={!filters.sport} onClick={() => set({ sport: undefined })}>
@@ -125,10 +129,10 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {/* area + near me */}
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="f-area" className="text-[12px] font-bold tracking-wide text-player-ink-faint">AREA</label>
+          <label htmlFor="f-area" className={label}>Area</label>
           <select id="f-area" className={control} value={filters.area ?? ""} onChange={(e) => set({ area: e.target.value || undefined })}>
             <option value="">All areas</option>
             {areas.map((a) => (
@@ -144,7 +148,7 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
 
         {/* price */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-bold tracking-wide text-player-ink-faint">PRICE PER SLOT (PKR)</span>
+          <span className={label}>Price per slot (PKR)</span>
           <div className="flex items-center gap-2">
             <input
               aria-label="Minimum price"
@@ -173,7 +177,7 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
 
         {/* indoor / outdoor */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-bold tracking-wide text-player-ink-faint">SETTING</span>
+          <span className={label}>Setting</span>
           <div className="flex gap-2" role="group" aria-label="Indoor or outdoor">
             {(
               [
@@ -191,7 +195,7 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
 
         {/* sort */}
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="f-sort" className="text-[12px] font-bold tracking-wide text-player-ink-faint">SORT BY</label>
+          <label htmlFor="f-sort" className={label}>Sort by</label>
           <select id="f-sort" className={control} value={filters.sort ?? ""} onChange={(e) => set({ sort: (e.target.value || undefined) as DiscoveryFilters["sort"] })}>
             <option value="">Best match</option>
             <option value="price">Lowest price</option>
@@ -201,8 +205,8 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
       </div>
 
       {/* amenities */}
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[12px] font-bold tracking-wide text-player-ink-faint">AMENITIES (venue has all you pick)</span>
+      <div className="flex flex-col gap-2.5 pt-5 border-t border-player-border-light">
+        <span className={label}>Amenities <span className="normal-case tracking-normal font-medium">(venue has all you pick)</span></span>
         <div className="flex gap-2 flex-wrap" role="group" aria-label="Amenities">
           {AMENITY_OPTIONS.map((a) => {
             const on = filters.amenities.includes(a.key);
@@ -222,8 +226,8 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
       </div>
 
       {/* date + time slot */}
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[12px] font-bold tracking-wide text-player-ink-faint">AVAILABLE ON</span>
+      <div className="flex flex-col gap-2.5">
+        <span className={label}>Available on</span>
         <div className="flex gap-3 flex-wrap items-center">
           <input
             type="date"
@@ -268,17 +272,17 @@ export function FilterBar({ areas, city, total }: { areas: string[]; city: strin
       </div>
 
       {/* active filters + count */}
-      <div className="flex items-center gap-2 flex-wrap" data-testid="active-filters">
-        <span className="text-[14px] font-bold" data-testid="result-count">
+      <div className="flex items-center gap-2 flex-wrap pt-5 border-t border-player-border-light" data-testid="active-filters">
+        <span className="text-[15px] font-extrabold mr-1" data-testid="result-count">
           {total === null ? "" : `${total} venue${total === 1 ? "" : "s"}`}
         </span>
         {chips.map((c) => (
-          <button key={c.key} type="button" onClick={c.clear} aria-label={`Remove filter ${c.label}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-player-accent-soft border border-player-accent-soft-border text-[12.5px] font-semibold text-player-accent-hover">
+          <button key={c.key} type="button" onClick={c.clear} aria-label={`Remove filter ${c.label}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-player-accent-soft border border-player-accent-soft-border text-[12.5px] font-semibold text-player-accent-hover transition-colors hover:bg-player-accent hover:text-white hover:border-player-accent">
             {c.label} <span aria-hidden>✕</span>
           </button>
         ))}
         {count > 0 ? (
-          <button type="button" onClick={() => apply({ amenities: [] })} className="text-[13px] font-semibold underline text-player-ink-muted" data-testid="clear-all">
+          <button type="button" onClick={() => apply({ amenities: [] })} className="text-[13px] font-semibold underline text-player-ink-muted hover:text-player-ink" data-testid="clear-all">
             Clear all
           </button>
         ) : null}
