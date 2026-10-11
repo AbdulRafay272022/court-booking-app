@@ -8,6 +8,7 @@ export * from "./payment";
 export * from "./payment-entry";
 export * from "./waitlist";
 export * from "./chat";
+export * from "./public-stats";
 export * from "./review";
 export * from "./owner";
 export * from "./admin";

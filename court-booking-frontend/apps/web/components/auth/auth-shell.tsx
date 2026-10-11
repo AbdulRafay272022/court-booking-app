@@ -33,7 +33,7 @@ export function AuthShell({
       <FloatingIcons key={tone} color={t.accent} icons={tone === "owner" ? OWNER_ICONS : undefined} />
 
       <div className="relative z-10 w-full max-w-[420px] flex flex-col gap-8">
-        <Link href="/" className="self-start" aria-label="Maidan home">
+        <Link href="/" className="self-start" aria-label="Khelo home">
           <Logo tone={tone} size={52} />
         </Link>
 

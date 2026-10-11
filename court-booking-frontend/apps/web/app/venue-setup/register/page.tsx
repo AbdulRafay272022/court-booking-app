@@ -150,7 +150,7 @@ export default function VenueRegisterPage() {
       <SectionCard>
         <SectionLabel>Where players send payment</SectionLabel>
         <p className="text-[12.5px] leading-[18px] font-medium text-owner-ink-faint">
-          Players pay you directly. Maidan never holds your money — we only check that the screenshot matches what&apos;s owed.
+          Players pay you directly. Khelo never holds your money — we only check that the screenshot matches what&apos;s owed.
           You can add this later if you&apos;d rather skip it for now.
         </p>
         <Field label="Bank name" value={store.bankName} onChange={(e) => store.setField("bankName", e.target.value)} placeholder="Meezan Bank" error={bankTouched && store.bankName ? bankErrors.bank : null} />

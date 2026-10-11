@@ -53,10 +53,13 @@ export function AmenityBadges({
   amenities,
   max,
   size = "sm",
+  tone = "player",
 }: {
   amenities: string[] | null | undefined;
   max?: number;
   size?: "sm" | "md";
+  /** `khelo` = the Khelo website/search palette; `player` (default) = the player app's. */
+  tone?: "player" | "khelo";
 }) {
   const list = amenities ?? [];
   if (list.length === 0) return null;
@@ -74,7 +77,7 @@ export function AmenityBadges({
         return (
           <li
             key={key}
-            className={`inline-flex items-center font-semibold bg-player-accent-soft text-player-accent-hover border border-player-accent-soft-border ${chip}`}
+            className={`inline-flex items-center font-semibold border ${tone === "khelo" ? "bg-khelo-warm-2 text-khelo-orange-label border-khelo-warm" : "bg-player-accent-soft text-player-accent-hover border-player-accent-soft-border"} ${chip}`}
           >
             <Icon className="shrink-0" />
             {amenityLabel(key)}
@@ -84,7 +87,7 @@ export function AmenityBadges({
       {hidden > 0 ? (
         <li
           title={list.slice(shown.length).map(amenityLabel).join(", ")}
-          className={`inline-flex items-center font-semibold bg-player-surface-2 text-player-ink-muted ${chip}`}
+          className={`inline-flex items-center font-semibold ${tone === "khelo" ? "bg-khelo-page text-khelo-muted-2" : "bg-player-surface-2 text-player-ink-muted"} ${chip}`}
         >
           +{hidden}
         </li>

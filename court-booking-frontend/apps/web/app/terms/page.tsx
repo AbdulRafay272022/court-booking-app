@@ -5,7 +5,7 @@ import { SUPPORT_WHATSAPP_NUMBER } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
-  description: "The terms that apply to using Maidan to find, book and manage court bookings.",
+  description: "The terms that apply to using Khelo to find, book and manage court bookings.",
 };
 
 const LAST_UPDATED = "20 September 2026";
@@ -22,9 +22,9 @@ export default function TermsPage() {
 
         <Section title="1. Who this is">
           <p>
-            Maidan is a court-booking platform operated by Logic Link System (&ldquo;Maidan&rdquo;, &ldquo;we&rdquo;,
+            Khelo is a court-booking platform operated by Logic Link System (&ldquo;Khelo&rdquo;, &ldquo;we&rdquo;,
             &ldquo;us&rdquo;) for padel, futsal and other court sports, currently piloting in Karachi, Pakistan. These
-            terms apply whenever you use the Maidan app, the Maidan website, or the Maidan WhatsApp number to find,
+            terms apply whenever you use the Khelo app, the Khelo website, or the Khelo WhatsApp number to find,
             hold, pay for, or manage a court booking, or to list and run a venue.
           </p>
         </Section>
@@ -66,13 +66,13 @@ export default function TermsPage() {
 
         <Section title="4. Payments and refunds">
           <p>
-            Maidan does not process, hold, or move your money. Payment is a direct bank or mobile-wallet transfer
+            Khelo does not process, hold, or move your money. Payment is a direct bank or mobile-wallet transfer
             from you to the venue, outside the app — you upload a screenshot of that transfer as proof, which we read
             automatically (and the venue can review manually) to confirm the amount matches what&apos;s owed.
           </p>
           <p>
             Because we&apos;re not a party to the transfer itself, refunds are handled directly between you and the
-            venue, not automatically by Maidan. Where a paid booking is cancelled (by you, where the venue&apos;s policy
+            venue, not automatically by Khelo. Where a paid booking is cancelled (by you, where the venue&apos;s policy
             allows it, or automatically if a venue never reviews a submitted payment), we flag it to the venue as a
             refund owed, but the venue processes that refund manually, outside the app. If a venue isn&apos;t
             responding about a refund you&apos;re owed, contact us and we&apos;ll follow up.
@@ -91,7 +91,7 @@ export default function TermsPage() {
 
         <Section title="6. Conduct">
           <p>
-            Don&apos;t use Maidan to submit fraudulent payment proof, impersonate someone else, harass another user or a
+            Don&apos;t use Khelo to submit fraudulent payment proof, impersonate someone else, harass another user or a
             venue, or try to interfere with the booking system (e.g. scripting holds you don&apos;t intend to pay for).
             We can suspend accounts that do this, and where real money or fraud is involved, may share information
             with the affected venue or, where required, with law enforcement.
@@ -100,7 +100,7 @@ export default function TermsPage() {
 
         <Section title="7. No warranty, limits on liability">
           <p>
-            Maidan connects players and venues; we don&apos;t operate the courts themselves and aren&apos;t responsible for
+            Khelo connects players and venues; we don&apos;t operate the courts themselves and aren&apos;t responsible for
             the condition of a venue, a venue&apos;s own cancellation or safety practices, or disputes between a player
             and a venue that we&apos;re not able to resolve. The service is provided as-is, during an active pilot —
             features, availability, and the AI chat assistant&apos;s responses can be imperfect or unavailable at times.
@@ -110,7 +110,7 @@ export default function TermsPage() {
         <Section title="8. Changes">
           <p>
             We may update these terms as the pilot evolves. If a change is material, we&apos;ll do our best to let you
-            know through the app or WhatsApp. Continuing to use Maidan after a change means you accept the updated
+            know through the app or WhatsApp. Continuing to use Khelo after a change means you accept the updated
             terms.
           </p>
         </Section>
@@ -122,7 +122,7 @@ export default function TermsPage() {
         <Section title="10. Contact">
           <p>
             Questions about these terms, or about a specific booking: message us on WhatsApp at{" "}
-            {SUPPORT_WHATSAPP_NUMBER}, the same number Maidan uses for booking notifications and the chat assistant.
+            {SUPPORT_WHATSAPP_NUMBER}, the same number Khelo uses for booking notifications and the chat assistant.
           </p>
         </Section>
 

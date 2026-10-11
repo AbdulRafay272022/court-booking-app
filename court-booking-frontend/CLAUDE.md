@@ -1050,6 +1050,32 @@ across reload and matches the DB rows, header pill, strip un-save, failed-save r
   shared id, Expo-web keeps earlier screens mounted but hidden behind the top one, and `url(#id)` resolved to the copy inside a hidden screen, so the venue hero painted
   NOTHING (white text on a cream page). Native resolves ids per `<Svg>`, so phones were not affected, but the unique id is correct for both.
 
+## Khelo website + app screens redesign (2026-10-12, branch `feat/website-redesign`; web only, no migration)
+
+Brand is **Khelo** now in every web UI string (the old name "Maidan" remains ONLY in internal localStorage keys `maidan.*` -- renaming them would sign everyone out --
+and the `maidan-float` CSS class; backend messages, WhatsApp texts and the mobile app are untouched). Design source: `design/khelo-website/khelo-website-design/*.dc.html`
+(untracked). To VIEW a design file, serve that folder together with `support.js` + `vendor/` (they are in `Khelo Home-html.zip`) over a static server and open it
+in a browser; copy checks and screenshot comparisons were done that way.
+- **Tokens** live in `app/globals.css` (`--color-khelo-*`, fonts `--font-khelo-display/body`); components use the utilities (`bg-khelo-ink`, `font-khelo-display`),
+  SVG colours use `var(--color-khelo-*)`. Display font = Bricolage Grotesque loaded as the VARIABLE font with the `opsz` axis (the design does; the static 600/800
+  instance sets visibly wider and wrapped headings differently). Text on orange is ink.
+- **Containers are content-box in the design**: `max-width:1200px; padding:0 24px` = 1200 of content (1248 outer). Tailwind is border-box, so use `max-w-[1248px] px-6`
+  (`1288` for the 1240 header/Search variant, `908` for the 860 FAQ). `Container` already does.
+- **Shared pieces**: `components/site/*` (`KheloPage`, `SiteHeader`, `SiteFooter`, `Button`, primitives: `Container Section Eyebrow SectionTitle Chip Badge FaqItem`),
+  `components/auth/logo.tsx`. `nav-auth.tsx` just re-exports `SiteHeader`. The design has TWO footers: `KheloPage footerVariant="home"` for `/`, default `inner` for the other five.
+  Header collapses into the hamburger panel below **1120px** (deliberate: the design's 760px breakpoint wrapped onto two rows between 761 and 1100).
+- **Optional content = hidden when unset** (`lib/site-config.ts`): `NEXT_PUBLIC_SUPPORT_WHATSAPP / _EMAIL / _HOURS`, `NEXT_PUBLIC_OWNER_PRICING_TEXT`, `NEXT_PUBLIC_SITE_URL`.
+  They are read at REQUEST time with a computed `process.env[name]` (a plain `process.env.NEXT_PUBLIC_X` is inlined at `next build`), so on the box they go in `.env.web`
+  and need only a web restart, no rebuild. Pages that read them are `force-dynamic` (`/`, `/contact`, `/for-owners`, `/sitemap.xml`, `/robots.txt`).
+- **Real data**: `GET /api/v1/public/stats` (backend, cached 5 min) feeds the Home stats strip, hidden if the call fails or all counts are 0; sports/areas on Home come from
+  `SPORT_OPTIONS` and `serverApi.areas()`. Contact has no backend: the form opens a prefilled `wa.me` link or a `mailto:`. Blog posts live in `lib/blog-posts.ts` (cards are not
+  links until a post has an `href`). Omitted from the design on purpose: newsletter box, Refund policy link (no page), Search "Aaj khali" / indoor tags and the map/List toggle (the list API
+  has no availability, indoor or coordinates), a "Rating" sort.
+- **Login**: only the UI changed (new `components/auth-v2/*`), the API payloads are byte-identical to before EXCEPT one fix: a fresh login now honours `?next=` (the old page dropped it).
+  Signup dropped only the client-side "Confirm password" box. `/verify`, `/forgot-password`, `/reset-password` still use the old `AuthShell`.
+- **QA**: `node e2e/smoke.cjs` (BASE_URL=...) checks all 9 routes at 360/768/1280 (no overflow, one h1, header, no console errors, no placeholder text). Turbopack cannot build through
+  `node_modules` junctions in a worktree: build in the main checkout.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before

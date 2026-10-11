@@ -13,6 +13,7 @@ from app.api import (
     owner_premium,
     owners,
     payments,
+    public,
     reviews,
     staff,
     users,
@@ -41,3 +42,4 @@ api_router.include_router(chat.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(feature_flags.router)
 api_router.include_router(staff.router)
+api_router.include_router(public.router)

@@ -5,7 +5,7 @@ import { SUPPORT_WHATSAPP_NUMBER } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "What Maidan collects, why, and how it's protected.",
+  description: "What Khelo collects, why, and how it's protected.",
 };
 
 const LAST_UPDATED = "20 September 2026";
@@ -30,18 +30,18 @@ export default function PrivacyPage() {
             <strong className="text-player-ink">If you list a venue:</strong> the venue&apos;s name, address, GPS
             location, photos, sports and pricing, and — if you provide them — bank account or mobile-wallet
             (JazzCash/Easypaisa-style) details for players to pay into. Those payment details are encrypted before
-            they&apos;re stored and are only ever decrypted back for you or a Maidan admin, never shown to other
+            they&apos;re stored and are only ever decrypted back for you or a Khelo admin, never shown to other
             players or other venues.
           </p>
           <p>
             <strong className="text-player-ink">When you book and pay:</strong> the booking itself (court, time,
             price), and the payment screenshot you upload as proof of a bank/wallet transfer. That screenshot is
             processed automatically to read the amount and reference off it (see §3), stored privately, and only
-            ever shown to that venue&apos;s own owner or a Maidan admin reviewing the payment — never to another
+            ever shown to that venue&apos;s own owner or a Khelo admin reviewing the payment — never to another
             player or venue.
           </p>
           <p>
-            <strong className="text-player-ink">Messages:</strong> if you message the Maidan WhatsApp number or use
+            <strong className="text-player-ink">Messages:</strong> if you message the Khelo WhatsApp number or use
             in-app chat, we keep that conversation (including AI assistant replies) so it can be shown back to you and
             so a venue owner or admin can look into an issue you raise.
           </p>
@@ -68,7 +68,7 @@ export default function PrivacyPage() {
           <ul className="list-disc pl-5 flex flex-col gap-1.5">
             <li>
               <strong className="text-player-ink">WhatsApp (Meta):</strong> carries your verification codes, booking
-              notifications, and any WhatsApp conversation you have with Maidan.
+              notifications, and any WhatsApp conversation you have with Khelo.
             </li>
             <li>
               <strong className="text-player-ink">An AI provider</strong> (currently Google Gemini; Claude or OpenAI
@@ -94,7 +94,7 @@ export default function PrivacyPage() {
             Passwords are hashed (argon2id), never stored in reverse-able form. Venue bank/payment details are
             encrypted at rest. Payment-proof screenshots are stored in a private cloud bucket with encryption
             enabled, not publicly reachable — viewing one requires a short-lived, permission-checked link generated
-            only for that booking&apos;s venue owner or a Maidan admin. Session tokens are hashed at rest and expire
+            only for that booking&apos;s venue owner or a Khelo admin. Session tokens are hashed at rest and expire
             after 8 hours of use.
           </p>
         </Section>

@@ -39,7 +39,7 @@ export default function OwnerCheckinHubPage() {
 
       <p className="text-owner-ink-faint text-[12.5px] px-1">
         Most check-ins are faster from Today: click Check in on a player's row directly. Live
-        camera scanning is available on the Maidan mobile app.
+        camera scanning is available on the Khelo mobile app.
       </p>
     </div>
   );

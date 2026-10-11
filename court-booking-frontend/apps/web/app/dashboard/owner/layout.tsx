@@ -74,7 +74,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
   const sidebarBody = (
     <>
       <div className="px-6 py-6 flex flex-col gap-2">
-        <Link href="/" aria-label="Maidan home" onClick={() => setMenuOpen(false)}>
+        <Link href="/" aria-label="Khelo home" onClick={() => setMenuOpen(false)}>
           <Logo tone="owner" size={34} />
         </Link>
         <p className="text-xs text-owner-ink-faint">{user?.name ?? "Owner"}</p>
@@ -119,7 +119,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
     <div className="min-h-screen md:flex bg-owner-bg text-owner-ink">
       {/* Mobile top bar (phones/short viewports) -- the desktop sidebar is hidden below md. */}
       <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 h-14 bg-owner-surface border-b border-owner-border">
-        <Link href="/" aria-label="Maidan home"><Logo tone="owner" size={26} /></Link>
+        <Link href="/" aria-label="Khelo home"><Logo tone="owner" size={26} /></Link>
         <span className="font-bold text-[15px] text-owner-ink">{currentLabel}</span>
         <button
           aria-label="Open menu"
