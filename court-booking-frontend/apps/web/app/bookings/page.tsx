@@ -1,285 +1,189 @@
 "use client";
 
-import { courtLabel } from "@/components/court-label";
-
+import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { countByGroup, isActiveBooking, nextBooking, statusGroup, type Booking, type StatusGroup } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 import { useRequireAuth } from "@/lib/use-require-auth";
+import { useAuthStore } from "@/lib/auth-store";
 import { SiteHeader } from "@/components/nav-auth";
-import type { Booking, BookingStatus, Review } from "@court-booking/types";
-import { cancellationPolicyText } from "@court-booking/api-client";
+import { BookingCard, NextBookingCard } from "@/components/bookings/booking-card";
 
-const REVIEW_EDIT_WINDOW_MS = 7 * 24 * 3600 * 1000;
+type Tab = "upcoming" | "past";
+type Filter = "all" | StatusGroup;
 
-/** Section 32 Part 6: rate a completed game (1-5 stars + optional comment); edit within 7 days. */
-function RateGame({ booking, review, onChanged }: { booking: Booking; review?: Review; onChanged: () => void }) {
-  const editable = !review || Date.now() - new Date(review.created_at).getTime() < REVIEW_EDIT_WINDOW_MS;
-  const [open, setOpen] = useState(false);
-  const [rating, setRating] = useState(review?.rating ?? 0);
-  const [comment, setComment] = useState(review?.comment ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// The API caps a page at 100; a player's newest bookings come first on "past", so only the oldest could ever drop off.
+const PAGE = 100;
 
-  async function save() {
-    if (rating < 1) { setError("Pick a star rating."); return; }
-    setBusy(true); setError(null);
-    try {
-      if (review) await api.reviews.edit(review.id, { rating, comment: comment || undefined });
-      else await api.reviews.create({ booking_id: booking.id, rating, comment: comment || undefined });
-      setOpen(false);
-      onChanged();
-    } catch (e) { setError(friendlyErrorMessage(e)); } finally { setBusy(false); }
-  }
+const FILTERS: Record<Tab, { key: Filter; label: string }[]> = {
+  upcoming: [
+    { key: "all", label: "All" },
+    { key: "confirmed", label: "Confirmed" },
+    { key: "pending", label: "Pending" },
+    { key: "cancelled", label: "Cancelled" },
+  ],
+  past: [
+    { key: "all", label: "All" },
+    { key: "completed", label: "Completed" },
+    { key: "cancelled", label: "Cancelled" },
+  ],
+};
 
-  if (review && !open) {
-    return (
-      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <span aria-label={`Your rating: ${review.rating} of 5`} className="text-[15px]" style={{ color: "#F0A05C" }}>
-          {"★".repeat(review.rating)}<span style={{ color: "#3A4249" }}>{"★".repeat(5 - review.rating)}</span>
-        </span>
-        {editable ? (
-          <button onClick={() => setOpen(true)} className="text-[12.5px] font-semibold" style={{ color: "#9A928B" }}>Edit</button>
-        ) : (
-          <span className="text-[11.5px]" style={{ color: "#6E7A80" }}>Reviewed</span>
-        )}
-      </div>
-    );
-  }
+const chip = (on: boolean) =>
+  `inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13.5px] font-semibold transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent ${
+    on
+      ? "border-player-accent bg-player-accent text-white shadow-[0_4px_12px_-4px_rgba(239,90,44,0.6)]"
+      : "border-player-border bg-player-surface text-player-ink-muted hover:border-player-accent hover:bg-player-accent-soft hover:text-player-accent-hover"
+  }`;
 
-  if (!open) {
-    return (
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-        aria-label="Rate your game"
-        className="self-start text-[13px] font-bold px-3.5 py-2 rounded-lg"
-        style={{ background: "#EF5A2C", color: "#fff" }}
-      >
-        Rate your game
-      </button>
-    );
-  }
-
+function Stat({ label, value, hint, tone }: { label: string; value: number; hint: string; tone?: "warn" }) {
   return (
-    <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
-      <div className="flex gap-1" role="radiogroup" aria-label="Star rating">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} aria-label={`${n} star${n === 1 ? "" : "s"}`} onClick={() => setRating(n)}
-            className="text-2xl leading-none" style={{ color: n <= rating ? "#F0A05C" : "#3A4249" }}>★</button>
-        ))}
-      </div>
-      <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Add a comment (optional)"
-        className="rounded-lg p-2.5 text-[13.5px] bg-[#1E262B] text-white border border-[#2A3238] outline-none"
-        rows={2}
-      />
-      {error ? <p role="alert" className="text-[12.5px] font-semibold" style={{ color: "#E29B8A" }}>{error}</p> : null}
-      <div className="flex gap-2">
-        <button onClick={save} disabled={busy} className="text-[13px] font-bold px-3.5 py-2 rounded-lg disabled:opacity-50" style={{ background: "#EF5A2C", color: "#fff" }}>
-          {busy ? "Saving…" : review ? "Update review" : "Submit review"}
-        </button>
-        <button onClick={() => setOpen(false)} className="text-[13px] font-semibold px-3 py-2" style={{ color: "#9A928B" }}>Cancel</button>
-      </div>
+    <div className="flex flex-col gap-1 rounded-2xl border border-player-border-light bg-player-surface p-5 shadow-[0_1px_2px_rgba(20,26,29,0.04)]" data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <span className="text-[11.5px] font-bold uppercase tracking-[0.12em] text-player-ink-faint">{label}</span>
+      <span className={`font-mono text-3xl font-extrabold leading-none ${tone === "warn" && value > 0 ? "text-player-warn" : ""}`}>{value}</span>
+      <span className="text-[12.5px] text-player-ink-fainter">{hint}</span>
     </div>
   );
 }
 
-// Backlog #7: every status gets a colored icon matching its label color. The
-// no_show icon (a circle with a diagonal slash -- "didn't show") is deliberately
-// distinct from cancelled's plain X, and is the one flagged for owner approval.
-type StatusIconName = "check" | "clock" | "x" | "ban";
-const STATUS_META: Record<BookingStatus, { label: string; tone: "confirmed" | "waiting" | "neutral" | "danger"; icon: StatusIconName }> = {
-  held: { label: "HOLDING", tone: "waiting", icon: "clock" },
-  payment_submitted: { label: "WAITING FOR APPROVAL", tone: "waiting", icon: "clock" },
-  booked: { label: "CONFIRMED", tone: "confirmed", icon: "check" },
-  completed: { label: "COMPLETED", tone: "neutral", icon: "check" },
-  no_show: { label: "NO-SHOW", tone: "danger", icon: "ban" },
-  cancelled: { label: "CANCELLED", tone: "danger", icon: "x" },
-};
-
-function StatusIcon({ name, color, size = 13 }: { name: StatusIconName; color: string; size?: number }) {
-  const p = {
-    width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color,
-    strokeWidth: 2.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
-    style: { flexShrink: 0 },
-  };
-  if (name === "check") return <svg {...p}><polyline points="20 6 9 17 4 12" /></svg>;
-  if (name === "clock") return <svg {...p}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg>;
-  if (name === "x") return <svg {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
-  return <svg {...p}><circle cx="12" cy="12" r="9" /><line x1="6" y1="6" x2="18" y2="18" /></svg>; // ban / no-show
-}
-
-function BookingCard({ booking, review, onChanged }: { booking: Booking; review?: Review; onChanged: () => void }) {
-  const router = useRouter();
-  const courtQuery = useQuery({ queryKey: ["court", booking.court_id], queryFn: () => api.courts.get(booking.court_id) });
-  const venueQuery = useQuery({
-    queryKey: ["venue", courtQuery.data?.venue_id],
-    queryFn: () => api.venues.get(courtQuery.data!.venue_id),
-    enabled: !!courtQuery.data?.venue_id,
-  });
-  const meta = STATUS_META[booking.status];
-  const isDark = booking.status === "booked" || booking.status === "completed";
-  const statusColor = meta.tone === "waiting" ? "#8A5A0A" : meta.tone === "danger" ? "#A8432C" : isDark ? "#5FBF95" : "#7A7068";
-  const canResumePay = booking.status === "held" || booking.status === "payment_submitted";
-
-  // Section 29 Part C: same client-side eligibility check as mobile -- a cutoff only ever gets
-  // more restrictive as start approaches, so this can't go stale the way a one-shot fetch might.
-  // The server re-checks this at cancel time regardless; this is a UX convenience, not the
-  // source of truth.
-  const court = courtQuery.data;
-  const withinCutoff =
-    court?.cancellation_cutoff_hours != null &&
-    new Date(booking.starts_at).getTime() - Date.now() < court.cancellation_cutoff_hours * 3_600_000;
-  const canCancelBooked = booking.status === "booked" && !!court?.cancellation_allowed && !withinCutoff;
-  const canCancel = canResumePay || canCancelBooked;
-  const bookedNotCancellable = booking.status === "booked" && !canCancelBooked && !!court;
-
-  async function handleCancel() {
-    const isPaid = booking.status === "booked";
-    // Section 32 Part 10: show the refundable amount BEFORE the player confirms, in plain words.
-    // The cutoff decision (2026-09-24) means a cancel that's actually allowed to go through is
-    // always fully refundable -- there's no partial/non-refundable-inside-the-cutoff case, since
-    // the cutoff blocks the cancel outright instead (see canCancelBooked above).
-    const confirmMessage = isPaid
-      ? `Cancel this booking? You paid PKR ${formatPKR(booking.amount_paid)} -- the venue owes you that amount back. Refunds are sent manually by the venue (JazzCash/bank), not automatically through the app.`
-      : "Cancel this booking? This can't be undone.";
-    if (!confirm(confirmMessage)) return;
-    try {
-      await api.bookings.cancel(booking.id);
-      if (isPaid) {
-        alert(
-          `Booking cancelled. A refund of PKR ${formatPKR(booking.amount_paid)} has been recorded for this venue to send you -- refunds are handled manually and aren't automatic.`,
-        );
-      }
-      onChanged();
-    } catch (e) {
-      alert(friendlyErrorMessage(e));
-    }
-  }
-
+function ListSkeleton() {
   return (
-    <div
-      onClick={() => canResumePay && router.push(`/booking/${booking.id}/pay`)}
-      className="rounded-2xl p-6 flex flex-col gap-3.5 cursor-pointer"
-      style={{
-        background: isDark ? "#141A1D" : meta.tone === "waiting" ? "#FDF6E9" : "#FFFFFF",
-        border: isDark ? "none" : `1px solid ${meta.tone === "waiting" ? "#F0DFBC" : "#EBE5E1"}`,
-      }}
-    >
-      <div className="flex flex-col gap-1">
-        <span
-          className="flex items-center gap-1.5 text-[11px] font-bold tracking-widest"
-          style={{ color: statusColor }}
-        >
-          <StatusIcon name={meta.icon} color={statusColor} />
-          {meta.label}
-        </span>
-        <span className="font-bold text-[17px]" style={{ color: isDark ? "#FFFFFF" : "#141A1D" }}>
-          {venueQuery.data?.name ?? "…"}
-        </span>
-        <span className="text-[13px]" style={{ color: isDark ? "#9A928B" : "#7A7068" }}>
-          {courtQuery.data?.name ? `${courtLabel(courtQuery.data.name, courtQuery.data.sport)} · ` : ""}
-          {formatDate(booking.starts_at)} · {formatTimeRange(booking.starts_at, booking.ends_at)}
-        </span>
-      </div>
-      <div className="h-px" style={{ background: isDark ? "#2A3238" : "#F0EBE7" }} />
-      <div className="flex gap-6">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10.5px] font-bold tracking-widest" style={{ color: isDark ? "#6E7A80" : "#9A9791" }}>PAID</span>
-          <span className="font-mono text-[14.5px] font-semibold" style={{ color: isDark ? "#FFFFFF" : "#141A1D" }}>
-            {formatPKR(booking.amount_paid)}
-          </span>
-        </div>
-        {booking.balance_due > 0 ? (
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[10.5px] font-bold tracking-widest" style={{ color: isDark ? "#6E7A80" : "#9A9791" }}>AT GATE</span>
-            <span className="font-mono text-[14.5px] font-semibold" style={{ color: "#F0A05C" }}>{formatPKR(booking.balance_due)}</span>
-          </div>
-        ) : null}
-      </div>
-      {booking.status === "booked" ? (
-        <button
-          onClick={(e) => { e.stopPropagation(); router.push(`/booking/${booking.id}/checkin`); }}
-          className="self-start text-[13px] font-semibold"
-          style={{ color: isDark ? "#5FBF95" : "#0E6274" }}
-        >
-          Check in
-        </button>
-      ) : null}
-      {canCancel ? (
-        <button
-          onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-          className="self-start text-[13px] font-semibold"
-          style={{ color: isDark ? "#E29B8A" : "#A8432C" }}
-        >
-          Cancel booking
-        </button>
-      ) : bookedNotCancellable ? (
-        <span className="text-[12px]" style={{ color: isDark ? "#6E7A80" : "#9A9791" }}>
-          {withinCutoff ? "The cancellation window for this booking has closed." : cancellationPolicyText(court)}
-        </span>
-      ) : null}
-      {booking.status === "completed" ? <RateGame booking={booking} review={review} onChanged={onChanged} /> : null}
+    <div className="grid gap-4 sm:grid-cols-2" aria-hidden="true">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="h-48 animate-pulse rounded-2xl bg-player-surface-2" />
+      ))}
     </div>
   );
 }
 
 export default function BookingsPage() {
   const { ready } = useRequireAuth();
-  const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
-  const query = useQuery({ queryKey: ["bookings-mine", tab], queryFn: () => api.bookings.mine(tab), enabled: ready });
+  const user = useAuthStore((s) => s.user);
+  const [tab, setTab] = useState<Tab>("upcoming");
+  const [filter, setFilter] = useState<Filter>("all");
+
+  // Both lists load up front: the stat tiles and the "next up" card need upcoming even while Past is selected.
+  const upcomingQ = useQuery({ queryKey: ["bookings-mine", "upcoming"], queryFn: () => api.bookings.mine("upcoming", 1, PAGE), enabled: ready });
+  const pastQ = useQuery({ queryKey: ["bookings-mine", "past"], queryFn: () => api.bookings.mine("past", 1, PAGE), enabled: ready });
   // The player's own reviews, to show "Rate your game" vs the stars + Edit on each completed booking.
-  const reviewsQuery = useQuery({ queryKey: ["my-reviews"], queryFn: () => api.reviews.mine(), enabled: ready });
-  const reviewByBooking = new Map((reviewsQuery.data ?? []).map((r) => [r.booking_id, r]));
+  const reviewsQ = useQuery({ queryKey: ["my-reviews"], queryFn: () => api.reviews.mine(), enabled: ready });
+  const reviewByBooking = new Map((reviewsQ.data ?? []).map((r) => [r.booking_id, r]));
   const refetchAll = () => {
-    query.refetch();
-    reviewsQuery.refetch();
+    upcomingQ.refetch();
+    pastQ.refetch();
+    reviewsQ.refetch();
   };
 
   if (!ready) return null;
-  const bookings = query.data ?? [];
+
+  const upcoming: Booking[] = upcomingQ.data ?? [];
+  const past: Booking[] = pastQ.data ?? [];
+  const next = nextBooking(upcoming);
+  const activeUpcoming = upcoming.filter((b) => isActiveBooking(b));
+  const pendingCount = activeUpcoming.filter((b) => statusGroup(b.status) === "pending").length;
+  const played = countByGroup(past).completed;
+
+  const query = tab === "upcoming" ? upcomingQ : pastQ;
+  const list = tab === "upcoming" ? upcoming : past;
+  const counts = countByGroup(list);
+  const shown = filter === "all" ? list : list.filter((b) => statusGroup(b.status) === filter);
+  const firstName = user?.name?.trim().split(/\s+/)[0];
+
+  function switchTab(t: Tab) {
+    setTab(t);
+    setFilter("all");
+  }
 
   return (
     <>
-    <SiteHeader />
-    <main className="max-w-3xl mx-auto px-6 py-10 flex flex-col gap-6">
-      <h1 className="text-2xl font-extrabold tracking-tight">Your bookings</h1>
-      <div className="flex gap-2">
-        {(["upcoming", "past"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="px-4 py-2.5 rounded-full text-[13.5px] font-bold"
-            style={{ background: tab === t ? "#141A1D" : "#F4EFEC", color: tab === t ? "#fff" : "#5C544D" }}
-          >
-            {t === "upcoming" ? "Upcoming" : "Past"}
-          </button>
-        ))}
+      <SiteHeader />
+      <div className="border-b border-player-accent-soft-border" style={{ background: "linear-gradient(180deg,#FFF3EE 0%,#FAF8F6 100%)" }}>
+        <div className="mx-auto flex max-w-5xl flex-wrap items-end justify-between gap-4 px-6 pb-8 pt-10 md:px-10">
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-player-accent-hover">Your dashboard</p>
+            <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">{firstName ? `Hi, ${firstName}` : "Your bookings"}</h1>
+            <p className="text-[16px] text-player-ink-muted">Everything you&apos;ve booked, in one place.</p>
+          </div>
+          <Link href="/search" className="rounded-xl bg-player-accent px-5 py-3 text-[14px] font-bold text-white shadow-[0_8px_20px_-8px_rgba(239,90,44,0.8)] transition-colors hover:bg-player-accent-hover">
+            Find a court
+          </Link>
+        </div>
       </div>
 
-      {query.isLoading ? (
-        <p className="text-player-ink-faint">Loading…</p>
-      ) : query.isError && bookings.length === 0 ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="player" />
-      ) : bookings.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <h2 className="font-extrabold text-lg">{tab === "upcoming" ? "Nothing booked yet" : "No past bookings"}</h2>
-          <p className="text-player-ink-muted">{tab === "upcoming" ? "Find a court and book your first slot." : "Bookings you've played show up here."}</p>
+      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-8 md:px-10">
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          <Stat label="Upcoming" value={activeUpcoming.length} hint="games booked" />
+          <Stat label="Pending" value={pendingCount} hint="need your action" tone="warn" />
+          <Stat label="Played" value={played} hint="games so far" />
         </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 gap-4">
-          {bookings.map((b) => (
-            <BookingCard key={b.id} booking={b} review={reviewByBooking.get(b.id)} onChanged={refetchAll} />
-          ))}
-        </div>
-      )}
-    </main>
+
+        {next ? <NextBookingCard booking={next} onChanged={refetchAll} /> : null}
+
+        <section className="flex flex-col gap-5" aria-label="Your bookings">
+          <div className="flex flex-wrap items-center gap-3 border-b border-player-border-light pb-4">
+            <div className="flex gap-2" role="tablist" aria-label="Upcoming or past">
+              {(["upcoming", "past"] as const).map((t) => (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={tab === t}
+                  onClick={() => switchTab(t)}
+                  className={`rounded-full px-5 py-2.5 text-[14px] font-bold transition-colors ${
+                    tab === t ? "bg-player-ink text-white" : "bg-player-surface-2 text-player-ink-muted hover:bg-player-accent-soft hover:text-player-accent-hover"
+                  }`}
+                >
+                  {t === "upcoming" ? "Upcoming" : "Past"}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 sm:ml-auto" role="group" aria-label="Filter by status">
+              {FILTERS[tab].map((f) => (
+                <button key={f.key} className={chip(filter === f.key)} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)} data-testid={`filter-${f.key}`}>
+                  {f.label}
+                  <span className={`font-mono text-[12px] ${filter === f.key ? "text-white/80" : "text-player-ink-fainter"}`}>{counts[f.key]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {query.isLoading ? (
+            <ListSkeleton />
+          ) : query.isError && list.length === 0 ? (
+            <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="player" />
+          ) : shown.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-player-border-light bg-player-surface px-6 py-14 text-center" data-testid="bookings-empty">
+              <h2 className="text-lg font-extrabold">
+                {filter !== "all" ? "Nothing here with that status" : tab === "upcoming" ? "Nothing booked yet" : "No past bookings"}
+              </h2>
+              <p className="max-w-sm text-player-ink-muted">
+                {filter !== "all"
+                  ? "Try another status, or show all."
+                  : tab === "upcoming"
+                    ? "Find a court and book your first slot."
+                    : "Games you've played show up here."}
+              </p>
+              {filter !== "all" ? (
+                <button onClick={() => setFilter("all")} className="rounded-full bg-player-ink px-5 py-2.5 text-[13.5px] font-bold text-white hover:bg-player-accent-hover">
+                  Show all
+                </button>
+              ) : tab === "upcoming" ? (
+                <Link href="/search" className="rounded-full bg-player-accent px-6 py-3 text-[14px] font-bold text-white hover:bg-player-accent-hover">
+                  Find a court
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {shown.map((b) => (
+                <BookingCard key={b.id} booking={b} review={reviewByBooking.get(b.id)} onChanged={refetchAll} />
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
     </>
   );
 }

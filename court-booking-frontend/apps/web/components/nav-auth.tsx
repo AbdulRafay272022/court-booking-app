@@ -33,10 +33,10 @@ export function NavAuth() {
 
   const firstName = user.name?.split(" ")[0] ?? null;
   return (
-    <div className="flex items-center gap-3 sm:gap-4">
+    <div className="flex items-center gap-2.5 whitespace-nowrap sm:gap-4">
       <Link
         href={user.role === "player" ? "/bookings" : homeForRole(user.role)}
-        className="text-[14.5px] font-semibold text-player-ink-muted"
+        className="text-[13.5px] font-semibold text-player-ink-muted sm:text-[14.5px]"
       >
         {user.role === "player" ? "My bookings" : "Dashboard"}
       </Link>
@@ -51,7 +51,7 @@ export function NavAuth() {
             router.push("/");
           });
         }}
-        className="px-4 py-2 rounded-xl border border-player-border text-[14px] font-semibold text-player-ink"
+        className="px-3 py-2 rounded-xl border border-player-border text-[13.5px] font-semibold text-player-ink sm:px-4 sm:text-[14px]"
       >
         Log out
       </button>
