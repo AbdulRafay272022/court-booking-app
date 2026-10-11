@@ -16,7 +16,7 @@ export interface DiscoveryFilters {
   date?: string;
   startTime?: string;
   durationMinutes?: number;
-  sort?: "distance" | "price";
+  sort?: "distance" | "price" | "rating";
 }
 
 type RawParams = Record<string, string | string[] | undefined> | URLSearchParams;
@@ -55,7 +55,7 @@ export function parseFilters(raw: RawParams): DiscoveryFilters {
     date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined,
     startTime: date && start && /^\d{2}:\d{2}$/.test(start) ? start : undefined,
     durationMinutes: start ? num(get(raw, "duration_minutes")) : undefined,
-    sort: sort === "price" || (sort === "distance" && lat !== undefined && lng !== undefined) ? sort : undefined,
+    sort: sort === "price" || sort === "rating" || (sort === "distance" && lat !== undefined && lng !== undefined) ? sort : undefined,
   };
 }
 

@@ -19,7 +19,7 @@ export interface ListVenuesParams {
   /** HH:MM (PKT, 24h). Requires date. */
   start_time?: string;
   duration_minutes?: number;
-  sort?: "distance" | "price";
+  sort?: "distance" | "price" | "rating";
   page?: number;
   per_page?: number;
 }
