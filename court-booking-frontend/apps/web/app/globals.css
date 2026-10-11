@@ -66,6 +66,34 @@ body {
   color: var(--color-player-ink);
 }
 
+/* Tailwind v4's preflight resets buttons to the default arrow. Anything clickable gets a pointer
+   in one place (base layer, so a utility like cursor-not-allowed on an element still wins). */
+@layer base {
+  button:not(:disabled):not([aria-disabled="true"]),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  summary,
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  label[for],
+  a[href] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  button[aria-disabled="true"],
+  [role="button"][aria-disabled="true"],
+  input:disabled,
+  select:disabled {
+    cursor: not-allowed;
+  }
+}
+
 /* Auth-screen background icons (components/auth/floating-icons.tsx): each icon sets its own
    --dx/--dy/--r0/--r1/--dur/--delay so every one drifts on an independent loop. */
 @keyframes maidan-float {
