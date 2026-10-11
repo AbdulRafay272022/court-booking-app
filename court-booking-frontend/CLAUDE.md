@@ -1075,6 +1075,14 @@ in a browser; copy checks and screenshot comparisons were done that way.
 - **QA**: `node e2e/smoke.cjs` (BASE_URL=...) checks all 9 routes at 360/768/1280 (no overflow, one h1, header, no console errors, no placeholder text), no garbled text encoding). The garbled-encoding check exists because a Search-card file shipped with a middle dot that had been decoded as Latin-1 (it renders as an A-circumflex followed by a dot). It only shows when a venue lists 2 or more sports, so it passed every local test and appeared on production. When a script writes non-ASCII characters, use unicode escapes or open files with encoding utf-8. Turbopack cannot build through
   `node_modules` junctions in a worktree: build in the main checkout.
 
+## Khelo Phase 2 (2026-10-12, branch `feat/phase2`; web + backend read-only fields, no migration)
+
+- **Logo = the ORIGINAL mark** (orange gradient tile, white court + centre circle): `apps/web/public/brand/khelo-logo-icon.svg` is the old `maidan-logo-icon.svg` artwork unchanged (also `app/icon.svg`, `app/favicon.ico` restored from before the redesign, OG image, JSON-LD logo). The old wordmark was outlined paths, so `components/auth/logo.tsx` renders the word "Khelo" as live text (Bricolage 800) next to the SVG. Mobile: `assets/brand/khelo-logo-full-{light,dark}.png` (same mark + Bricolage ExtraBold word). Old Maidan files stay in git history (`645804b^`).
+- **Restyled to Khelo**: `/verify`, `/forgot-password`, `/reset-password` (`components/auth-v2/{verify,forgot,reset}-form.tsx`, logic copied verbatim), venue detail page, My bookings (+ Saved venues strip now uses the Search card). Smoke runner covers 12 routes.
+- **Search list API** (additive): `has_indoor`, `has_outdoor` (active courts' `is_indoor`), `today_free_slots` (bulk, 4 queries for the whole page, never cached), `latitude`/`longitude`, `sort=rating`. Web shows Indoor/Outdoor + "Aaj khali" (>=4 free) / "Kam slots" (1-3) tags, a Rating sort, and a List/Map toggle (Leaflet + OpenStreetMap tiles, loaded only on the Map view, offered when >=70% of the page's venues have coordinates). New dependency: `leaflet`, `@types/leaflet`. A static image import may be a string or `{src}` depending on bundler path: `venue-map.tsx` accepts both (it first showed no pins).
+- **Mobile rename**: `app.json` `name` + permission texts, in-app copy. NOT changed: bundle id / package (`com.maidan.app`), `scheme`, `slug`, EAS project id, owner, storage keys `maidan.*`. Needs a new EAS build.
+- Playwright npm package is NOT installed by `npm install` (it lives untracked in `apps/mobile/node_modules` and gets pruned); set `PLAYWRIGHT_PATH` to any install whose chromium revision matches `~/AppData/Local/ms-playwright` (playwright 1.63 matched chromium-1243).
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before
