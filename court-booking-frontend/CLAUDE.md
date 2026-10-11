@@ -1039,6 +1039,17 @@ native equivalent -- a phone has no pointer -- so it became press feedback + tou
   not driven; they were moved unchanged. Not verified on a device: real touch feel, safe-area/keyboard behaviour in the chat on iOS/Android, shadows
   (`elevation`) on Android, font rendering, and anything needing the native build.
 
+## Favorites, mobile (2026-10-11, branch `mobile-favorites`, same pattern as the web block above; backend + web are LIVE)
+
+Mobile files: `lib/use-favorites.ts` (the one shared `["favorites"]` query, enabled only for a signed-in player), `components/favorite-button.tsx` (`card` = round
+heart on a photo corner, `pill` = labelled Save/Saved in the venue header; flips at once, reverts and shows an `Alert` if the call fails; renders nothing for
+non-players), `components/saved-venues.tsx` (horizontal strip on the Bookings tab, between the next-up card and the tabs). The heart is a SIBLING overlay of the
+card's `Pressable` (absolute, top-left), never inside it, so a tap on it cannot open the venue. Expo-web Playwright check (scratch Postgres): save/unsave persists
+across reload and matches the DB rows, header pill, strip un-save, failed-save revert, no errors. `Alert` is a no-op on web, so the failure message itself was not seen.
+- **SVG gradient id trap (found by a screenshot, web-only symptom):** `BrandGradient` (react-native-svg) must give each instance its own gradient id (`useId`). With one
+  shared id, Expo-web keeps earlier screens mounted but hidden behind the top one, and `url(#id)` resolved to the copy inside a hidden screen, so the venue hero painted
+  NOTHING (white text on a cream page). Native resolves ids per `<Svg>`, so phones were not affected, but the unique id is correct for both.
+
 ## How this project gets worked (recipe for the next sprint)
 
 1. **Read the relevant screen(s) from `../docs/screens/*.html`** before
