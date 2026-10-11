@@ -17,6 +17,44 @@ interface Turn {
   sender: "player" | "ai";
   content: string;
   actions?: ChatAction[];
+  /** When the message was sent/received (ms since epoch), shown under the bubble. */
+  at: number;
+}
+
+/** "7:42 PM" for today's messages, "Wed, 23 Sep · 7:42 PM" for older ones (history opened days later). */
+function stamp(at: number): string {
+  const d = new Date(at);
+  return formatDate(d) === formatDate(new Date()) ? formatTime(d) : `${formatDate(d)} · ${formatTime(d)}`;
+}
+
+/** Offered under an assistant reply that carries no buttons, so a player is never stuck typing from scratch. */
+const QUICK_REPLIES = ["What other times are free?", "Show me tomorrow", "Is another court open then?"];
+
+function AssistantAvatar() {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-player-accent-soft-border bg-player-accent-soft text-player-accent"
+    >
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+        <path d="M8.5 12h.01M12 12h.01M15.5 12h.01" />
+      </svg>
+    </span>
+  );
+}
+
+function TypingBubble() {
+  return (
+    <div className="flex items-end gap-2" role="status" aria-label="The assistant is typing" data-testid="typing-indicator">
+      <AssistantAvatar />
+      <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-player-border-light bg-player-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(20,26,29,0.05)]">
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="h-2 w-2 animate-bounce rounded-full bg-player-ink-fainter" style={{ animationDelay: `${i * 150}ms` }} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ChatInner({ params }: { params: Promise<{ id: string }> }) {
@@ -53,7 +91,14 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
       if (!isNew) {
         try {
           const history = await api.chat.history({ booking_id: id });
-          setTurns(history.map((h) => ({ id: h.id, sender: h.sender_type === "player" ? "player" : "ai", content: h.content })));
+          setTurns(
+            history.map((h) => ({
+              id: h.id,
+              sender: h.sender_type === "player" ? "player" : "ai",
+              content: h.content,
+              at: new Date(h.created_at).getTime(),
+            })),
+          );
         } catch (e) {
           setBootError(friendlyErrorMessage(e));
         }
@@ -65,11 +110,11 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
             minutes ? ` for ${formatDuration(minutes)}` : ""
           }?`
         : "What's available?";
-      setTurns([{ id: "local-0", sender: "player", content: question }]);
+      setTurns([{ id: "local-0", sender: "player", content: question, at: Date.now() }]);
       setSending(true);
       try {
         const res = await api.chat.send({ message: question, venue_id: venueId, channel: "app" });
-        setTurns((t) => [...t, { id: "local-1", sender: "ai", content: res.reply, actions: res.actions }]);
+        setTurns((t) => [...t, { id: "local-1", sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
       } catch (e) {
         setBootError(friendlyErrorMessage(e));
       } finally {
@@ -81,19 +126,19 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [turns]);
+  }, [turns, sending]);
 
-  async function sendMessage() {
-    const text = input.trim();
+  async function sendMessage(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || sending) return;
     setInput("");
-    setTurns((t) => [...t, { id: `local-${Date.now()}`, sender: "player", content: text }]);
+    setTurns((t) => [...t, { id: `local-${Date.now()}`, sender: "player", content: text, at: Date.now() }]);
     setSending(true);
     try {
       const res = await api.chat.send({ message: text, venue_id: venueId, booking_id: isNew ? undefined : id, channel: "app" });
-      setTurns((t) => [...t, { id: `local-${Date.now()}-ai`, sender: "ai", content: res.reply, actions: res.actions }]);
+      setTurns((t) => [...t, { id: `local-${Date.now()}-ai`, sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
     } catch (e) {
-      setTurns((t) => [...t, { id: `local-${Date.now()}-err`, sender: "ai", content: friendlyErrorMessage(e) }]);
+      setTurns((t) => [...t, { id: `local-${Date.now()}-err`, sender: "ai", content: friendlyErrorMessage(e), at: Date.now() }]);
     } finally {
       setSending(false);
     }
@@ -101,7 +146,10 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
 
   async function handleAction(turnId: string, action: ChatAction) {
     if (action.type === "decline") {
-      setTurns((t) => [...t, { id: `local-${Date.now()}`, sender: "ai", content: "No problem — let me know if you want to look at another time." }]);
+      setTurns((t) => [
+        ...t,
+        { id: `local-${Date.now()}`, sender: "ai", content: "No problem — let me know if you want to look at another time.", at: Date.now() },
+      ]);
       return;
     }
     if (action.type !== "confirm_booking") return;
@@ -129,102 +177,133 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
         e instanceof ApiError && e.code === "SLOT_ALREADY_TAKEN"
           ? "Someone just booked this slot first — pick another time."
           : friendlyErrorMessage(e);
-      setTurns((t) => [...t, { id: `local-${Date.now()}-holderr`, sender: "ai", content: message }]);
+      setTurns((t) => [...t, { id: `local-${Date.now()}-holderr`, sender: "ai", content: message, at: Date.now() }]);
     } finally {
       setHoldingKey(null);
     }
   }
 
   const when = startsAt ? new Date(startsAt) : null;
+  const last = turns[turns.length - 1];
+  const showQuickReplies = !sending && !holdingKey && !bootError && last?.sender === "ai" && !(last.actions && last.actions.length > 0);
 
   return (
-    <main className="max-w-2xl mx-auto min-h-screen flex flex-col">
-      <div className="px-6 py-5 bg-player-surface border-b border-player-border-light flex items-center gap-3">
-        <button onClick={() => router.back()} className="w-10 h-10 rounded-xl bg-player-surface-2 flex items-center justify-center">
+    <main className="mx-auto flex h-dvh max-w-2xl flex-col bg-player-bg sm:border-x border-player-border-light">
+      <header className="flex items-center gap-3 border-b border-player-border-light bg-player-surface px-4 sm:px-6 py-3.5">
+        <button
+          onClick={() => router.back()}
+          aria-label="Back"
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-player-surface-2 text-player-ink transition-colors hover:bg-player-accent-soft hover:text-player-accent-hover"
+        >
           ←
         </button>
-        <div className="flex flex-col">
-          <span className="font-bold text-[16px]">{venueName ?? "Booking assistant"}</span>
-          <span className="text-[12.5px] text-player-ink-faint flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-player-success inline-block" /> Booking assistant
+        <AssistantAvatar />
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-[16px] font-bold">{venueName ?? "Booking assistant"}</span>
+          <span className="flex items-center gap-1.5 text-[12.5px] text-player-ink-faint">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-player-success" /> Booking assistant · replies instantly
           </span>
         </div>
-      </div>
+      </header>
 
       {courtName && when ? (
-        <div className="px-6 py-3.5 bg-player-accent-soft border-b border-player-accent-soft-border flex items-center justify-between">
-          <div className="flex flex-col">
+        <div className="flex items-center justify-between gap-3 border-b border-player-accent-soft-border bg-player-accent-soft px-4 sm:px-6 py-3">
+          <div className="flex min-w-0 flex-col">
             <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">SELECTED SLOT</span>
-            <span className="font-mono text-[14.5px] font-semibold">
+            <span className="font-mono text-[14px] font-semibold">
               {courtLabel(courtName, courtSport)} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
               {minutes ? ` · ${formatDuration(minutes)}` : ""}
             </span>
           </div>
-          {price ? <span className="font-mono text-base font-semibold">{formatPKR(Number(price))}</span> : null}
+          {price ? <span className="shrink-0 rounded-full bg-player-surface px-3 py-1 font-mono text-[14px] font-bold">PKR {formatPKR(Number(price))}</span> : null}
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-3.5">
-        {turns.map((turn) => (
-          <div key={turn.id} className={`flex flex-col gap-2 ${turn.sender === "player" ? "items-end" : "items-start"}`}>
-            <div
-              className="px-4 py-3 max-w-[82%]"
-              style={{
-                background: turn.sender === "player" ? "#141A1D" : "#FFFFFF",
-                color: turn.sender === "player" ? "#FFFFFF" : "#141A1D",
-                borderRadius: 16,
-                borderTopRightRadius: turn.sender === "player" ? 4 : 16,
-                borderTopLeftRadius: turn.sender === "player" ? 16 : 4,
-                border: turn.sender === "player" ? "none" : "1px solid #EBE5E1",
-              }}
-            >
-              <p className="text-[14.5px] leading-relaxed whitespace-pre-wrap">{turn.content}</p>
-            </div>
-            {turn.actions && turn.actions.length > 0 ? (
-              <div className="flex gap-2 flex-wrap">
-                {turn.actions.map((action) => {
-                  const key = `${turn.id}-${action.label}`;
-                  const isHolding = holdingKey === key;
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => handleAction(turn.id, action)}
-                      disabled={!!holdingKey}
-                      className="px-4 min-h-11 py-2 rounded-xl font-bold text-[13.5px] disabled:opacity-50"
-                      style={{
-                        background: action.type === "confirm_booking" ? "#EF5A2C" : "#FFFFFF",
-                        color: action.type === "confirm_booking" ? "#FFFFFF" : "#5C544D",
-                        border: action.type === "confirm_booking" ? "none" : "1px solid #E0D9D4",
-                      }}
-                    >
-                      {isHolding ? "…" : chatActionLabel(action)}
-                    </button>
-                  );
-                })}
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-6" data-testid="chat-scroll">
+        {turns.map((turn) => {
+          const mine = turn.sender === "player";
+          return (
+            <div key={turn.id} className={`flex flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`} data-testid={mine ? "msg-player" : "msg-ai"}>
+              <div className={`flex max-w-[88%] items-end gap-2 ${mine ? "flex-row-reverse" : ""}`}>
+                {mine ? null : <AssistantAvatar />}
+                <div
+                  className={`px-4 py-2.5 shadow-[0_1px_2px_rgba(20,26,29,0.06)] ${
+                    mine
+                      ? "rounded-2xl rounded-br-md bg-player-accent text-white"
+                      : "rounded-2xl rounded-bl-md border border-player-border-light bg-player-surface text-player-ink"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{turn.content}</p>
+                </div>
               </div>
-            ) : null}
+              <span className={`text-[11.5px] text-player-ink-fainter ${mine ? "pr-1" : "pl-10"}`}>{stamp(turn.at)}</span>
+              {turn.actions && turn.actions.length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-2 pl-10">
+                  {turn.actions.map((action) => {
+                    const key = `${turn.id}-${action.label}`;
+                    const isHolding = holdingKey === key;
+                    const confirm = action.type === "confirm_booking";
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => handleAction(turn.id, action)}
+                        disabled={!!holdingKey}
+                        className={`min-h-11 rounded-xl px-4 py-2 text-[13.5px] font-bold transition-all disabled:opacity-50 ${
+                          confirm
+                            ? "bg-player-accent text-white shadow-[0_6px_16px_-6px_rgba(239,90,44,0.7)] hover:bg-player-accent-hover"
+                            : "border border-player-border bg-player-surface text-player-ink-muted hover:border-player-ink-fainter"
+                        }`}
+                      >
+                        {isHolding ? "Holding…" : chatActionLabel(action)}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+        {sending ? <TypingBubble /> : null}
+        {showQuickReplies ? (
+          <div className="flex flex-wrap gap-2 pl-10" data-testid="quick-replies">
+            {QUICK_REPLIES.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => sendMessage(q)}
+                className="rounded-full border border-player-accent-soft-border bg-player-surface px-3.5 py-2 text-[13px] font-semibold text-player-accent-hover transition-colors hover:bg-player-accent-soft"
+              >
+                {q}
+              </button>
+            ))}
           </div>
-        ))}
-        {bootError ? <p className="text-player-danger text-sm text-center">{bootError}</p> : null}
+        ) : null}
+        {bootError ? <p className="text-center text-sm text-player-danger">{bootError}</p> : null}
         <div ref={bottomRef} />
       </div>
 
-      <div className="px-6 py-4 bg-player-surface border-t border-player-border-light flex items-center gap-2.5">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Type a message…"
-          disabled={sending}
-          className="flex-1 h-12 px-4 rounded-full bg-player-surface-2 outline-none text-[14.5px]"
-        />
-        <button
-          onClick={sendMessage}
-          disabled={sending || !input.trim()}
-          className="w-11 h-11 rounded-full bg-player-accent text-white font-bold disabled:opacity-50"
-        >
-          →
-        </button>
+      <div className="border-t border-player-border-light bg-player-surface px-4 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-2 rounded-full border border-player-border bg-player-bg py-1.5 pl-5 pr-1.5 transition focus-within:border-player-accent focus-within:ring-4 focus-within:ring-player-accent-soft">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            placeholder="Ask about times, courts or prices…"
+            aria-label="Message"
+            disabled={sending}
+            className="h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-player-ink-fainter"
+          />
+          <button
+            onClick={() => sendMessage()}
+            disabled={sending || !input.trim()}
+            aria-label="Send message"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-player-accent text-white transition-colors hover:bg-player-accent-hover disabled:bg-player-border"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
       </div>
     </main>
   );
