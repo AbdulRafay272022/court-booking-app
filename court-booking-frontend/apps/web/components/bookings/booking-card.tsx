@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { cancellationPolicyText } from "@court-booking/api-client";
-import { startsInText, statusGroup, type Booking, type BookingStatus, type Review, type StatusGroup } from "@court-booking/types";
+import Link from "next/link";
+import { statusGroup, type Booking, type BookingStatus, type Review, type StatusGroup } from "@court-booking/types";
 import { courtLabel } from "@/components/court-label";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 import { buttonClasses } from "@/components/site/button";
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey, TFunction } from "@/lib/i18n";
+import { searchHref } from "@/lib/search-links";
 
 const REVIEW_EDIT_WINDOW_MS = 7 * 24 * 3600 * 1000;
 
@@ -29,13 +33,13 @@ type IconName = "check" | "clock" | "x" | "ban";
 
 // Every status gets a coloured icon matching its label colour. The no_show icon (a circle with a slash, "didn't show") is
 // deliberately distinct from cancelled's plain X.
-export const STATUS_META: Record<BookingStatus, { label: string; icon: IconName }> = {
-  held: { label: "Holding your slot", icon: "clock" },
-  payment_submitted: { label: "Waiting for approval", icon: "clock" },
-  booked: { label: "Confirmed", icon: "check" },
-  completed: { label: "Completed", icon: "check" },
-  no_show: { label: "No-show", icon: "ban" },
-  cancelled: { label: "Cancelled", icon: "x" },
+export const STATUS_META: Record<BookingStatus, { label: MessageKey; icon: IconName }> = {
+  held: { label: "bookings.status.held", icon: "clock" },
+  payment_submitted: { label: "bookings.status.payment_submitted", icon: "clock" },
+  booked: { label: "bookings.status.booked", icon: "check" },
+  completed: { label: "bookings.status.completed", icon: "check" },
+  no_show: { label: "bookings.status.no_show", icon: "ban" },
+  cancelled: { label: "bookings.status.cancelled", icon: "x" },
 };
 
 // Khelo status palette. Text colours are the ones that clear 4.5:1 on their own background; "danger" only exists as a
@@ -59,6 +63,7 @@ function StatusIcon({ name, size = 13 }: { name: IconName; size?: number }) {
 }
 
 export function StatusPill({ status, dark = false }: { status: BookingStatus; dark?: boolean }) {
+  const t = useT();
   const meta = STATUS_META[status];
   const style = GROUP_STYLE[statusGroup(status)];
   return (
@@ -67,7 +72,7 @@ export function StatusPill({ status, dark = false }: { status: BookingStatus; da
       className={`inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1 text-[12px] font-extrabold ${dark ? "border-white/30 bg-white/10 text-white" : style.pill}`}
     >
       <StatusIcon name={meta.icon} />
-      {meta.label}
+      {t(meta.label)}
     </span>
   );
 }
@@ -76,6 +81,7 @@ export function StatusPill({ status, dark = false }: { status: BookingStatus; da
 
 /** Rate a completed game (1-5 stars + optional comment); edit within 7 days. */
 function RateGame({ booking, review, onChanged }: { booking: Booking; review?: Review; onChanged: () => void }) {
+  const t = useT();
   const now = useNow();
   const editable = !review || now - new Date(review.created_at).getTime() < REVIEW_EDIT_WINDOW_MS;
   const [open, setOpen] = useState(false);
@@ -86,7 +92,7 @@ function RateGame({ booking, review, onChanged }: { booking: Booking; review?: R
 
   async function save() {
     if (rating < 1) {
-      setError("Pick a star rating.");
+      setError(t("bookings.rate.pickStar"));
       return;
     }
     setBusy(true);
@@ -106,16 +112,16 @@ function RateGame({ booking, review, onChanged }: { booking: Booking; review?: R
   if (review && !open) {
     return (
       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <span aria-label={`Your rating: ${review.rating} of 5`} role="img" className="text-[18px] text-khelo-warning">
+        <span aria-label={t("bookings.rate.yourRating", { n: review.rating })} role="img" className="text-[18px] text-khelo-warning">
           {"★".repeat(review.rating)}
           <span className="text-khelo-border">{"★".repeat(5 - review.rating)}</span>
         </span>
         {editable ? (
           <button onClick={() => setOpen(true)} className="inline-flex min-h-11 items-center px-2 text-[13px] font-bold text-khelo-orange-text underline-offset-2 hover:underline">
-            Edit
+            {t("bookings.rate.edit")}
           </button>
         ) : (
-          <span className="text-[12px] text-khelo-muted-2">Reviewed</span>
+          <span className="text-[12px] text-khelo-muted-2">{t("bookings.rate.reviewed")}</span>
         )}
       </div>
     );
@@ -128,21 +134,21 @@ function RateGame({ booking, review, onChanged }: { booking: Booking; review?: R
           e.stopPropagation();
           setOpen(true);
         }}
-        aria-label="Rate your game"
+        aria-label={t("bookings.rate.cta")}
         className="khelo-btn inline-flex min-h-11 items-center self-start rounded-[14px] bg-khelo-orange px-4 py-2 text-[14px] font-extrabold text-khelo-ink"
       >
-        Rate your game
+        {t("bookings.rate.cta")}
       </button>
     );
   }
 
   return (
     <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
-      <div className="flex gap-0.5" role="radiogroup" aria-label="Star rating">
+      <div className="flex gap-0.5" role="radiogroup" aria-label={t("bookings.rate.group")}>
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
-            aria-label={`${n} star${n === 1 ? "" : "s"}`}
+            aria-label={t(n === 1 ? "bookings.rate.star1" : "bookings.rate.stars", { n })}
             onClick={() => setRating(n)}
             className={`flex h-11 w-11 items-center justify-center rounded-lg text-3xl leading-none transition-transform hover:scale-110 ${n <= rating ? "text-khelo-warning" : "text-khelo-border"}`}
           >
@@ -151,10 +157,10 @@ function RateGame({ booking, review, onChanged }: { booking: Booking; review?: R
         ))}
       </div>
       <textarea
-        aria-label="Comment on your game (optional)"
+        aria-label={t("bookings.rate.commentLabel")}
         value={comment}
         onChange={(e) => setComment(e.target.value)}
-        placeholder="Add a comment (optional)"
+        placeholder={t("bookings.rate.commentPlaceholder")}
         className="khelo-input rounded-[14px] border-[1.5px] border-khelo-border bg-khelo-surface p-3 text-[15px] text-khelo-ink outline-none"
         rows={2}
       />
@@ -166,10 +172,10 @@ function RateGame({ booking, review, onChanged }: { booking: Booking; review?: R
       ) : null}
       <div className="flex flex-wrap gap-2">
         <button onClick={save} disabled={busy} className="khelo-btn inline-flex min-h-11 items-center rounded-[14px] bg-khelo-orange px-4 py-2 text-[14px] font-extrabold text-khelo-ink disabled:opacity-60">
-          {busy ? "Saving…" : review ? "Update review" : "Submit review"}
+          {busy ? t("bookings.rate.saving") : review ? t("bookings.rate.update") : t("bookings.rate.submit")}
         </button>
         <button onClick={() => setOpen(false)} className="inline-flex min-h-11 items-center px-3 text-[14px] font-bold text-khelo-muted hover:text-khelo-ink">
-          Cancel
+          {t("bookings.rate.cancel")}
         </button>
       </div>
     </div>
@@ -181,6 +187,7 @@ function RateGame({ booking, review, onChanged }: { booking: Booking; review?: R
 /** Court, venue and what the player may do with this booking. Same rules the old My bookings cards used. */
 function useBookingView(booking: Booking, onChanged: () => void) {
   const router = useRouter();
+  const t = useT();
   const now = useNow();
   const courtQuery = useQuery({ queryKey: ["court", booking.court_id], queryFn: () => api.courts.get(booking.court_id) });
   const venueQuery = useQuery({
@@ -198,22 +205,20 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   const canCancelBooked = booking.status === "booked" && !!court?.cancellation_allowed && !withinCutoff;
   const canCancel = canResumePay || canCancelBooked;
   const bookedNotCancellable = booking.status === "booked" && !canCancelBooked && !!court;
-  const policyNote = bookedNotCancellable ? (withinCutoff ? "The cancellation window for this booking has closed." : cancellationPolicyText(court)) : null;
+  const policyNote = bookedNotCancellable ? (withinCutoff ? t("bookings.policy.closed") : cancellationPolicyText(court)) : null;
 
   async function handleCancel() {
     const isPaid = booking.status === "booked";
     // The refundable amount is shown BEFORE the player confirms, in plain words. A cancel that is allowed to go through is
     // always fully refundable: the cutoff blocks the cancel outright instead of making part of it non-refundable.
     const confirmMessage = isPaid
-      ? `Cancel this booking? You paid PKR ${formatPKR(booking.amount_paid)} -- the venue owes you that amount back. Refunds are sent manually by the venue (JazzCash/bank), not automatically through the app.`
-      : "Cancel this booking? This can't be undone.";
+      ? t("bookings.cancel.confirmPaid", { amount: formatPKR(booking.amount_paid) })
+      : t("bookings.cancel.confirmUnpaid");
     if (!confirm(confirmMessage)) return;
     try {
       await api.bookings.cancel(booking.id);
       if (isPaid) {
-        alert(
-          `Booking cancelled. A refund of PKR ${formatPKR(booking.amount_paid)} has been recorded for this venue to send you -- refunds are handled manually and aren't automatic.`,
-        );
+        alert(t("bookings.cancel.doneRefund", { amount: formatPKR(booking.amount_paid) }));
       }
       onChanged();
     } catch (e) {
@@ -224,6 +229,7 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   return {
     court,
     venueName: venueQuery.data?.name,
+    venue: venueQuery.data,
     canResumePay,
     canCancel,
     policyNote,
@@ -237,10 +243,69 @@ function courtLine(court: ReturnType<typeof useBookingView>["court"]): string {
   return court?.name ? `${courtLabel(court.name, court.sport)} · ` : "";
 }
 
+/** "in 25 min", "in 2 days", "happening now": same arithmetic as the shared startsInText, but translated. */
+export function startsInLabel(t: TFunction, startsAt: string, endsAt: string, now: number = Date.now()): string {
+  const start = Date.parse(startsAt);
+  if (now >= start) return Date.parse(endsAt) > now ? t("bookings.startsIn.now") : t("bookings.startsIn.finished");
+  const minutes = Math.ceil((start - now) / 60_000);
+  if (minutes < 60) return t("bookings.startsIn.min", { n: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t(hours === 1 ? "bookings.startsIn.hour" : "bookings.startsIn.hours", { n: hours });
+  const days = Math.floor(hours / 24);
+  return t(days === 1 ? "bookings.startsIn.day" : "bookings.startsIn.days", { n: days });
+}
+
+const TAG_LINK =
+  "relative z-10 inline-flex min-h-8 items-center rounded-full bg-khelo-booked-bg px-3 py-1 text-[12px] font-bold capitalize text-khelo-ink hover:bg-khelo-divider";
+
+/** Sport, area and Indoor/Outdoor labels as links to the matching filtered Search. Each is a sibling link (never wrapped in another
+ * link); the click does not bubble to a card that is itself clickable (resume payment). */
+export function BookingTags({
+  court,
+  venue,
+  dark = false,
+}: {
+  court?: { sport: string; is_indoor: boolean } | null;
+  venue?: { city: string; area: string | null } | null;
+  dark?: boolean;
+}) {
+  const t = useT();
+  if (!court && !venue) return null;
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const area = venue?.area ?? venue?.city;
+  const cls = dark ? TAG_LINK.replace("bg-khelo-booked-bg", "bg-white/15").replace("text-khelo-ink", "text-white").replace("hover:bg-khelo-divider", "hover:bg-white/25") : TAG_LINK;
+  return (
+    <ul className="flex flex-wrap gap-1.5" data-testid="booking-tags">
+      {court?.sport ? (
+        <li>
+          <Link href={searchHref({ sport: court.sport })} onClick={stop} className={cls}>
+            {court.sport}
+          </Link>
+        </li>
+      ) : null}
+      {area ? (
+        <li>
+          <Link href={searchHref({ city: venue?.city, area: venue?.area })} onClick={stop} className={cls}>
+            {area}
+          </Link>
+        </li>
+      ) : null}
+      {court ? (
+        <li>
+          <Link href={searchHref({ indoor: court.is_indoor })} onClick={stop} className={cls}>
+            {court.is_indoor ? t("bookings.tag.indoor") : t("bookings.tag.outdoor")}
+          </Link>
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
 /* ---------- cards ---------- */
 
 /** One booking in the Upcoming / Past lists. */
 export function BookingCard({ booking, review, onChanged }: { booking: Booking; review?: Review; onChanged: () => void }) {
+  const t = useT();
   const v = useBookingView(booking, onChanged);
   const group = statusGroup(booking.status);
   const style = GROUP_STYLE[group];
@@ -276,17 +341,18 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
             <span className="mt-1 self-start">
               <StatusPill status={booking.status} />
             </span>
+            <BookingTags court={v.court} venue={v.venue} />
           </div>
         </div>
 
         <dl className="flex flex-wrap gap-x-8 gap-y-3 border-t border-khelo-divider pt-4">
           <div className="flex flex-col gap-0.5">
-            <dt className="text-[11px] font-extrabold uppercase tracking-[0.8px] text-khelo-muted-2">Paid</dt>
+            <dt className="text-[11px] font-extrabold uppercase tracking-[0.8px] text-khelo-muted-2">{t("bookings.card.paid")}</dt>
             <dd className="text-[17px] font-extrabold">PKR {formatPKR(booking.amount_paid)}</dd>
           </div>
           {booking.balance_due > 0 ? (
             <div className="flex flex-col gap-0.5">
-              <dt className="text-[11px] font-extrabold uppercase tracking-[0.8px] text-khelo-muted-2">At the venue</dt>
+              <dt className="text-[11px] font-extrabold uppercase tracking-[0.8px] text-khelo-muted-2">{t("bookings.card.atVenue")}</dt>
               <dd className="text-[17px] font-extrabold text-khelo-warning-text">PKR {formatPKR(booking.balance_due)}</dd>
             </div>
           ) : null}
@@ -301,7 +367,7 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
               }}
               className={buttonClasses({ variant: "primary", size: "sm", className: "!px-5 !py-2" })}
             >
-              {booking.status === "held" ? "Complete payment" : "View payment"}
+              {booking.status === "held" ? t("bookings.card.completePay") : t("bookings.card.viewPay")}
             </button>
           ) : null}
           {booking.status === "booked" ? (
@@ -312,7 +378,7 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
               }}
               className={buttonClasses({ variant: "outlineDark", size: "sm", className: "!px-5 !py-2" })}
             >
-              Check in
+              {t("bookings.card.checkin")}
             </button>
           ) : null}
           {v.canCancel ? (
@@ -323,7 +389,7 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
               }}
               className="inline-flex min-h-11 items-center px-2 text-[14px] font-bold text-khelo-ink underline decoration-khelo-danger decoration-2 underline-offset-4"
             >
-              Cancel booking
+              {t("bookings.card.cancel")}
             </button>
           ) : null}
         </div>
@@ -335,22 +401,23 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
 }
 
 /** The featured card at the top of the dashboard: the player's next active booking. */
-export function NextBookingCard({ booking, onChanged }: { booking: Booking; onChanged: () => void }) {
+export function NextBookingCard({ booking, onChanged, showPaid = false }: { booking: Booking; onChanged: () => void; showPaid?: boolean }) {
+  const t = useT();
   const v = useBookingView(booking, onChanged);
   const group = statusGroup(booking.status);
 
   return (
     <section
       data-testid="next-booking"
-      aria-label="Your next booking"
+      aria-label={t("bookings.next.aria")}
       className="relative overflow-hidden rounded-[28px] bg-khelo-ink p-6 text-white sm:p-8"
     >
       <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-khelo-teal/40 blur-3xl" aria-hidden="true" />
       <div className="relative flex flex-col gap-5">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-[12px] font-extrabold uppercase tracking-[1.5px] text-khelo-orange">Next up</span>
+          <span className="text-[12px] font-extrabold uppercase tracking-[1.5px] text-khelo-orange">{t("bookings.next.label")}</span>
           <span className="rounded-full bg-khelo-orange px-3 py-1 text-[13px] font-extrabold text-khelo-ink" data-testid="starts-in">
-            {startsInText(booking.starts_at, booking.ends_at)}
+            {startsInLabel(t, booking.starts_at, booking.ends_at)}
           </span>
           <StatusPill status={booking.status} dark />
         </div>
@@ -361,30 +428,46 @@ export function NextBookingCard({ booking, onChanged }: { booking: Booking; onCh
             {formatDate(booking.starts_at)} {"·"} {formatTimeRange(booking.starts_at, booking.ends_at)}
           </p>
         </div>
-        {booking.balance_due > 0 ? (
-          <p className="text-[15px] text-white/80">
-            Bring <span className="font-extrabold text-white">PKR {formatPKR(booking.balance_due)}</span> to pay at the venue.
+        <BookingTags court={v.court} venue={v.venue} dark />
+        {showPaid ? (
+          <p className="text-[15px] text-white/80" data-testid="next-paid">
+            {t("bookings.card.paid")}: <span className="font-extrabold text-white">PKR {formatPKR(booking.amount_paid)}</span>
           </p>
         ) : null}
+        {booking.balance_due > 0 ? <BringLine balance={booking.balance_due} /> : null}
         <div className="flex flex-wrap items-center gap-3">
           {v.canResumePay ? (
             <button onClick={v.goPay} className={buttonClasses({ variant: "primary" })}>
-              {booking.status === "held" ? "Complete payment" : "View payment"}
+              {booking.status === "held" ? t("bookings.card.completePay") : t("bookings.card.viewPay")}
             </button>
           ) : null}
           {booking.status === "booked" ? (
             <button onClick={v.goCheckin} className={buttonClasses({ variant: "primary" })}>
-              Check in
+              {t("bookings.card.checkin")}
             </button>
           ) : null}
           {v.canCancel ? (
             <button onClick={v.handleCancel} className="inline-flex min-h-11 items-center px-3 text-[14px] font-bold text-white underline decoration-khelo-danger decoration-2 underline-offset-4">
-              Cancel booking
+              {t("bookings.card.cancel")}
             </button>
           ) : null}
         </div>
         {v.policyNote && group === "confirmed" ? <p className="text-[13px] text-white/75">{v.policyNote}</p> : null}
       </div>
     </section>
+  );
+}
+
+/** "Bring PKR 500 to pay at the venue." with the amount in bold (the amount is located in the translated sentence, so word order is free). */
+function BringLine({ balance }: { balance: number }) {
+  const t = useT();
+  const amount = `PKR ${formatPKR(balance)}`;
+  const [before, after] = t("bookings.next.bring", { amount }).split(amount);
+  return (
+    <p className="text-[15px] text-white/80">
+      {before}
+      <span className="font-extrabold text-white">{amount}</span>
+      {after}
+    </p>
   );
 }
