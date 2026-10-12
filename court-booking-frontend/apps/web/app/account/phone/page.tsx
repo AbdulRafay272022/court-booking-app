@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { isValidOtp, isValidPkMobile, toE164, validatePhoneChange } from "@court-booking/types";
@@ -10,10 +10,12 @@ import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { rememberOtpExpiry } from "@/lib/pending-auth";
 import { suppressAuthRedirect } from "@/lib/use-require-auth";
-import { FormMessage, PasswordField, TextField } from "@/components/auth/fields";
-import { OtpControls, useOtpFlow } from "@/components/auth/otp-controls";
-import { SubmitButton } from "@/components/auth/submit-button";
-import { TONES } from "@/components/auth/tone";
+import { useT } from "@/components/i18n/lang-provider";
+import { Container } from "@/components/site/primitives";
+import { CountryPrefix, FormNotice, PasswordField, SmartButton, TextField } from "@/components/auth-v2/fields";
+import { CodeField, OtpStatus } from "@/components/auth-v2/otp-controls";
+import { useOtpFlow } from "@/components/auth/otp-controls";
+import { Card } from "@/components/account-hub/parts";
 
 /** Phone-number change (both roles). Two steps:
  *  1. new number + CURRENT password (re-authentication for a sensitive change) -> a code goes to the NEW number;
@@ -21,10 +23,9 @@ import { TONES } from "@/components/auth/tone";
  *     too), so we sign out locally and send the user to log in with the new number, with a notice saying
  *     so. Abandoning at either step changes nothing. */
 export default function ChangePhonePage() {
-  const router = useRouter();
+  const t = useT();
   const user = useAuthStore((s) => s.user)!;
-  const tone = user.role === "owner" || user.role === "admin" ? "owner" : "player";
-  const t = TONES[tone];
+  const theme = user.role === "owner" || user.role === "admin" ? "owner" : "player";
 
   const [step, setStep] = useState<1 | 2>(1);
   const [newPhone, setNewPhone] = useState("");
@@ -35,10 +36,12 @@ export default function ChangePhonePage() {
   const [phoneTaken, setPhoneTaken] = useState(false);
 
   const e164 = isValidPkMobile(newPhone) ? toE164(newPhone) : "";
-  const errors = validatePhoneChange({ newPhone, password });
-  const step1Ready = Object.keys(errors).length === 0 && e164 !== user.phone;
-
-  useEffect(() => setPhoneTaken(false), [newPhone]);
+  const rawErrors = validatePhoneChange({ newPhone, password });
+  const errors = {
+    newPhone: rawErrors.newPhone ? t("account.phone.err.newPhone") : undefined,
+    password: rawErrors.password ? t("account.phone.err.password") : undefined,
+  };
+  const step1Ready = Object.keys(rawErrors).length === 0 && e164 !== user.phone;
 
   async function handleRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -51,7 +54,7 @@ export default function ChangePhonePage() {
       setStep(2);
     } catch (err) {
       if (err instanceof ApiError && err.code === "PHONE_ALREADY_REGISTERED") setPhoneTaken(true);
-      else if (err instanceof ApiError && err.code === "INVALID_CREDENTIALS") setError("Incorrect password.");
+      else if (err instanceof ApiError && err.code === "INVALID_CREDENTIALS") setError(t("account.phone.wrongPassword"));
       else setError(friendlyErrorMessage(err));
     } finally {
       setBusy(false);
@@ -59,76 +62,71 @@ export default function ChangePhonePage() {
   }
 
   return (
-    <>
-      <div className="flex flex-col gap-1">
-        <Link href="/account" className="text-[13.5px] font-semibold" style={{ color: t.muted }}>
-          ← Back to account
+    <Container className="flex max-w-[640px] flex-col gap-6 py-8 lg:py-10">
+      <div className="flex flex-col gap-2">
+        <Link href="/account?tab=settings" className="inline-flex min-h-11 items-center self-start text-[15px] font-bold text-khelo-muted hover:underline">
+          {"←"} {t("account.phone.back")}
         </Link>
-        <h1 className="text-[26px] font-extrabold tracking-[-0.03em]">Change phone number</h1>
-        <p className="text-[14.5px] font-medium leading-relaxed" style={{ color: t.muted }}>
-          Your current number is{" "}
-          <span className="font-[family-name:var(--font-mono-x)] font-semibold" style={{ color: t.ink }}>
-            {user.phone}
-          </span>
-          . After the change you&apos;ll be logged out everywhere and sign in again with the new number and your existing password.
+        <h1 className="font-khelo-display text-[34px] font-extrabold leading-[1.05] tracking-[-1.5px]">{t("account.phone.title")}</h1>
+        <p className="text-[16px] leading-relaxed text-khelo-muted">
+          {t("account.phone.intro1")} <span className="font-mono-plex font-semibold text-khelo-ink">{user.phone}</span>
+          {t("account.phone.intro2")}
         </p>
       </div>
 
       {step === 1 ? (
-        <form onSubmit={handleRequest} noValidate className="flex flex-col gap-5 rounded-3xl p-6" style={{ background: t.surface, border: `1px solid ${t.border}` }}>
-          <TextField
-            label="New mobile number"
-            tone={tone}
-            mono
-            inputMode="numeric"
-            autoFocus
-            value={newPhone}
-            onChange={(e) => setNewPhone(e.target.value)}
-            onBlur={() => setTouched((p) => ({ ...p, newPhone: true }))}
-            error={phoneTaken ? "An account with this number already exists." : e164 === user.phone && newPhone ? "That is already your number." : errors.newPhone}
-            showError={phoneTaken || touched.newPhone}
-            placeholder="300 4408817"
-            autoComplete="tel-national"
-            prefix={
-              <span className="font-[family-name:var(--font-mono-x)] text-[15px] font-semibold" style={{ color: t.muted }}>
-                +92
-              </span>
-            }
-          />
-          <PasswordField
-            label="Current password"
-            tone={tone}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onBlur={() => setTouched((p) => ({ ...p, password: true }))}
-            error={errors.password}
-            showError={touched.password}
-            autoComplete="current-password"
-            placeholder="Confirms it's really you"
-          />
-          {error ? <FormMessage kind="error" tone={tone}>{error}</FormMessage> : null}
-          <SubmitButton tone={tone} ready={step1Ready} busy={busy} busyLabel="Sending code…">
-            Send code to new number
-          </SubmitButton>
-        </form>
+        <Card>
+          <form onSubmit={handleRequest} noValidate className="flex flex-col gap-5">
+            <TextField
+              label={t("account.phone.newPhone")}
+              inputMode="numeric"
+              autoFocus
+              value={newPhone}
+              onChange={(e) => {
+                setNewPhone(e.target.value);
+                setPhoneTaken(false);
+              }}
+              onBlur={() => setTouched((p) => ({ ...p, newPhone: true }))}
+              error={phoneTaken ? t("account.phone.err.taken") : e164 === user.phone && newPhone ? t("account.phone.err.same") : errors.newPhone}
+              showError={phoneTaken || touched.newPhone}
+              placeholder="300 4408817"
+              autoComplete="tel-national"
+              prefix={<CountryPrefix />}
+            />
+            <PasswordField
+              label={t("account.phone.currentPassword")}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onBlur={() => setTouched((p) => ({ ...p, password: true }))}
+              error={errors.password}
+              showError={touched.password}
+              autoComplete="current-password"
+              placeholder={t("account.phone.passwordPlaceholder")}
+            />
+            <div aria-live="polite">{error ? <FormNotice kind="error">{error}</FormNotice> : null}</div>
+            <SmartButton ready={step1Ready} busy={busy} busyLabel={t("account.phone.sending")} theme={theme}>
+              {t("account.phone.send")}
+            </SmartButton>
+          </form>
+        </Card>
       ) : (
         <CodeStep
           e164={e164}
           password={password}
-          tone={tone}
+          theme={theme}
           onBack={() => {
             setStep(1);
             setError(null);
           }}
         />
       )}
-    </>
+    </Container>
   );
 }
 
-function CodeStep({ e164, password, tone, onBack }: { e164: string; password: string; tone: "player" | "owner"; onBack: () => void }) {
+function CodeStep({ e164, password, theme, onBack }: { e164: string; password: string; theme: "player" | "owner"; onBack: () => void }) {
+  const t = useT();
   const router = useRouter();
-  const t = TONES[tone];
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,36 +156,31 @@ function CodeStep({ e164, password, tone, onBack }: { e164: string; password: st
   }
 
   return (
-    <form onSubmit={handleVerify} noValidate className="flex flex-col gap-5 rounded-3xl p-6" style={{ background: t.surface, border: `1px solid ${t.border}` }}>
-      <p className="text-[14.5px] font-medium leading-relaxed" style={{ color: t.muted }}>
-        We sent a 6-digit code on WhatsApp to{" "}
-        <span className="font-[family-name:var(--font-mono-x)] font-semibold" style={{ color: t.ink }}>
-          {e164}
-        </span>
-        .
-      </p>
-      <TextField
-        label="Verification code"
-        tone={tone}
-        mono
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        autoFocus
-        maxLength={6}
-        value={code}
-        disabled={flow.expired}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-        placeholder="••••••"
-        className="text-center text-[22px] tracking-[0.35em]"
-      />
-      <OtpControls flow={flow} tone={tone} />
-      {error ? <FormMessage kind="error" tone={tone}>{error}</FormMessage> : null}
-      <SubmitButton tone={tone} ready={ready} busy={busy} busyLabel="Verifying…">
-        Verify and change number
-      </SubmitButton>
-      <button type="button" onClick={onBack} className="text-[13.5px] font-semibold underline" style={{ color: t.muted }}>
-        Use a different number
-      </button>
-    </form>
+    <Card>
+      <form onSubmit={handleVerify} noValidate className="flex flex-col gap-5">
+        <p className="text-[16px] leading-relaxed text-khelo-muted">
+          {t("account.phone.codeSent")} <span className="font-mono-plex font-semibold text-khelo-ink">{e164}</span>.
+        </p>
+        <CodeField
+          label={t("account.phone.code")}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          autoFocus
+          maxLength={6}
+          value={code}
+          disabled={flow.expired}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          placeholder={"••••••"}
+        />
+        <OtpStatus flow={flow} />
+        <div aria-live="polite">{error ? <FormNotice kind="error">{error}</FormNotice> : null}</div>
+        <SmartButton ready={ready} busy={busy} busyLabel={t("account.phone.verifying")} theme={theme}>
+          {t("account.phone.verify")}
+        </SmartButton>
+        <button type="button" onClick={onBack} className="inline-flex min-h-11 cursor-pointer items-center justify-center text-[15px] font-bold text-khelo-muted underline">
+          {t("account.phone.different")}
+        </button>
+      </form>
+    </Card>
   );
 }
