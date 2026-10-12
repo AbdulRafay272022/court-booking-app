@@ -1,4 +1,4 @@
-import { getSiteConfig } from "@/lib/site-config";
+import { COMPANY_NAME, getSiteConfig } from "@/lib/site-config";
 import { safeJsonLd } from "@/lib/safe-json";
 
 /**
@@ -13,7 +13,7 @@ export function OrganizationJsonLd() {
     "@type": "Organization",
     name: "Khelo",
     ...(siteUrl ? { url: siteUrl, logo: `${siteUrl}/brand/khelo-logo-icon.svg` } : {}),
-    parentOrganization: { "@type": "Organization", name: "Logic Link System" },
+    parentOrganization: { "@type": "Organization", name: COMPANY_NAME },
   };
   return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(data) }} />;
 }
