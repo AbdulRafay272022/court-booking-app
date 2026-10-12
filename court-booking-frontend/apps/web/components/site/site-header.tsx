@@ -110,7 +110,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
           <Logo size={34} onDark />
         </Link>
 
-        <nav aria-label={t("header.nav.main")} className="flex flex-wrap gap-7 text-[15px] font-semibold max-[1120px]:hidden">
+        <nav aria-label={t("header.nav.main")} className="flex flex-wrap gap-5 text-[15px] min-[1240px]:gap-7 font-semibold max-[1120px]:hidden">
           {NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} aria-current={isCurrent(l.href) ? "page" : undefined} className={`khelo-navlink ${linkTone(l.href)}`}>
               {t(l.labelKey)}
