@@ -53,6 +53,7 @@ test("translate interpolates, and parseLang defaults to ru", () => {
 });
 
 test("no double-encoded text (mojibake) in either dictionary", () => {
-  const bad = /[ÂÃ][\u0080-¿]|â€|�/;
+  const c = String.fromCharCode;
+  const bad = new RegExp("[" + c(0xc2, 0xc3) + "][" + c(0x80) + "-" + c(0xbf) + "]|" + c(0xe2, 0x20ac) + "|" + c(0xfffd));
   for (const dict of [ru, en]) for (const [k, v] of Object.entries(dict)) assert.ok(!bad.test(String(v)), `${k} looks garbled`);
 });
