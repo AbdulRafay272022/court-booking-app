@@ -179,7 +179,8 @@ async def test_propose_booking_confirmation_surfaces_actions(
     )
 
     service = AIChatService(db_session, settings)
-    result = await service.process_message(user=player, message="book 5pm tomorrow", history=[])
+    # Phase 3: a Yes/No proposal needs every detail from the player, the length included (pattern P3), and the slot must be the one they asked for
+    result = await service.process_message(user=player, message="book 10pm tomorrow for 1 hour", history=[])
     assert len(result.actions) == 2
     assert result.actions[0].type == "confirm_booking"
     assert result.actions[0].data["court_id"] == str(court.id)
@@ -288,11 +289,11 @@ async def test_ai_reply_never_shows_a_24_hour_time_or_an_iso_timestamp(
             _tool_use_response("check_availability", {"court_id": str(court.id), "date": target.isoformat()}),
             _text_response(
                 "Slots only run up to 17:30 (07:00 to 08:30 is free), and 9:00 PM is open. "
-                "Booked at 2026-09-23T14:30:00+00:00."
+                f"Booked at {target.isoformat()}T14:30:00+00:00."
             ),
         ],
     )
-    result = await AIChatService(db_session, settings).process_message(user=player, message="9 pm?", history=[])
+    result = await AIChatService(db_session, settings).process_message(user=player, message="Is 9 pm available tomorrow?", history=[])
     assert not contains_24h_time(result.reply), result.reply
     assert "T14:30" not in result.reply and "+00:00" not in result.reply, result.reply
     assert "5:30 PM" in result.reply and "9:00 PM" in result.reply
@@ -440,8 +441,10 @@ async def test_tool_loop_stops_after_max_iterations(
     _mock_anthropic_sequence(monkeypatch, [always_tool_use])
 
     service = AIChatService(db_session, settings)
-    result = await service.process_message(user=player, message="hello", history=[])
-    assert "trouble" in result.reply.lower() or "rephrasing" in result.reply.lower()
+    # "hello" alone is answered by the greeting guard with no model call (Phase 3), so ask for something that needs the model
+    result = await service.process_message(user=player, message="parking hai kya?", history=[])
+    # Phase 3: the give-up message is a localized template (the player wrote Roman Urdu)
+    assert "poora nahi kar saka" in result.reply.lower()  # reply_text.trouble_message("ru")
 
 
 # --- Section 32 Part 8: outgoing-reply sanitizer -----------------------------
@@ -868,12 +871,13 @@ async def test_assistant_asks_a_nameless_player_for_a_name_once_before_proposing
         _text_response("What name should I put the booking under?"),
     ])
     service = AIChatService(db_session, get_settings())
-    result = await service.process_message(user=guest, message="book 7pm saturday", history=[])
+    first = "book 7pm saturday for 1 hour"  # Phase 3: the proposal needs the length from the player too
+    result = await service.process_message(user=guest, message=first, history=[])
     assert result.actions == [] and "name" in result.reply.lower()  # no Yes/No yet: a name comes first
     assert "none on file" in bodies[0]["system"]  # the model is told the account has no name
 
     # next turn: the question is in the history, the player answers with their own name -> proposal carries it, account filled
-    history = [{"role": "user", "content": "book 7pm saturday"}, {"role": "assistant", "content": result.reply}]
+    history = [{"role": "user", "content": first}, {"role": "assistant", "content": result.reply}]
     _capture_anthropic(monkeypatch, [
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start,
                                                             "player_name": "Ali", "name_is_players_own": True}),
@@ -912,13 +916,13 @@ async def test_name_question_is_never_repeated_and_a_named_account_is_never_aske
     service = AIChatService(db_session, get_settings())
 
     # the question was already asked and the player brushed it off: propose WITHOUT a name goes straight through
-    history = [{"role": "user", "content": "book 7pm"}, {"role": "assistant", "content": "What name should I put the booking under?"},
-               {"role": "user", "content": "koi bhi"}]
+    history = [{"role": "user", "content": "book 7pm saturday for 1 hour"}, {"role": "assistant", "content": "What name should I put the booking under?"},
+               {"role": "user", "content": "no need"}]
     _capture_anthropic(monkeypatch, [
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response("Court 1, 7 PM. Shall I book it?"),
     ])
-    result = await service.process_message(user=guest, message="koi bhi", history=history)
+    result = await service.process_message(user=guest, message="no need", history=history)
     assert any(a.type == "confirm_booking" for a in result.actions)
     assert "player_name" not in next(a for a in result.actions if a.type == "confirm_booking").data
 
@@ -928,7 +932,7 @@ async def test_name_question_is_never_repeated_and_a_named_account_is_never_aske
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response("Court 1, 7 PM. Shall I book it?"),
     ])
-    result = await service.process_message(user=sara, message="book 7pm", history=[])
+    result = await service.process_message(user=sara, message="book 7pm saturday for 1 hour", history=[])
     assert any(a.type == "confirm_booking" for a in result.actions)
     assert 'Player account name: "Sara Ahmed"' in bodies[0]["system"]
 
@@ -944,7 +948,7 @@ async def test_proposal_message_always_states_the_exact_slot_court_date_time_and
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response("Shall I book it? Reply Yes or No"),  # the model never said WHICH slot
     ])
-    result = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday", history=[])
+    result = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday for 1 hour", history=[])
     label = next(a for a in result.actions if a.type == "confirm_booking").data["label"]
     assert label.startswith("7:00 PM to 8:00 PM, ") and label in result.reply
     assert "Court 1" in result.reply and "PKR 3,500" in result.reply and result.reply.rstrip().endswith("Reply Yes or No")
@@ -954,7 +958,7 @@ async def test_proposal_message_always_states_the_exact_slot_court_date_time_and
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response(f"Court 1, {label}, PKR 3,500. Shall I book it? Reply Yes or No"),
     ])
-    again = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday", history=[])
+    again = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday for 1 hour", history=[])
     assert again.reply.count(label) == 1
 
 
@@ -980,9 +984,14 @@ async def test_hold_slot_only_runs_for_the_exact_slot_the_previous_message_state
     day = _future_day(5)
     seven, eight = _pkt(day, 19).isoformat(), _pkt(day, 20).isoformat()
 
-    # (1) yes with NO proposal at all -> refused (the model is told to state the slot), nothing held
-    res = await _hold_via_model(db_session, monkeypatch, sara, court, seven)
-    assert res.tool_calls == ["hold_slot"] and await _held(db_session, sara) == []
+    # (1) yes with NO proposal at all -> nothing is held. Phase 3: a bare "yes" with nothing pending is answered by the ack guard without
+    # the model, and the hold gate would refuse it anyway (checked directly)
+    ack = await _hold_via_model(db_session, monkeypatch, sara, court, seven)
+    assert ack.tool_calls == [] and ack.model is None and await _held(db_session, sara) == []
+    blocked = await AIChatService(db_session, get_settings())._gate_tool(
+        sara, "app", "hold_slot", {"court_id": str(court.id), "starts_at": seven}, [{"role": "user", "content": "yes"}]
+    )
+    assert blocked and "has not confirmed" in blocked["error"]
 
     # (2) a proposal whose text never said which time -> refused
     await _add_proposal(db_session, sara, court, seven, states_slot=False)
@@ -1025,6 +1034,8 @@ async def test_a_bare_yes_without_a_stated_slot_tells_the_model_to_restate_it_an
     seven = _pkt(_future_day(5), 19).isoformat()
     service = AIChatService(db_session, get_settings())
 
+    # the bot's last message asked "Shall I book it?" without ever stating which slot
+    await _add_proposal(db_session, sara, court, seven, states_slot=False)
     bodies = _capture_anthropic(monkeypatch, [_text_response("Which slot do you mean?")])
     await service.process_message(user=sara, message="Yes", history=[])
     assert "bare \"yes\"" in bodies[0]["system"] and "Do NOT call hold_slot" in bodies[0]["system"]
@@ -1036,7 +1047,8 @@ async def test_a_bare_yes_without_a_stated_slot_tells_the_model_to_restate_it_an
 
     # a message that says more than yes (a changed time) gets no yes-hint at all
     bodies = _capture_anthropic(monkeypatch, [_text_response("Checking 9pm.")])
-    await service.process_message(user=sara, message="yes but 9pm", history=[])
+    said = [{"role": "user", "content": "court 1 saturday 7pm for 1 hour"}]  # what the player told us earlier, so only the time changes
+    await service.process_message(user=sara, message="yes but 9pm", history=said)
     assert "The player just replied" not in bodies[0]["system"]
 
 
@@ -1077,7 +1089,7 @@ async def test_whatsapp_name_then_exact_time_flow_end_to_end(
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
 
-    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-1", "book court 1 at 7pm saturday"))
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-1", "book court 1 at 7pm saturday for 1 hour"))
     assert "name" in sent[-1]["body"].lower() and "Shall I book" not in sent[-1]["body"]
     await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-2", "Ali Raza"))
     assert "7:00 PM to 8:00 PM" in sent[-1]["body"] and "PKR 3,500" in sent[-1]["body"] and sent[-1]["buttons"]  # exact slot + buttons

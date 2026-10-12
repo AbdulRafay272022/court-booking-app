@@ -29,7 +29,9 @@ from app.utils.text import slugify
 
 settings = get_settings()
 BASE_ADMIN_URL = settings.DATABASE_URL.rsplit("/", 1)[0] + "/postgres"
-TEST_DATABASE_URL = settings.DATABASE_URL.rsplit("/", 1)[0] + "/court_booking_test"
+# Parallel agents/sessions set TEST_DB_NAME to their own database so two pytest runs never DROP/CREATE the same one.
+TEST_DB_NAME = os.environ.get("TEST_DB_NAME", "court_booking_test")
+TEST_DATABASE_URL = settings.DATABASE_URL.rsplit("/", 1)[0] + "/" + TEST_DB_NAME
 
 
 @pytest.fixture(scope="session")
@@ -37,10 +39,10 @@ async def test_engine():
     admin_engine = create_async_engine(BASE_ADMIN_URL, isolation_level="AUTOCOMMIT")
     async with admin_engine.connect() as conn:
         exists = await conn.scalar(
-            text("SELECT 1 FROM pg_database WHERE datname = 'court_booking_test'")
+            text("SELECT 1 FROM pg_database WHERE datname = '" + TEST_DB_NAME + "'")
         )
         if not exists:
-            await conn.execute(text("CREATE DATABASE court_booking_test"))
+            await conn.execute(text("CREATE DATABASE " + TEST_DB_NAME))
     await admin_engine.dispose()
 
     engine = create_async_engine(TEST_DATABASE_URL)

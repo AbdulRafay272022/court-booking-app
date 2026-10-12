@@ -2,6 +2,7 @@
 
 import { useId, type InputHTMLAttributes } from "react";
 import { formatCountdown } from "@court-booking/types";
+import { useT } from "@/components/i18n/lang-provider";
 import { ERROR_TEXT } from "./fields";
 import type { useOtpFlow } from "@/components/auth/otp-controls";
 
@@ -26,32 +27,33 @@ export function CodeField({ label, ...input }: { label: string } & Omit<InputHTM
 
 /** Expiry clock, resend button / cooldown, and resend errors. */
 export function OtpStatus({ flow }: { flow: ReturnType<typeof useOtpFlow> }) {
+  const t = useT();
   const { secondsLeft, expired, resendLeft, resendLockSeconds, resending, resendError, resend } = flow;
   const canResend = resendLeft === 0 && resendLockSeconds === 0 && !resending;
   return (
     <div className="flex flex-col items-center gap-1 text-center">
       {secondsLeft === null ? null : expired ? (
         <p role="alert" className={`text-[14px] font-bold ${ERROR_TEXT}`}>
-          Code expired
+          {t("auth.otp.expired")}
         </p>
       ) : (
         <p className="text-[14px] font-medium text-khelo-muted" aria-live="off">
-          Code expires in <span className="font-mono-plex font-semibold text-khelo-ink">{formatCountdown(secondsLeft)}</span>
+          {t("auth.otp.expiresIn")} <span className="font-mono-plex font-semibold text-khelo-ink">{formatCountdown(secondsLeft)}</span>
         </p>
       )}
 
       {canResend ? (
         <button type="button" onClick={resend} className="min-h-11 cursor-pointer px-4 text-[14px] font-bold text-khelo-orange-text underline">
-          Resend code
+          {t("auth.otp.resend")}
         </button>
       ) : resendLockSeconds > 0 ? (
         <p role="alert" className={`flex min-h-11 items-center text-[14px] font-semibold ${ERROR_TEXT}`}>
-          Too many code requests &mdash; resend in{" "}
+          {t("auth.otp.rateLimited")}{" "}
           <span className="ml-1 font-mono-plex font-semibold">{formatCountdown(resendLockSeconds)}</span>
         </p>
       ) : (
         <p className="flex min-h-11 items-center text-[14px] font-medium text-khelo-muted-2">
-          {resending ? "Sending…" : "Resend in "}
+          {resending ? t("auth.otp.sending") : `${t("auth.otp.resendIn")} `}
           {resending ? null : <span className="ml-1 font-mono-plex font-semibold text-khelo-muted">{formatCountdown(resendLeft)}</span>}
         </p>
       )}

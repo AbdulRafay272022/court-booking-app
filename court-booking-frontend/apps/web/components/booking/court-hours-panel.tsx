@@ -5,6 +5,7 @@ import { bookingHorizonText, upcomingBlackouts, weeklyHoursLines } from "@court-
 import type { Court } from "@court-booking/types";
 
 import { api } from "@/lib/api";
+import { useT } from "@/components/i18n/lang-provider";
 
 /**
  * "When can I book this court?" for the player venue page: the court's weekly booking hours (12-hour Pakistan time,
@@ -13,6 +14,7 @@ import { api } from "@/lib/api";
  * blackouts from GET /courts/{id}/blackouts.
  */
 export function CourtHoursPanel({ court, horizonDays }: { court: Court; horizonDays: number | null | undefined }) {
+  const t = useT();
   const blackoutsQuery = useQuery({
     queryKey: ["court-blackouts", court.id],
     queryFn: () => api.courts.listBlackouts(court.id),
@@ -25,7 +27,7 @@ export function CourtHoursPanel({ court, horizonDays }: { court: Court; horizonD
   return (
     <div className="rounded-2xl border border-khelo-divider bg-khelo-page px-3.5 py-3 flex flex-col gap-2.5" data-testid={`court-hours-${court.name}`}>
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">BOOKING HOURS</span>
+        <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">{t("venue.hours.title")}</span>
         {lines.map((l) => (
           <p key={l.days} className="flex justify-between gap-3 text-[13px]" data-testid="hours-line">
             <span className="font-semibold text-khelo-muted">{l.days}</span>
@@ -36,7 +38,7 @@ export function CourtHoursPanel({ court, horizonDays }: { court: Court; horizonD
       {horizon ? <p className="text-[12.5px] font-medium text-khelo-muted-2" data-testid="horizon-text">{horizon}</p> : null}
       {blackouts.length > 0 ? (
         <div className="flex flex-col gap-1" data-testid="blackout-list">
-          <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">CLOSED / UNAVAILABLE</span>
+          <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">{t("venue.hours.closed")}</span>
           {blackouts.map((b) => (
             <p key={b.id} className="text-[13px] text-khelo-muted">
               <span className="font-semibold">{b.label}</span> · {b.when}

@@ -20,7 +20,23 @@ from app.services.ai.factory import UnconfiguredProviderError, get_chat_provider
 from app.services.ai.tools import BOOKING_TOOLS
 from app.services.ai.usage import log_ai_usage
 from app.services.availability_service import GRID_MINUTES, MAX_BOOKING_MINUTES, AvailabilityService, min_slots
+from app.models.booking import Booking, BookingStatus
+from app.services import chat_guards, chat_templates, chat_validator, reply_text
 from app.services.booking_service import BookingService
+from app.services.chat_facts import PlatformFacts, facts_block, load_hours, load_platform_facts
+from app.services.chat_state import (
+    ChatState,
+    FoldResult,
+    Row,
+    TOOL,
+    ask_fields,
+    fold_state,
+    is_plain_affirmative,  # noqa: F401  (re-exported: app/api/webhooks.py imports it from here)
+    missing_fields,
+    numbered_options,
+    reply_language,
+    select_history,
+)
 from app.services.entitlement_service import EntitlementService
 from app.services.feature_flag_service import flag_on
 from app.services.player_name import clean_player_name, tidy_player_name
@@ -170,6 +186,7 @@ def build_system_prompt(
     user_name: str | None = None,
     turn_hint: str | None = None,
     available_sports: list[str] | None = None,
+    state_block: str | None = None,
 ) -> str:
     """The model has no clock: without this, "Wednesday" resolved to the wrong week and one
     conversation offered a slot on "15 May" in September. Pakistan time, because that is how
@@ -192,6 +209,7 @@ def build_system_prompt(
             if tidy_player_name(user_name)
             else "Player account name: none on file.\n"
         )
+        + (f"\n{state_block}\n" if state_block else "")
         + (f"\n{turn_hint}\n" if turn_hint else "")
     )
 
@@ -208,6 +226,10 @@ _BUTTON_PHRASE_RE = re.compile(
     r"(?i)\s*\b(?:please\s+)?(?:tap|click|press|hit|use|select|choose)\b[^.?!\n]*\bbuttons?\b[^.?!\n]*[.?!]?"
 )
 _LEFTOVER_BUTTON_RE = re.compile(r"(?i)\b(?:the\s+|a\s+|these\s+|below\s+)?buttons?\b(?:\s+below)?")
+
+
+# "9:00 PM UTC", "(UTC+5)": the player is never told about UTC (the rule is in the prompt; this is the safety net)
+_UTC_WORD_RE = re.compile(r"(?i)\s*\(?\bUTC\b(?:\s*[+-]\s*\d{1,2}(?::\d{2})?)?\)?")
 
 
 def _strip_markdown(text: str) -> str:
@@ -247,6 +269,8 @@ def sanitize_reply(text: str) -> str:
     net (the real fixes are the ready-made tool strings + the system prompt): 24-hour/UTC times
     (enforce_display_format), leaked markdown, and any mention of buttons/tapping/clicking."""
     text = enforce_display_format(text)
+    text = _UTC_WORD_RE.sub("", text)
+    text = chat_validator.strip_emoji(text)
     text = _strip_markdown(text)
     text = _strip_button_talk(text)
     text = _fix_shorthand(text)
@@ -256,28 +280,8 @@ def sanitize_reply(text: str) -> str:
 # A bare "yes" only confirms a proposal made in the message right before it, and only for this long.
 PROPOSAL_MAX_AGE = timedelta(minutes=30)
 
-# Words that may appear in a *plain* confirmation ("Yesss", "haan bhai book kardo", "ok"). Anything
-# else in the message (a time, a date, "but", "no") means the player is saying something more, so it
-# goes to the assistant instead of being treated as a bare yes.
-_AFFIRMATIVE_RE = re.compile(
-    r"^(y+e+s+|y+e+a+h*|y+e+p+|y+u+p+|y+a+|y|h+a+a*n+|h+a+a+|h+n+|o+k+a*y*|ji+|je+e+|g|sure|bilkul|zaroor|"
-    r"confirm(ed)?|kardo|karo|done|theek|thik|book)$"
-)
-_FILLER_WORDS = frozenset(
-    "bhai yaar sir please plz pls thanks thank you it this the kar do karo kardo booking hai hain sahi fine "
-    "go ahead lets let s now abhi".split()
-)
 _NAME_ASK_RE = re.compile(r"(?i)\b(name|naam)\b")
-
-
-def is_plain_affirmative(text: str) -> bool:
-    """True for a short reply that is nothing but agreement, e.g. "Yesss" or "Haan bhai yes book kardo"."""
-    words = re.sub(r"[^a-z\s]", " ", text.lower()).split()
-    if not words or len(words) > 8:
-        return False
-    if not all(_AFFIRMATIVE_RE.match(w) or w in _FILLER_WORDS for w in words):
-        return False
-    return any(_AFFIRMATIVE_RE.match(w) for w in words)
+# `is_plain_affirmative` lives in chat_state (the state extractor needs it); it stays importable from here for webhooks.py.
 
 
 def reply_states_slot(text: str, label: str | None) -> bool:
@@ -297,6 +301,10 @@ def explicit_proposal_data(message: Message | None) -> dict | None:
     if message is None or message.sender_type != "ai":
         return None
     if message.created_at is None or datetime.now(timezone.utc) - message.created_at > PROPOSAL_MAX_AGE:
+        return None
+    # A message that ASKS for something else (how long? which court?) is not a request to confirm, even when a Yes/No action was stored with it
+    # (production 2026-09-29: "...Aap kitni der khelna chahtay hain?" carried the action, and a bare "Yes, book it" held one hour).
+    if any(kind != "confirm" for kind in ask_fields(message.content)):
         return None
     for action in (message.meta or {}).get("actions") or []:
         if action.get("type") != "confirm_booking":
@@ -386,6 +394,18 @@ class ChatResult:
     actions: list[ChatAction] = field(default_factory=list)
     model: str | None = None
     tool_calls: list[str] = field(default_factory=list)
+    # The conversation state after this reply (`ChatState.to_dict()`). The caller that stores the reply should put it in the reply row's
+    # `meta["state"]` (see chat_state.py: it is also re-derived from history, so a caller that does not store it loses nothing).
+    state: dict | None = None
+    kind: str | None = None  # which guard answered without the model (greeting, ask_sport, sport_unsupported, ...), None for a model reply
+
+
+@dataclass
+class _TurnContext:
+    """What process_message worked out for this turn, shared with the tool gates."""
+
+    fold: FoldResult
+    facts: PlatformFacts
 
 
 class AIChatService:
@@ -404,6 +424,8 @@ class AIChatService:
         self.availability = AvailabilityService(db)
         self.booking_service = BookingService(db, settings)
         self.venue_service = VenueService(db, settings)
+        self._platform_facts: PlatformFacts | None = None
+        self._turn: _TurnContext | None = None
 
     def _choose_model_tier(self, history: list[dict]) -> str:
         """Drives AIProvider.chat()'s cheap-vs-smarter routing --
@@ -417,26 +439,103 @@ class AIChatService:
             return "complex"
         return "routine"
 
-    async def load_history(self, user: User, channel: str, *, limit: int = 10) -> list[dict]:
-        """Recent text turns for this user on this channel, oldest first, in
-        the neutral {role, content} shape (see app/services/ai/base.py) --
-        the shared source of conversation continuity for both the WhatsApp
-        webhook and the in-app chat endpoint."""
-        from sqlalchemy import select
+    # --- conversation state, facts and history (Khelo Phase 3; see chat_state / chat_facts / chat_guards / chat_validator) ---------------
 
-        from app.models.message import Message
+    async def _facts(self) -> PlatformFacts:
+        """The real venues / courts / sports, read from the database once per request."""
+        if self._platform_facts is None:
+            self._platform_facts = await load_platform_facts(self.venue_service)
+        return self._platform_facts
 
+    async def _load_rows(self, user: User, channel: str, *, limit: int = 60) -> list[Row]:
+        """The recent text messages of this user + channel, oldest first (on a timestamp tie the player's message comes first)."""
         result = await self.db.execute(
             select(Message)
             .where(Message.sender_id == user.id, Message.channel == channel, Message.message_type == "text")
             .order_by(Message.created_at.desc(), Message.sender_type.asc())  # on a tie the reply ("ai") is the newer row
             .limit(limit)
         )
-        rows = list(reversed(result.scalars().all()))
-        return [
-            {"role": "user" if m.sender_type == "player" else "assistant", "content": m.content}
-            for m in rows
+        rows: list[Row] = []
+        for m in reversed(result.scalars().all()):
+            is_player = m.sender_type == "player"
+            if not is_player and (m.meta or {}).get("fallback"):
+                continue  # a failure notice the system sent: never part of the conversation the model or the state sees
+
+            rows.append(
+                Row(
+                    role="player" if is_player else "ai",
+                    text=m.content,
+                    at=m.created_at,
+                    proposal=None if is_player else explicit_proposal_data(m),
+                    saved_state=None if is_player else (m.meta or {}).get("state"),
+                )
+            )
+        return rows
+
+    async def _booking_boundary(self, user: User) -> tuple[datetime | None, str | None]:
+        """(when the player's latest booking was created, its stage): messages before that belong to a finished booking."""
+        booking = (
+            await self.db.execute(select(Booking).where(Booking.player_id == user.id).order_by(Booking.created_at.desc()).limit(1))
+        ).scalar_one_or_none()
+        if booking is None or booking.created_at is None:
+            return None, None
+        stage = "awaiting_payment" if booking.status in (BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED) else "done"
+        if datetime.now(timezone.utc) - booking.created_at > timedelta(hours=3):
+            stage = None  # long finished: only the boundary matters
+        return booking.created_at, stage
+
+    @staticmethod
+    def _without_current(history: list[dict] | None, message: str) -> list[dict]:
+        """The WhatsApp webhook stores the inbound message BEFORE asking for the reply, so `load_history` already ends with it: the model
+        used to see the current message twice."""
+        history = list(history or [])
+        if history and history[-1].get("role") == "user" and history[-1].get("content") == message:
+            history.pop()
+        return history
+
+    async def _fold(self, user: User, channel: str, message: str, history: list[dict]) -> FoldResult:
+        facts = await self._facts()
+        rows = await self._load_rows(user, channel)
+        if rows and rows[-1].role == "player" and rows[-1].text == message:
+            rows = rows[:-1]  # the inbound WhatsApp row of this very message
+        known = {(r.role, r.text) for r in rows}
+        extra = [
+            Row(role="player" if h.get("role") == "user" else "ai", text=h["content"])
+            for h in history
+            if isinstance(h.get("content"), str) and ("player" if h.get("role") == "user" else "ai", h["content"]) not in known
         ]
+        floor, stage = await self._booking_boundary(user)
+        saved = None
+        for row in reversed(rows):
+            if row.role == "ai":
+                saved = ChatState.from_dict(row.saved_state)
+                break
+        return fold_state(extra + rows, message, facts, datetime.now(timezone.utc), booking_floor=floor, booking_stage=stage, saved=saved)
+
+    async def load_history(self, user: User, channel: str, *, limit: int = 10) -> list[dict]:
+        """The text turns to hand the model, oldest first, in the neutral {role, content} shape (see app/services/ai/base.py): the last 8 turns
+        plus the earlier turns that DEFINE the conversation state (where the player said the sport / date / time / duration), without old
+        chit-chat and never anything from before the conversation boundary (3 hours of silence, or a booking made since). The shared source of
+        continuity for both the WhatsApp webhook and the in-app chat endpoint. (`limit` is kept for callers; the window rule replaces it.)"""
+        rows = await self._load_rows(user, channel)
+        floor, stage = await self._booking_boundary(user)
+        fold = fold_state(rows, "", await self._facts(), datetime.now(timezone.utc), booking_floor=floor, booking_stage=stage)
+        return select_history(fold.window, fold.sources)
+
+    async def player_language(self, user: User, channel: str) -> str:
+        """"ru" (Roman Urdu) or "en": the language for a FIXED message to this player right now, for callers outside `process_message` (the WhatsApp
+        Held / decline replies). Judged from the player's last messages WITHOUT the conversation boundary, because a hold ends the conversation and
+        the confirmation that follows it must still speak the player's language."""
+        rows = await self._load_rows(user, channel)
+        return reply_language([r.text for r in rows if r.role == "player"][-6:], [r.text for r in rows if r.role == "ai"][-3:])
+
+    def _support_line(self) -> str | None:
+        return getattr(self.settings, "SUPPORT_WHATSAPP_NUMBER", None) or None
+
+    def _template_result(self, decision: chat_guards.Decision, fold: FoldResult) -> ChatResult:
+        state = fold.state
+        state.pending, state.options = decision.pending, list(decision.options)
+        return ChatResult(reply=sanitize_reply(decision.reply), actions=[], model=None, tool_calls=[], state=state.to_dict(), kind=decision.kind)
 
     async def process_message(
         self, *, user: User, message: str, history: list[dict] | None = None, channel: str = "app"
@@ -448,32 +547,51 @@ class AIChatService:
         # surfaces as a confusing error to end users.
         if not await flag_on(self.db, "ai_chat_booking"):
             logger.warning("ai_chat.disabled_by_kill_switch")
-            return ChatResult(
-                reply="Thanks for your message! Our team will get back to you shortly. "
-                "You can also browse venues and book directly in the app.",
-                model=None,
-            )
+            return ChatResult(reply=reply_text.handoff_message(reply_language([message])), model=None)
         try:
             provider = get_chat_provider(self.settings)
         except UnconfiguredProviderError:
             logger.info("ai_chat.skipped_no_api_key")
-            return ChatResult(
-                reply="Thanks for your message! Our team will get back to you shortly. "
-                "You can also browse venues and book directly in the app.",
-                model=None,
-            )
+            return ChatResult(reply=reply_text.handoff_message(reply_language([message])), model=None)
 
-        model_tier = self._choose_model_tier(history or [])
-        messages = list(history or []) + [{"role": "user", "content": message}]
+        # 1. the conversation state, computed from the player's own words (never from the model's memory), and the real facts
+        facts = await self._facts()
+        history = self._without_current(history, message)
+        fold = await self._fold(user, channel, message, history)
+        state, turn = fold.state, fold.turn
+        self._turn = _TurnContext(fold=fold, facts=facts)
+        if turn.intent == "hours_question":
+            await load_hours(self.db, list(facts.venues) if state.venue_id is None else [v for v in [facts.venue(state.venue_id)] if v])
+
+        # 2. guards that answer WITHOUT the model: greetings / thanks / "ok", an unsupported sport, price / location / hours from facts,
+        #    and the ONE next question while something required is still unknown
+        decision = chat_guards.decide(fold, facts, support=self._support_line())
+        if decision is not None:
+            logger.info("ai_chat.guard_reply", kind=decision.kind, intent=turn.intent)
+            return self._template_result(decision, fold)
+
+        # 3. the model, with the state and the real facts appended to its instructions
+        venue = facts.venue(state.venue_id)
+        if venue is not None:
+            await load_hours(self.db, [venue])
+        hints = [h for h in (await self._bare_yes_hint(user, channel, message), self._turn_directives(fold)) if h]
+        model_tier = self._choose_model_tier(history)
+        messages = list(history) + [{"role": "user", "content": message}]
         tools = provider.get_tool_schema(BOOKING_TOOLS)
         actions: list[ChatAction] = []
         tool_calls_made: list[str] = []
+        tool_texts: list[str] = []
         offered: dict[tuple[str, str], str] = {}  # (court_id, starts_at) -> PKT label, from check_availability
         quoted: dict[tuple[str, str], int] = {}  # (court_id, starts_at) -> slot_count, once a DURATION is known for that slot
-        turn_hint = await self._bare_yes_hint(user, channel, message)
         system_prompt = build_system_prompt(
-            datetime.now(timezone.utc), user.name, turn_hint, await self._available_sports()
+            datetime.now(timezone.utc),
+            user.name,
+            "\n".join(hints) or None,
+            facts.sports(),
+            state_block=facts_block(state, facts, missing=missing_fields(state, facts)),
         )
+        retried = False
+        held: dict | None = None  # the result of a hold_slot that succeeded this turn
 
         for _ in range(MAX_TOOL_ITERATIONS):
             reply = await provider.chat(system_prompt, messages, tools, model_tier)
@@ -489,16 +607,29 @@ class AIChatService:
             if not reply.tool_calls:
                 text = (reply.text or "").strip()
                 self._attach_proposal_for_named_slot(text, offered, actions, quoted)
-                text = self._ensure_exact_slot_stated(text, actions)
+                text = self._ensure_exact_slot_stated(text, actions, state.language)
                 # Safety net only (the real fixes are the ready-made tool strings + the system
-                # prompt): a player must never SEE a 24-hour/UTC time, leaked markdown, or any
+                # prompt): a player must never SEE a 24-hour/UTC time, leaked markdown, emoji, or any
                 # "tap the button" wording, even if the model slips (Section 32 Part 8).
                 fixed = sanitize_reply(text)
                 if fixed != text:
                     logger.warning("ai_chat.reply_sanitized", before=text[:200])
                     text = fixed
                 text, actions = await self._drop_unbookable_actions(text, actions)
-                return ChatResult(reply=text, actions=actions, model=model_tier, tool_calls=tool_calls_made)
+                # 4. the reply safety check: regenerate once with a corrective instruction, then a safe localized template
+                actions, issues, vctx = self._check_draft(text, actions, tool_texts, fold, facts, message)
+                if issues:
+                    logger.warning("ai_chat.draft_rejected", issues=[i.code for i in issues], draft=text[:200], retry=not retried)
+                    if not retried:
+                        retried = True
+                        actions = [a for a in actions if a.type not in ("confirm_booking", "decline")]
+                        system_prompt += "\n\n" + chat_validator.corrective_instruction(issues, vctx)
+                        continue
+                    text, actions = self._safe_fallback(fold, facts, held), []
+                self._localize_actions(actions, state.language)
+                return ChatResult(
+                    reply=text, actions=actions, model=model_tier, tool_calls=tool_calls_made, state=self._final_state(fold, facts, text, actions)
+                )
 
             assistant_content: list[dict] = []
             if reply.text:
@@ -519,6 +650,9 @@ class AIChatService:
                 tool_calls_made.append(tc.name)
                 blocked = await self._gate_tool(user, channel, tc.name, tc.arguments, messages)
                 result = blocked or await self._execute_tool(user, tc.name, tc.arguments, actions)
+                tool_texts.append(_to_text(result))
+                if tc.name == "hold_slot" and result.get("booking_id"):
+                    held = result
                 if tc.name == "check_availability":
                     for slot in result.get("slots", []):
                         offered[(str(tc.arguments.get("court_id")), slot["starts_at"])] = slot["label"]
@@ -540,12 +674,91 @@ class AIChatService:
                 )
             messages.append({"role": "user", "content": tool_results})
 
+        self._localize_actions(actions, state.language)
         return ChatResult(
-            reply="I'm having trouble completing that -- could you try rephrasing, or check the app directly?",
+            reply=self._safe_fallback(fold, facts, held) if held else reply_text.trouble_message(state.language),
             actions=actions,
             model=model_tier,
             tool_calls=tool_calls_made,
+            state=self._final_state(fold, facts, "", actions),
         )
+
+    @staticmethod
+    def _localize_actions(actions: list[ChatAction], lang: str) -> None:
+        """Yes / No labels in the player's language (WhatsApp button titles; the stored `type` is what clients act on)."""
+        for action in actions:
+            if action.type == "confirm_booking":
+                action.label = reply_text.confirm_button_title(lang)
+            elif action.type == "decline":
+                action.label = reply_text.decline_button_title(lang)
+
+    @staticmethod
+    def _turn_directives(fold: FoldResult) -> str | None:
+        """Extra instructions for this turn that follow from what the player's message is."""
+        turn = fold.turn
+        notes = []
+        if turn.more_options:
+            notes.append(
+                "The player asks for OTHER options: run a real availability search (check_availability for the other courts of their sport and, if "
+                "needed, nearby times or the next day) and list what is really free. Do not ask them to suggest a time."
+            )
+        if turn.complaint:
+            notes.append("The player says they already told you: use the conversation state above and do not ask for it again.")
+        return " ".join(notes) or None
+
+    def _check_draft(
+        self, text: str, actions: list[ChatAction], tool_texts: list[str], fold: FoldResult, facts: PlatformFacts, message: str
+    ) -> tuple[list[ChatAction], list[chat_validator.Issue], chat_validator.ValidationContext]:
+        """Apply the Yes/No action policy and run the reply validator. Returns (actions kept, problems with the draft, the validation context)."""
+        state = fold.state
+        confirm = next((a for a in actions if a.type == "confirm_booking"), None)
+        if confirm is not None:
+            asked = ask_fields(text)
+            # a message that asks a question (other than "shall I book it?") never carries Yes/No actions; neither does a proposal for a
+            # slot that is not exactly what the player said (pattern P3: a bare "yes" must not confirm an unasked-for slot)
+            if any(k != "confirm" for k in asked) or not chat_guards.actions_allowed(state, facts, confirm.data):
+                actions = [a for a in actions if a.type not in ("confirm_booking", "decline")]
+        vctx = chat_validator.ValidationContext(
+            state=state,
+            facts=facts,
+            turn=fold.turn,
+            previous_ai=[r.text for r in fold.window if r.role == "ai"],
+            player_texts=[r.text for r in fold.window if r.role == "player"] + [message],
+            tool_text="\n".join(tool_texts),
+            actions=actions,
+        )
+        return actions, chat_validator.validate(text, vctx), vctx
+
+    def _safe_fallback(self, fold: FoldResult, facts: PlatformFacts, held: dict | None = None) -> str:
+        """What is sent when even the second draft fails the check: the hold, if one was just made (the player must always be told), else the ONE
+        next question when something is still missing, else a plain note."""
+        if held is not None:
+            return sanitize_reply(
+                chat_templates.render(
+                    "held", fold.state.language, label=held.get("label", ""), total=held.get("total_price_text", ""),
+                    advance=held.get("advance_text", ""), until=held.get("held_until_label"),
+                )
+            )
+        q = chat_guards.next_question(fold.state, facts, fold.turn)
+        if q is not None:
+            fold.state.pending, fold.state.options = q.pending, list(q.options)
+            return sanitize_reply(q.reply)
+        return sanitize_reply(chat_templates.render("fallback_unavailable", fold.state.language))
+
+    def _final_state(self, fold: FoldResult, facts: PlatformFacts, text: str, actions: list[ChatAction]) -> dict:
+        """The state to store with the reply (`Message.meta["state"]`): what the reply asks, and the court of a live proposal."""
+        state = fold.state
+        asked = ask_fields(text)
+        state.pending = asked[0] if asked else None
+        state.options = numbered_options(text)
+        confirm = next((a for a in actions if a.type == "confirm_booking"), None)
+        if confirm is not None:
+            state.stage = "confirming"
+            hit = facts.court(confirm.data.get("court_id"))
+            if hit is not None and not state.has("court"):
+                state.court_id, state.court_name = hit[1].id, hit[1].name
+                state.prov["court"] = TOOL
+        return state.to_dict()
 
     @staticmethod
     def _iso_key(value: object) -> str:
@@ -558,12 +771,27 @@ class AIChatService:
     async def _available_sports(self) -> list[str]:
         """The sports that really exist on the platform right now (approved venues' sports), for the system prompt, so the
         assistant never offers badminton or cricket nets that no venue has."""
-        rows, _total = await self.venue_service.list_venues(limit=200)
-        found: dict[str, str] = {}
-        for venue, _dist in rows:
-            for sport in venue.sports or []:
-                found.setdefault(str(sport).strip().lower(), str(sport).strip().title())
-        return sorted(found.values())
+        return (await self._facts()).sports()
+
+    async def _gate_context(self, messages: list[dict]) -> tuple[ChatState, PlatformFacts]:
+        """The conversation state and real facts a tool call is judged against: this turn's, or (when a gate is called on its own) derived from
+        the conversation handed in."""
+        facts = await self._facts()
+        latest, _previous = _current_and_previous_text(messages)
+        if self._turn is not None and self._turn.fold.turn.text == latest:
+            return self._turn.fold.state, facts
+        rows: list[Row] = []
+        seen_current = False
+        for m in reversed(messages):
+            if m.get("role") == "user" and isinstance(m.get("content"), str) and not seen_current:
+                seen_current = True  # the latest typed message is the current one
+                continue
+            text = _text_of(m.get("content"))
+            if text and (m.get("role") == "assistant" or isinstance(m.get("content"), str)):
+                rows.append(Row(role="ai" if m.get("role") == "assistant" else "player", text=text))
+        rows.reverse()
+        fold = fold_state(rows, latest, facts, datetime.now(timezone.utc))
+        return fold.state, facts
 
     async def _latest_ai_message(self, user: User, channel: str) -> Message | None:
         return (
@@ -609,12 +837,13 @@ class AIChatService:
                 court = await self.availability.get_court(uuid.UUID(str(args.get("court_id"))))
             except (ValueError, HTTPException):
                 return None
-            if await self._sport_choice_missing(court, messages):
-                return {
-                    "error": "The player has not said which sport they want. Do NOT look up slots or suggest a court yet: "
-                    "reply with ONE short question asking which sport (name only the sports listed in your instructions).",
-                    "status_code": 409,
-                }
+            # What the PLAYER said (sport, date, ...) is judged from the server-side state, not from the model's memory (pattern P1/P2).
+            state, facts = await self._gate_context(messages)
+            if state.ambiguous_hour is not None and args.get("start_time"):
+                return self._ask_am_or_pm()
+            error = chat_guards.check_availability(state, facts, args)
+            if error:
+                return {"error": error, "status_code": 409}
             start_time = args.get("start_time")
             if start_time:
                 try:
@@ -637,6 +866,13 @@ class AIChatService:
                     return self._ask_am_or_pm()
             except ValueError:
                 pass
+            # Only what the player asked for may be proposed: their sport, date, start time and length, all said by them (pattern P1/P3).
+            state, facts = await self._gate_context(messages)
+            if state.ambiguous_hour is not None:
+                return self._ask_am_or_pm()
+            error = chat_guards.check_quote_or_proposal(state, facts, args, proposal=True)
+            if error:
+                return {"error": error, "status_code": 409}
             # A player with no name on their account is asked for one -- once -- before a slot is proposed.
             if (
                 not (user.name or "").strip()
@@ -648,6 +884,14 @@ class AIChatService:
                     "propose the slot until they answer (or decline). Then call this again with player_name.",
                     "status_code": 400,
                 }
+            return None
+        if name == "quote_booking":
+            state, facts = await self._gate_context(messages)
+            if state.ambiguous_hour is not None:
+                return self._ask_am_or_pm()
+            error = chat_guards.check_quote_or_proposal(state, facts, args, proposal=False)
+            if error:
+                return {"error": error, "status_code": 409}
             return None
         if name == "hold_slot":
             data = explicit_proposal_data(await self._latest_ai_message(user, channel))
@@ -682,20 +926,6 @@ class AIChatService:
             "status_code": 409,
         }
 
-    async def _sport_choice_missing(self, court: Court, messages: list[dict]) -> bool:
-        """True when the venue offers more than one sport and nothing the player has typed in this chat names a sport, a court
-        or the venue: the assistant must ask instead of choosing for them."""
-        venue = await self.db.get(Venue, court.venue_id)
-        rows = await self.db.scalars(select(Court.sport).where(Court.venue_id == court.venue_id, Court.is_active.is_(True)))
-        sports = {str(sport).lower() for sport in rows}
-        if len(sports) < 2:
-            return False
-        said = " ".join(_text_of(m.get("content")) for m in messages if m.get("role") == "user" and isinstance(m.get("content"), str)).lower()
-        if _SPORT_HINT_RE.search(said):
-            return False
-        names = [str(court.sport or "").lower(), str(court.name or "").lower(), str(venue.name or "").lower() if venue else ""]
-        return not any(n and n in said for n in names)
-
     @staticmethod
     def _name_already_asked(messages: list[dict]) -> bool:
         """True when any earlier assistant message in this conversation (incl. this turn) already asks about a name."""
@@ -713,18 +943,28 @@ class AIChatService:
         return False
 
     @staticmethod
-    def _ensure_exact_slot_stated(text: str, actions: list[ChatAction]) -> str:
+    def _ensure_exact_slot_stated(text: str, actions: list[ChatAction], lang: str = "en") -> str:
         """The Yes/No proposal must come with a message that spells out the exact slot: a typed "yes" (WhatsApp) only books
-        a proposal whose text said which time it is. When the model's reply doesn't, add the line ourselves."""
+        a proposal whose text said which time it is. When the model's reply doesn't, add the line ourselves (in the player's language),
+        replacing the model's own vague "shall I book it?" so the message asks exactly one question."""
         confirm = next((a for a in actions if a.type == "confirm_booking"), None)
         if confirm is None or reply_states_slot(text, confirm.data.get("label")):
             return text
         data = confirm.data
         if not data.get("label"):
             return text
+        kept = [
+            s for s in re.split(r"(?<=[.!?])\s+", text or "")
+            if s and "?" not in s and not re.search(r"(?i)yes or no|haan ya na", s)
+        ]
+        text = " ".join(kept)
         parts = [p for p in (data.get("court_name"), data.get("label"), data.get("total_price_text")) if p]
-        line = "To confirm: " + ", ".join(parts) + (f", under the name {data['player_name']}" if data.get("player_name") else "")
-        return (text + "\n" if text else "") + line + ". Shall I book it? Reply Yes or No"
+        under = data.get("player_name")
+        if lang == "ru":
+            line = "Tasdeeq: " + ", ".join(parts) + (f", naam {under}" if under else "") + ". Kya main book kar dun? Haan ya Na likh dein"
+        else:
+            line = "To confirm: " + ", ".join(parts) + (f", under the name {under}" if under else "") + ". Shall I book it? Reply Yes or No"
+        return (text + "\n" if text else "") + line
 
     @staticmethod
     def _attach_proposal_for_named_slot(

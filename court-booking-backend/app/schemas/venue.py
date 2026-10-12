@@ -160,6 +160,9 @@ class VenueOut(BaseModel):
     checkin_qr_token: uuid.UUID | None = None
     # Only populated on the by-slug detail endpoint.
     available_slots_today: int | None = None
+    # Public venue coordinates (read-only; same decoding as the list item); null if missing.
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class VenueDetailResponse(BaseModel):
@@ -204,6 +207,9 @@ class VenuePublicOut(BaseModel):
     review_count: int = 0
     distance_meters: float | None = None
     available_slots_today: int | None = None
+    # Public venue coordinates (read-only; same decoding as the list item); null if missing.
+    latitude: float | None = None
+    longitude: float | None = None
     # Deliberately absent: bank_details, checkin_qr_token. See docstring.
 
 

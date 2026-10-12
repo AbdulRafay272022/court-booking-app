@@ -1,67 +1,27 @@
 import { ApiError } from "@court-booking/api-client";
+import { DEFAULT_LANG, LANG_COOKIE, makeT, parseLang, type MessageKey, type TFunction } from "./i18n";
 
-/** Maps every backend ErrorCode (FRONTEND_INTEGRATION.md §7) to a human-readable message. */
-const MESSAGES: Record<string, string> = {
-  INVALID_OTP: "That code isn't right. Check WhatsApp and try again.",
-  OTP_EXPIRED: "This code has expired. Request a new one.",
-  OTP_RATE_LIMITED: "Too many attempts. Please wait a few minutes and try again.",
-  OTP_DELIVERY_FAILED: "We couldn't send the code right now. Please try again in a moment.",
-  INVALID_CREDENTIALS: "Invalid phone number or password.",
-  LOGIN_RATE_LIMITED: "Too many failed attempts. Wait a few minutes, or reset your password.",
-  PHONE_REVERIFICATION_REQUIRED: "Please verify your phone number to continue.",
-  PASSWORD_NOT_SET: "Set a password for your account to continue.",
-  PHONE_ALREADY_REGISTERED: "An account with this number already exists. Log in instead.",
-  EMAIL_ALREADY_IN_USE: "That email address is already in use.",
-  SESSION_EXPIRED: "Your session has expired. Please log in again.",
-  SESSION_REVOKED: "You've been logged out on this device. Please log in again.",
-  NOT_AUTHENTICATED: "Please log in to continue.",
-  OTP_SUPERSEDED: "That code is no longer valid — a newer one was sent. Enter the latest code.",
-  OTP_IP_RATE_LIMITED: "Too many codes requested from this device. Please try again later.",
-  SIGNUP_ALREADY_PENDING: "A verification is already in progress for this number. Check WhatsApp for the code, or wait a few minutes and try again.",
-  ALREADY_VERIFIED: "This number is already verified — please log in.",
-  USER_NOT_FOUND: "No account found for this number. Please sign up.",
-  SLOT_ALREADY_TAKEN: "Someone just booked this slot. Pick another one.",
-  INVALID_SLOT_TIME: "That time isn't available anymore — please pick a slot from the list.",
-  SLOT_IN_PAST: "That time has already passed.",
-  WALKIN_IN_PAST: "That time has already passed. Record a walk-in for the slot happening now or a later one.",
-  SLOT_BLOCKED: "This slot isn't available right now.",
-  ALREADY_YOUR_SLOT: "This slot is already yours.",
-  BOOKING_NOT_FOUND: "We couldn't find that booking.",
-  INVALID_BOOKING_STATE: "That action can't be done on this booking anymore.",
-  NOT_YOUR_BOOKING: "This isn't your booking.",
-  CANCELLATION_NOT_ALLOWED: "This venue doesn't allow cancelling a booking once it's paid for.",
-  CANCELLATION_WINDOW_CLOSED: "The cancellation window for this booking has closed.",
-  INVALID_CHECKIN_CODE: "That check-in code isn't right. Try scanning the venue's QR again.",
-  TOO_EARLY_FOR_NO_SHOW: "It's too early to mark this as a no-show yet.",
-  VENUE_NOT_APPROVED: "This venue isn't live yet.",
-  VENUE_NOT_FOUND: "We couldn't find that venue.",
-  NOT_VENUE_OWNER: "You don't manage this venue.",
-  DUPLICATE_PROOF: "This screenshot looks like it's already been used.",
-  PAYMENT_EXCEEDS_BALANCE: "That's more than what's still owed on this booking.",
-  PROOF_TOO_LARGE: "That image is too large — please use one under 10MB.",
-  INVALID_IMAGE_FORMAT: "Please upload a JPEG, PNG, or WebP image.",
-  FEATURE_NOT_AVAILABLE: "That feature is not available to buy right now.",
-  INVALID_PRICE: "A feature that owners can buy needs a price above zero.",
-  INVOICE_NOT_FOUND: "We couldn't find that invoice.",
-  INVOICE_NOT_PAYABLE: "This invoice is not waiting for a payment right now.",
-  PAYMENT_ALREADY_REVIEWED: "This payment was already reviewed.",
-  PAYMENT_ALREADY_SUBMITTED: "A payment screenshot for this is already being checked.",
-  PREMIUM_FEATURE_REQUIRED: "This is a premium feature. Switch it on under Premium to use it.",
-  REFUND_ALREADY_MARKED: "This refund has already been marked as paid.",
-  REFUND_EXCEEDS_OWED_AMOUNT: "That's more than what's owed on this booking.",
-  RATE_LIMITED: "You're doing that too much — please slow down a little.",
-  FORBIDDEN: "You don't have permission to do that.",
-  VALIDATION_ERROR: "Some of the details entered aren't valid.",
-  NOT_FOUND: "We couldn't find what you were looking for.",
-  UNKNOWN_ERROR: "Something went wrong. Please try again.",
-};
+/**
+ * Maps every backend ErrorCode (FRONTEND_INTEGRATION.md section 7) to a human-readable message in the visitor's language
+ * (keys `errors.code.<CODE>` in messages/{ru,en}/errors.ts). Pass `t` (from useT()) when you have it. Without it, callers that
+ * were written before i18n still work: in the browser the language is read from the `khelo_lang` cookie, elsewhere it is the default.
+ */
+function defaultT(): TFunction {
+  if (typeof document === "undefined") return makeT(DEFAULT_LANG);
+  const m = document.cookie.match(new RegExp(`(?:^|; )${LANG_COOKIE}=([^;]*)`));
+  return makeT(parseLang(m?.[1]));
+}
 
-export function friendlyErrorMessage(error: unknown): string {
+export function friendlyErrorMessage(error: unknown, t: TFunction = defaultT()): string {
+  const unknown = t("errors.code.UNKNOWN_ERROR" as MessageKey);
   if (error instanceof ApiError) {
-    return MESSAGES[error.code] ?? error.message ?? MESSAGES.UNKNOWN_ERROR;
+    const key = `errors.code.${error.code}` as MessageKey;
+    const translated = t(key);
+    // t() returns the key itself for an unknown code: then fall back to the server's message, then the generic one
+    return translated !== key ? translated : (error.message ?? unknown);
   }
   if (error instanceof Error && error.message.toLowerCase().includes("fetch")) {
-    return "Can't reach the server. Check your connection and try again.";
+    return t("errors.network");
   }
-  return MESSAGES.UNKNOWN_ERROR;
+  return unknown;
 }

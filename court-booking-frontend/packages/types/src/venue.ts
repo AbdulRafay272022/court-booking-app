@@ -38,8 +38,8 @@ export interface VenueSummary {
 
 /**
  * Shape returned by GET /venues/:id, /venues/by-slug/:slug — VenueOut.
- * Note: latitude/longitude are write-only (accepted by create/update) and are
- * NOT echoed back on this read shape per the backend's actual VenueOut schema.
+ * Note: latitude/longitude are OPTIONAL here: the backend now echoes the public venue point on the read shape (null if missing),
+ * older API builds omit them. (Create/update still accept them as input.)
  */
 export interface Venue {
   id: string;
@@ -84,6 +84,9 @@ export interface Venue {
   checkin_qr_token: string | null;
   /** Only populated by GET /venues/by-slug/:slug */
   available_slots_today?: number | null;
+  /** Public venue coordinates (null if missing; absent on older API builds). */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface VenueListResponse {
