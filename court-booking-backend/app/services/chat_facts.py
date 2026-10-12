@@ -243,6 +243,8 @@ def facts_block(state: ChatState, facts: PlatformFacts, *, missing: list[str] | 
         lines.append("Still needed from the player, ask ONE question only, in this order: " + ", ".join(missing) + ".")
     lines.append(
         "Rules from the state: never ask for something that is already known above; never use a sport, court, date, time or duration that the player did not say "
-        "(items marked NOT said by the player are only guesses). If the player asks for a sport this venue does not offer, say so and list the real ones."
+        "(items marked NOT said by the player are only guesses). If the player asks for a sport this venue does not offer, say so and list the real ones. "
+        "The venue_id and court_id values above are real: use them directly (no need to call search_venues, get_venue_info or get_venue_courts just to find them), "
+        "and go straight to check_availability / quote_booking / propose_booking_confirmation."
     )
     return "\n".join(lines)

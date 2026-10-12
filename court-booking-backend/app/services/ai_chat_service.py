@@ -34,6 +34,7 @@ from app.services.chat_state import (
     is_plain_affirmative,  # noqa: F401  (re-exported: app/api/webhooks.py imports it from here)
     missing_fields,
     numbered_options,
+    reply_language,
     select_history,
 )
 from app.services.entitlement_service import EntitlementService
@@ -517,6 +518,13 @@ class AIChatService:
         floor, stage = await self._booking_boundary(user)
         fold = fold_state(rows, "", await self._facts(), datetime.now(timezone.utc), booking_floor=floor, booking_stage=stage)
         return select_history(fold.window, fold.sources)
+
+    async def player_language(self, user: User, channel: str) -> str:
+        """"ru" (Roman Urdu) or "en": the language for a FIXED message to this player right now, for callers outside `process_message` (the WhatsApp
+        Held / decline replies). Judged from the player's last messages WITHOUT the conversation boundary, because a hold ends the conversation and
+        the confirmation that follows it must still speak the player's language."""
+        rows = await self._load_rows(user, channel)
+        return reply_language([r.text for r in rows if r.role == "player"][-6:], [r.text for r in rows if r.role == "ai"][-3:])
 
     def _support_line(self) -> str | None:
         return getattr(self.settings, "SUPPORT_WHATSAPP_NUMBER", None) or None

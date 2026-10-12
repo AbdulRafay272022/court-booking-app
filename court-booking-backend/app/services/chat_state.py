@@ -661,7 +661,13 @@ def apply_meridiem(hour12: int, answer: str) -> time | None:
 
 _Q_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     ("ampm", re.compile(r"(?i)\bam\b.{0,25}\bpm\b|subah.{0,20}(shaam|raat)|morning.{0,25}(evening|night)|\bam ya pm\b|\bam or pm\b")),
-    ("confirm", re.compile(r"(?i)shall i book|reply yes or no|yes or no|book (?:kar|kr)\s*(?:du|don)|haan ya na|should i (?:book|hold)|confirm (?:kar|this)")),
+    (
+        "confirm",
+        re.compile(
+            r"(?i)shall i (?:book|hold|reserve)|should i (?:book|hold)|reply yes or no|yes or no|haan ya na|"
+            r"(?:book|hold)\s+(?:kar|kr)\s*(?:du|dun|doon|don)\b|confirm (?:kar|this)"
+        ),
+    ),
     ("name", re.compile(r"(?i)\bname\b.{0,40}\b(booking|under|put)\b|\bnaam\b|what name|which name")),
     ("show_venues", re.compile(r"(?i)see them|show them|dikha(?:oon|un| doon)|dekhna chahenge|dekhna chahte")),
     ("duration", re.compile(r"(?i)how long|how many hours|kitni der|kitne ghant|duration|for how long|kitna time khel")),

@@ -471,6 +471,24 @@ async def test_the_hold_reply_is_never_replaced_by_an_error(
     assert r["reply"].startswith("Aap ka slot hold ho gaya hai:") or r["reply"].startswith("Your slot is on hold:") or "held" in r["reply"].lower()
 
 
+async def test_player_language_survives_the_end_of_the_conversation(db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule):
+    """A hold ends the conversation (nothing before it is "known" any more), but the fixed Held / decline messages that follow must still speak the
+    player's language: `player_language` ignores the boundary."""
+    user = await make_user("+923050000070", role=UserRole.PLAYER, name="Sara")
+    other = await make_user("+923050000071", role=UserRole.PLAYER, name="Ali")
+    base = datetime.now(timezone.utc) - timedelta(days=2)
+    for i, (who, role, content) in enumerate(
+        [(user, "player", "mjhy padel ka court chayie kal 9pm"), (user, "ai", "Kitni der khelna chahte hain?"),
+         (other, "player", "I want to book a court"), (other, "ai", "Which sport would you like to play?")]
+    ):
+        db_session.add(Message(sender_id=who.id, sender_type=role, channel="whatsapp", content=content, created_at=base + timedelta(seconds=i)))
+    await db_session.commit()
+    service = AIChatService(db_session, get_settings())
+    assert await service.player_language(user, "whatsapp") == "ru"
+    assert await service.player_language(other, "whatsapp") == "en"
+    assert await service.load_history(user, "whatsapp") == []  # while the conversation itself is long over
+
+
 # --- the state itself ------------------------------------------------------------------------------------------------------------------------------------
 
 
