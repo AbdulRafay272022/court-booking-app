@@ -55,6 +55,11 @@ def _t_greeting(lang: Lang, sports: list[str] | None = None, **_: object) -> str
     return "Hello! I can help you book a court." + (f" Which sport would you like to play: {listed}?" if listed else " What would you like to play?")
 
 
+def _t_greeting_plain(lang: Lang, sport: str, **_: object) -> str:
+    """A greeting when the sport is not a choice (the platform or venue offers only one)."""
+    return f"Assalam o Alaikum! Main {sport} court book karne mein madad kar sakta hoon." if lang == "ru" else f"Hello! I can help you book a {sport} court."
+
+
 def _t_thanks(lang: Lang, **_: object) -> str:
     return "Shukriya! Court ki zaroorat ho to kisi bhi waqt message kar dein." if lang == "ru" else "You're welcome! Message me any time you need a court."
 
@@ -80,12 +85,12 @@ def _t_ask_sport(lang: Lang, sports: list[str], venue: str | None = None, short:
 
 def _t_sport_unclear(lang: Lang, sports: list[str], **_: object) -> str:
     listed = join_list(sports, lang)
-    return f"Sport samajh nahi aaya. In mein se kaun sa chahiye: {listed}?" if lang == "ru" else f"I did not catch the sport. Which one would you like: {listed}?"
+    return f"Sport samajh nahi aaya. In mein se kaun sa sport chahiye: {listed}?" if lang == "ru" else f"I did not catch the sport. Which sport would you like: {listed}?"
 
 
 def _t_sport_multi(lang: Lang, sports: list[str], **_: object) -> str:
     listed = join_list(sports, lang)
-    return f"Aap ne kai sports likhe hain. Pehle kaun sa book karna hai: {listed}?" if lang == "ru" else f"You mentioned more than one sport. Which one first: {listed}?"
+    return f"Aap ne kai sports likhe hain. Pehle kaun sa sport book karna hai: {listed}?" if lang == "ru" else f"You mentioned more than one sport. Which sport first: {listed}?"
 
 
 def _t_sport_unsupported(lang: Lang, sport: str, offered: list[str], venue: str | None = None, others: list[str] | None = None, **_: object) -> str:
@@ -98,17 +103,24 @@ def _t_sport_unsupported(lang: Lang, sport: str, offered: list[str], venue: str 
             if others:
                 text += f" {sport} {join_list(others, lang)} mein hai. Kya main wo dikhaoon?"
             else:
-                text += " Kaun sa chahiye?"
+                text += " Kaun sa sport chahiye?"
             return text
-        return f"{sport} abhi hamare paas nahi hai. Hamare paas {listed} hain. Kaun sa chahiye?" if listed else f"{sport} abhi hamare paas nahi hai."
+        return f"{sport} abhi hamare paas nahi hai. Hamare paas {listed} hain. Kaun sa sport chahiye?" if listed else f"{sport} abhi hamare paas nahi hai."
     if venue:
         text = f"{venue} does not offer {sport}. It offers {listed}."
         if others:
             text += f" {sport} is available at {join_list(others, lang)}. Would you like to see them?"
         else:
-            text += " Which one would you like?"
+            text += " Which sport would you like?"
         return text
-    return f"We do not have {sport} yet. We offer {listed}. Which one would you like?" if listed else f"We do not have {sport} yet."
+    return f"We do not have {sport} yet. We offer {listed}. Which sport would you like?" if listed else f"We do not have {sport} yet."
+
+
+def _t_sport_unsupported_single(lang: Lang, sport: str, only: str, venue: str | None = None, **_: object) -> str:
+    """Same as `sport_unsupported` when the venue (or the platform) offers exactly one sport: nothing to choose, so no "which sport?"."""
+    if lang == "ru":
+        return f"{venue} mein {sport} nahi hai; yahan sirf {only} hai." if venue else f"{sport} abhi hamare paas nahi hai; hamare paas sirf {only} hai."
+    return f"{venue} does not offer {sport}; it only offers {only}." if venue else f"We do not have {sport} yet; we only offer {only}."
 
 
 def _t_ask_venue(lang: Lang, venues: list[str], sport: str | None = None, short: bool = False, **_: object) -> str:
@@ -255,6 +267,7 @@ def _t_steer_back(lang: Lang, sports: list[str] | None = None, **_: object) -> s
 
 _TEMPLATES: dict[str, Callable[..., str]] = {
     "greeting": _t_greeting,
+    "greeting_plain": _t_greeting_plain,
     "thanks": _t_thanks,
     "ack_idle": _t_ack_idle,
     "ack_no": _t_ack_no,
@@ -262,6 +275,7 @@ _TEMPLATES: dict[str, Callable[..., str]] = {
     "sport_unclear": _t_sport_unclear,
     "sport_multi": _t_sport_multi,
     "sport_unsupported": _t_sport_unsupported,
+    "sport_unsupported_single": _t_sport_unsupported_single,
     "ask_venue": _t_ask_venue,
     "ask_court": _t_ask_court,
     "ask_date": _t_ask_date,

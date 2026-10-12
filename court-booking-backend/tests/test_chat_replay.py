@@ -189,7 +189,7 @@ async def test_unsupported_sport_in_english(
     user, headers = await player_headers(make_user, make_auth_headers)
     ScriptedModel(monkeypatch)
     r = await say(client, headers, "I want to play badminton tomorrow")
-    assert r["reply"] == "Test Arena 1 does not offer Badminton. It offers Cricket, Futsal and Padel. Which one would you like?"
+    assert r["reply"] == "Test Arena 1 does not offer Badminton. It offers Cricket, Futsal and Padel. Which sport would you like?"
 
 
 async def test_misspelled_sports_are_understood(
@@ -258,7 +258,7 @@ async def test_off_topic_replies_are_reasked_then_offered_choices_then_a_human(
     first = (await say(client, headers, "mujhe pizza chahiye"))["reply"]
     second = (await say(client, headers, "kuch bhi"))["reply"]
     third = (await say(client, headers, "hmm"))["reply"]
-    assert first == "Sport samajh nahi aaya. In mein se kaun sa chahiye: Cricket, Futsal aur Padel?"
+    assert first == "Sport samajh nahi aaya. In mein se kaun sa sport chahiye: Cricket, Futsal aur Padel?"
     assert second.endswith("\n1. Cricket\n2. Futsal\n3. Padel")
     assert "Venue owner ya support team" in third and "+92" not in third  # no invented number
     assert model.bodies == []

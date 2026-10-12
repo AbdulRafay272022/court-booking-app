@@ -154,7 +154,7 @@ def unclear_reply(state: ChatState, facts: PlatformFacts, turn: TurnFacts, suppo
             key, options = picked
             return Decision(T.render(key, lang, options=options), "choices", "choice", options)
         example = "7 PM" if pending == "time" else "kal"
-        return Decision(T.render("choices_free", lang, example=example), "choices_free", pending)
+        return Decision(T.render("choices_free", lang, example=example), "choices_free", "choice")
     return next_question(state, facts, turn)
 
 
@@ -208,6 +208,13 @@ def decide(fold: FoldResult, facts: PlatformFacts, *, support: str | None = None
         venue = venue_in_play(state, facts)
         offered = sports_in_play(state, facts)
         others = other_venues_with(canon, facts, venue.id if venue else None) if venue else []
+        if len(offered) == 1 and not others:
+            # one sport only: nothing to choose, so say so and carry on with the next real question (if any)
+            info = T.render("sport_unsupported_single", lang, sport=shown, only=offered[0], venue=venue.name if venue else None)
+            q = next_question(state, facts, None)
+            if q is None:
+                return Decision(info, "sport_unsupported", None)
+            return Decision(info + " " + q.reply, "sport_unsupported", q.pending, q.options)
         text = T.render("sport_unsupported", lang, sport=shown, offered=offered, venue=venue.name if venue else None, others=others)
         asks = "show_venues" if others else "sport"
         return Decision(text, "sport_unsupported", asks)
@@ -264,11 +271,13 @@ def decide(fold: FoldResult, facts: PlatformFacts, *, support: str | None = None
 
     # 5. chit-chat never reaches a tool
     if turn.intent == "greeting" and not progress:
-        if in_progress(state) and pending in ASKABLE:
+        if in_progress(state):  # a hello in the middle of a booking carries on with the booking, it does not start over
             q = next_question(state, facts, None)
-            if q is not None:
-                return Decision(q.reply, "greeting_resume", q.pending, q.options)
+            return Decision(q.reply, "greeting_resume", q.pending, q.options) if q is not None else None
         sports = sports_in_play(state, facts)
+        q = next_question(state, facts, None)
+        if state.known("sport") and q is not None and q.pending != "sport":  # one sport only: nothing to choose, go to the next question
+            return Decision(T.render("greeting_plain", lang, sport=state.sport) + " " + q.reply, "greeting", q.pending, q.options)
         return Decision(T.render("greeting", lang, sports=sports), "greeting", "sport")
     if turn.intent == "thanks" and not progress:
         return Decision(T.render("thanks", lang), "thanks", None)

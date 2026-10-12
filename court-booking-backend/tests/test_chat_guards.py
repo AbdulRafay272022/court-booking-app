@@ -137,10 +137,10 @@ def test_p4_unsupported_sport_at_a_venue_that_has_other_sports():
     facts = make_facts()
     d, fold = decide([], "Test Arena 1 mein tennis chahiye", facts)
     assert d.kind == "sport_unsupported"
-    assert d.reply == "Test Arena 1 mein Tennis nahi hai. Yahan Cricket, Futsal aur Padel hain. Kaun sa chahiye?"
+    assert d.reply == "Test Arena 1 mein Tennis nahi hai. Yahan Cricket, Futsal aur Padel hain. Kaun sa sport chahiye?"
     assert fold.state.sport is None and d.pending == "sport"  # never auto-picked
     d, _ = decide([], "do you have badminton at Test Arena 1?", facts)
-    assert d.reply == "Test Arena 1 does not offer Badminton. It offers Cricket, Futsal and Padel. Which one would you like?"
+    assert d.reply == "Test Arena 1 does not offer Badminton. It offers Cricket, Futsal and Padel. Which sport would you like?"
 
 
 def test_p4_unsupported_sport_offers_the_venues_that_do_have_it():
@@ -157,12 +157,12 @@ def test_p4_unsupported_sport_offers_the_venues_that_do_have_it():
 
 def test_p4_a_sport_nobody_has_on_the_platform():
     d, _ = decide([], "squash chahiye")  # a one-venue platform: the venue is a database fact, so the answer names it
-    assert d.kind == "sport_unsupported" and d.reply == "Test Arena 1 mein Squash nahi hai. Yahan Cricket, Futsal aur Padel hain. Kaun sa chahiye?"
+    assert d.kind == "sport_unsupported" and d.reply == "Test Arena 1 mein Squash nahi hai. Yahan Cricket, Futsal aur Padel hain. Kaun sa sport chahiye?"
     several = make_facts(with_tennis_elsewhere=True)  # no venue in play: the platform answer
     d, _ = decide([], "squash chahiye", several)
-    assert d.reply == "Squash abhi hamare paas nahi hai. Hamare paas Cricket, Futsal, Padel aur Tennis hain. Kaun sa chahiye?"
+    assert d.reply == "Squash abhi hamare paas nahi hai. Hamare paas Cricket, Futsal, Padel aur Tennis hain. Kaun sa sport chahiye?"
     d, _ = decide([], "I want to play squash", several)
-    assert d.reply == "We do not have Squash yet. We offer Cricket, Futsal, Padel and Tennis. Which one would you like?"
+    assert d.reply == "We do not have Squash yet. We offer Cricket, Futsal, Padel and Tennis. Which sport would you like?"
 
 
 def test_p4_greeting_lists_the_real_sports_not_a_hard_coded_list():
@@ -278,7 +278,7 @@ def test_off_topic_reply_is_reasked_then_choices_then_a_human():
     ask = "Aap kaun sa sport khelna chahte hain: Cricket, Futsal aur Padel?"
     rows = convo(("hello", ask))
     d1, f1 = decide(rows, "mujhe pizza chahiye")
-    assert d1.kind == "sport_unclear" and d1.reply == "Sport samajh nahi aaya. In mein se kaun sa chahiye: Cricket, Futsal aur Padel?"  # a different, shorter way
+    assert d1.kind == "sport_unclear" and d1.reply == "Sport samajh nahi aaya. In mein se kaun sa sport chahiye: Cricket, Futsal aur Padel?"  # a different, shorter way
     assert f1.state.unclear == 1
     d1b, _ = decide(rows, "ok")  # a bare "ok" is not an answer either: the short re-ask
     assert d1b.kind == "ask_sport" and d1b.reply == "Kaun sa sport: Cricket, Futsal aur Padel?"

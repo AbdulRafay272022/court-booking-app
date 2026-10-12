@@ -665,9 +665,14 @@ _Q_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     ("name", re.compile(r"(?i)\bname\b.{0,40}\b(booking|under|put)\b|\bnaam\b|what name|which name")),
     ("show_venues", re.compile(r"(?i)see them|show them|dikha(?:oon|un| doon)|dekhna chahenge|dekhna chahte")),
     ("duration", re.compile(r"(?i)how long|how many hours|kitni der|kitne ghant|duration|for how long|kitna time khel")),
-    ("sport", re.compile(r"(?i)which sport|what sport|kaun\s*sa sport|kon\s*sa sport|konsa sport|kis sport|sport (?:chahiye|khelna)|which one:|play\?|khelna chahte hain\?|in mein se kaun")),
+    (
+        "sport",
+        re.compile(
+            r"(?i)which sport|what sport|kaun\s*sa sport|kon\s*sa sport|konsa sport|kis sport|sport (?:chahiye|khelna)"
+        ),
+    ),
     ("court", re.compile(r"(?i)which court|kaun\s*sa court|kon\s*sa court|konsa court|court (?:chahiye|select|choose)")),
-    ("venue", re.compile(r"(?i)which venue|kaun\s*sa venue|kon\s*sa venue|konsa venue|which arena|which club")),
+    ("venue", re.compile(r"(?i)which venue|kaun\s*sa venue|kon\s*sa venue|konsa venue|kis venue|which arena|which club")),
     ("date", re.compile(r"(?i)which date|what date|which day|kis date|kaun\s*si date|kon\s*si date|kis din|konse din|kab khelna|date (?:bata|chahiye)|what day")),
     ("time", re.compile(r"(?i)what time|which time|start time|kitne baje|kis time|kis waqt|kab se|what.{0,12}start|time (?:bata|chahiye)")),
 )
@@ -854,6 +859,9 @@ def _derive(state: ChatState, facts: PlatformFacts | None) -> None:
     sport. Provenance `tool_result`; a multi-sport venue's sport is NEVER filled in (the player must choose)."""
     if facts is None or facts.empty:
         return
+    if not state.has("sport") and len(facts.sports()) == 1:
+        state.sport = facts.sports()[0]  # the whole platform offers one sport: there is nothing to choose
+        state.prov["sport"] = TOOL
     if not state.has("venue"):
         candidates = facts.venues_with_sport(state.sport) if state.sport else facts.venues
         if len(candidates) == 1:
@@ -972,6 +980,9 @@ def _apply_player(
         elif unsupported and not supported:
             turn.unsupported = [u for u in unsupported if u not in turn.unsupported] + turn.unsupported
             state.wanted_sport = unsupported[0]
+            state.clear("sport", "court")  # what they want now is a sport we do not have: the earlier choice no longer stands until they pick again
+            if state.prov.get("venue") == TOOL:
+                state.clear("venue")
     elif pending == "sport" and facts and not facts.empty and len(words) <= 3 and not (picked):
         turn.sport_word_unknown = True
 
@@ -983,6 +994,7 @@ def _apply_player(
     if found_date is not None:
         if found_date.past:
             turn.past_date = True
+            state.clear("date")  # the date they just gave cannot be booked, so the older one no longer stands either: ask again
         else:
             if state.date != found_date.value.isoformat():
                 turn.got.add("date")
@@ -1075,8 +1087,8 @@ def _apply_ai(state: ChatState, text: str, proposal: dict | None, today: date) -
     asked = ask_fields(text)
     state.pending = asked[0] if asked else None
     state.options = numbered_options(text)
-    if state.options and not asked:
-        state.pending = "choice"
+    if (state.options or re.search(r"(?i)like this:|is tarah likhein", text or "")) and not asked:
+        state.pending = "choice"  # the numbered choices, or "please write it like this: 7 PM"
     if proposal:
         # a slot the bot proposed: remember it, but never as something the player chose
         court_id = proposal.get("court_id")

@@ -11,6 +11,7 @@ from app.services.chat_validator import style_violations
 
 SAMPLE = {
     "greeting": dict(sports=["Cricket", "Futsal", "Padel"]),
+    "greeting_plain": dict(sport="Padel"),
     "thanks": {},
     "ack_idle": {},
     "ack_no": {},
@@ -18,6 +19,7 @@ SAMPLE = {
     "sport_unclear": dict(sports=["Cricket", "Futsal", "Padel"]),
     "sport_multi": dict(sports=["Futsal", "Padel"]),
     "sport_unsupported": dict(sport="Tennis", offered=["Cricket", "Futsal", "Padel"], venue="Test Arena 1", others=["Gulshan Tennis Club"]),
+    "sport_unsupported_single": dict(sport="Squash", only="Tennis", venue="Gulshan Tennis Club"),
     "ask_venue": dict(venues=["Test Arena 1", "Clifton Padel Club"], sport="Padel"),
     "ask_court": dict(courts=["Court 2", "Court 3"], sport="Padel", venue="Test Arena 1"),
     "ask_date": {},
