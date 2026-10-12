@@ -4,6 +4,7 @@ import { useState, useTransition, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AMENITY_OPTIONS, SPORT_OPTIONS, amenityLabel, formatDuration, formatTime24As12, pktDayTabs } from "@court-booking/types";
 import { formatDayHeader } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
 import { activeFilterCount, filtersToParams, parseFilters, type DiscoveryFilters } from "@/lib/discovery-filters";
 
 /** Booking horizon offered by the date list (the venue default; a venue may allow fewer days, the server decides). */
@@ -50,6 +51,7 @@ function SlidersIcon() {
  * button undo a filter. The page (a server component) reads the same params and fetches; this component only edits them.
  */
 export function FilterBar({ areas, city, total, children }: { areas: string[]; city: string; total: number | null; children: ReactNode }) {
+  const t = useT();
   const router = useRouter();
   const search = useSearchParams();
   const [pending, startTransition] = useTransition();
@@ -84,11 +86,11 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
     const lo = minText !== null ? (minText.trim() === "" ? undefined : Number(minText)) : filters.minPrice;
     const hi = maxText !== null ? (maxText.trim() === "" ? undefined : Number(maxText)) : filters.maxPrice;
     if ((lo !== undefined && (!Number.isFinite(lo) || lo < 0)) || (hi !== undefined && (!Number.isFinite(hi) || hi < 0))) {
-      setPriceError("Enter prices as positive numbers.");
+      setPriceError(t("search.price.errorNumbers"));
       return;
     }
     if (lo !== undefined && hi !== undefined && lo > hi) {
-      setPriceError("The minimum price can't be higher than the maximum.");
+      setPriceError(t("search.price.errorOrder"));
       return;
     }
     setPriceError(null);
@@ -100,7 +102,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
   function useMyLocation() {
     setLocError(null);
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
-      setLocError("This browser can't share a location. Pick an area instead.");
+      setLocError(t("search.location.noGeo"));
       return;
     }
     setLocating(true);
@@ -113,8 +115,8 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
         setLocating(false);
         setLocError(
           err.code === err.PERMISSION_DENIED
-            ? "Location permission was denied. Allow it in your browser, or pick an area instead."
-            : "Couldn't get your location right now. Pick an area instead, or try again.",
+            ? t("search.location.denied")
+            : t("search.location.failed"),
         );
       },
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
@@ -134,17 +136,17 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
   if (filters.sport) chips.push({ key: "sport", label: filters.sport, clear: () => set({ sport: undefined }) });
   if (filters.area) chips.push({ key: "area", label: filters.area, clear: () => set({ area: undefined }) });
   if (filters.lat !== undefined)
-    chips.push({ key: "near", label: "Near me", clear: () => set({ lat: undefined, lng: undefined, sort: filters.sort === "distance" ? undefined : filters.sort }) });
+    chips.push({ key: "near", label: t("search.chip.nearMe"), clear: () => set({ lat: undefined, lng: undefined, sort: filters.sort === "distance" ? undefined : filters.sort }) });
   if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
     const label =
       filters.minPrice !== undefined && filters.maxPrice !== undefined
-        ? `PKR ${filters.minPrice.toLocaleString("en-US")} – ${filters.maxPrice.toLocaleString("en-US")}`
+        ? t("search.chip.priceRange", { min: filters.minPrice.toLocaleString("en-US"), max: filters.maxPrice.toLocaleString("en-US") })
         : filters.minPrice !== undefined
-          ? `From PKR ${filters.minPrice.toLocaleString("en-US")}`
-          : `Up to PKR ${filters.maxPrice!.toLocaleString("en-US")}`;
+          ? t("search.chip.priceFrom", { min: filters.minPrice.toLocaleString("en-US") })
+          : t("search.chip.priceUpTo", { max: filters.maxPrice!.toLocaleString("en-US") });
     chips.push({ key: "price", label, clear: () => set({ minPrice: undefined, maxPrice: undefined }) });
   }
-  if (filters.indoor !== undefined) chips.push({ key: "indoor", label: filters.indoor ? "Indoor" : "Outdoor", clear: () => set({ indoor: undefined }) });
+  if (filters.indoor !== undefined) chips.push({ key: "indoor", label: filters.indoor ? t("search.more.indoor") : t("search.more.outdoor"), clear: () => set({ indoor: undefined }) });
   for (const a of filters.amenities) chips.push({ key: `am-${a}`, label: amenityLabel(a), clear: () => set({ amenities: filters.amenities.filter((x) => x !== a) }) });
   if (filters.date) {
     const when = `${formatDayHeader(filters.date)}${filters.startTime ? `, ${formatTime24As12(filters.startTime)}` : ""}${
@@ -157,11 +159,11 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
   return (
     <>
       {/* COMPACT TITLE BAND */}
-      <section aria-label="Find a court" className="bg-khelo-ink text-white">
+      <section aria-label={t("search.findCourt")} className="bg-khelo-ink text-white">
         <div className="mx-auto flex w-full max-w-[1288px] flex-wrap items-end justify-between gap-4 px-6 pb-[30px] pt-7">
           <div>
-            <div className="text-[12px] font-extrabold uppercase tracking-[1.5px] text-khelo-orange">Find a court</div>
-            <h1 className="mt-2 font-khelo-display text-[32px] font-extrabold leading-[1.05] tracking-[-1.2px] sm:text-[38px]">{city} mein courts</h1>
+            <div className="text-[12px] font-extrabold uppercase tracking-[1.5px] text-khelo-orange">{t("search.findCourt")}</div>
+            <h1 className="mt-2 font-khelo-display text-[32px] font-extrabold leading-[1.05] tracking-[-1.2px] sm:text-[38px]">{t("search.title", { city })}</h1>
           </div>
           <div className="flex flex-col items-start gap-1.5 sm:items-end">
             <button
@@ -171,7 +173,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
               className="khelo-btn box-border inline-flex min-h-11 items-center gap-2 rounded-full border-[1.5px] border-white/35 px-[18px] py-3 text-[14px] font-bold text-white disabled:opacity-60"
             >
               <PinIcon />
-              {locating ? "Locating…" : filters.lat !== undefined ? "Update my location" : "Mere qareeb"}
+              {locating ? t("search.location.locating") : filters.lat !== undefined ? t("search.location.update") : t("search.location.use")}
             </button>
             {locError ? (
               <p role="alert" className="max-w-xs text-[13px] font-semibold text-khelo-warning sm:text-right" data-testid="location-error">
@@ -185,9 +187,9 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
       {/* STICKY FILTER BAR */}
       <div className="sticky top-0 z-10 border-b border-khelo-divider bg-khelo-surface shadow-[0_6px_20px_rgba(12,31,29,0.06)]" data-testid="filter-bar" aria-busy={pending}>
         <div className="mx-auto w-full max-w-[1288px] px-6 py-3.5">
-          <div className="-mx-0.5 flex gap-2.5 overflow-x-auto -my-1 px-0.5 py-1.5 [scrollbar-width:none]" role="group" aria-label="Sport">
+          <div className="-mx-0.5 flex gap-2.5 overflow-x-auto -my-1 px-0.5 py-1.5 [scrollbar-width:none]" role="group" aria-label={t("search.sport.group")}>
             <button type="button" className={`${toggle(!filters.sport)} shrink-0 !px-5 !py-3 !text-[15px] ${!filters.sport ? "!border-khelo-orange !bg-khelo-orange !text-khelo-ink" : ""}`} aria-pressed={!filters.sport} onClick={() => set({ sport: undefined })}>
-              All sports
+              {t("search.sport.all")}
             </button>
             {SPORT_OPTIONS.map((s) => {
               const on = filters.sport?.toLowerCase() === s.toLowerCase();
@@ -206,8 +208,8 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
           </div>
 
           <div className="mt-2.5 grid grid-cols-2 items-center gap-2.5 min-[900px]:flex min-[900px]:flex-wrap">
-            <select aria-label="Area" className={`${field} min-[900px]:w-auto`} value={filters.area ?? ""} onChange={(e) => set({ area: e.target.value || undefined })}>
-              <option value="">Saare areas</option>
+            <select aria-label={t("search.area.label")} className={`${field} min-[900px]:w-auto`} value={filters.area ?? ""} onChange={(e) => set({ area: e.target.value || undefined })}>
+              <option value="">{t("search.area.all")}</option>
               {areas.map((a) => (
                 <option key={a} value={a}>
                   {a}
@@ -216,7 +218,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
               {filters.area && !areas.includes(filters.area) ? <option value={filters.area}>{filters.area}</option> : null}
             </select>
             <select
-              aria-label="Price"
+              aria-label={t("search.price.label")}
               className={`${field} min-[900px]:w-auto`}
               value={priceValue}
               onChange={(e) => {
@@ -228,16 +230,16 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
                 set({ minPrice: undefined, maxPrice: v ? Number(v) : undefined });
               }}
             >
-              <option value="">Koi bhi price</option>
+              <option value="">{t("search.price.any")}</option>
               {PRICE_PRESETS.map((p) => (
                 <option key={p} value={p}>
-                  PKR {p.toLocaleString("en-US")} tak
+                  {t("search.price.upTo", { price: p.toLocaleString("en-US") })}
                 </option>
               ))}
-              {priceValue === "custom" ? <option value="custom">Custom range</option> : null}
+              {priceValue === "custom" ? <option value="custom">{t("search.price.custom")}</option> : null}
             </select>
             <select
-              aria-label="Date"
+              aria-label={t("search.date.label")}
               className={`${field} min-[900px]:w-auto`}
               value={filters.date ?? ""}
               onChange={(e) => {
@@ -246,11 +248,11 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
                 set({ date: v });
               }}
             >
-              <option value="">Any date</option>
+              <option value="">{t("search.date.any")}</option>
               {filters.date && !dayOptions.some((d) => d.date === filters.date) ? <option value={filters.date}>{formatDayHeader(filters.date)}</option> : null}
               {dayOptions.map((d, i) => (
                 <option key={d.date} value={d.date}>
-                  {i === 0 ? "Today" : i === 1 ? "Tomorrow" : formatDayHeader(d.date)}
+                  {i === 0 ? t("search.date.today") : i === 1 ? t("search.date.tomorrow") : formatDayHeader(d.date)}
                   {i < 2 ? ` · ${formatDayHeader(d.date)}` : ""}
                 </option>
               ))}
@@ -265,20 +267,20 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
               }`}
             >
               <SlidersIcon />
-              More filters{inPanel > 0 ? ` (${inPanel})` : ""}
+              {inPanel > 0 ? t("search.more.buttonCount", { count: inPanel }) : t("search.more.button")}
             </button>
           </div>
 
           {moreOpen ? (
             <div id="more-filters" className="mt-3.5 flex max-h-[55vh] flex-wrap gap-x-7 gap-y-5 overflow-y-auto rounded-[18px] bg-khelo-page p-[18px]">
               <div>
-                <div className={smallLabel}>Setting</div>
-                <div className="mt-2 flex gap-2" role="group" aria-label="Indoor or outdoor">
+                <div className={smallLabel}>{t("search.more.setting")}</div>
+                <div className="mt-2 flex gap-2" role="group" aria-label={t("search.more.settingGroup")}>
                   {(
                     [
-                      ["Any", undefined],
-                      ["Indoor", true],
-                      ["Outdoor", false],
+                      [t("search.more.any"), undefined],
+                      [t("search.more.indoor"), true],
+                      [t("search.more.outdoor"), false],
                     ] as const
                   ).map(([label, value]) => (
                     <button key={label} type="button" className={toggle(filters.indoor === value)} aria-pressed={filters.indoor === value} onClick={() => set({ indoor: value })}>
@@ -290,9 +292,9 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
 
               <div>
                 <div className={smallLabel}>
-                  Amenities <span className="font-medium normal-case tracking-normal">(venue has all you pick)</span>
+                  {t("search.more.amenities")} <span className="font-medium normal-case tracking-normal">{t("search.more.amenitiesHint")}</span>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Amenities">
+                <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={t("search.more.amenities")}>
                   {AMENITY_OPTIONS.map((a) => {
                     const on = filters.amenities.includes(a.key);
                     return (
@@ -311,30 +313,30 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
               </div>
 
               <div>
-                <div className={smallLabel}>Start time</div>
+                <div className={smallLabel}>{t("search.more.startTime")}</div>
                 {filters.date ? (
                   <div className="mt-2 flex flex-wrap gap-2.5">
                     <select
-                      aria-label="Start time"
+                      aria-label={t("search.more.startTime")}
                       className={`${field} !w-auto`}
                       value={filters.startTime ?? ""}
                       onChange={(e) => set({ startTime: e.target.value || undefined, durationMinutes: e.target.value ? filters.durationMinutes : undefined })}
                     >
-                      <option value="">Any start time</option>
-                      {START_TIMES.map((t) => (
-                        <option key={t} value={t}>
-                          {formatTime24As12(t)}
+                      <option value="">{t("search.more.anyStart")}</option>
+                      {START_TIMES.map((st) => (
+                        <option key={st} value={st}>
+                          {formatTime24As12(st)}
                         </option>
                       ))}
                     </select>
                     <select
-                      aria-label="Duration"
+                      aria-label={t("search.more.duration")}
                       className={`${field} !w-auto`}
                       disabled={!filters.startTime}
                       value={filters.durationMinutes ?? ""}
                       onChange={(e) => set({ durationMinutes: e.target.value ? Number(e.target.value) : undefined })}
                     >
-                      <option value="">Court&apos;s minimum booking</option>
+                      <option value="">{t("search.more.minBooking")}</option>
                       {DURATIONS.map((d) => (
                         <option key={d} value={d}>
                           {formatDuration(d)}
@@ -343,17 +345,17 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
                     </select>
                   </div>
                 ) : (
-                  <div className="mt-2 max-w-[220px] text-[14px] leading-normal text-khelo-muted-2">Pehle date chuno, phir time yahan khul jayega.</div>
+                  <div className="mt-2 max-w-[220px] text-[14px] leading-normal text-khelo-muted-2">{t("search.more.pickDate")}</div>
                 )}
               </div>
 
               <div>
-                <div className={smallLabel}>Price per slot (PKR)</div>
+                <div className={smallLabel}>{t("search.more.pricePerSlot")}</div>
                 <div className="mt-2 flex items-center gap-2">
                   <input
-                    aria-label="Minimum price"
+                    aria-label={t("search.more.minPrice")}
                     inputMode="numeric"
-                    placeholder="Min"
+                    placeholder={t("search.more.minPlaceholder")}
                     className={`${field} !w-28`}
                     value={minText ?? (filters.minPrice !== undefined ? String(filters.minPrice) : "")}
                     onChange={(e) => setMinText(e.target.value.replace(/[^\d]/g, ""))}
@@ -364,9 +366,9 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
                     –
                   </span>
                   <input
-                    aria-label="Maximum price"
+                    aria-label={t("search.more.maxPrice")}
                     inputMode="numeric"
-                    placeholder="Max"
+                    placeholder={t("search.more.maxPlaceholder")}
                     className={`${field} !w-28`}
                     value={maxText ?? (filters.maxPrice !== undefined ? String(filters.maxPrice) : "")}
                     onChange={(e) => setMaxText(e.target.value.replace(/[^\d]/g, ""))}
@@ -390,14 +392,14 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
         <div className="flex flex-wrap items-center justify-between gap-3.5" data-testid="active-filters">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="mr-1 text-[18px] font-extrabold" data-testid="result-count" aria-live="polite">
-              {total === null ? "" : `${total} venue${total === 1 ? "" : "s"}`}
+              {total === null ? "" : t(total === 1 ? "search.count.one" : "search.count.other", { count: total })}
             </span>
             {chips.map((c) => (
               <button
                 key={c.key}
                 type="button"
                 onClick={c.clear}
-                aria-label={`Remove filter ${c.label}`}
+                aria-label={t("search.chip.remove", { label: c.label })}
                 className="khelo-btn inline-flex min-h-11 items-center gap-1.5 rounded-full bg-khelo-warm px-3.5 py-1.5 text-[13px] font-bold text-khelo-orange-label"
               >
                 {c.label} <span aria-hidden="true">✕</span>
@@ -405,16 +407,16 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
             ))}
             {count > 0 ? (
               <button type="button" onClick={() => apply({ amenities: [] })} className="min-h-11 px-2 text-[14px] font-bold text-khelo-muted underline" data-testid="clear-all">
-                Clear all
+                {t("search.clearAll")}
               </button>
             ) : null}
-            {pending ? <span className="text-[13px] text-khelo-muted-2">Updating…</span> : null}
+            {pending ? <span className="text-[13px] text-khelo-muted-2">{t("search.updating")}</span> : null}
           </div>
-          <select aria-label="Sort by" className={`${field} !w-auto`} value={filters.sort ?? ""} onChange={(e) => set({ sort: (e.target.value || undefined) as DiscoveryFilters["sort"] })}>
-            <option value="">Best match</option>
-            <option value="price">Price: low to high</option>
-            <option value="rating">Rating: high to low</option>
-            {filters.lat !== undefined ? <option value="distance">Nearest</option> : null}
+          <select aria-label={t("search.sort.label")} className={`${field} !w-auto`} value={filters.sort ?? ""} onChange={(e) => set({ sort: (e.target.value || undefined) as DiscoveryFilters["sort"] })}>
+            <option value="">{t("search.sort.best")}</option>
+            <option value="price">{t("search.sort.price")}</option>
+            <option value="rating">{t("search.sort.rating")}</option>
+            {filters.lat !== undefined ? <option value="distance">{t("search.sort.nearest")}</option> : null}
           </select>
         </div>
 
