@@ -65,7 +65,7 @@ def in_progress(state: ChatState) -> bool:
 
 def summary_of(state: ChatState) -> str:
     parts = [state.sport, state.venue_name if state.player_sourced("venue") else None, state.court_name if state.player_sourced("court") else None]
-    parts += [display_date(state.date), display_time(state.start_time), display_duration(state.duration_minutes)]
+    parts += [display_date(state.date), display_time(state.start_time), T.duration_words(state.duration_minutes, state.language) if state.duration_minutes else None]
     if state.ambiguous_hour and not state.start_time:
         parts.append(f"{state.ambiguous_hour} o'clock")
     return ", ".join(p for p in parts if p)

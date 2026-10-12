@@ -227,6 +227,10 @@ _BUTTON_PHRASE_RE = re.compile(
 _LEFTOVER_BUTTON_RE = re.compile(r"(?i)\b(?:the\s+|a\s+|these\s+|below\s+)?buttons?\b(?:\s+below)?")
 
 
+# "9:00 PM UTC", "(UTC+5)": the player is never told about UTC (the rule is in the prompt; this is the safety net)
+_UTC_WORD_RE = re.compile(r"(?i)\s*\(?\bUTC\b(?:\s*[+-]\s*\d{1,2}(?::\d{2})?)?\)?")
+
+
 def _strip_markdown(text: str) -> str:
     text = _MD_BOLD_RE.sub(r"\2", text)
     text = _MD_HEADING_RE.sub("", text)
@@ -264,6 +268,7 @@ def sanitize_reply(text: str) -> str:
     net (the real fixes are the ready-made tool strings + the system prompt): 24-hour/UTC times
     (enforce_display_format), leaked markdown, and any mention of buttons/tapping/clicking."""
     text = enforce_display_format(text)
+    text = _UTC_WORD_RE.sub("", text)
     text = chat_validator.strip_emoji(text)
     text = _strip_markdown(text)
     text = _strip_button_talk(text)
@@ -295,6 +300,10 @@ def explicit_proposal_data(message: Message | None) -> dict | None:
     if message is None or message.sender_type != "ai":
         return None
     if message.created_at is None or datetime.now(timezone.utc) - message.created_at > PROPOSAL_MAX_AGE:
+        return None
+    # A message that ASKS for something else (how long? which court?) is not a request to confirm, even when a Yes/No action was stored with it
+    # (production 2026-09-29: "...Aap kitni der khelna chahtay hain?" carried the action, and a bare "Yes, book it" held one hour).
+    if any(kind != "confirm" for kind in ask_fields(message.content)):
         return None
     for action in (message.meta or {}).get("actions") or []:
         if action.get("type") != "confirm_booking":
@@ -579,6 +588,7 @@ class AIChatService:
             state_block=facts_block(state, facts, missing=missing_fields(state, facts)),
         )
         retried = False
+        held: dict | None = None  # the result of a hold_slot that succeeded this turn
 
         for _ in range(MAX_TOOL_ITERATIONS):
             reply = await provider.chat(system_prompt, messages, tools, model_tier)
@@ -612,7 +622,7 @@ class AIChatService:
                         actions = [a for a in actions if a.type not in ("confirm_booking", "decline")]
                         system_prompt += "\n\n" + chat_validator.corrective_instruction(issues, vctx)
                         continue
-                    text, actions = self._safe_fallback(fold, facts), []
+                    text, actions = self._safe_fallback(fold, facts, held), []
                 return ChatResult(
                     reply=text, actions=actions, model=model_tier, tool_calls=tool_calls_made, state=self._final_state(fold, facts, text, actions)
                 )
@@ -637,6 +647,8 @@ class AIChatService:
                 blocked = await self._gate_tool(user, channel, tc.name, tc.arguments, messages)
                 result = blocked or await self._execute_tool(user, tc.name, tc.arguments, actions)
                 tool_texts.append(_to_text(result))
+                if tc.name == "hold_slot" and result.get("booking_id"):
+                    held = result
                 if tc.name == "check_availability":
                     for slot in result.get("slots", []):
                         offered[(str(tc.arguments.get("court_id")), slot["starts_at"])] = slot["label"]
@@ -659,7 +671,7 @@ class AIChatService:
             messages.append({"role": "user", "content": tool_results})
 
         return ChatResult(
-            reply=chat_templates.render("fallback_unavailable", state.language),
+            reply=self._safe_fallback(fold, facts, held) if held else chat_templates.render("fallback_unavailable", state.language),
             actions=actions,
             model=model_tier,
             tool_calls=tool_calls_made,
@@ -703,8 +715,16 @@ class AIChatService:
         )
         return actions, chat_validator.validate(text, vctx), vctx
 
-    def _safe_fallback(self, fold: FoldResult, facts: PlatformFacts) -> str:
-        """What is sent when even the second draft fails the check: the ONE next question when something is still missing, else a plain note."""
+    def _safe_fallback(self, fold: FoldResult, facts: PlatformFacts, held: dict | None = None) -> str:
+        """What is sent when even the second draft fails the check: the hold, if one was just made (the player must always be told), else the ONE
+        next question when something is still missing, else a plain note."""
+        if held is not None:
+            return sanitize_reply(
+                chat_templates.render(
+                    "held", fold.state.language, label=held.get("label", ""), total=held.get("total_price_text", ""),
+                    advance=held.get("advance_text", ""), until=held.get("held_until_label"),
+                )
+            )
         q = chat_guards.next_question(fold.state, facts, fold.turn)
         if q is not None:
             fold.state.pending, fold.state.options = q.pending, list(q.options)

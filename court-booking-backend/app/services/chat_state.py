@@ -731,13 +731,14 @@ _THANKS_WORDS = frozenset("thanks thank thankyou thanx thx tysm shukriya shukria
 _THANKS_FILLER = frozenset(
     "you so much a lot very bohat bahut boht bhai ji g sir ok okay dear alot great nice achha acha theek hai ho gya gaya".split()
 )
-_NEGATIVE_WORDS = frozenset("no nahi nahin nhi na nope nah nai cancel rehne rehnay chhor chor mat".split())
+_NEGATIVE_WORDS = frozenset("no nahi nahin nhi na nope nah nai rehne rehnay chhor chor mat".split())  # "cancel" is NOT here: it is a request about a booking
 _PRICE_WORDS = frozenset(
     "price prices pricing cost rate rates charges charge fee fees kitna kitni kitne kitnay qeemat keemat kimat paisa paise rupay rupees pkr rs "
     "sasta sasti discount kam".split()
 )
 _PRICE_PHRASES = re.compile(r"(?i)how much|kitne ka|kitne ki|per hour|per ghanta|rate kya")
-_LOCATION_WORDS = frozenset("where address location kahan kahaan kaha map directions direction pata jagah located".split())
+_LOCATION_WORDS = frozenset("address location kahan kahaan kaha map directions direction pata jagah located".split())
+_WHERE_RE = re.compile(r"(?i)\bwhere (?:is|are|'s)\b|\bwhere\b.{0,20}\b(?:venue|arena|club|court|ground|located)\b")
 _HOURS_PHRASES = re.compile(
     r"(?i)\btimings?\b|\btime ?table\b|opening hours|open hours|closing time|\bkhulta\b|\bkhulte\b|\bkhulti\b|kab tak|band (?:hota|hoti|hote)|what time do you (?:open|close)|"
     r"kitne baje (?:khul|band|tak)"
@@ -754,10 +755,9 @@ _COMPLAINT = re.compile(
 )
 _NEW_BOOKING = re.compile(r"(?i)\b(?:naya|nayi|nai|new|another|ek aur|aur ek|ik aur|dusri|doosri|dosri)\s+(?:booking|court|slot)\b|\bbook (?:another|one more)\b|start over|dobara shuru")
 _BOOKING_WORDS = frozenset(
-    "book booking bookings slot slots reserve reservation chahiye chayie chahie chaiye chahye chahta chahtay chahte lena khelna khelni khelne court courts "
-    "need want khel play".split()
+    "book booking bookings slot slots reserve reservation chahiye chayie chahie chaiye chahye chahta chahtay chahte lena khelna khelni khelne court courts".split()
 )
-_ACCOUNT_WORDS = frozenset("cancel refund payment screenshot paid hold held receipt status mera meri apni apna".split())
+_ACCOUNT_WORDS = frozenset("cancel cancelled refund payment screenshot paid hold held receipt status mera meri apni apna".split())
 _BARGAIN_WORDS = re.compile(r"(?i)\b(?:discount|sasta|sasti|kam karo|kam kardo|kam kr|rate kam|price kam|cheap|cheaper|less price|reduce)\b")
 _BARGAIN_NUMBER = re.compile(r"(?<![\d:/.])(\d{3,6})(?![\d:/])")
 
@@ -994,11 +994,11 @@ def _apply_player(
                 state.prov["start_time"] = prov
                 turn.got.add("start_time")
                 if state.ambiguous_end_hour and duration is None:
-                    end = apply_meridiem(state.ambiguous_end_hour, answer)
-                    if end is not None:
-                        s_min = resolved.hour * 60 + resolved.minute
-                        e_min = end.hour * 60 + end.minute
-                        duration = _valid_duration(((e_min - s_min) % 1440) or 1440)
+                    # "9 se 12", answered "pm": the end is the next time that hour comes round after the start (9 PM to midnight = 3 hours)
+                    s_min = resolved.hour * 60 + resolved.minute
+                    options = sorted({(state.ambiguous_end_hour % 12) * 60, (state.ambiguous_end_hour % 12) * 60 + 720})
+                    nxt = next((o for o in options if o > s_min), options[0] + 1440)
+                    duration = _valid_duration(nxt - s_min)
                 state.ambiguous_hour, state.ambiguous_end_hour = None, None
     if duration is not None:
         if state.duration_minutes != duration:
@@ -1014,10 +1014,13 @@ def _apply_player(
     toks = set(words)
     booking_word = bool(toks & _BOOKING_WORDS)
     asks_price = bool(toks & _PRICE_WORDS) or bool(_PRICE_PHRASES.search(raw))
-    asks_where = bool(toks & _LOCATION_WORDS)
+    asks_where = bool(toks & _LOCATION_WORDS) or bool(_WHERE_RE.search(raw))
     asks_hours = bool(_HOURS_PHRASES.search(raw))
     asks_sports = bool(_SPORT_Q.search(raw))
-    if asks_sports:
+    about_account = bool(toks & _ACCOUNT_WORDS) and not turn.has_facts  # "cancel my booking", "meri booking kahan hai": the model's tools
+    if about_account:
+        turn.intent = "other"
+    elif asks_sports:
         turn.intent = "sport_question"
     elif turn.bargain or asks_price:
         turn.intent = "price_question"
@@ -1037,8 +1040,8 @@ def _apply_player(
         turn.intent = "slot_request"
     else:
         turn.intent = "other"
-    if toks & _ACCOUNT_WORDS and not turn.has_facts and turn.intent == "slot_request":
-        turn.intent = "other"
+    if turn.intent in ("greeting", "thanks", "affirmative", "negative"):
+        turn.sport_word_unknown = False  # "ok" is not a misspelled sport
 
     if turn.listing and turn.intent in ("slot_request", "other"):
         state.mode = "listing"
@@ -1104,14 +1107,21 @@ def fresh_state() -> ChatState:
     return ChatState()
 
 
-def reply_language(player_texts: list[str]) -> str:
-    """The language to answer in: the lead's word-list vote (`chat_language.score`) over the player's last four messages, newest weighing most, so one
-    short "koi bhi" in an English chat does not flip the language (and vice versa). No signal anywhere -> `conversation_language`'s default."""
+def reply_language(player_texts: list[str], ai_texts: list[str] = ()) -> str:
+    """The language to answer in: the lead's word-list vote (`chat_language.score`) over the player's last four messages. A longer message weighs
+    more the newer it is; a very short one ("koi bhi", "Yes, book it", "ok") counts once, so it does not flip the language of the chat. When the
+    player's words carry no signal at all ("9pm", "Padel", "3"), the language of the bot's own earlier replies continues; else the default."""
     ru_w = en_w = 0
     for i, text in enumerate(reversed(player_texts[-4:])):
         ru, en = score(text)
-        ru_w += (4 - i) * ru
-        en_w += (4 - i) * en
+        weight = (4 - i) if len(_tokens(text)) > 3 else 1
+        ru_w += weight * ru
+        en_w += weight * en
+    # the bot's own last two replies speak the language the chat has been in: a small vote, so one short "ok" cannot flip it
+    for text in list(ai_texts)[-2:]:
+        ru, en = score(text)
+        ru_w += min(ru, 3)
+        en_w += min(en, 3)
     if ru_w == 0 and en_w == 0:
         return conversation_language(player_texts)
     return "ru" if ru_w >= en_w else "en"
@@ -1233,7 +1243,7 @@ def fold_state(
         sources_for[name] = len(window)  # the current message (not yet in the window)
 
     texts = [r.text for r in window if r.role == "player"] + [current]
-    state.language = reply_language(texts)
+    state.language = reply_language(texts, [r.text for r in window if r.role == "ai"])
 
     # stage
     if live is not None and not turn.got:

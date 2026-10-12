@@ -35,7 +35,7 @@ from app.services.chat_state import (
     extract_times,
     scan_sports,
 )
-from app.utils.timezone import contains_24h_time
+from app.utils.timezone import contains_24h_time, pkt_today
 
 _EMOJI_RE = re.compile(
     "[\U0001F000-\U0001FAFF←-⇿⌀-⏿■-◿☀-➿⤀-⥿⬀-⯿️‍⃣]+"
@@ -197,8 +197,11 @@ def validate(draft: str, ctx: ValidationContext) -> list[Issue]:
         "ampm": state.start_time is not None and state.ambiguous_hour is None,
         "duration": state.known("duration"),
     }
+    lists_slots = bool(re.search(r"\d{1,2}:\d{2} (?:AM|PM) to ", text))
     for kind in asked:
         if answered.get(kind):
+            if lists_slots and kind in ("time", "court", "date", "ampm"):
+                continue  # offering real alternatives ("9 PM is taken; 8 PM or 10 PM?") asks which one, it does not re-ask what they said
             issues.append(Issue("asked_answered", kind))
     if _questions(text) > MAX_QUESTIONS:
         issues.append(Issue("multi_question", f"{_questions(text)} questions"))
@@ -213,6 +216,9 @@ def validate(draft: str, ctx: ValidationContext) -> list[Issue]:
     for clock in _clock_set(text):
         if clock not in allowed_times:
             unknown.append(clock)
+    for year in re.findall(r"\b(20\d\d|19\d\d)\b", text):  # "Sat 3 Oct 2020": a stale year from a stale date (pattern P8)
+        if int(year) not in (pkt_today().year, pkt_today().year + 1):
+            unknown.append(f"year {year}")
     real = _real_canons(ctx.facts)
     said_by_player = {c for t in ctx.player_texts for c in scan_sports(t, ctx.facts.sports())}
     if real:

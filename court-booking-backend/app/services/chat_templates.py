@@ -239,6 +239,13 @@ def _t_fallback_unavailable(lang: Lang, **_: object) -> str:
     )
 
 
+def _t_held(lang: Lang, label: str, total: str, advance: str, until: str | None = None, **_: object) -> str:
+    """The safe version of "your slot is held", used only when the model's own message about a hold that DID succeed failed the safety check."""
+    if lang == "ru":
+        return f"Aap ka slot hold ho gaya hai: {label}. Total {total}. Advance {advance}" + (f" {until} tak" if until else "") + " bhejna hai. Payment ki tafseel ke liye payment likh dein."
+    return f"Your slot is on hold: {label}. Total {total}. Please pay the advance {advance}" + (f" by {until}" if until else "") + ". Write payment for the payment details."
+
+
 def _t_steer_back(lang: Lang, sports: list[str] | None = None, **_: object) -> str:
     listed = join_list(sports or [], lang)
     if lang == "ru":
@@ -277,6 +284,7 @@ _TEMPLATES: dict[str, Callable[..., str]] = {
     "ask_which_venue_info": _t_ask_which_venue_info,
     "fallback_ask": _t_fallback_ask,
     "fallback_unavailable": _t_fallback_unavailable,
+    "held": _t_held,
     "steer_back": _t_steer_back,
 }
 
