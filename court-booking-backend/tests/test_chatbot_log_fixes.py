@@ -132,10 +132,15 @@ async def test_the_bot_may_not_pick_a_sport_for_the_player(
     blocked = await service._gate_tool(player, "whatsapp", "check_availability", args, [{"role": "user", "content": "Mjhy booking chayie"}])
     assert blocked and "which sport" in blocked["error"]
 
-    # once the player names a sport (even misspelled), or the court, the lookup goes through
-    assert await service._gate_tool(player, "whatsapp", "check_availability", args, [{"role": "user", "content": "Padel"}]) is None
-    assert await service._gate_tool(player, "whatsapp", "check_availability", args, [{"role": "user", "content": "Furtsal!"}]) is None
+    # once the player names a sport (even misspelled), or the court, AND the date, the lookup goes through (Phase 3: the date is the player's too)
+    assert await service._gate_tool(player, "whatsapp", "check_availability", args, [{"role": "user", "content": "Padel kal"}]) is None
+    assert await service._gate_tool(player, "whatsapp", "check_availability", args, [{"role": "user", "content": "Paddle kal!"}]) is None
     assert await service._gate_tool(player, "app", "check_availability", args, [{"role": "user", "content": "Is Court 2 free tomorrow?"}]) is None
+    # a sport without a date: the lookup waits for the date; a court of ANOTHER sport than the one asked for never goes through
+    no_date = await service._gate_tool(player, "whatsapp", "check_availability", args, [{"role": "user", "content": "Padel"}])
+    assert no_date and "date" in no_date["error"]
+    wrong_court = await service._gate_tool(player, "whatsapp", "check_availability", args, [{"role": "user", "content": "Futsal kal"}])
+    assert wrong_court and "Futsal" in wrong_court["error"]
 
 
 async def test_a_one_sport_venue_does_not_need_the_question(db_session, make_user, make_venue, make_court):
@@ -144,7 +149,7 @@ async def test_a_one_sport_venue_does_not_need_the_question(db_session, make_use
     player = await make_user("+923091000013", role=UserRole.PLAYER)
     service = AIChatService(db_session, get_settings())
     args = {"court_id": str(court.id), "date": (pkt_today() + timedelta(days=1)).isoformat()}
-    assert await service._gate_tool(player, "app", "check_availability", args, [{"role": "user", "content": "hi"}]) is None
+    assert await service._gate_tool(player, "app", "check_availability", args, [{"role": "user", "content": "kal ka slot dekhna hai"}]) is None
 
 
 async def test_an_hour_without_am_or_pm_makes_the_bot_ask(
@@ -173,13 +178,14 @@ async def test_isko_book_krdo_does_not_pick_one_of_several_listed_slots(
     service = AIChatService(db_session, get_settings())
     args = {"court_id": str(padel.id), "starts_at": pkt_time_to_utc(day, time(18, 0)).isoformat()}
     listed = {"role": "assistant", "content": "Available: 5:00 PM to 6:00 PM, Sat 10 Oct and 6:00 PM to 7:00 PM, Sat 10 Oct."}
-    blocked = await service._gate_tool(player, "app", "propose_booking_confirmation", args, [listed, {"role": "user", "content": "isko book krdo"}])
+    asked = {"role": "user", "content": "padel kal shaam 6 baje 1 hour"}  # Phase 3: sport, date and length are the player's own words
+    blocked = await service._gate_tool(player, "app", "propose_booking_confirmation", args, [asked, listed, {"role": "user", "content": "isko book krdo"}])
     assert blocked and "Ask which" in blocked["error"]
     # one listed slot: "book this" is unambiguous
     one = {"role": "assistant", "content": "Available: 6:00 PM to 7:00 PM, Sat 10 Oct."}
-    assert await service._gate_tool(player, "app", "propose_booking_confirmation", args, [one, {"role": "user", "content": "isko book krdo"}]) is None
+    assert await service._gate_tool(player, "app", "propose_booking_confirmation", args, [asked, one, {"role": "user", "content": "isko book krdo"}]) is None
     # naming the slot is fine too
-    assert await service._gate_tool(player, "app", "propose_booking_confirmation", args, [listed, {"role": "user", "content": "6 pm wala"}]) is None
+    assert await service._gate_tool(player, "app", "propose_booking_confirmation", args, [asked, listed, {"role": "user", "content": "6 pm wala"}]) is None
 
 
 # --- 2. no booking proposal while the duration is still being asked -------------------------------------------------------
@@ -227,7 +233,7 @@ async def test_once_the_duration_is_quoted_the_proposal_carries_it(
         _tool("quote_booking", {"court_id": str(court.id), "starts_at": first["starts_at"], "duration_minutes": 120}, "t2"),
         _text(f"{first['label'].split(', ')[0]} for 2 hours is PKR 6,000. Shall I book it? Reply Yes or No"),
     ])
-    result = await service.process_message(user=player, message="2 ghante", history=[])
+    result = await service.process_message(user=player, message="kal subah 6 baje 2 ghante", history=[])
     confirm = next(a for a in result.actions if a.type == "confirm_booking")
     assert confirm.data["slot_count"] == 4  # 2 hours = four 30-minute slots, not the court's one-hour minimum
 
@@ -292,7 +298,7 @@ async def test_rows_that_already_share_a_timestamp_still_list_the_player_first(
 
 async def test_model_history_puts_the_question_before_its_reply(db_session, db_session_factory, make_user):
     player = await make_user("+923091000042", role=UserRole.PLAYER)
-    same = datetime.now(timezone.utc) - timedelta(days=1)
+    same = datetime.now(timezone.utc) - timedelta(minutes=20)  # Phase 3: older than 3 hours would be a finished conversation
     async with db_session_factory() as session:
         session.add(Message(sender_id=player.id, sender_type="ai", channel="app", content="a", created_at=same))
         session.add(Message(sender_id=player.id, sender_type="player", channel="app", content="q", created_at=same))
