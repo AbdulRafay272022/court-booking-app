@@ -15,6 +15,7 @@ export function LanguageSwitch({ tone = "dark", className = "" }: { tone?: "dark
 
   function choose(next: Lang) {
     if (next === lang) return;
+    // eslint-disable-next-line react-hooks/immutability -- the cookie IS the persisted language; this runs in a click handler
     document.cookie = `${LANG_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
     router.refresh();
   }
