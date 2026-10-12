@@ -2,8 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 import { mailtoLink, whatsappLink } from "@/lib/site-config";
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey } from "@/lib/i18n";
 
-const TOPICS = ["Main player hoon, madad chahiye", "Main venue list karna chahta hoon", "Payment ya refund ka masla", "Kuch aur"] as const;
+const TOPIC_KEYS: readonly MessageKey[] = ["contact.form.topic.player", "contact.form.topic.venue", "contact.form.topic.payment", "contact.form.topic.other"];
 
 type Channel = "whatsapp" | "email";
 type Errors = Partial<Record<"name" | "phone" | "message", string>>;
@@ -18,6 +20,8 @@ const FIELD =
  * `whatsapp` / `email` are plain props because client code cannot read the runtime env values.
  */
 export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: string }) {
+  const t = useT();
+  const topics = TOPIC_KEYS.map((k) => t(k));
   const [errors, setErrors] = useState<Errors>({});
   const [opened, setOpened] = useState<Channel | null>(null);
 
@@ -33,9 +37,9 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
     const message = String(data.get("message") ?? "").trim();
 
     const next: Errors = {};
-    if (!name) next.name = "Apna naam likhein.";
-    if (phone && phone.replace(/[^0-9]/g, "").length < 10) next.phone = "Sahi phone number likhein, jaise 03XX XXXXXXX.";
-    if (!message) next.message = "Apna sawal ya message likhein.";
+    if (!name) next.name = t("contact.form.errName");
+    if (phone && phone.replace(/[^0-9]/g, "").length < 10) next.phone = t("contact.form.errPhone");
+    if (!message) next.message = t("contact.form.errMessage");
     setErrors(next);
     setOpened(null);
     if (Object.keys(next).length > 0) {
@@ -44,12 +48,12 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
       return;
     }
 
-    const text = [`Naam: ${name}`, phone ? `Phone: ${phone}` : null, `Mauzu: ${topic}`, "", message].filter((l) => l !== null).join("\n");
+    const text = [t("contact.form.msgName", { value: name }), phone ? t("contact.form.msgPhone", { value: phone }) : null, t("contact.form.msgTopic", { value: topic }), "", message].filter((l) => l !== null).join("\n");
     if (channel === "whatsapp") {
       const href = whatsappLink(config, text);
       if (href) window.open(href, "_blank", "noopener,noreferrer");
     } else {
-      const href = mailtoLink(config, `Khelo: ${topic}`, text);
+      const href = mailtoLink(config, t("contact.form.emailSubject", { topic }), text);
       if (href) window.location.href = href;
     }
     setOpened(channel);
@@ -68,13 +72,13 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
       onSubmit={onSubmit}
       className="flex min-w-0 flex-[1_1_480px] flex-col gap-[18px] rounded-[32px] bg-khelo-surface p-6 shadow-[0_30px_60px_rgba(12,31,29,0.12)] sm:p-10"
     >
-      <h2 className="font-khelo-display text-[30px] font-extrabold tracking-[-0.8px]">Message bhejein</h2>
+      <h2 className="font-khelo-display text-[30px] font-extrabold tracking-[-0.8px]">{t("contact.form.title")}</h2>
 
       <div className="flex flex-col gap-2">
         <label htmlFor="c-name" className={LABEL}>
-          Naam
+          {t("contact.form.name")}
         </label>
-        <input id="c-name" name="name" className={FIELD} type="text" placeholder="Aapka naam" autoComplete="name" required aria-invalid={Boolean(errors.name)} aria-describedby={err("name")} />
+        <input id="c-name" name="name" className={FIELD} type="text" placeholder={t("contact.form.namePlaceholder")} autoComplete="name" required aria-invalid={Boolean(errors.name)} aria-describedby={err("name")} />
         {errors.name ? (
           <p id="c-name-err" className="text-[13px] font-semibold text-khelo-orange-label">
             {errors.name}
@@ -84,9 +88,9 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
 
       <div className="flex flex-col gap-2">
         <label htmlFor="c-phone" className={LABEL}>
-          Phone number
+          {t("contact.form.phone")}
         </label>
-        <input id="c-phone" name="phone" className={FIELD} type="tel" placeholder="03XX XXXXXXX" autoComplete="tel" aria-invalid={Boolean(errors.phone)} aria-describedby={err("phone")} />
+        <input id="c-phone" name="phone" className={FIELD} type="tel" placeholder={t("contact.form.phonePlaceholder")} autoComplete="tel" aria-invalid={Boolean(errors.phone)} aria-describedby={err("phone")} />
         {errors.phone ? (
           <p id="c-phone-err" className="text-[13px] font-semibold text-khelo-orange-label">
             {errors.phone}
@@ -96,12 +100,12 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
 
       <div className="flex flex-col gap-2">
         <label htmlFor="c-topic" className={LABEL}>
-          Mauzu
+          {t("contact.form.topic")}
         </label>
-        <select id="c-topic" name="topic" className={FIELD} defaultValue={TOPICS[0]}>
-          {TOPICS.map((t) => (
-            <option key={t} value={t}>
-              {t}
+        <select id="c-topic" name="topic" className={FIELD} defaultValue={topics[0]}>
+          {topics.map((label, i) => (
+            <option key={TOPIC_KEYS[i]} value={label}>
+              {label}
             </option>
           ))}
         </select>
@@ -109,9 +113,9 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
 
       <div className="flex flex-col gap-2">
         <label htmlFor="c-message" className={LABEL}>
-          Message
+          {t("contact.form.message")}
         </label>
-        <textarea id="c-message" name="message" className={`${FIELD} resize-y`} rows={5} placeholder="Apna sawal likhein" required aria-invalid={Boolean(errors.message)} aria-describedby={err("message")} />
+        <textarea id="c-message" name="message" className={`${FIELD} resize-y`} rows={5} placeholder={t("contact.form.messagePlaceholder")} required aria-invalid={Boolean(errors.message)} aria-describedby={err("message")} />
         {errors.message ? (
           <p id="c-message-err" className="text-[13px] font-semibold text-khelo-orange-label">
             {errors.message}
@@ -124,7 +128,7 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
           type="submit"
           className="khelo-btn min-h-11 cursor-pointer rounded-[14px] bg-khelo-orange px-7 py-[18px] text-[17px] font-extrabold text-khelo-ink"
         >
-          Bhejo
+          {t("contact.form.submit")}
         </button>
         {hasBoth ? (
           <button
@@ -135,18 +139,17 @@ export function ContactForm({ whatsapp, email }: { whatsapp?: string; email?: st
             }}
             className="khelo-btn min-h-11 cursor-pointer rounded-[14px] border-2 border-khelo-ink px-7 py-[18px] text-[17px] font-bold text-khelo-ink"
           >
-            Email se bhejo
+            {t("contact.form.sendEmail")}
           </button>
         ) : null}
       </div>
 
       <p className="text-[13px] leading-[1.5] text-khelo-muted-2">
-        {primary === "whatsapp" ? "Bhejo dabane par WhatsApp mein aapka message tayyar khulega." : "Bhejo dabane par aapke email app mein message tayyar khulega."} Yahan kuch save
-        nahi hota.
+        {primary === "whatsapp" ? t("contact.form.noteWhatsapp") : t("contact.form.noteEmail")} {t("contact.form.noteNothingSaved")}
       </p>
 
       <div aria-live="polite" role="status" className="text-[14px] font-semibold text-khelo-teal empty:hidden">
-        {Object.keys(errors).length > 0 ? "Pehle upar di gayi ghaltiyan theek karein." : opened ? (opened === "whatsapp" ? "WhatsApp khul gaya hai. Wahan se message bhej dein." : "Aapka email app khul gaya hai. Wahan se message bhej dein.") : null}
+        {Object.keys(errors).length > 0 ? t("contact.form.fixErrors") : opened ? (opened === "whatsapp" ? t("contact.form.openedWhatsapp") : t("contact.form.openedEmail")) : null}
       </div>
     </form>
   );
