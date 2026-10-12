@@ -1,12 +1,13 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { getT } from "@/lib/i18n-server";
 import { KheloPage } from "@/components/site/page-shell";
 import { SignupForm } from "@/components/auth-v2/signup-form";
 
-export const metadata: Metadata = {
-  title: "Sign up",
-  description: "Create your Khelo account to book courts, or sign up as a venue owner to list your courts.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("auth.meta.signup.title"), description: t("auth.meta.signup.description") };
+}
 
 export default function SignupPage() {
   return (
