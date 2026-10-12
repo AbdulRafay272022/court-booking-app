@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import type { VenueListResponse } from "@court-booking/types";
 import { serverApi } from "@/lib/server-api";
+import { getT } from "@/lib/i18n-server";
 import { KheloPage } from "@/components/site/page-shell";
 import { buttonClasses } from "@/components/site/button";
 import { FilterBar } from "@/components/discovery/filter-bar";
@@ -13,12 +14,14 @@ import { activeFilterCount, filtersToApiParams, parseFilters } from "@/lib/disco
 
 export async function generateMetadata({ searchParams }: PageProps<"/search">): Promise<Metadata> {
   const { sport } = parseFilters(await searchParams);
-  const title = sport ? `${sport} Courts in Karachi` : "Court Booking in Karachi";
-  return { title, description: `Browse ${sport ?? "padel and futsal"} courts available to book right now in DHA and Clifton, Karachi.` };
+  const t = await getT();
+  const title = sport ? t("search.meta.titleSport", { sport }) : t("search.meta.title");
+  return { title, description: t("search.meta.description", { sport: sport ?? t("search.meta.sportFallback") }) };
 }
 
 export default async function SearchPage({ searchParams }: PageProps<"/search">) {
   const sp = await searchParams;
+  const t = await getT();
   const city = typeof sp.city === "string" ? sp.city : "Karachi";
   const filters = parseFilters(sp);
 
@@ -51,8 +54,8 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         <FilterBar areas={areas} city={city} total={result ? result.total : null}>
           {failed ? (
             <div role="alert" className="flex flex-col items-center gap-2 rounded-3xl bg-khelo-surface px-6 py-16 text-center">
-              <h2 className="font-khelo-display text-xl font-extrabold">Couldn&apos;t load venues</h2>
-              <p className="max-w-md text-khelo-muted">Check your filters (dates must be today or later) and try again.</p>
+              <h2 className="font-khelo-display text-xl font-extrabold">{t("search.failed.title")}</h2>
+              <p className="max-w-md text-khelo-muted">{t("search.failed.body")}</p>
             </div>
           ) : venues.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-3xl bg-khelo-surface px-6 py-16 text-center" data-testid="empty-state">
@@ -61,18 +64,16 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
               </span>
               {filtered ? (
                 <>
-                  <h2 className="font-khelo-display text-xl font-extrabold">No venues match these filters</h2>
-                  <p className="max-w-md text-khelo-muted">Try a different date or time, a wider price range, or remove a filter.</p>
+                  <h2 className="font-khelo-display text-xl font-extrabold">{t("search.empty.filtered.title")}</h2>
+                  <p className="max-w-md text-khelo-muted">{t("search.empty.filtered.body")}</p>
                   <Link href={`/search?city=${encodeURIComponent(city)}`} className={buttonClasses({ variant: "primary", pill: true, className: "mt-1" })}>
-                    Clear all filters
+                    {t("search.empty.clear")}
                   </Link>
                 </>
               ) : (
                 <>
-                  <h2 className="font-khelo-display text-xl font-extrabold">No courts in {city} yet</h2>
-                  <p className="max-w-md text-khelo-muted">
-                    We&apos;re opening one area at a time so every listing is real. Right now we&apos;re live in DHA and Clifton, Karachi.
-                  </p>
+                  <h2 className="font-khelo-display text-xl font-extrabold">{t("search.empty.none.title", { city })}</h2>
+                  <p className="max-w-md text-khelo-muted">{t("search.empty.none.body")}</p>
                 </>
               )}
             </div>

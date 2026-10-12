@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { isValidOtp } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { useT } from "@/components/i18n/lang-provider";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { webDeviceInfo } from "@/lib/device";
@@ -22,6 +23,7 @@ import { CodeField, OtpStatus } from "./otp-controls";
  *  - purpose=reverify: "Verify your phone" (365 days passed, or signup was never finished;
  *                      proves the phone, then retries the password login) */
 export function VerifyForm() {
+  const t = useT();
   const router = useRouter();
   const search = useSearchParams();
   const phone = search.get("phone") ?? "";
@@ -86,7 +88,7 @@ export function VerifyForm() {
         // QA #2: a dropped-response retry after verify already succeeded -> offer Log in, not a
         // dead-end expired-code error.
         setAlreadyVerified(true);
-        setError("This number is already verified — please log in.");
+        setError(t("auth.verify.alreadyVerified"));
       } else if (
         err instanceof ApiError &&
         (err.code === "OTP_RATE_LIMITED" || err.code === "LOGIN_RATE_LIMITED" || err.code === "OTP_IP_RATE_LIMITED")
@@ -114,33 +116,30 @@ export function VerifyForm() {
       brandBg={ownerSignup ? "teal" : "ink"}
       brandTitle={
         <>
-          Bas ek code.
+          {t("auth.verify.brand.l1")}
           <br />
-          Phir <span className={ownerSignup ? "text-white" : "text-khelo-orange"}>Khelo.</span>
+          {t("auth.verify.brand.l2")}<span className={ownerSignup ? "text-white" : "text-khelo-orange"}>Khelo.</span>
         </>
       }
-      brandText="Tumhara number WhatsApp par confirm hota hai. Code daalo aur seedha aage barho."
+      brandText={t("auth.verify.brand.text")}
     >
       <div className="w-full max-w-[420px]">
         <h1 className="m-0 font-khelo-display text-[34px] font-extrabold leading-[1.1] tracking-[-1px] min-[420px]:text-[42px] min-[420px]:leading-[1.05] min-[420px]:tracking-[-1.3px]">
-          {purpose === "signup" ? "Verify your new account" : "Verify your phone"}
+          {purpose === "signup" ? t("auth.verify.title.signup") : t("auth.verify.title.reverify")}
         </h1>
         <p className="mt-3 text-[16px] leading-[1.6] text-khelo-muted">
-          {purpose === "signup"
-            ? "Almost there. We sent a 6-digit code on WhatsApp to "
-            : "For your security we need to confirm this number again. We sent a 6-digit code on WhatsApp to "}
+          {purpose === "signup" ? t("auth.verify.intro.signup") : t("auth.verify.intro.reverify")}
           <span className="font-mono-plex font-semibold text-khelo-ink">{phone}</span>.
         </p>
 
         <form onSubmit={handleSubmit} noValidate className="mt-8 flex flex-col gap-5">
           {pending ? (
             <FormNotice kind="success">
-              You already have a signup in progress for this number &mdash; check WhatsApp for your code, or tap Resend
-              below. (Any details you just re-entered weren&apos;t saved.)
+              {t("auth.verify.pending")}
             </FormNotice>
           ) : null}
           <CodeField
-            label="Verification code"
+            label={t("auth.field.codeLabel")}
             inputMode="numeric"
             autoComplete="one-time-code"
             autoFocus
@@ -156,7 +155,7 @@ export function VerifyForm() {
           {/* Reserve the banner's space so showing/hiding it never shifts the button below (QA round 4 item 3). */}
           <div className="min-h-[60px]">
             {lock.seconds > 0 ? (
-              <FormNotice kind="error">Too many attempts. Please try again in {lock.seconds}s.</FormNotice>
+              <FormNotice kind="error">{t("auth.verify.locked", { seconds: lock.seconds })}</FormNotice>
             ) : error ? (
               <FormNotice kind="error">{error}</FormNotice>
             ) : null}
@@ -167,11 +166,11 @@ export function VerifyForm() {
               href={`/login?phone=${encodeURIComponent(phone)}&notice=phone-verified`}
               className="khelo-btn flex min-h-11 items-center justify-center rounded-[14px] bg-khelo-orange px-6 py-[18px] text-[17px] font-extrabold text-khelo-ink"
             >
-              Log in
+              {t("auth.field.logIn")}
             </Link>
           ) : (
-            <SmartButton ready={ready} busy={busy} busyLabel={"Verifying…"} theme={ownerSignup ? "owner" : "player"}>
-              {lock.seconds > 0 ? `Try again in ${lock.seconds}s` : purpose === "signup" ? "Verify and continue" : "Verify"}
+            <SmartButton ready={ready} busy={busy} busyLabel={t("auth.verify.busy")} theme={ownerSignup ? "owner" : "player"}>
+              {lock.seconds > 0 ? t("auth.field.tryAgainIn", { seconds: lock.seconds }) : purpose === "signup" ? t("auth.verify.submit.signup") : t("auth.verify.submit.reverify")}
             </SmartButton>
           )}
         </form>
@@ -181,7 +180,7 @@ export function VerifyForm() {
             href={purpose === "signup" ? "/signup" : "/login"}
             className="inline-flex min-h-11 items-center font-bold text-khelo-teal underline"
           >
-            {purpose === "signup" ? "Wrong number? Start again" : "Back to log in"}
+            {purpose === "signup" ? t("auth.verify.back.signup") : t("auth.field.backToLogin")}
           </Link>
         </p>
       </div>

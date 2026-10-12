@@ -1,5 +1,7 @@
 import { Button } from "@/components/site/button";
 import { Container } from "@/components/site/primitives";
+import { getT } from "@/lib/i18n-server";
+import type { TFunction } from "@/lib/i18n";
 
 type SlotState = "free" | "booked" | "mine";
 const SLOTS: { t: string; s: SlotState }[] = [
@@ -17,7 +19,7 @@ const SLOT_CLASS: Record<SlotState, string> = {
 };
 
 /** The phone illustration: static and decorative (a sample venue and sample slots, not real data). */
-function PhoneMock() {
+function PhoneMock({ t }: { t: TFunction }) {
   return (
     <div aria-hidden="true" className="box-border w-[320px] max-w-full rounded-[40px] border-[6px] border-khelo-frame bg-khelo-surface p-3.5 text-khelo-ink shadow-[0_40px_80px_rgba(0,0,0,.45)]">
       <div className="rounded-[28px] bg-khelo-page px-[18px] pb-[22px] pt-5">
@@ -36,7 +38,7 @@ function PhoneMock() {
           <span className="rounded-full bg-khelo-ink px-3.5 py-2 text-[12px] font-bold text-white">Futsal</span>
           <span className="rounded-full bg-khelo-surface px-3.5 py-2 text-[12px] font-bold">Padel</span>
         </div>
-        <div className="mt-[18px] text-[12px] font-bold text-khelo-muted-2">SAT, TONIGHT</div>
+        <div className="mt-[18px] text-[12px] font-bold text-khelo-muted-2">{t("home.hero.mock.tonight")}</div>
         <div className="mt-2.5 grid grid-cols-3 gap-2">
           {SLOTS.map((s) => (
             <div key={s.t} className={`rounded-xl border-[1.5px] py-3 text-center text-[13px] font-bold ${SLOT_CLASS[s.s]}`}>
@@ -45,23 +47,24 @@ function PhoneMock() {
           ))}
         </div>
         <div className="mt-3.5 flex gap-3.5 text-[11px] font-semibold text-khelo-muted-2">
-          <span><span className="mr-[5px] inline-block h-[9px] w-[9px] rounded-[3px] border-[1.5px] border-khelo-border bg-khelo-surface" />Free</span>
-          <span><span className="mr-[5px] inline-block h-[9px] w-[9px] rounded-[3px] bg-khelo-booked-bg" />Booked</span>
-          <span><span className="mr-[5px] inline-block h-[9px] w-[9px] rounded-[3px] bg-khelo-orange" />Yours</span>
+          <span><span className="mr-[5px] inline-block h-[9px] w-[9px] rounded-[3px] border-[1.5px] border-khelo-border bg-khelo-surface" />{t("home.hero.mock.free")}</span>
+          <span><span className="mr-[5px] inline-block h-[9px] w-[9px] rounded-[3px] bg-khelo-booked-bg" />{t("home.hero.mock.booked")}</span>
+          <span><span className="mr-[5px] inline-block h-[9px] w-[9px] rounded-[3px] bg-khelo-orange" />{t("home.hero.mock.yours")}</span>
         </div>
         <div className="mt-[18px] flex items-center justify-between rounded-2xl bg-khelo-ink px-4 py-3.5 text-white">
           <div>
-            <div className="text-[11px] text-white/65">8:00 PM · 60 min</div>
-            <div className="text-[18px] font-extrabold">Rs 5,000</div>
+            <div className="text-[11px] text-white/65">{t("home.hero.mock.summary")}</div>
+            <div className="text-[18px] font-extrabold">{t("home.hero.mock.price")}</div>
           </div>
-          <div className="rounded-xl bg-khelo-orange px-4 py-[11px] text-[13px] font-extrabold text-khelo-ink">Continue</div>
+          <div className="rounded-xl bg-khelo-orange px-4 py-[11px] text-[13px] font-extrabold text-khelo-ink">{t("home.hero.mock.continue")}</div>
         </div>
       </div>
     </div>
   );
 }
 
-export function Hero() {
+export async function Hero() {
+  const t = await getT();
   return (
     <section id="top" className="relative overflow-hidden bg-khelo-ink text-white">
       <svg aria-hidden="true" width="1400" height="760" viewBox="0 0 1400 760" fill="none" className="pointer-events-none absolute -right-[260px] -top-10 opacity-[.12]">
@@ -75,30 +78,30 @@ export function Hero() {
         <div className="min-w-0 flex-[1_1_440px]">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/[.18] bg-white/[.08] px-4 py-2 text-[13px] font-semibold">
             <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-khelo-success" />
-            Karachi · Futsal, Padel, Cricket aur bohat kuch
+            {t("home.hero.badge")}
           </div>
           <h1 className="mt-6 font-khelo-display text-[46px] font-extrabold leading-[.98] tracking-[-1.5px] min-[761px]:text-[76px] min-[761px]:tracking-[-2.5px]">
-            Court dhoondo.
+            {t("home.hero.title1")}
             <br />
-            Slot lo.
+            {t("home.hero.title2")}
             <br />
-            <span className="text-khelo-orange">Khelo.</span>
+            <span className="text-khelo-orange">{t("home.hero.title3")}</span>
           </h1>
           <p className="mt-[26px] max-w-[520px] text-[19px] leading-[1.6] text-white/[.78]">
-            Apne area ke sports courts dekho, khali slots turant check karo, aur chat ya WhatsApp se booking confirm karo. Koi call nahi, koi intezar nahi.
+            {t("home.hero.sub")}
           </p>
           <div className="mt-[34px] flex flex-wrap gap-3.5">
-            <Button href="/search" size="lg">Book a court</Button>
-            <Button href="#how" variant="outline" size="lg">Kaise kaam karta hai</Button>
+            <Button href="/search" size="lg">{t("home.hero.cta.book")}</Button>
+            <Button href="#how" variant="outline" size="lg">{t("home.hero.cta.how")}</Button>
           </div>
           <div className="mt-[38px] flex flex-wrap gap-[22px] text-[14px] font-semibold text-white/70">
-            <span>AI chat booking</span>
-            <span>WhatsApp support</span>
-            <span>Live slot calendar</span>
+            <span>{t("home.hero.point.ai")}</span>
+            <span>{t("home.hero.point.whatsapp")}</span>
+            <span>{t("home.hero.point.calendar")}</span>
           </div>
         </div>
         <div className="flex min-w-0 flex-[1_1_340px] justify-center">
-          <PhoneMock />
+          <PhoneMock t={t} />
         </div>
       </Container>
     </section>

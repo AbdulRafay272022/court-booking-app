@@ -14,6 +14,8 @@ import {
   type SignupRole,
 } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { useT } from "@/components/i18n/lang-provider";
+import { translateErrors } from "@/lib/validation-text";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { rememberOtpExpiry } from "@/lib/pending-auth";
@@ -49,6 +51,7 @@ function Chip({ selected, onClick, expanded, children }: { selected: boolean; on
  * previous page; the only removed input is "Confirm password" (the body still carries confirm_password = password).
  */
 export function SignupForm() {
+  const t = useT();
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get("next");
@@ -77,10 +80,11 @@ export function SignupForm() {
 
   // The password comparison is no longer user-facing, so confirm mirrors password (the API still receives both).
   const full: SignupFields = { ...f, confirmPassword: f.password };
-  const errors = validateSignup(full);
-  const step1Valid = !errors.phone && !errors.password;
-  const step2Valid = !errors.name && !errors.email && !errors.city && !errors.gender && termsAccepted;
-  const valid = Object.keys(errors).length === 0 && termsAccepted;
+  const rawErrors = validateSignup(full);
+  const errors = translateErrors(t, rawErrors);
+  const step1Valid = !rawErrors.phone && !rawErrors.password;
+  const step2Valid = !rawErrors.name && !rawErrors.email && !rawErrors.city && !rawErrors.gender && termsAccepted;
+  const valid = Object.keys(rawErrors).length === 0 && termsAccepted;
 
   // Move focus to the first control of the new step (not on the first paint).
   useEffect(() => {
@@ -165,33 +169,33 @@ export function SignupForm() {
       brandTitle={
         owner ? (
           <>
-            Apna court
+            {t("auth.signup.brand.owner.l1")}
             <br />
-            list karo.
+            {t("auth.signup.brand.owner.l2")}
           </>
         ) : (
           <>
-            Pehla match,
+            {t("auth.signup.brand.player.l1")}
             <br />
-            ek tap door.
+            {t("auth.signup.brand.player.l2")}
           </>
         )
       }
       brandText={
         owner
-          ? "Bookings, payments aur khali slots, sab ek dashboard mein."
-          : "Futsal, padel, cricket aur bohat kuch. Khali slot dhoondo aur chat se book karo."
+          ? t("auth.signup.brand.owner.text")
+          : t("auth.signup.brand.player.text")
       }
     >
       <div className="w-full max-w-[460px]">
-        <div role="group" aria-label="Signing up as" className="flex gap-2.5 rounded-full border-[1.5px] border-khelo-divider bg-white p-1.5">
+        <div role="group" aria-label={t("auth.signup.roleGroup")} className="flex gap-2.5 rounded-full border-[1.5px] border-khelo-divider bg-white p-1.5">
           <button
             type="button"
             aria-pressed={!owner}
             onClick={() => setRole("player")}
             className={`min-h-11 flex-1 cursor-pointer rounded-full px-2.5 py-3.5 text-[15px] font-extrabold ${!owner ? "bg-khelo-ink text-white" : "bg-transparent text-khelo-ink"}`}
           >
-            Player
+            {t("auth.signup.rolePlayer")}
           </button>
           <button
             type="button"
@@ -199,27 +203,27 @@ export function SignupForm() {
             onClick={() => setRole("owner")}
             className={`min-h-11 flex-1 cursor-pointer rounded-full px-2.5 py-3.5 text-[15px] font-extrabold ${owner ? "bg-khelo-teal text-white" : "bg-transparent text-khelo-ink"}`}
           >
-            Venue owner
+            {t("auth.signup.roleOwner")}
           </button>
         </div>
 
         <h1 className="m-0 mt-7 font-khelo-display text-[40px] font-extrabold leading-[1.05] tracking-[-1.2px]">
-          {owner ? "Venue owner account" : "Apna account banao"}
+          {owner ? t("auth.signup.title.owner") : t("auth.signup.title.player")}
         </h1>
-        <p className="mt-2.5 text-[16px] leading-[1.6] text-khelo-muted">WhatsApp par aapka number verify karenge.</p>
+        <p className="mt-2.5 text-[16px] leading-[1.6] text-khelo-muted">{t("auth.signup.subtitle")}</p>
 
         <div className="mt-6">
           <div className="flex justify-between text-[13px] font-bold text-khelo-muted">
-            <span aria-live="polite">Step {step} of 2</span>
-            <span>{step === 1 ? "Number aur password" : "Aapki details"}</span>
+            <span aria-live="polite">{t("auth.signup.step", { step })}</span>
+            <span>{step === 1 ? t("auth.signup.step1") : t("auth.signup.step2")}</span>
           </div>
           <div
             role="progressbar"
-            aria-label="Signup progress"
+            aria-label={t("auth.signup.progress")}
             aria-valuemin={0}
             aria-valuemax={2}
             aria-valuenow={step}
-            aria-valuetext={`Step ${step} of 2`}
+            aria-valuetext={t("auth.signup.step", { step })}
             className="mt-2 h-2 overflow-hidden rounded-full bg-khelo-booked-bg"
           >
             <div className={`h-full rounded-full transition-[width] duration-300 ${accentBar}`} style={{ width: step === 1 ? "50%" : "100%" }} />
@@ -232,13 +236,13 @@ export function SignupForm() {
               <>
                 <div className="flex flex-col gap-2">
                   <TextField
-                    label="Mobile number"
+                    label={t("auth.field.mobile")}
                     type="tel"
                     inputMode="numeric"
                     value={f.phone}
                     onChange={(e) => set("phone", e.target.value.replace(/\D/g, ""))}
                     onBlur={() => touch("phone")}
-                    error={phoneTaken ? "This number already has an account." : errors.phone}
+                    error={phoneTaken ? t("auth.signup.phoneTaken") : errors.phone}
                     showError={phoneTaken || show("phone")}
                     autoComplete="tel-national"
                     placeholder="300 1234567"
@@ -247,34 +251,34 @@ export function SignupForm() {
                   {phoneTaken ? (
                     <p className="text-[13px] font-medium text-khelo-muted">
                       <Link href="/login" className="font-bold underline">
-                        Log in
+                        {t("auth.field.logIn")}
                       </Link>{" "}
-                      or{" "}
+                      {t("auth.signup.phoneTaken.or")}{" "}
                       <Link href="/forgot-password" className="font-bold underline">
-                        reset your password
+                        {t("auth.signup.phoneTaken.reset")}
                       </Link>
                       .
                     </p>
                   ) : null}
                 </div>
                 <PasswordField
-                  label="Password"
+                  label={t("auth.field.password")}
                   value={f.password}
                   onChange={(e) => set("password", e.target.value)}
                   onBlur={() => touch("password")}
                   error={errors.password}
                   showError={show("password")}
                   autoComplete="new-password"
-                  placeholder="Kam az kam 8 characters"
+                  placeholder={t("auth.signup.passwordPlaceholder")}
                 />
                 <SmartButton type="submit" ready={step1Valid} theme={theme} className="mt-1">
-                  Aage chalo
+                  {t("auth.signup.next")}
                 </SmartButton>
               </>
             ) : (
               <>
                 <TextField
-                  label="Poora naam"
+                  label={t("auth.signup.name")}
                   value={f.name}
                   onChange={(e) => set("name", e.target.value)}
                   onBlur={() => touch("name")}
@@ -286,7 +290,7 @@ export function SignupForm() {
 
                 <div className="flex flex-col gap-2">
                   <span id={cityId} className="text-[14px] font-bold">
-                    Shehar
+                    {t("auth.signup.city")}
                   </span>
                   <div role="group" aria-labelledby={cityId} className="flex flex-wrap gap-2">
                     {TOP_CITIES.map((c) => (
@@ -311,13 +315,13 @@ export function SignupForm() {
                         if (open) setTimeout(() => citySelectRef.current?.focus(), 0);
                       }}
                     >
-                      Aur shehar
+                      {t("auth.signup.moreCities")}
                     </Chip>
                   </div>
                   {showCitySelect ? (
                     <select
                       ref={citySelectRef}
-                      aria-label="All cities"
+                      aria-label={t("auth.signup.allCities")}
                       aria-invalid={!!(show("city") && errors.city)}
                       aria-describedby={show("city") && errors.city ? `${cityId}-err` : undefined}
                       value={f.city}
@@ -329,7 +333,7 @@ export function SignupForm() {
                       className={`khelo-input w-full rounded-[14px] border-[1.5px] bg-white px-[18px] py-[15px] text-[16px] text-khelo-ink ${show("city") && errors.city ? "border-khelo-danger" : "border-khelo-border"}`}
                     >
                       <option value="" disabled>
-                        Select your city
+                        {t("auth.signup.selectCity")}
                       </option>
                       {CITY_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>
@@ -342,21 +346,21 @@ export function SignupForm() {
                 </div>
 
                 <TextField
-                  label="Email"
+                  label={t("auth.signup.email")}
                   type="email"
                   inputMode="email"
                   value={f.email}
                   onChange={(e) => set("email", e.target.value)}
                   onBlur={() => touch("email")}
-                  error={emailTaken ? "That email address is already in use." : errors.email}
+                  error={emailTaken ? t("auth.signup.emailTaken") : errors.email}
                   showError={emailTaken || show("email")}
                   autoComplete="email"
-                  placeholder="aap@email.com"
+                  placeholder={t("auth.signup.emailPlaceholder")}
                 />
 
                 <div className="flex flex-col gap-2">
                   <span id={`${cityId}-g`} className="text-[14px] font-bold">
-                    Gender
+                    {t("auth.signup.gender")}
                   </span>
                   <div role="radiogroup" aria-labelledby={`${cityId}-g`} className="flex flex-wrap gap-2">
                     {GENDER_OPTIONS.map((o) => {
@@ -391,15 +395,15 @@ export function SignupForm() {
                     className={`m-0 mt-px h-[22px] w-[22px] flex-none ${owner ? "accent-khelo-teal" : "accent-khelo-orange"}`}
                   />
                   <span>
-                    Main{" "}
+                    {t("auth.signup.terms.pre")}
                     <Link href="/terms" target="_blank" className="font-bold text-khelo-ink underline">
-                      Terms
-                    </Link>{" "}
-                    aur{" "}
+                      {t("auth.signup.terms.terms")}
+                    </Link>
+                    {t("auth.signup.terms.mid")}
                     <Link href="/privacy" target="_blank" className="font-bold text-khelo-ink underline">
-                      Privacy Policy
-                    </Link>{" "}
-                    se ittefaq karta hoon.
+                      {t("auth.signup.terms.privacy")}
+                    </Link>
+                    {t("auth.signup.terms.post")}
                   </span>
                 </label>
 
@@ -411,10 +415,10 @@ export function SignupForm() {
                     onClick={() => setStep(1)}
                     className="khelo-btn min-h-11 cursor-pointer rounded-[14px] border-[1.5px] border-khelo-ink bg-transparent px-[22px] py-[18px] text-[16px] font-extrabold"
                   >
-                    Wapas
+                    {t("auth.signup.back")}
                   </button>
-                  <SmartButton ready={step2Valid && valid} busy={busy} busyLabel="Creating account…" theme={theme} className="flex-1">
-                    Account banao
+                  <SmartButton ready={step2Valid && valid} busy={busy} busyLabel={t("auth.signup.busy")} theme={theme} className="flex-1">
+                    {t("auth.signup.submit")}
                   </SmartButton>
                 </div>
               </>
@@ -423,9 +427,9 @@ export function SignupForm() {
         </form>
 
         <p className="mt-[26px] text-center text-[14px] text-khelo-muted">
-          Pehle se account hai?{" "}
+          {t("auth.signup.haveAccount")}{" "}
           <Link href={loginHref} className="font-extrabold text-khelo-ink underline">
-            Log in
+            {t("auth.field.logIn")}
           </Link>
         </p>
       </div>

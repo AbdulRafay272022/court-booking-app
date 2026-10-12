@@ -1,7 +1,9 @@
-/** The four "Humare usool" cards on /about. */
-export const VALUES: ReadonlyArray<{ title: string; body: string }> = [
-  { title: "Saaf aur sachchi baat", body: "Price, policy aur availability jo hai wohi dikhate hain." },
-  { title: "Pehle asaan", body: "Har feature ka imtihaan: kya ye booking ko aur asaan banata hai?" },
-  { title: "Owners ke sath", body: "Venue owners humare partner hain, unka fayda hamara fayda." },
-  { title: "Mehfooz", body: "Double booking aur ghalat payment se bachao hamari buniyad mein hai." },
+import type { MessageKey } from "@/lib/i18n";
+
+/** The four "Humare usool" cards on /about (dictionary keys). */
+export const VALUES: ReadonlyArray<{ title: MessageKey; body: MessageKey }> = [
+  { title: "about.values.honest.title", body: "about.values.honest.body" },
+  { title: "about.values.simple.title", body: "about.values.simple.body" },
+  { title: "about.values.owners.title", body: "about.values.owners.body" },
+  { title: "about.values.safe.title", body: "about.values.safe.body" },
 ];

@@ -97,7 +97,18 @@ async function main() {
   }
   const browser = await pw.chromium.launch();
   const rows = [];
-  for (const route of ROUTES) {
+  const routes = [...ROUTES];
+  // A real venue page too: pass API_URL (e.g. http://localhost:8000) and the first venue that has a slug is added.
+  if (process.env.API_URL) {
+    try {
+      const res = await fetch(process.env.API_URL.replace(/\/+$/, "") + "/api/v1/venues?per_page=1");
+      const data = await res.json();
+      if (data.venues && data.venues[0]) routes.push("/venues/" + data.venues[0].slug);
+    } catch (e) {
+      console.error("could not read a venue from API_URL:", e.message);
+    }
+  }
+  for (const route of routes) {
     for (const width of WIDTHS) {
       const failures = await checkPage(browser, baseUrl, route, width, outDir);
       rows.push({ route, width, failures });
@@ -115,7 +126,7 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
-module.exports = { findPlaceholders, PLACEHOLDER_PATTERNS, ROUTES, WIDTHS };
+module.exports = { findPlaceholders, PLACEHOLDER_PATTERNS, ROUTES, WIDTHS, loadPlaywright };
 
 if (require.main === module) {
   main().catch((e) => {

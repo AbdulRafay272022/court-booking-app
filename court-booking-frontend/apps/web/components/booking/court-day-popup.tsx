@@ -13,13 +13,15 @@ import { CourtLabel } from "@/components/court-label";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDateString, formatPKR, formatSlotTimes } from "@/lib/format";
 import { DurationSheet } from "./duration-sheet";
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey } from "@/lib/i18n";
 import { CourtMonthCalendar } from "./court-month-calendar";
 
-const OTHER_STATUS_LABEL: Record<string, string> = {
-  held: "Payment pending",
-  payment_submitted: "Payment pending",
-  booked: "Booked",
-  blocked: "Unavailable",
+const OTHER_STATUS_LABEL: Record<string, MessageKey> = {
+  held: "venue.pop.paymentPending",
+  payment_submitted: "venue.pop.paymentPending",
+  booked: "venue.pop.booked",
+  blocked: "venue.pop.unavailable",
 };
 
 // Day-state dot colours for the week strip (the same tokens as the month calendar).
@@ -50,6 +52,7 @@ export function CourtDayPopup({
   initialDate: string;
   onClose: () => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
@@ -70,8 +73,8 @@ export function CourtDayPopup({
   }, []);
 
   function tabLabel(d: string) {
-    if (d === today) return "Today";
-    if (d === tomorrow) return "Tmrw";
+    if (d === today) return t("venue.pop.today");
+    if (d === tomorrow) return t("venue.pop.tomorrow");
     return formatDateString(d).split(",")[0];
   }
 
@@ -108,12 +111,12 @@ export function CourtDayPopup({
     try {
       const { position } = await api.waitlist.join({ court_id: courtId, slot_starts_at: slotStartsAt });
       await queryClient.invalidateQueries({ queryKey: ["waitlist-mine"] });
-      alert(`You're on the list — we'll let you know if this slot opens up. You're #${position} in line.`);
+      alert(t("venue.pop.waitlistJoined", { position }));
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         await queryClient.invalidateQueries({ queryKey: ["waitlist-mine"] });
       } else {
-        alert(`Couldn't join the waitlist: ${friendlyErrorMessage(e)}`);
+        alert(t("venue.pop.waitlistFailed", { error: friendlyErrorMessage(e) }));
       }
     } finally {
       setJoiningKey(null);
@@ -161,7 +164,7 @@ export function CourtDayPopup({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`${courtName} availability`}
+          aria-label={t("venue.pop.availability", { court: courtName })}
           className="bg-khelo-surface w-full md:w-[440px] rounded-t-3xl md:rounded-3xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4"
           style={{ maxHeight: "86vh" }}
           onClick={(e) => e.stopPropagation()}
@@ -171,7 +174,7 @@ export function CourtDayPopup({
               <button
                 type="button"
                 onClick={() => setView("month")}
-                aria-label="Back to month view"
+                aria-label={t("venue.pop.backToMonth")}
                 className="flex h-11 w-11 items-center justify-center rounded-full bg-khelo-page text-lg font-bold text-khelo-ink"
               >
                 ‹
@@ -183,7 +186,7 @@ export function CourtDayPopup({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close"
+              aria-label={t("venue.common.close")}
               className="flex h-11 w-11 items-center justify-center rounded-full bg-khelo-page text-lg font-bold text-khelo-ink"
             >
               ✕
@@ -232,9 +235,9 @@ export function CourtDayPopup({
 
               <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-khelo-border [&::-webkit-scrollbar-track]:bg-transparent">
                 {dayQuery.isLoading ? (
-                  <p className="text-center py-10 text-khelo-muted-2">Loading…</p>
+                  <p className="text-center py-10 text-khelo-muted-2">{t("venue.cal.loading")}</p>
                 ) : slots.length === 0 ? (
-                  <p className="text-center py-8 text-[13.5px] text-khelo-muted-2">{(dayQuery.data?.slots.length ?? 0) > 0 ? "No more times left today." : "Closed this day."}</p>
+                  <p className="text-center py-8 text-[13.5px] text-khelo-muted-2">{(dayQuery.data?.slots.length ?? 0) > 0 ? t("venue.pop.noMoreToday") : t("venue.pop.closedDay")}</p>
                 ) : (
                   slots.map((slot, index) => {
                     // on the 30-minute grid a free slot is only a place a booking can START when the court's minimum
@@ -245,7 +248,7 @@ export function CourtDayPopup({
                     const isBooked = slot.status === "booked";
                     const dividerBefore = slot.after_midnight && !slots[index - 1]?.after_midnight;
                     const divider = dividerBefore ? (
-                      <span className="text-[11px] font-extrabold tracking-[0.14em] text-khelo-muted-2">AFTER MIDNIGHT</span>
+                      <span className="text-[11px] font-extrabold tracking-[0.14em] text-khelo-muted-2">{t("venue.pop.afterMidnight")}</span>
                     ) : null;
                     if (slot.is_mine && slot.booking_id && (isBooked || slot.status === "held" || slot.status === "payment_submitted")) {
                       const pending = !isBooked;
@@ -260,7 +263,7 @@ export function CourtDayPopup({
                           >
                             <span className="font-mono text-[13px] font-semibold text-khelo-ink">{formatSlotTimes(slot)}</span>
                             <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-extrabold ${pending ? "bg-khelo-warning text-khelo-ink" : "bg-khelo-success-text text-white"}`}>
-                              {pending ? "PAYMENT PENDING" : "YOUR BOOKING"}
+                              {pending ? t("venue.pop.paymentPendingCaps") : t("venue.pop.yourBooking")}
                             </span>
                           </button>
                         </div>
@@ -275,7 +278,7 @@ export function CourtDayPopup({
                         <button
                           onClick={() => handleTapSlot(index, null)}
                           disabled={!isOpen}
-                          title={slot.status === "blocked" && slot.reason ? slot.reason : tooShort ? `Needs at least ${formatDuration(slotMinutes)} free` : undefined}
+                          title={slot.status === "blocked" && slot.reason ? slot.reason : tooShort ? t("venue.pop.needsAtLeast", { duration: formatDuration(slotMinutes) }) : undefined}
                           data-testid={isOpen ? "slot-open" : undefined}
                           className={`flex min-h-12 items-center justify-between rounded-2xl border-[1.5px] px-3.5 py-3 text-left ${
                             isOpen
@@ -298,7 +301,7 @@ export function CourtDayPopup({
                                 disabled={onWaitlist || joining}
                                 className={`h-11 rounded-full px-3 text-[11.5px] font-extrabold ${onWaitlist ? "bg-khelo-page text-khelo-muted" : "bg-khelo-warm-2 text-khelo-orange-label"}`}
                               >
-                                {joining ? "…" : onWaitlist ? "On waitlist" : "Notify me"}
+                                {joining ? "\u2026" : onWaitlist ? t("venue.pop.onWaitlist") : t("venue.pop.notifyMe")}
                               </button>
                             ) : null}
                             {isOpen ? (
@@ -306,11 +309,11 @@ export function CourtDayPopup({
                                 <span className="font-mono text-[12px] font-semibold text-khelo-muted">
                                   PKR {formatPKR(startChoices[0].price)}{minSlots > 1 ? ` · ${formatDuration(startChoices[0].minutes)}` : ""}
                                 </span>
-                                <span className="rounded-full bg-khelo-surface px-2.5 py-1 text-[10.5px] font-extrabold text-khelo-success-text">Open</span>
+                                <span className="rounded-full bg-khelo-surface px-2.5 py-1 text-[10.5px] font-extrabold text-khelo-success-text">{t("venue.pop.open")}</span>
                               </>
                             ) : (
                               <span className="text-[11.5px] font-bold text-khelo-muted">
-                                {tooShort ? "Too short" : OTHER_STATUS_LABEL[slot.status] ?? slot.status}
+                                {tooShort ? t("venue.pop.tooShort") : OTHER_STATUS_LABEL[slot.status] ? t(OTHER_STATUS_LABEL[slot.status]) : slot.status}
                               </span>
                             )}
                           </span>
