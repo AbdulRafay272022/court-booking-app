@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toE164, validateLogin } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { useT } from "@/components/i18n/lang-provider";
+import { translateErrors } from "@/lib/validation-text";
+import type { MessageKey } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { webDeviceInfo } from "@/lib/device";
@@ -15,20 +18,22 @@ import { homeForRole, safeNext } from "@/lib/use-auth-helpers";
 import { AuthFrame } from "./frame";
 import { CountryPrefix, FormNotice, PasswordField, SmartButton, TextField } from "./fields";
 
-const NOTICES: Record<string, string> = {
-  "password-updated": "Password updated. Log in with your new password.",
-  "phone-verified": "Phone verified. Log in to continue.",
-  "phone-changed": "Phone number updated. Log in with your new number.",
+const NOTICES: Record<string, MessageKey> = {
+  "password-updated": "auth.login.notice.passwordUpdated",
+  "phone-verified": "auth.login.notice.phoneVerified",
+  "phone-changed": "auth.login.notice.phoneChanged",
 };
 
 const BRAND_CHIP = "rounded-full bg-white/10 px-4 py-2.5 text-[13px] font-bold";
 
 /** Login screen (Khelo design). Behaviour is identical to the previous page: only the markup changed. */
 export function LoginForm() {
+  const t = useT();
   const router = useRouter();
   const search = useSearchParams();
   const next = safeNext(search.get("next"));
-  const notice = NOTICES[search.get("notice") ?? ""] ?? null;
+  const noticeKey = NOTICES[search.get("notice") ?? ""];
+  const notice = noticeKey ? t(noticeKey) : null;
   // Signed-in visitors are sent away from /login, like useRedirectIfSignedIn, but to `next` when there is one: the
   // shared hook always goes home, and on a fresh login it raced the handler's own redirect and dropped `next`.
   const status = useAuthStore((s) => s.status);
@@ -46,8 +51,9 @@ export function LoginForm() {
   const [noAccount, setNoAccount] = useState(false); // QA #12: show a Sign up CTA, no OTP flow
   const lock = useCountdown(); // QA #5: LOGIN_RATE_LIMITED retry countdown
 
-  const errors = validateLogin({ phone, password });
-  const valid = Object.keys(errors).length === 0;
+  const rawErrors = validateLogin({ phone, password });
+  const valid = Object.keys(rawErrors).length === 0;
+  const errors = translateErrors(t, rawErrors);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,7 +70,7 @@ export function LoginForm() {
       if (err instanceof ApiError && err.code === "USER_NOT_FOUND") {
         // QA #12: no account for this number -> tell them to sign up; never start an OTP/reset flow.
         setNoAccount(true);
-        setError("No account found for this number. Please sign up.");
+        setError(t("auth.field.noAccount"));
       } else if (err instanceof ApiError && err.code === "LOGIN_RATE_LIMITED") {
         lock.start(retryAfterSeconds(err.details) || 60);
         setError(null);
@@ -103,31 +109,31 @@ export function LoginForm() {
     <AuthFrame
       brandTitle={
         <>
-          Court dhoondo.
+          {t("auth.login.brand.l1")}
           <br />
-          Slot lo.
+          {t("auth.login.brand.l2")}
           <br />
           <span className="text-khelo-orange">Khelo.</span>
         </>
       }
-      brandText="Futsal, padel, cricket aur bohat kuch. Apne area ke khali slots, ek minute mein booking."
+      brandText={t("auth.login.brand.text")}
       brandExtra={
         <ul className="m-0 mt-8 flex list-none flex-wrap gap-2.5 p-0">
-          <li className={BRAND_CHIP}>AI chat booking</li>
-          <li className={BRAND_CHIP}>WhatsApp</li>
-          <li className={BRAND_CHIP}>Live slots</li>
+          <li className={BRAND_CHIP}>{t("auth.login.brand.chip1")}</li>
+          <li className={BRAND_CHIP}>{t("auth.login.brand.chip2")}</li>
+          <li className={BRAND_CHIP}>{t("auth.login.brand.chip3")}</li>
         </ul>
       }
     >
       <div className="w-full max-w-[420px]">
-        <h1 className="m-0 font-khelo-display text-[42px] font-extrabold leading-[1.05] tracking-[-1.3px]">Wapas khush amdeed</h1>
-        <p className="mt-3 text-[16px] leading-[1.6] text-khelo-muted">Apne mobile number aur password se log in karo.</p>
+        <h1 className="m-0 font-khelo-display text-[42px] font-extrabold leading-[1.05] tracking-[-1.3px]">{t("auth.login.title")}</h1>
+        <p className="mt-3 text-[16px] leading-[1.6] text-khelo-muted">{t("auth.login.subtitle")}</p>
 
         <form onSubmit={handleSubmit} noValidate className="mt-8 flex flex-col gap-5">
           {notice ? <FormNotice kind="success">{notice}</FormNotice> : null}
 
           <TextField
-            label="Mobile number"
+            label={t("auth.field.mobile")}
             type="tel"
             inputMode="numeric"
             value={phone}
@@ -140,26 +146,26 @@ export function LoginForm() {
             prefix={<CountryPrefix />}
           />
           <PasswordField
-            label="Password"
+            label={t("auth.field.password")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onBlur={() => setTouched((p) => ({ ...p, password: true }))}
             error={errors.password}
             showError={touched.password}
             autoComplete="current-password"
-            placeholder="Apna password"
+            placeholder={t("auth.login.passwordPlaceholder")}
             aside={
               <Link
                 href={`/forgot-password${valid || phone ? `?phone=${encodeURIComponent(toE164(phone))}` : ""}`}
                 className="inline-flex min-h-11 items-center text-[14px] font-bold text-khelo-orange-text"
               >
-                Password bhool gaye?
+                {t("auth.login.forgot")}
               </Link>
             }
           />
 
           {lock.seconds > 0 ? (
-            <FormNotice kind="error">Too many failed attempts. Try again in {lock.seconds}s, or reset your password.</FormNotice>
+            <FormNotice kind="error">{t("auth.login.locked", { seconds: lock.seconds })}</FormNotice>
           ) : error ? (
             <FormNotice kind="error">
               {error}
@@ -167,21 +173,21 @@ export function LoginForm() {
                 <>
                   {" "}
                   <Link href={`/signup?phone=${encodeURIComponent(toE164(phone))}`} className="font-bold underline">
-                    Sign up
+                    {t("auth.field.signUp")}
                   </Link>
                 </>
               ) : null}
             </FormNotice>
           ) : null}
 
-          <SmartButton ready={valid && lock.seconds === 0} busy={busy} busyLabel="Logging in…" className="mt-1.5">
-            {lock.seconds > 0 ? `Try again in ${lock.seconds}s` : "Log in"}
+          <SmartButton ready={valid && lock.seconds === 0} busy={busy} busyLabel={t("auth.login.busy")} className="mt-1.5">
+            {lock.seconds > 0 ? t("auth.field.tryAgainIn", { seconds: lock.seconds }) : t("auth.field.logIn")}
           </SmartButton>
         </form>
 
         <div className="my-7 flex items-center gap-3.5 text-[13px] font-semibold text-khelo-muted-2" aria-hidden="true">
           <div className="h-px flex-1 bg-khelo-border" />
-          ya
+          {t("auth.login.or")}
           <div className="h-px flex-1 bg-khelo-border" />
         </div>
 
@@ -189,12 +195,12 @@ export function LoginForm() {
           href={`/signup${signupQs}`}
           className="khelo-btn block min-h-11 rounded-[14px] border-[1.5px] border-khelo-ink px-6 py-[17px] text-center text-[16px] font-extrabold"
         >
-          Naya account banao
+          {t("auth.login.createAccount")}
         </Link>
         <p className="mt-[22px] text-center text-[14px] text-khelo-muted">
-          Venue owner ho?{" "}
+          {t("auth.login.ownerPrompt")}{" "}
           <Link href={`/signup${ownerSignupQs}`} className="font-bold text-khelo-teal underline">
-            Venue register karo
+            {t("auth.login.ownerLink")}
           </Link>
         </p>
       </div>

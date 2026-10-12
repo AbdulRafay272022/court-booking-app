@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Eyebrow, SectionTitle } from "@/components/site/primitives";
+import { getT } from "@/lib/i18n-server";
+import type { MessageKey } from "@/lib/i18n";
 
 const searchHref = (sport: string) => `/search?sport=${encodeURIComponent(sport)}`;
 
@@ -25,12 +27,12 @@ const ICON_CRICKET = (
 );
 
 // The design's own copy for its own three sports. Any other sport (only if one of these is ever not supported) gets a neutral line.
-const KNOWN_DESC: Record<string, string> = {
-  Futsal: "5-a-side turf courts. Raat ke prime slots bhi aasani se.",
-  Padel: "Glass courts, 90 minute sessions, doubles ke liye perfect.",
-  Cricket: "Indoor nets aur pitches, practice se le kar match tak.",
+const KNOWN_DESC: Record<string, MessageKey> = {
+  Futsal: "home.sports.futsal",
+  Padel: "home.sports.padel",
+  Cricket: "home.sports.cricket",
 };
-const FALLBACK_DESC = "Courts dekho aur khali slots turant check karo.";
+const FALLBACK_DESC: MessageKey = "home.sports.fallback";
 
 // The three look-and-feel slots of the design, in order.
 const CARD_STYLES: { box: string; copy: string; icon: ReactNode }[] = [
@@ -41,14 +43,15 @@ const CARD_STYLES: { box: string; copy: string; icon: ReactNode }[] = [
 const CHIP_TONES = ["bg-khelo-surface text-khelo-ink", "bg-khelo-warm text-khelo-ink", "bg-khelo-mint text-khelo-ink"];
 
 /** `sports` is the real supported list (SPORT_OPTIONS). Featured: Futsal, Padel, Cricket when all exist, else the first three. */
-export function Sports({ sports }: { sports: readonly string[] }) {
+export async function Sports({ sports }: { sports: readonly string[] }) {
+  const t = await getT();
   const preferred = ["Futsal", "Padel", "Cricket"].filter((s) => sports.includes(s));
   const featured = preferred.length === 3 ? preferred : sports.slice(0, 3);
   const more = sports.filter((s) => !featured.includes(s));
   return (
     <section id="sports" aria-labelledby="sports-title" className="mx-auto w-full max-w-[1248px] px-6 pb-6 pt-[88px]">
-      <Eyebrow>CHOOSE YOUR GAME</Eyebrow>
-      <SectionTitle id="sports-title" className="mt-3 max-w-[700px]">Ek app, har court</SectionTitle>
+      <Eyebrow>{t("home.sports.eyebrow")}</Eyebrow>
+      <SectionTitle id="sports-title" className="mt-3 max-w-[700px]">{t("home.sports.title")}</SectionTitle>
       <div className="mt-10 grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-5">
         {featured.map((sport, i) => {
           const st = CARD_STYLES[i % 3];
@@ -57,7 +60,7 @@ export function Sports({ sports }: { sports: readonly string[] }) {
               {st.icon}
               <div>
                 <div className="font-khelo-display text-[34px] font-extrabold">{sport}</div>
-                <div className={`mt-2 leading-[1.5] ${st.copy}`}>{KNOWN_DESC[sport] ?? FALLBACK_DESC}</div>
+                <div className={`mt-2 leading-[1.5] ${st.copy}`}>{t(KNOWN_DESC[sport] ?? FALLBACK_DESC)}</div>
               </div>
             </Link>
           );
@@ -65,7 +68,7 @@ export function Sports({ sports }: { sports: readonly string[] }) {
       </div>
       {more.length > 0 ? (
         <>
-          <h3 className="mt-11 text-[20px] font-extrabold">Aur bhi sports</h3>
+          <h3 className="mt-11 text-[20px] font-extrabold">{t("home.sports.more")}</h3>
           <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(170px,100%),1fr))] gap-3.5">
             {more.map((sport, i) => (
               <Link key={sport} href={searchHref(sport)} className={`khelo-card flex min-h-11 items-center justify-between gap-2.5 rounded-[20px] p-[22px] text-[18px] font-extrabold ${CHIP_TONES[i % 3]}`}>

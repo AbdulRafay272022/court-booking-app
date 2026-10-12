@@ -1,4 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { useT } from "@/components/i18n/lang-provider";
+import { COMPANY_NAME } from "@/lib/site-config";
 
 /** The court-lines drawing behind the brand panel (decorative). */
 function CourtLines() {
@@ -32,6 +36,7 @@ export function AuthFrame({
   brandExtra?: ReactNode;
   children: ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="flex min-h-[max(760px,calc(100vh-81px))] flex-nowrap">
       <div
@@ -51,7 +56,7 @@ export function AuthFrame({
           <p className={`mt-5 max-w-[440px] text-[18px] leading-[1.6] ${brandBg === "teal" ? "text-white/80" : "text-white/75"}`}>{brandText}</p>
           {brandExtra}
         </div>
-        <div className="relative text-[13px] text-white/55">&copy; 2026 Khelo, a Logic Link System product</div>
+        <div className="relative text-[13px] text-white/55">{t("auth.frame.copyright", { company: COMPANY_NAME })}</div>
       </div>
       <div className="flex min-w-0 items-center justify-center bg-khelo-page px-6 py-10" style={{ flex: `1 1 ${100 - brandWidth}%` }}>
         {children}

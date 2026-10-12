@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/nav-auth";
 import { SUPPORT_WHATSAPP_NUMBER } from "@/lib/support";
+import { COMPANY_NAME } from "@/lib/site-config";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -22,7 +23,7 @@ export default function TermsPage() {
 
         <Section title="1. Who this is">
           <p>
-            Khelo is a court-booking platform operated by Logic Link System (&ldquo;Khelo&rdquo;, &ldquo;we&rdquo;,
+            Khelo is a court-booking platform operated by {COMPANY_NAME} (&ldquo;Khelo&rdquo;, &ldquo;we&rdquo;,
             &ldquo;us&rdquo;) for padel, futsal and other court sports, currently piloting in Karachi, Pakistan. These
             terms apply whenever you use the Khelo app, the Khelo website, or the Khelo WhatsApp number to find,
             hold, pay for, or manage a court booking, or to list and run a venue.

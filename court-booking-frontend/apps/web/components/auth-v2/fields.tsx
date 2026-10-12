@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useT } from "@/components/i18n/lang-provider";
 
 export type AuthTheme = "player" | "owner";
 
@@ -70,6 +71,7 @@ export function PasswordField({
   aside,
   ...input
 }: Common & { aside?: ReactNode } & Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "prefix">) {
+  const t = useT();
   const id = useId();
   const [visible, setVisible] = useState(false);
   const invalid = !!(showError && error);
@@ -94,10 +96,10 @@ export function PasswordField({
           type="button"
           onClick={() => setVisible((v) => !v)}
           aria-pressed={visible}
-          aria-label="Show password"
+          aria-label={t("auth.field.showPassword")}
           className="absolute right-2.5 top-1/2 min-h-11 -translate-y-1/2 cursor-pointer rounded-lg px-3 py-2.5 text-[14px] font-bold text-khelo-teal"
         >
-          <span aria-hidden="true">{visible ? "Hide" : "Show"}</span>
+          <span aria-hidden="true">{visible ? t("auth.field.hide") : t("auth.field.show")}</span>
         </button>
       </div>
       <FieldError id={`${id}-err`} message={invalid ? error : null} />
@@ -142,6 +144,7 @@ export function SmartButton({
   className?: string;
   children: ReactNode;
 }) {
+  const t = useT();
   const active = ready && !busy;
   const live = theme === "owner" ? "bg-khelo-teal text-white" : "bg-khelo-orange text-khelo-ink";
   return (
@@ -160,7 +163,7 @@ export function SmartButton({
         active ? `khelo-btn cursor-pointer ${live}` : ready && busy ? `${live} cursor-progress opacity-70` : "cursor-not-allowed bg-khelo-booked-bg text-khelo-muted-2"
       } ${className}`}
     >
-      {busy ? (busyLabel ?? "Please wait…") : children}
+      {busy ? (busyLabel ?? t("auth.field.pleaseWait")) : children}
     </button>
   );
 }

@@ -1,3 +1,20 @@
 // English copy: natural, friendly, same meaning and tone as the Roman Urdu file. EXACTLY the same keys as messages/ru/header.ts.
 export const enHeader = {
+  "header.homeLabel": "Khelo home",
+  "header.nav.features": "Features",
+  "header.nav.forOwners": "For Owners",
+  "header.nav.about": "About",
+  "header.nav.blog": "Blog",
+  "header.nav.contact": "Contact",
+  "header.nav.main": "Main",
+  "header.nav.menu": "Menu",
+  "header.myBookings": "My bookings",
+  "header.dashboard": "Dashboard",
+  "header.account": "Your account",
+  "header.logout": "Log out",
+  "header.login": "Log in",
+  "header.signup": "Sign up",
+  "header.startPlaying": "Start playing",
+  "header.menu.open": "Open menu",
+  "header.menu.close": "Close menu",
 } as const;

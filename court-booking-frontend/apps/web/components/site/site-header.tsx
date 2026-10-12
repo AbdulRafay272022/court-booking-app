@@ -6,14 +6,17 @@ import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/auth/logo";
 import { useAuthStore } from "@/lib/auth-store";
 import { homeForRole } from "@/lib/use-auth-helpers";
+import { useT } from "@/components/i18n/lang-provider";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
+import type { MessageKey } from "@/lib/i18n";
 
-export const NAV_LINKS = [
-  { href: "/features", label: "Features" },
-  { href: "/for-owners", label: "For Owners" },
-  { href: "/about", label: "About" },
-  { href: "/blog", label: "Blog" },
-  { href: "/contact", label: "Contact" },
-] as const;
+export const NAV_LINKS: readonly { href: string; labelKey: MessageKey }[] = [
+  { href: "/features", labelKey: "header.nav.features" },
+  { href: "/for-owners", labelKey: "header.nav.forOwners" },
+  { href: "/about", labelKey: "header.nav.about" },
+  { href: "/blog", labelKey: "header.nav.blog" },
+  { href: "/contact", labelKey: "header.nav.contact" },
+];
 
 const PILL = "khelo-btn inline-flex min-h-11 items-center rounded-full px-5 py-3 text-[14px] font-bold";
 const OUTLINE_PILL = `${PILL} border-[1.5px] border-white/35 text-white`;
@@ -48,6 +51,7 @@ function HamburgerIcon({ open }: { open: boolean }) {
  * 761 and 1100 it wrapped onto two rows; collapsing earlier keeps one clean row at every width.)
  */
 export function SiteHeader({ wide = false }: { wide?: boolean }) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const isCurrent = useIsCurrent();
@@ -95,26 +99,27 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
   }, [open, close]);
 
   const dashboardHref = user ? (user.role === "player" ? "/bookings" : homeForRole(user.role)) : "/login";
-  const dashboardLabel = user?.role === "player" ? "My bookings" : "Dashboard";
+  const dashboardLabel = user?.role === "player" ? t("header.myBookings") : t("header.dashboard");
   const initial = (user?.name?.trim()?.[0] ?? user?.phone?.replace(/\D/g, "").slice(-1) ?? "?").toUpperCase();
   const linkTone = (href: string) => (isCurrent(href) ? "text-khelo-orange" : "");
 
   return (
     <header className="khelo relative border-b border-white/10 bg-khelo-ink font-[family-name:var(--font-khelo-body-x)] text-white">
       <div className={`mx-auto flex w-full flex-wrap items-center justify-between gap-4 px-6 max-[1120px]:flex-nowrap ${wide ? "max-w-[1288px] py-4" : "max-w-[1248px] py-5"}`}>
-        <Link href="/" aria-label="Khelo home">
+        <Link href="/" aria-label={t("header.homeLabel")}>
           <Logo size={34} onDark />
         </Link>
 
-        <nav aria-label="Main" className="flex flex-wrap gap-7 text-[15px] font-semibold max-[1120px]:hidden">
+        <nav aria-label={t("header.nav.main")} className="flex flex-wrap gap-5 text-[15px] min-[1240px]:gap-7 font-semibold max-[1120px]:hidden">
           {NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} aria-current={isCurrent(l.href) ? "page" : undefined} className={`khelo-navlink ${linkTone(l.href)}`}>
-              {l.label}
+              {t(l.labelKey)}
             </Link>
           ))}
         </nav>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <LanguageSwitch tone="dark" className="max-[1120px]:hidden" />
           {status === "hydrating" ? (
             <span className="inline-block h-11 w-24" aria-hidden="true" />
           ) : signedIn ? (
@@ -124,42 +129,34 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
               </Link>
               <Link
                 href="/account"
-                aria-label="Your account"
-                title="Your account"
+                aria-label={t("header.account")}
+                title={t("header.account")}
                 className="khelo-btn flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-[15px] font-extrabold text-white max-[1120px]:hidden"
               >
                 {initial}
               </Link>
-              <button type="button" onClick={() => logout(router)} className={`${OUTLINE_PILL} cursor-pointer max-[1120px]:hidden`}>
-                Log out
-              </button>
             </>
           ) : (
             <>
               <Link href="/login" aria-current={isCurrent("/login") ? "page" : undefined} className={`khelo-navlink inline-flex min-h-11 items-center px-3.5 text-[14px] font-bold max-[460px]:hidden ${linkTone("/login")}`}>
-                Log in
+                {t("header.login")}
               </Link>
               <Link
                 href="/signup"
                 aria-current={isCurrent("/signup") ? "page" : undefined}
                 className={`${PILL} border-[1.5px] max-[1120px]:hidden ${isCurrent("/signup") ? "border-khelo-orange text-khelo-orange" : "border-white/35 text-white"}`}
               >
-                Sign up
+                {t("header.signup")}
               </Link>
             </>
           )}
-          {!(signedIn && user?.role === "owner") ? (
-            <Link href="/for-owners" className={`${OUTLINE_PILL} max-[1120px]:hidden`}>
-              List your venue
-            </Link>
-          ) : null}
           <Link href="/search" className={`${PILL} bg-khelo-orange font-extrabold text-khelo-ink max-[420px]:px-3.5 max-[420px]:text-[13px] max-[350px]:hidden`}>
-            Start playing
+            {t("header.startPlaying")}
           </Link>
           <button
             ref={toggleRef}
             type="button"
-            aria-label={open ? "Close menu" : "Open menu"}
+            aria-label={open ? t("header.menu.close") : t("header.menu.open")}
             aria-expanded={open}
             aria-controls={panelId}
             onClick={() => setOpenFor(open ? null : pathname)}
@@ -176,42 +173,38 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
         hidden={!open}
         className="absolute inset-x-0 top-full z-50 border-t border-white/10 bg-khelo-ink px-6 pb-6 pt-2 shadow-[0_24px_40px_rgba(0,0,0,0.35)]"
       >
-        <nav aria-label="Menu" className="mx-auto flex max-w-[1200px] flex-col">
+        <nav aria-label={t("header.nav.menu")} className="mx-auto flex max-w-[1200px] flex-col">
           {NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} aria-current={isCurrent(l.href) ? "page" : undefined} className={`flex min-h-12 items-center border-b border-white/10 text-[17px] font-semibold ${linkTone(l.href)}`}>
-              {l.label}
+              {t(l.labelKey)}
             </Link>
           ))}
           <div className="mt-4 flex flex-col gap-3">
+            <LanguageSwitch tone="dark" className="self-start" />
             {signedIn ? (
               <>
                 <Link href={dashboardHref} className={`${OUTLINE_PILL} justify-center`}>
                   {dashboardLabel}
                 </Link>
                 <Link href="/account" className={`${OUTLINE_PILL} justify-center`}>
-                  Your account
+                  {t("header.account")}
                 </Link>
                 <button type="button" onClick={() => logout(router)} className={`${OUTLINE_PILL} cursor-pointer justify-center`}>
-                  Log out
+                  {t("header.logout")}
                 </button>
               </>
             ) : (
               <>
                 <Link href="/login" className={`${OUTLINE_PILL} justify-center`}>
-                  Log in
+                  {t("header.login")}
                 </Link>
                 <Link href="/signup" className={`${OUTLINE_PILL} justify-center`}>
-                  Sign up
+                  {t("header.signup")}
                 </Link>
               </>
             )}
-            {!(signedIn && user?.role === "owner") ? (
-              <Link href="/for-owners" className={`${OUTLINE_PILL} justify-center`}>
-                List your venue
-              </Link>
-            ) : null}
             <Link href="/search" className={`${PILL} justify-center bg-khelo-orange font-extrabold text-khelo-ink`}>
-              Start playing
+              {t("header.startPlaying")}
             </Link>
           </div>
         </nav>

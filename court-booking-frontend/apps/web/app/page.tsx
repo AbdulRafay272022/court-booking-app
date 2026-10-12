@@ -8,18 +8,20 @@ import { StatsStrip } from "@/components/home/stats";
 import { OrganizationJsonLd } from "@/components/seo/organization-jsonld";
 import { KheloPage } from "@/components/site/page-shell";
 import { serverApi } from "@/lib/server-api";
+import { getT } from "@/lib/i18n-server";
 
-const TITLE = "Khelo – Book Courts in Karachi";
-const DESCRIPTION =
-  "Khelo shows open slots at sports courts in Karachi. Pick a court, tap a slot and confirm by chat or WhatsApp. Venue owners get one dashboard for bookings and payments.";
-
-export const metadata: Metadata = {
-  title: { absolute: TITLE },
-  description: DESCRIPTION,
-  alternates: { canonical: "/" },
-  openGraph: { title: TITLE, description: DESCRIPTION, type: "website", siteName: "Khelo" },
-  twitter: { card: "summary", title: TITLE, description: DESCRIPTION },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  const title = t("home.meta.title");
+  const description = t("home.meta.description");
+  return {
+    title: { absolute: title },
+    description,
+    alternates: { canonical: "/" },
+    openGraph: { title, description, type: "website", siteName: "Khelo" },
+    twitter: { card: "summary", title, description },
+  };
+}
 
 // Rendered per request: the organization data reads the site URL from the server's environment at request time. The stats and areas
 // fetches below are still cached by Next's data cache (5 minutes / 1 minute), so this stays cheap.

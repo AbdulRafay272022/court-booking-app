@@ -1,12 +1,13 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { getT } from "@/lib/i18n-server";
 import { KheloPage } from "@/components/site/page-shell";
 import { LoginForm } from "@/components/auth-v2/login-form";
 
-export const metadata: Metadata = {
-  title: "Log in",
-  description: "Log in to Khelo with your mobile number and password to book courts or manage your venue.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("auth.meta.login.title"), description: t("auth.meta.login.description") };
+}
 
 export default function LoginPage() {
   return (
