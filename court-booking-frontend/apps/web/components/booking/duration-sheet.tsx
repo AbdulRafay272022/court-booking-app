@@ -7,6 +7,7 @@ import { durationChoices, formatDuration, minSlotsFor, type Slot } from "@court-
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
 
 /**
  * "How long do you want to play?" (Section 32 Part 4 / 4c). Opens when a player taps an open 30-minute slot: they pick a
@@ -34,6 +35,7 @@ export function DurationSheet({
   onClose: () => void;
   onContinue: (choice: { slotCount: number; minutes: number; price: number }) => void;
 }) {
+  const t = useT();
   const slot = slots[index];
   // `slotMinutes` is the court's MINIMUM booking time (the grid itself is always 30 minutes)
   const choices = durationChoices(slots, index, minSlotsFor(slotMinutes));
@@ -49,7 +51,7 @@ export function DurationSheet({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Book ${courtLabel(courtName, courtSport)}`}
+        aria-label={t("venue.sheet.book", { court: courtLabel(courtName, courtSport) })}
         className="w-full sm:max-w-md bg-khelo-surface rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-5"
         onClick={(e) => e.stopPropagation()}
       >
@@ -61,13 +63,13 @@ export function DurationSheet({
               {quote ? formatTimeRange(quote.starts_at, quote.ends_at) : formatTimeRange(slot.starts_at, choices.find((c) => c.slotCount === slotCount)?.endsAt ?? slot.ends_at)}
             </span>
           </div>
-          <button onClick={onClose} aria-label="Close" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-khelo-page font-bold text-khelo-ink">
+          <button onClick={onClose} aria-label={t("venue.common.close")} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-khelo-page font-bold text-khelo-ink">
             ✕
           </button>
         </div>
 
         <div className="flex flex-col gap-2.5">
-          <span className="text-[14px] font-bold">How long do you want to play?</span>
+          <span className="text-[14px] font-bold">{t("venue.sheet.howLong")}</span>
           <div className="flex flex-wrap gap-2">
             {choices.map((c) => {
               const selected = c.slotCount === slotCount;
@@ -91,19 +93,19 @@ export function DurationSheet({
           {quoteQuery.isError ? (
             <p className="text-khelo-orange-label text-[13.5px] font-semibold">{friendlyErrorMessage(quoteQuery.error)}</p>
           ) : !quote ? (
-            <p className="text-khelo-muted text-[13.5px]">Working out the price…</p>
+            <p className="text-khelo-muted text-[13.5px]">{t("venue.sheet.working")}</p>
           ) : (
             <>
               <div className="flex items-baseline justify-between">
-                <span className="text-[13px] font-semibold text-khelo-muted">Total for {formatDuration(quote.duration_minutes)}</span>
+                <span className="text-[13px] font-semibold text-khelo-muted">{t("venue.sheet.total", { duration: formatDuration(quote.duration_minutes) })}</span>
                 <span className="font-mono text-[22px] font-bold">PKR {formatPKR(quote.price)}</span>
               </div>
               {quote.advance_amount < quote.price ? (
                 <p className="text-[12.5px] font-medium text-khelo-muted">
-                  Pay PKR {formatPKR(quote.advance_amount)} now to hold it; PKR {formatPKR(quote.balance_due)} at the venue.
+                  {t("venue.sheet.advance", { advance: formatPKR(quote.advance_amount), balance: formatPKR(quote.balance_due) })}
                 </p>
               ) : (
-                <p className="text-[12.5px] font-medium text-khelo-muted">You pay this now to hold the court.</p>
+                <p className="text-[12.5px] font-medium text-khelo-muted">{t("venue.sheet.payNow")}</p>
               )}
             </>
           )}
@@ -114,7 +116,7 @@ export function DurationSheet({
           disabled={!quote}
           className="khelo-btn min-h-12 rounded-[14px] bg-khelo-orange text-[15px] font-extrabold text-khelo-ink disabled:opacity-50"
         >
-          Continue
+          {t("venue.sheet.continue")}
         </button>
       </div>
     </div>

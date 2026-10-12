@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { formatRelativeTime, formatShortDate } from "@/lib/format";
 import { useAuthStore } from "@/lib/auth-store";
 import { useFeatureFlags } from "@/lib/use-feature-flags";
+import { useT } from "@/components/i18n/lang-provider";
 
 const FIRST_PAGE = 5;
 const STAR_PATH = "M12 2.8l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.6l-5.8 3.1 1.1-6.5L2.6 9.6l6.5-.9L12 2.8Z";
@@ -21,9 +22,10 @@ function StarShape({ size }: { size: number }) {
 
 /** Five stars, filled to `value` (fractions allowed: 4.4 fills the fifth star 40%). */
 function Stars({ value, size = 16, label }: { value: number; size?: number; label?: string }) {
+  const t = useT();
   const pct = Math.max(0, Math.min(5, value)) * 20;
   return (
-    <span role="img" aria-label={label ?? `${value} out of 5 stars`} className="relative inline-flex">
+    <span role="img" aria-label={label ?? t("venue.reviews.stars", { value })} className="relative inline-flex">
       <span className="inline-flex text-khelo-border">
         {[0, 1, 2, 3, 4].map((i) => (
           <StarShape key={i} size={size} />
@@ -67,6 +69,7 @@ function when(iso: string): string {
 }
 
 function Summary({ average, count, distribution }: { average: number; count: number; distribution: number[] }) {
+  const t = useT();
   return (
     <div
       className="grid gap-6 sm:grid-cols-[auto_1fr] items-center bg-khelo-surface border border-khelo-divider rounded-3xl p-5 sm:p-6"
@@ -76,12 +79,12 @@ function Summary({ average, count, distribution }: { average: number; count: num
         <span className="text-5xl font-extrabold tracking-tight leading-none" data-testid="review-average">
           {average.toFixed(1)}
         </span>
-        <Stars value={average} size={20} label={`${average.toFixed(1)} out of 5 stars`} />
+        <Stars value={average} size={20} label={t("venue.reviews.stars", { value: average.toFixed(1) })} />
         <span className="text-[13px] text-khelo-muted-2">
-          {count} review{count === 1 ? "" : "s"}
+          {t(count === 1 ? "venue.reviews.countOne" : "venue.reviews.countMany", { count })}
         </span>
       </div>
-      <ul className="flex flex-col gap-2" aria-label="Rating breakdown">
+      <ul className="flex flex-col gap-2" aria-label={t("venue.reviews.breakdown")}>
         {distribution.map((n, i) => {
           const star = 5 - i;
           return (
@@ -102,6 +105,7 @@ function Summary({ average, count, distribution }: { average: number; count: num
 /** Section 32 Part 6: the venue's reviews, newest first, first name only. An admin viewing
  * the page also gets Hide/Unhide (the list includes hidden reviews for admins). */
 export function VenueReviews({ venueId }: { venueId: string }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
@@ -128,7 +132,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
 
   return (
     <section className="flex flex-col gap-5" data-testid="venue-reviews">
-      <h2 className="font-khelo-display text-[26px] font-extrabold tracking-[-0.5px]">Reviews{stats.count ? ` (${stats.count})` : ""}</h2>
+      <h2 className="font-khelo-display text-[26px] font-extrabold tracking-[-0.5px]">{stats.count ? t("venue.reviews.titleCount", { count: stats.count }) : t("venue.reviews.title")}</h2>
 
       {query.isLoading ? (
         <div className="flex flex-col gap-4 animate-pulse" aria-hidden="true">
@@ -140,8 +144,8 @@ export function VenueReviews({ venueId }: { venueId: string }) {
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-khelo-warm text-khelo-orange">
             <StarShape size={24} />
           </span>
-          <p className="font-bold">No reviews yet</p>
-          <p className="text-[14px] text-khelo-muted-2 max-w-xs">Played here? You can rate your game from My bookings once it&apos;s done.</p>
+          <p className="font-bold">{t("venue.reviews.none")}</p>
+          <p className="text-[14px] text-khelo-muted-2 max-w-xs">{t("venue.reviews.noneHint")}</p>
         </div>
       ) : (
         <>
@@ -149,7 +153,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
 
           <ul className="flex flex-col gap-4">
             {shown.map((r) => {
-              const name = r.player_first_name ?? "Player";
+              const name = r.player_first_name ?? t("venue.reviews.player");
               return (
                 <li
                   key={r.id}
@@ -162,11 +166,11 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                     <div className="flex flex-col min-w-0">
                       <span className="font-bold text-[15px] truncate">
                         {name}
-                        {r.is_hidden ? <span className="ml-2 text-[11px] font-bold text-khelo-muted-2">HIDDEN</span> : null}
+                        {r.is_hidden ? <span className="ml-2 text-[11px] font-bold text-khelo-muted-2">{t("venue.reviews.hidden")}</span> : null}
                       </span>
                       <span className="text-[12.5px] text-khelo-muted-2">
                         {when(r.created_at)}
-                        {r.updated_at ? " · edited" : ""}
+                        {r.updated_at ? ` \u00b7 ${t("venue.reviews.edited")}` : ""}
                       </span>
                     </div>
                     <span className="ml-auto">
@@ -176,13 +180,13 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                   {r.comment ? <p className="text-[15px] leading-relaxed text-khelo-muted">{r.comment}</p> : null}
                   {r.owner_reply ? (
                     <div className="rounded-xl bg-khelo-page px-4 py-3 flex flex-col gap-1">
-                      <p className="text-[12px] font-bold tracking-wide text-khelo-muted-2 uppercase">Reply from the venue</p>
+                      <p className="text-[12px] font-bold tracking-wide text-khelo-muted-2 uppercase">{t("venue.reviews.reply")}</p>
                       <p className="text-[14px] text-khelo-muted">{r.owner_reply}</p>
                     </div>
                   ) : null}
                   {isAdmin ? (
                     <button onClick={() => toggleHidden(r)} className="inline-flex min-h-11 items-center self-start text-[13px] font-bold text-khelo-orange-label hover:underline">
-                      {r.is_hidden ? "Unhide" : "Hide"}
+                      {r.is_hidden ? t("venue.reviews.unhide") : t("venue.reviews.hide")}
                     </button>
                   ) : null}
                 </li>
@@ -196,7 +200,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
               onClick={() => setShowAll((v) => !v)}
               className="self-center inline-flex min-h-11 items-center px-6 py-2.5 rounded-full border border-khelo-border bg-khelo-surface text-[14px] font-bold text-khelo-ink hover:border-khelo-orange hover:text-khelo-orange-label transition-colors"
             >
-              {showAll ? "Show fewer" : `Show all ${reviews.length} reviews`}
+              {showAll ? t("venue.reviews.fewer") : t("venue.reviews.all", { count: reviews.length })}
             </button>
           ) : null}
         </>

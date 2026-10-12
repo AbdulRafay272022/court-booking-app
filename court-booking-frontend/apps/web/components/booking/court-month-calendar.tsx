@@ -6,8 +6,8 @@ import { addMonths, daysOfMonth, formatMonth, mondayFirstWeekdayOf, monthOf, pkt
 import type { CourtMonthSummary, DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
-
-const WEEKDAY_HEADERS = ["M", "T", "W", "T", "F", "S", "S"];
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey } from "@/lib/i18n";
 
 // Day-state colours come from the Khelo tokens: available = mint, filling up = warning, fully booked = the grey of a booked slot.
 // A soft tint fills the whole cell; a dot beneath the number carries the state.
@@ -21,12 +21,22 @@ const DOT_CLASS: Partial<Record<DaySummaryState, string>> = { open: "bg-khelo-su
 const HATCH = "repeating-linear-gradient(135deg, var(--color-khelo-page), var(--color-khelo-page) 4px, var(--color-khelo-divider) 4px, var(--color-khelo-divider) 8px)";
 const HATCH_LEGEND = "repeating-linear-gradient(135deg, var(--color-khelo-page), var(--color-khelo-page) 2px, var(--color-khelo-dash) 2px, var(--color-khelo-dash) 4px)";
 
-const LEGEND: { state: DaySummaryState; label: string }[] = [
-  { state: "open", label: "Open" },
-  { state: "few", label: "Filling up" },
-  { state: "full", label: "Fully booked" },
-  { state: "closed", label: "Closed that day" },
+const LEGEND: { state: DaySummaryState; label: MessageKey }[] = [
+  { state: "open", label: "venue.cal.legend.open" },
+  { state: "few", label: "venue.cal.legend.few" },
+  { state: "full", label: "venue.cal.legend.full" },
+  { state: "closed", label: "venue.cal.legend.closed" },
 ];
+
+// What a screen reader hears for a day cell.
+const STATE_LABEL: Record<DaySummaryState, MessageKey> = {
+  open: "venue.cal.state.open",
+  few: "venue.cal.state.few",
+  full: "venue.cal.state.full",
+  closed: "venue.cal.state.closed",
+  past: "venue.cal.state.past",
+  beyond: "venue.cal.state.beyond",
+};
 
 /**
  * A single court's month calendar (Section 32 Part 4b; visual redesign post-batch #5, matching the owner's
@@ -43,6 +53,8 @@ export function CourtMonthCalendar({
   onSelectDate: (date: string) => void;
   onSummary?: (summary: CourtMonthSummary) => void;
 }) {
+  const t = useT();
+  const weekdayHeaders = t("venue.cal.weekdays").split(",");
   const todayMonth = useMemo(() => monthOf(pktDateString()), []);
   const [month, setMonth] = useState(todayMonth);
 
@@ -77,7 +89,7 @@ export function CourtMonthCalendar({
       </div>
 
       <div className="grid grid-cols-7 gap-0.5 mb-0.5" aria-hidden="true">
-        {WEEKDAY_HEADERS.map((h, i) => (
+        {weekdayHeaders.map((h, i) => (
           <span
             key={i}
             className="mx-auto flex h-5 w-6 items-center justify-center rounded-md bg-khelo-page text-[11px] font-bold text-khelo-muted-2"
@@ -88,7 +100,7 @@ export function CourtMonthCalendar({
       </div>
 
       {summaryQuery.isLoading ? (
-        <p className="py-10 text-center text-khelo-muted-2 text-sm">Loading…</p>
+        <p className="py-10 text-center text-khelo-muted-2 text-sm">{t("venue.cal.loading")}</p>
       ) : (
         <>
           <div className="grid grid-cols-7 gap-0.5">
@@ -109,7 +121,7 @@ export function CourtMonthCalendar({
                   type="button"
                   disabled={!tappable}
                   onClick={() => onSelectDate(date)}
-                  aria-label={`${date}, ${isNoHours ? "no hours set" : state}`}
+                  aria-label={t("venue.cal.dayLabel", { date, state: isNoHours ? t("venue.cal.state.noHours") : t(STATE_LABEL[state]) })}
                   className={`khelo-btn flex min-h-11 flex-col items-center justify-center gap-[3px] rounded-xl border-2 text-[13px] font-bold ${
                     isToday ? "border-khelo-orange" : "border-transparent"
                   } ${isNoHours || isPast ? "text-khelo-muted-2" : CELL_CLASS[state] ?? "text-khelo-ink"} ${isPast ? "opacity-50" : ""} ${
@@ -138,7 +150,7 @@ export function CourtMonthCalendar({
           {noHours ? (
             <>
               <div className="mt-4 flex flex-wrap gap-3.5 border-t border-dashed border-khelo-border pt-3.5">
-                <LegendItem label="No hours set for this court">
+                <LegendItem label={t("venue.cal.noHours")}>
                   <span className="h-2 w-2 rounded-full border border-khelo-dash" style={{ backgroundImage: HATCH_LEGEND }} />
                 </LegendItem>
               </div>
@@ -146,13 +158,13 @@ export function CourtMonthCalendar({
                 className="mt-4 rounded-2xl border border-khelo-warm bg-khelo-warm-2 px-4 py-3.5 text-[13.5px] text-khelo-orange-label"
                 role="status"
               >
-                This court hasn&apos;t set its opening hours yet — check back soon or message the venue.
+                {t("venue.cal.noHoursNote")}
               </div>
             </>
           ) : (
             <div className="mt-4 flex flex-wrap gap-3.5 border-t border-dashed border-khelo-border pt-3.5">
               {LEGEND.map(({ state, label }) => (
-                <LegendItem key={state} label={label}>
+                <LegendItem key={state} label={t(label)}>
                   {state === "closed" ? (
                     <span className="h-2 w-2 rounded-full border-[1.5px] border-khelo-dash" />
                   ) : (
@@ -178,12 +190,13 @@ function LegendItem({ children, label }: { children: React.ReactNode; label: str
 }
 
 function NavButton({ dir, disabled, onClick }: { dir: "prev" | "next"; disabled: boolean; onClick: () => void }) {
+  const t = useT();
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      aria-label={dir === "prev" ? "Previous month" : "Next month"}
+      aria-label={dir === "prev" ? t("venue.cal.prev") : t("venue.cal.next")}
       className={`khelo-btn flex h-11 w-11 items-center justify-center rounded-full border border-khelo-border bg-khelo-surface text-[18px] text-khelo-ink ${
         disabled ? "cursor-default opacity-40 hover:transform-none! hover:shadow-none!" : "cursor-pointer"
       }`}

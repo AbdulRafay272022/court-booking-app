@@ -244,3 +244,15 @@ async def test_sort_message_lists_rating(client):
     resp = await client.get(URL, params={"sort": "bogus"})
     assert resp.status_code == 422
     assert "rating" in resp.json()["error"]["message"]
+
+
+async def test_venue_detail_returns_public_coordinates(client, owner, make_venue):
+    o = await owner
+    v = await make_venue(o, name="Pinned", location="SRID=4326;POINT(67.05 24.85)")
+    for url in (f"{URL}/{v.id}", f"{URL}/by-slug/{v.slug}"):
+        resp = await client.get(url)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["latitude"] == pytest.approx(24.85)
+        assert body["longitude"] == pytest.approx(67.05)
+        assert "bank_details" not in body

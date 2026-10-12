@@ -468,6 +468,7 @@ class VenueService:
         out.photo_keys = list(venue.photos or [])
         out.average_rating, out.review_count = await self.rating_summary(venue.id)
         out.distance_meters = distance
+        out.latitude, out.longitude = self.coordinates(venue)
         can_see_bank_details = requesting_user is not None and (
             requesting_user.role == UserRole.ADMIN or requesting_user.id == venue.owner_id
         )
@@ -501,4 +502,5 @@ class VenueService:
         out.photo_keys = list(venue.photos or [])
         out.average_rating, out.review_count = await self.rating_summary(venue.id)
         out.distance_meters = distance
+        out.latitude, out.longitude = self.coordinates(venue)
         return out

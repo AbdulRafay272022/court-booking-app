@@ -6,6 +6,7 @@ import { formatPKR, sameSport } from "@/lib/format";
 import { CourtLabel } from "@/components/court-label";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { formatDuration, type Court } from "@court-booking/types";
+import { useT } from "@/components/i18n/lang-provider";
 import { CourtMonthCalendar } from "@/components/booking/court-month-calendar";
 import { CourtDayPopup } from "@/components/booking/court-day-popup";
 import { CourtHoursPanel } from "@/components/booking/court-hours-panel";
@@ -29,6 +30,7 @@ export function VenueScheduleClient({
   courts: Court[];
   horizonDays?: number | null;
 }) {
+  const t = useT();
   const searchParams = useSearchParams();
   const sportParam = searchParams.get("sport");
   const [sport, setSport] = useState<string | undefined>(undefined);
@@ -50,7 +52,7 @@ export function VenueScheduleClient({
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="font-khelo-display text-[26px] font-extrabold tracking-[-0.5px]">Availability</h2>
+      <h2 className="font-khelo-display text-[26px] font-extrabold tracking-[-0.5px]">{t("venue.avail.title")}</h2>
 
       {tabs.length > 1 ? (
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -71,7 +73,7 @@ export function VenueScheduleClient({
       ) : null}
 
       {activeCourts.length === 0 ? (
-        <p className="text-center py-10 text-khelo-muted-2 text-sm">No active courts for this sport yet.</p>
+        <p className="text-center py-10 text-khelo-muted-2 text-sm">{t("venue.avail.noCourts")}</p>
       ) : (
         <div className={`grid gap-4 ${activeCourts.length > 1 ? "md:grid-cols-2" : ""}`}>
           {activeCourts.map((court) => {
@@ -83,13 +85,13 @@ export function VenueScheduleClient({
                     <CourtLabel name={court.name} sport={court.sport} badgeClassName="bg-khelo-mint! text-khelo-teal! opacity-100!" />
                   </h3>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-khelo-muted">
-                    <span>{court.is_indoor ? "Indoor" : "Outdoor"}</span>
+                    <span>{court.is_indoor ? t("venue.card.indoor") : t("venue.card.outdoor")}</span>
                     <span aria-hidden="true">·</span>
-                    <span>{formatDuration(court.slot_minutes)} minimum</span>
+                    <span>{t("venue.avail.minimum", { duration: formatDuration(court.slot_minutes) })}</span>
                     {price != null ? (
                       <>
                         <span aria-hidden="true">·</span>
-                        <span className="font-extrabold text-khelo-ink">From PKR {formatPKR(price)}</span>
+                        <span className="font-extrabold text-khelo-ink">{t("venue.avail.fromPrice", { price: formatPKR(price) })}</span>
                       </>
                     ) : null}
                   </div>

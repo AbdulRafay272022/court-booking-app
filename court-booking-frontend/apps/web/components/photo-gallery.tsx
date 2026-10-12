@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useT } from "@/components/i18n/lang-provider";
 
 /**
  * A real photo gallery: the selected photo fills a fixed aspect-ratio frame (object-cover, so photos of any shape
@@ -26,6 +27,7 @@ export function PhotoGallery({
   className?: string;
   testId?: string;
 }) {
+  const t = useT();
   const [index, setIndex] = useState(0);
   const stripRef = useRef<HTMLDivElement>(null);
   const count = photos.length;
@@ -66,13 +68,13 @@ export function PhotoGallery({
           </div>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={photos[current]} src={photos[current]} alt={`${alt} photo ${current + 1} of ${count}`} className="absolute inset-0 w-full h-full object-cover" data-testid="gallery-main" />
+          <img key={photos[current]} src={photos[current]} alt={t("venue.gallery.photoOf", { alt, n: current + 1, count })} className="absolute inset-0 w-full h-full object-cover" data-testid="gallery-main" />
         )}
         {count > 1 ? (
           <>
             <button
               type="button"
-              aria-label="Previous photo"
+              aria-label={t("venue.gallery.prev")}
               onClick={() => go(-1)}
               className="absolute left-2 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-khelo-ink/80 text-white text-xl leading-none flex items-center justify-center hover:bg-khelo-ink"
             >
@@ -80,7 +82,7 @@ export function PhotoGallery({
             </button>
             <button
               type="button"
-              aria-label="Next photo"
+              aria-label={t("venue.gallery.next")}
               onClick={() => go(1)}
               className="absolute right-2 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-khelo-ink/80 text-white text-xl leading-none flex items-center justify-center hover:bg-khelo-ink"
             >
@@ -99,7 +101,7 @@ export function PhotoGallery({
           className="flex gap-2 overflow-x-auto pb-1.5 snap-x"
           style={{ scrollbarWidth: "thin" }}
           role="listbox"
-          aria-label="Photo thumbnails"
+          aria-label={t("venue.gallery.thumbs")}
         >
           {photos.map((url, i) => (
             <button
@@ -107,7 +109,7 @@ export function PhotoGallery({
               type="button"
               role="option"
               aria-selected={i === current}
-              aria-label={`Show photo ${i + 1}`}
+              aria-label={t("venue.gallery.show", { n: i + 1 })}
               onClick={() => setIndex(i)}
               className={`shrink-0 snap-start rounded-xl overflow-hidden border-2 ${i === current ? "border-khelo-orange" : "border-transparent opacity-75 hover:opacity-100"}`}
               style={{ width: Math.max(44, thumbSize), height: Math.max(44, Math.round(thumbSize * 0.75)) }}
