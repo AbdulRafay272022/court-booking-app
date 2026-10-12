@@ -469,7 +469,8 @@ async def test_typed_yes_books_the_slot_that_was_proposed_without_asking_the_ai_
     assert booking is not None and booking.status == BookingStatus.HELD
     assert booking.court_id == court.id
     body = sent[-1]["body"]
-    assert body.startswith("Held!")
+    # "Haan bhai yes book kardo" is Roman Urdu, so the fixed Held message is too (Phase 3); the facts are unchanged.
+    assert body.startswith("Slot hold ho gaya!")
     assert "9:00 PM to 10:30 PM" in body and "UTC" not in body  # Pakistan time, never UTC
     assert "HBL" in body and "1234567890" in body  # says WHERE to pay
 
@@ -558,8 +559,9 @@ async def test_proposal_reply_is_sent_with_real_yes_no_buttons(client, db_sessio
     assert payloads[0]["type"] == "interactive" and interactive["type"] == "button"
     assert interactive["body"]["text"].startswith("Court 1, Tue 22 Sep")
     buttons = [b["reply"] for b in interactive["action"]["buttons"]]
-    assert buttons[0] == {"id": f"confirm:{court_id}:{starts_at}", "title": "Yes, book it"}
-    assert buttons[1] == {"id": "decline", "title": "No, thanks"}
+    # "padel booking chahiye" is Roman Urdu, so the button titles are too (Phase 3); an English chat keeps "Yes, book it" / "No, thanks".
+    assert buttons[0] == {"id": f"confirm:{court_id}:{starts_at}", "title": "Haan, book karein"}
+    assert buttons[1] == {"id": "decline", "title": "Nahi, shukriya"}
     assert all(len(b["title"]) <= 20 for b in buttons)
 
 

@@ -2,11 +2,12 @@ import hashlib
 import hmac
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import AppSettings, DbSession
@@ -16,14 +17,30 @@ from app.models.message import Message
 from app.models.user import User
 from app.models.venue import Venue
 from app.services.ai_chat_service import AIChatService, explicit_proposal_data, is_plain_affirmative
+from app.errors import AppError, ErrorCode
 from app.services.booking_service import BookingService, booking_source_ctx
+from app.services.chat_fallbacks import MUTATING_TOOLS, newer_text_exists, player_language, run_turn
+from app.services.chat_lock import ConversationBusy, conversation_locks
 from app.services.entitlement_service import EntitlementService
 from app.services.notification_service import NotificationService
 from app.services.payment_service import PaymentService
-from app.services.reply_text import looks_like_roman_urdu, payment_proof_reply
+from app.services.chat_language import Lang
+from app.services.reply_text import (
+    BANK_LABELS,
+    busy_message,
+    declined_message,
+    decline_button_title,
+    generic_failure,
+    held_message,
+    held_where,
+    hold_failed_message,
+    image_download_failed_message,
+    no_pending_booking_message,
+    payment_proof_reply,
+)
 from app.services.venue_service import VenueService
 from app.services.whatsapp_service import WhatsAppService, mask_phone
-from app.utils.timezone import format_duration, format_pkr, format_pkt_slot
+from app.utils.timezone import format_pkt_slot
 
 logger = structlog.get_logger(__name__)
 
@@ -71,9 +88,17 @@ async def _find_or_create_guest(db: DbSession, phone: str) -> User:
     same convention as section 9.1 ("guest booking: phone is identity")."""
     user = await db.scalar(select(User).where(User.phone == phone))
     if user is None:
-        user = User(phone=phone)
-        db.add(user)
-        await db.flush()
+        # Two first messages from a new number can arrive together (a webhook retry, or the player typing fast): the
+        # unique phone constraint decides who creates the row; the loser reads it instead of failing the whole delivery.
+        try:
+            async with db.begin_nested():
+                user = User(phone=phone)
+                db.add(user)
+                await db.flush()
+        except IntegrityError:
+            user = await db.scalar(select(User).where(User.phone == phone))
+            if user is None:
+                raise
     return user
 
 
@@ -196,7 +221,55 @@ async def _proposed_player_name(
     return None, False
 
 
-async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: str) -> None:
+@dataclass(frozen=True)
+class _Inbound:
+    """The player's message being handled, as recorded: used to tell whether a newer text arrived while we worked."""
+
+    id: uuid.UUID
+    created_at: datetime
+
+
+async def _reply_text(db: DbSession, whatsapp: WhatsAppService, user: User, phone: str, text: str, meta: dict | None = None) -> None:
+    """Send a plain text reply and record it."""
+    sent = await whatsapp.send_text(phone, text)
+    await _record_message(db, user=user, sender_type="ai", content=text, whatsapp_msg_id=(sent.get("messages") or [{}])[0].get("id"), meta=meta)
+    await db.commit()
+
+
+async def _held_reply(db: DbSession, settings: AppSettings, booking: Booking, lang: Lang) -> str:
+    """The "Held!" message for a booking just held: venue, court, slot, total, what to pay within how long, and WHERE to pay."""
+    court = await db.get(Court, booking.court_id)
+    venue = await db.get(Venue, court.venue_id) if court else None
+    bank = VenueService(db, settings).decrypted_bank_details(venue) if venue else None
+    return held_message(
+        lang,
+        where=held_where(lang, court.name if court else None, venue.name if venue else None),
+        slot_label=format_pkt_slot(booking.starts_at, booking.ends_at),
+        total=float(booking.price),
+        duration_minutes=int((booking.ends_at - booking.starts_at).total_seconds() // 60),
+        advance=float(booking.advance_amount),
+        hold_minutes=settings.BOOKING_HOLD_MINUTES,
+        bank_lines=[(label, str(bank[key])) for label, key in BANK_LABELS if bank and bank.get(key)],
+    )
+
+
+async def _booking_held_since(db: DbSession, user_id: uuid.UUID, since: datetime) -> Booking | None:
+    """A hold this player got after `since` (database clock): if a turn failed after the hold tool ran, the player must still be told."""
+    return (
+        await db.execute(
+            select(Booking)
+            .where(Booking.player_id == user_id, Booking.status == BookingStatus.HELD, Booking.created_at >= since)
+            .order_by(Booking.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: str, inbound: _Inbound | None = None) -> None:
+    # Captured now: after a failed turn the session is rolled back and `user`'s attributes must be refreshed before use.
+    user_id, phone = user.id, user.phone
+    lang = await player_language(db, user_id, "whatsapp")
+
     if _is_plain_affirmative(text):
         pending = await _pending_confirmation(db, user)
         if pending is not None:
@@ -206,7 +279,32 @@ async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: s
 
     chat_service = AIChatService(db, settings)
     history = await chat_service.load_history(user, "whatsapp")
-    result = await chat_service.process_message(user=user, message=text, history=history, channel="whatsapp")
+    # The message being answered was recorded before this turn, so history already ends with it and process_message adds it again.
+    if history and history[-1] == {"role": "user", "content": text}:
+        history = history[:-1]
+    # now() is this transaction's start on the database clock: any hold made during the turn has a created_at at or after it
+    # (a hold made in an earlier, already committed transaction is older), and it is the same clock bookings are stamped with.
+    turn_started = await db.scalar(select(func.now()))
+    outcome = await run_turn(chat_service, db, user=user, message=text, history=history, channel="whatsapp", lang=lang)
+    result = outcome.result
+    mutated = any(t in MUTATING_TOOLS for t in (getattr(result, "tool_calls", None) or []))
+
+    if outcome.failed:
+        try:
+            await db.refresh(user)
+        except Exception:  # noqa: BLE001
+            logger.warning("webhooks.whatsapp.user_refresh_failed", exc_info=True)
+        # The model or a tool failed. If it got as far as holding a slot, the player must hear about the hold, not "try again".
+        held = await _booking_held_since(db, user_id, turn_started) if turn_started else None
+        if held is not None:
+            mutated = True
+            result = type(result)(reply=await _held_reply(db, settings, held, lang), model=None)
+
+    # A newer text from the same player means this answer is about stale words: the newer message is answered (with this one
+    # in its history) instead. Never drop an answer that carries a change (a hold or a cancellation).
+    if inbound is not None and not mutated and await newer_text_exists(db, user_id, "whatsapp", inbound.created_at):
+        logger.info("webhooks.whatsapp.stale_reply_dropped", inbound_id=str(inbound.id), failed=outcome.failed)
+        return
 
     whatsapp = WhatsAppService(settings)
     # A direct reply to an inbound message is always inside the 24h window by
@@ -219,20 +317,20 @@ async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: s
         # text, so players saw a question with nothing to tap and typed "yes" into a void.
         try:
             sent = await whatsapp.send_buttons(
-                user.phone,
+                phone,
                 result.reply,
                 [
                     (
                         _confirm_button_id(confirm.data["court_id"], confirm.data["starts_at"], int(confirm.data.get("slot_count") or 1)),
                         confirm.label,
                     ),
-                    ("decline", "No, thanks"),
+                    ("decline", decline_button_title(lang)),
                 ],
             )
         except Exception:  # noqa: BLE001 -- fall back to plain text; a typed "yes" still works
             logger.warning("webhooks.whatsapp.buttons_failed", exc_info=True)
     if sent is None:
-        sent = await whatsapp.send_text(user.phone, result.reply)
+        sent = await whatsapp.send_text(phone, result.reply)
     await _record_message(
         db,
         user=user,
@@ -243,6 +341,7 @@ async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: s
             "model": result.model,
             "tool_calls": result.tool_calls,
             "actions": [a.__dict__ for a in result.actions],
+            **({"fallback": True} if outcome.failed else {}),
         },
     )
     await db.commit()
@@ -250,20 +349,16 @@ async def _handle_text(db: DbSession, settings: AppSettings, user: User, text: s
 
 async def _handle_image(db: DbSession, settings: AppSettings, user: User, image_id: str, mime_type: str | None) -> None:
     whatsapp = WhatsAppService(settings)
+    phone = user.phone
+    lang = await player_language(db, user.id, "whatsapp")
     booking = await _most_recent_held_booking(db, user)
     if booking is None:
-        reply = "I don't see a pending booking waiting for payment. Hold a slot first, then send your payment screenshot here."
-        sent = await whatsapp.send_text(user.phone, reply)
-        await _record_message(db, user=user, sender_type="ai", content=reply, whatsapp_msg_id=(sent.get("messages") or [{}])[0].get("id"))
-        await db.commit()
+        await _reply_text(db, whatsapp, user, phone, no_pending_booking_message(lang))
         return
 
     media = await whatsapp.download_media(image_id)
     if media is None:
-        reply = "I couldn't download that image -- could you try sending it again?"
-        sent = await whatsapp.send_text(user.phone, reply)
-        await _record_message(db, user=user, sender_type="ai", content=reply, whatsapp_msg_id=(sent.get("messages") or [{}])[0].get("id"))
-        await db.commit()
+        await _reply_text(db, whatsapp, user, phone, image_download_failed_message(lang))
         return
 
     proof_bytes, content_type = media
@@ -289,28 +384,8 @@ async def _handle_image(db: DbSession, settings: AppSettings, user: User, image_
                     ocr_verdict=payment.ocr_verdict,
                 )
 
-    recent_player_texts = (
-        await db.scalars(
-            select(Message.content)
-            .where(Message.sender_id == user.id, Message.channel == "whatsapp", Message.sender_type == "player", Message.message_type == "text")
-            .order_by(Message.created_at.desc())
-            .limit(6)
-        )
-    ).all()
-    reply = payment_proof_reply(
-        payment.ocr_verdict, booked=booking.status == BookingStatus.BOOKED, roman_urdu=looks_like_roman_urdu(list(recent_player_texts))
-    )
-
-    sent = await whatsapp.send_text(user.phone, reply)
-    await _record_message(
-        db,
-        user=user,
-        sender_type="ai",
-        content=reply,
-        whatsapp_msg_id=(sent.get("messages") or [{}])[0].get("id"),
-        meta={"payment_id": str(payment.id), "ocr_verdict": payment.ocr_verdict},
-    )
-    await db.commit()
+    reply = payment_proof_reply(payment.ocr_verdict, booked=booking.status == BookingStatus.BOOKED, roman_urdu=lang == "ru")
+    await _reply_text(db, whatsapp, user, phone, reply, meta={"payment_id": str(payment.id), "ocr_verdict": payment.ocr_verdict})
 
 
 async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User, button_id: str | None) -> None:
@@ -319,59 +394,123 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
     `decline`, matching what the in-app/WhatsApp client is given back in
     `actions` (Section 10.3)."""
     whatsapp = WhatsAppService(settings)
+    phone = user.phone
+    lang = await player_language(db, user.id, "whatsapp")
 
     if not button_id or button_id == "decline":
-        reply = "No problem, let me know if you'd like to look at other times."
-        sent = await whatsapp.send_text(user.phone, reply)
-        await _record_message(db, user=user, sender_type="ai", content=reply, whatsapp_msg_id=(sent.get("messages") or [{}])[0].get("id"))
-        await db.commit()
+        await _reply_text(db, whatsapp, user, phone, declined_message(lang))
         return
 
-    if button_id.startswith("confirm:"):
-        try:
-            _prefix, court_id_str, starts_at_str = button_id.split(":", 2)
-            slot_count: int | None = None  # no suffix = the court's minimum booking (30-minute grid, Part 4c)
-            if "|x" in starts_at_str:
-                starts_at_str, count_str = starts_at_str.rsplit("|x", 1)
-                slot_count = int(count_str)
-            booking_service = BookingService(db, settings)
-            if not await EntitlementService(db, settings).court_entitled(uuid.UUID(court_id_str), "ai_chat_booking"):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="booking through chat is not available for this venue, please book it in the Khelo app",
-                )
-            proposed_name, name_is_own = await _proposed_player_name(db, user, court_id_str, starts_at_str)
-            booking = await booking_service.create_hold(
-                user,
-                uuid.UUID(court_id_str),
-                datetime.fromisoformat(starts_at_str),
-                slot_count,
-                proposed_name,
-                name_is_own=name_is_own,
+    if not button_id.startswith("confirm:"):
+        # An id this build never made (an old or foreign button): say something, never go silent.
+        logger.warning("webhooks.whatsapp.unknown_button", button_id=button_id[:80])
+        await _reply_text(db, whatsapp, user, phone, generic_failure(lang))
+        return
+
+    try:
+        _prefix, court_id_str, starts_at_str = button_id.split(":", 2)
+        slot_count: int | None = None  # no suffix = the court's minimum booking (30-minute grid, Part 4c)
+        if "|x" in starts_at_str:
+            starts_at_str, count_str = starts_at_str.rsplit("|x", 1)
+            slot_count = int(count_str)
+        booking_service = BookingService(db, settings)
+        if not await EntitlementService(db, settings).court_entitled(uuid.UUID(court_id_str), "ai_chat_booking"):
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.PREMIUM_FEATURE_REQUIRED,
+                "booking through chat is not available for this venue, please book it in the Khelo app",
             )
-            court = await db.get(Court, booking.court_id)
-            venue = await db.get(Venue, court.venue_id) if court else None
-            where = f"{court.name} at {venue.name}, " if court and venue else ""
-            lines = [
-                f"Held! {where}{format_pkt_slot(booking.starts_at, booking.ends_at)} (Pakistan time).",
-                f"Total {format_pkr(float(booking.price))} for "
-                f"{format_duration(int((booking.ends_at - booking.starts_at).total_seconds() // 60))}.",
-                f"Please pay {format_pkr(float(booking.advance_amount))} within "
-                f"{settings.BOOKING_HOLD_MINUTES} minutes to confirm:",
-            ]
-            # Say WHERE to pay: this reply used to stop at "send your payment screenshot" with no bank.
-            bank = VenueService(db, settings).decrypted_bank_details(venue) if venue else None
-            for label, key in (("Bank", "bank"), ("Account title", "account_title"), ("Account number", "account_number"), ("IBAN", "iban")):
-                if bank and bank.get(key):
-                    lines.append(f"{label}: {bank[key]}")
-            lines.append("Then send your payment screenshot here.")
-            reply = "\n".join(lines)
-        except (ValueError, HTTPException) as exc:
-            detail = exc.detail if isinstance(exc, HTTPException) else "that slot"
-            reply = f"Sorry, I couldn't hold that slot ({detail}). Want to try another time?"
-        sent = await whatsapp.send_text(user.phone, reply)
-        await _record_message(db, user=user, sender_type="ai", content=reply, whatsapp_msg_id=(sent.get("messages") or [{}])[0].get("id"))
+        proposed_name, name_is_own = await _proposed_player_name(db, user, court_id_str, starts_at_str)
+        booking = await booking_service.create_hold(
+            user,
+            uuid.UUID(court_id_str),
+            datetime.fromisoformat(starts_at_str),
+            slot_count,
+            proposed_name,
+            name_is_own=name_is_own,
+        )
+        reply = await _held_reply(db, settings, booking, lang)
+    except (ValueError, HTTPException) as exc:
+        # The code (not the exception's English text) picks the localized wording.
+        reply = hold_failed_message(lang, getattr(exc, "code", None))
+    except Exception:  # noqa: BLE001 -- a bug or a database error while holding must not become silence or a stack trace
+        logger.error("webhooks.whatsapp.hold_failed", exc_info=True)
+        await db.rollback()
+        await db.refresh(user)
+        reply = hold_failed_message(lang)
+    await _reply_text(db, whatsapp, user, phone, reply)
+
+
+async def _process_inbound(db: DbSession, settings: AppSettings, msg: dict) -> None:
+    """One inbound WhatsApp message, exactly once and in order.
+
+    1. The message row is inserted and committed FIRST. The unique index on `messages.whatsapp_msg_id` makes a second delivery of
+       the same message id (Meta retries, even while the first is still being processed) fail its insert, and that delivery stops.
+    2. Then it waits for its turn in the player's conversation (`chat_lock`, in-process: single uvicorn worker, see that module).
+    3. A text that has been overtaken by a newer text while it waited is not answered on its own: the newer one is, with this one
+       in its history. Buttons and images are never skipped.
+    Any failure after step 1 gives the player a short localized message and still returns normally (a 500 would make Meta
+    retry, and the retry would be dropped as a duplicate anyway)."""
+    user = await _find_or_create_guest(db, msg["phone_number"])
+    user_id, phone = user.id, user.phone
+
+    inbound_content = msg["text"] or msg.get("button_text") or f"[{msg['type']}]"
+    recorded = await _record_message(
+        db,
+        user=user,
+        sender_type="player",
+        content=inbound_content,
+        message_type=msg["type"] or "text",
+        whatsapp_msg_id=msg["message_id"],
+    )
+    await db.commit()
+    if recorded is None:
+        # Duplicate delivery (webhook retry) -- already processed or being processed by the first delivery.
+        logger.info("webhooks.whatsapp.duplicate_delivery_skipped", wamid=msg["message_id"])
+        return
+
+    created_at = await db.scalar(select(Message.created_at).where(Message.id == recorded.id))
+    inbound = _Inbound(id=recorded.id, created_at=created_at)
+    is_text = msg["type"] == "text" and bool(msg["text"])
+
+    try:
+        async with conversation_locks.hold(("whatsapp", user_id)):
+            if is_text and await newer_text_exists(db, user_id, "whatsapp", inbound.created_at):
+                logger.info("webhooks.whatsapp.superseded_text_skipped", inbound_id=str(inbound.id))
+                return
+            if is_text:
+                await _handle_text(db, settings, user, msg["text"], inbound)
+            elif msg["type"] == "image" and msg.get("image_id"):
+                await _handle_image(db, settings, user, msg["image_id"], msg.get("image_mime_type"))
+            elif msg["type"] in ("interactive", "button"):
+                await _handle_button_reply(db, settings, user, msg.get("button_id"))
+    except ConversationBusy:
+        await _best_effort_notice(db, settings, user_id, phone, busy_message)
+    except Exception:  # noqa: BLE001 -- the player must hear something, and Meta must get its 200
+        logger.error("webhooks.whatsapp.message_failed", wamid=msg["message_id"], exc_info=True)
+        await _best_effort_notice(db, settings, user_id, phone, generic_failure)
+
+
+async def _best_effort_notice(db: DbSession, settings: AppSettings, user_id: uuid.UUID, phone: str, template) -> None:
+    """Send a short fixed notice after something went wrong; never raises."""
+    try:
+        await db.rollback()
+        lang = await player_language(db, user_id, "whatsapp")
+        text = template(lang)
+        sent = await WhatsAppService(settings).send_text(phone, text)
+        db.add(
+            Message(
+                sender_id=user_id,
+                sender_type="ai",
+                channel="whatsapp",
+                content=text,
+                whatsapp_msg_id=(sent.get("messages") or [{}])[0].get("id"),
+                meta={"fallback": True},
+            )
+        )
         await db.commit()
+    except Exception:  # noqa: BLE001
+        logger.error("webhooks.whatsapp.notice_failed", exc_info=True)
 
 
 @router.post("/whatsapp", status_code=status.HTTP_200_OK)
@@ -404,28 +543,7 @@ async def receive_whatsapp_webhook(request: Request, db: DbSession, settings: Ap
     source_token = booking_source_ctx.set(BookingSource.WHATSAPP)
     try:
         for msg in messages:
-            user = await _find_or_create_guest(db, msg["phone_number"])
-
-            inbound_content = msg["text"] or msg.get("button_text") or f"[{msg['type']}]"
-            recorded = await _record_message(
-                db,
-                user=user,
-                sender_type="player",
-                content=inbound_content,
-                message_type=msg["type"] or "text",
-                whatsapp_msg_id=msg["message_id"],
-            )
-            await db.commit()
-            if recorded is None:
-                # Duplicate delivery (webhook retry) -- already processed.
-                continue
-
-            if msg["type"] == "text" and msg["text"]:
-                await _handle_text(db, settings, user, msg["text"])
-            elif msg["type"] == "image" and msg.get("image_id"):
-                await _handle_image(db, settings, user, msg["image_id"], msg.get("image_mime_type"))
-            elif msg["type"] in ("interactive", "button"):
-                await _handle_button_reply(db, settings, user, msg.get("button_id"))
+            await _process_inbound(db, settings, msg)
     finally:
         booking_source_ctx.reset(source_token)
 
