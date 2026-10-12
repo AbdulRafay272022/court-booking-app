@@ -7,6 +7,12 @@
  * (`.env.web`) would never show up until the image was rebuilt. A computed key reads the running container's environment.
  * The pages that call `getSiteConfig()` are therefore rendered per request (`export const dynamic = "force-dynamic"`).
  */
+/**
+ * The company behind Khelo. The ONE place the name is written: footer line, About, Terms, Privacy, JSON-LD and the OG text all import this.
+ * (The owner may correct the spelling later; never hardcode it anywhere else.) Safe to import from client and server code.
+ */
+export const COMPANY_NAME = "AFTR Solutions";
+
 function read(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value ? value : undefined;
