@@ -27,7 +27,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Iterable
 
 from app.services.chat_facts import PlatformFacts, VenueFact, sport_display
-from app.services.chat_language import conversation_language, score
+from app.services.chat_language import conversation_language, detect_language
 from app.utils.timezone import pkt_date_of, pkt_today
 
 PLAYER = "player_said"
@@ -490,6 +490,7 @@ _SINGLE_AT_RE = re.compile(rf"\b(?:at|around|from|by|@)\s*{_TIME_PART}(?!\s*(?:h
 _SINGLE_PART_RE = re.compile(
     rf"\b(?:subah|subha|savere|sawere|morning|dopahar|dopehar|afternoon|shaam|sham|evening|raat|rat|night|tonight|tonite)\s*(?:ko\s+|mein\s+|me\s+)?{_TIME_PART}(?![\d:]|\s*(?:hours?|hrs?|ghant|min))"
 )
+_SINGLE_NUM_PART_RE = re.compile(rf"(?<![\d:.]){_TIME_PART}\s*(?:baje\s+)?(?:subah|subha|savere|sawere|dopahar|dopehar|shaam|sham|raat|rat)\b")
 _COLON_RE = re.compile(r"(?<![\d:.])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])")
 _WORD_HOUR_RE = re.compile(rf"\b({'|'.join(sorted(_NUM_WORDS, key=len, reverse=True))})\s+(?:baje|bajay|bajey|bje)\b")
 
@@ -579,8 +580,8 @@ def extract_times(text: str, *, bare_ok: bool = False) -> TimeFound:
                 mer1 = mer2  # "9 to 11 pm": both evening
             start = _resolve_hour(h1, mi1, mer1, part)
             end = _resolve_hour(h2, mi2, mer2, part)
-            if inherited_end and start is not None and end is not None:
-                # "9am to 12", "9pm to 12": the end is the next time that hour comes round after the start
+            if start is not None and end is not None:
+                # "9am to 12", "9pm to 12", "subah 10 se 12": the end is the next time that hour comes round after the start
                 s_min, e_min = start.hour * 60 + start.minute, end.hour * 60 + end.minute
                 while e_min <= s_min:
                     e_min += 720
@@ -598,7 +599,7 @@ def extract_times(text: str, *, bare_ok: bool = False) -> TimeFound:
             if start is not None:
                 return TimeFound(start=start)
 
-    for rx in (_SINGLE_SUFFIX_RE, _SINGLE_AT_RE, _SINGLE_PART_RE):
+    for rx in (_SINGLE_SUFFIX_RE, _SINGLE_AT_RE, _SINGLE_PART_RE, _SINGLE_NUM_PART_RE):
         m = rx.search(t)
         if m:
             hour, minute = int(m.group(1)), int(m.group(2) or 0)
@@ -732,11 +733,12 @@ _THANKS_FILLER = frozenset(
     "you so much a lot very bohat bahut boht bhai ji g sir ok okay dear alot great nice achha acha theek hai ho gya gaya".split()
 )
 _NEGATIVE_WORDS = frozenset("no nahi nahin nhi na nope nah nai rehne rehnay chhor chor mat".split())  # "cancel" is NOT here: it is a request about a booking
-_PRICE_WORDS = frozenset(
-    "price prices pricing cost rate rates charges charge fee fees kitna kitni kitne kitnay qeemat keemat kimat paisa paise rupay rupees pkr rs "
-    "sasta sasti discount kam".split()
+_PRICE_WORDS = frozenset("price prices pricing cost rate rates charges charge fee fees qeemat keemat kimat paisa paise rupay rupees pkr rs sasta sasti discount".split())
+# "kitne baje" is a TIME question, so the Roman Urdu "how much" forms are matched as phrases only
+_PRICE_PHRASES = re.compile(
+    r"(?i)how much|kitne k[aie]\b|kitna (?:hoga|lagega|lagay|charge|price|paisa|rate|kharcha)|kitni (?:price|qeemat|fee|fees|rate)|kitne (?:paise|rupay|rupees|pkr|ghante ka)|"
+    r"per hour|per ghanta|rate kya|price kya"
 )
-_PRICE_PHRASES = re.compile(r"(?i)how much|kitne ka|kitne ki|per hour|per ghanta|rate kya")
 _LOCATION_WORDS = frozenset("address location kahan kahaan kaha map directions direction pata jagah located".split())
 _WHERE_RE = re.compile(r"(?i)\bwhere (?:is|are|'s)\b|\bwhere\b.{0,20}\b(?:venue|arena|club|court|ground|located)\b")
 _HOURS_PHRASES = re.compile(
@@ -764,6 +766,16 @@ _BARGAIN_NUMBER = re.compile(r"(?<![\d:/.])(\d{3,6})(?![\d:/])")
 
 def _tokens(text: str) -> list[str]:
     return re.findall(r"[a-z']+", (text or "").lower())
+
+
+_SALAM_RE = re.compile(r"(?i)\b(?:assalam\w*|salam|salaam|aoa|walaikum\w*)\b")
+# a message that is a question ("parking hai kya?", "do you have lights?"): it is never "a failed answer", the assistant answers it
+_QUESTION_WORDS = frozenset("kya kyun kyu kaise kab kahan kaun kon kitna kitni kitne how what when why who which do does is are can could will would".split())
+
+
+def looks_like_question(text: str) -> bool:
+    toks = _tokens(text)
+    return "?" in (text or "") or bool(toks and (toks[0] in _QUESTION_WORDS or toks[-1] in {"kya", "hai", "hain"} and "kya" in toks))
 
 
 def is_greeting(text: str) -> bool:
@@ -822,6 +834,7 @@ class TurnFacts:
     pending_before: str | None = None
     answered_pending: bool = False
     short: bool = False
+    question: bool = False
     has_facts: bool = False
 
     @property
@@ -899,7 +912,8 @@ def _apply_player(
     turn.more_options = bool(_MORE_OPTIONS.search(raw))
     turn.complaint = bool(_COMPLAINT.search(raw))
     words = _tokens(raw)
-    turn.short = len(words) <= 6
+    turn.question = looks_like_question(raw) and not picked
+    turn.short = len(words) <= 6 and not turn.question  # "short and not a question": the only kind of message that can be a failed answer
 
     venues = facts.venues if facts and not facts.empty else []
     # venue, then court (courts of the venue in play, else of every venue)
@@ -932,7 +946,9 @@ def _apply_player(
     # sport
     real_all = facts.sports() if facts and not facts.empty else []
     venue_in_play = facts.venue(state.venue_id) if facts else None
-    real = venue_in_play.sports if venue_in_play else real_all
+    # a venue the PLAYER named limits the sports they can ask for; one that was only derived (the one venue with that sport) does not
+    venue_fixed = venue_in_play is not None and state.prov.get("venue") in PLAYER_SOURCED
+    real = venue_in_play.sports if venue_fixed else real_all
     scan = scan_sports(venue_text, real_all)
     if scan:
         supported, unsupported = [], []
@@ -943,6 +959,8 @@ def _apply_player(
             if state.sport != supported[0]:
                 state.sport = supported[0]
                 turn.got.add("sport")
+                if venue_in_play is not None and not venue_fixed and supported[0].lower() not in {s.lower() for s in venue_in_play.sports}:
+                    state.clear("venue", "court")  # the venue was only a derivation from the old sport: derive again for the new one
                 if state.court_id and facts:
                     hit = facts.court(state.court_id)
                     if hit and hit[1].sport.lower() != supported[0].lower():
@@ -1011,6 +1029,8 @@ def _apply_player(
 
     # intent
     turn.has_facts = bool(turn.got) or bool(turn.unsupported) or bool(turn.multi_sport)
+    if turn.question:
+        turn.sport_word_unknown = False  # "parking hai kya?" is a question to answer, not a misspelled sport
     toks = set(words)
     booking_word = bool(toks & _BOOKING_WORDS)
     asks_price = bool(toks & _PRICE_WORDS) or bool(_PRICE_PHRASES.search(raw))
@@ -1040,8 +1060,8 @@ def _apply_player(
         turn.intent = "slot_request"
     else:
         turn.intent = "other"
-    if turn.intent in ("greeting", "thanks", "affirmative", "negative"):
-        turn.sport_word_unknown = False  # "ok" is not a misspelled sport
+    if turn.intent in ("greeting", "thanks", "affirmative", "negative") or turn.got or turn.question:
+        turn.sport_word_unknown = False  # "ok" is not a misspelled sport; "pm" answered the time question; "parking hai kya?" is a question
 
     if turn.listing and turn.intent in ("slot_request", "other"):
         state.mode = "listing"
@@ -1108,23 +1128,23 @@ def fresh_state() -> ChatState:
 
 
 def reply_language(player_texts: list[str], ai_texts: list[str] = ()) -> str:
-    """The language to answer in: the lead's word-list vote (`chat_language.score`) over the player's last four messages. A longer message weighs
-    more the newer it is; a very short one ("koi bhi", "Yes, book it", "ok") counts once, so it does not flip the language of the chat. When the
-    player's words carry no signal at all ("9pm", "Padel", "3"), the language of the bot's own earlier replies continues; else the default."""
-    ru_w = en_w = 0
-    for i, text in enumerate(reversed(player_texts[-4:])):
-        ru, en = score(text)
-        weight = (4 - i) if len(_tokens(text)) > 3 else 1
-        ru_w += weight * ru
-        en_w += weight * en
-    # the bot's own last two replies speak the language the chat has been in: a small vote, so one short "ok" cannot flip it
-    for text in list(ai_texts)[-2:]:
-        ru, en = score(text)
-        ru_w += min(ru, 3)
-        en_w += min(en, 3)
-    if ru_w == 0 and en_w == 0:
-        return conversation_language(player_texts)
-    return "ru" if ru_w >= en_w else "en"
+    """The language to answer in. The lead's rule (`chat_language`): the newest message that carries a language signal decides, a mixed message goes
+    to the side with more words and ties favour Roman Urdu. Two refinements: a bare "yes / ok / thanks / hello" is not a signal (its English words
+    are what Roman Urdu speakers write too), and "salam"/"assalam o alaikum" counts as Roman Urdu. When the player's words carry no signal at all
+    ("9pm", "Padel", "3"), the language of the bot's own earlier replies continues; else the default (English)."""
+    for text in reversed(list(player_texts)[-6:]):
+        if _SALAM_RE.search(text or ""):
+            return "ru"
+        if is_chit_chat(text):
+            continue
+        found = detect_language(text)
+        if found:
+            return found
+    for text in reversed(list(ai_texts)[-3:]):
+        found = detect_language(text)
+        if found:
+            return found
+    return conversation_language(list(player_texts))
 
 
 def _row_today(row_at: datetime | None, default: date) -> date:
@@ -1157,8 +1177,8 @@ def fold_state(
     unclear = 0
 
     def reset() -> None:
-        nonlocal state, window, sources_for, unclear
-        state, window, sources_for, unclear = fresh_state(), [], {}, 0
+        nonlocal state, window, sources_for, unclear, prev_ai_text
+        state, window, sources_for, unclear, prev_ai_text = fresh_state(), [], {}, 0, ""
 
     for row in rows:
         if booking_floor is not None and row.at is not None and row.at <= booking_floor:
@@ -1185,7 +1205,7 @@ def fold_state(
                 adopted = True
             turn = _apply_player(state, row.text, facts, today)
             _derive(state, facts)
-            progress = bool(turn.got) or adopted or turn.intent not in ("other", "affirmative", "negative", "slot_request") or turn.picked_option
+            progress = bool(turn.got) or adopted or turn.intent not in ("other", "affirmative", "negative", "slot_request") or turn.picked_option or turn.complaint
             if before and before not in ("name", "confirm", "show_venues") and not progress and turn.intent in ("other", "affirmative", "negative", "slot_request") and turn.short:
                 unclear += 1
             elif progress or before in (None, "name", "confirm", "show_venues"):
@@ -1231,7 +1251,7 @@ def fold_state(
     turn = _apply_player(state, current, facts, today_now)
     turn.adopted_slot = adopted_now
     _derive(state, facts)
-    progress = bool(turn.got) or adopted_now or turn.intent not in ("other", "affirmative", "negative", "slot_request") or turn.picked_option
+    progress = bool(turn.got) or adopted_now or turn.intent not in ("other", "affirmative", "negative", "slot_request") or turn.picked_option or turn.complaint
     turn.answered_pending = before is None or progress
     if before and before not in ("name", "confirm", "show_venues") and not progress and turn.short and turn.intent in ("other", "affirmative", "negative", "slot_request"):
         state.unclear = unclear + 1

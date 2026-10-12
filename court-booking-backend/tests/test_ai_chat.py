@@ -917,12 +917,12 @@ async def test_name_question_is_never_repeated_and_a_named_account_is_never_aske
 
     # the question was already asked and the player brushed it off: propose WITHOUT a name goes straight through
     history = [{"role": "user", "content": "book 7pm saturday for 1 hour"}, {"role": "assistant", "content": "What name should I put the booking under?"},
-               {"role": "user", "content": "koi bhi"}]
+               {"role": "user", "content": "no need"}]
     _capture_anthropic(monkeypatch, [
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response("Court 1, 7 PM. Shall I book it?"),
     ])
-    result = await service.process_message(user=guest, message="koi bhi", history=history)
+    result = await service.process_message(user=guest, message="no need", history=history)
     assert any(a.type == "confirm_booking" for a in result.actions)
     assert "player_name" not in next(a for a in result.actions if a.type == "confirm_booking").data
 

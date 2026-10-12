@@ -78,7 +78,7 @@ class VenueFact:
         if not seen:
             for sport in self.listed_sports:
                 seen.setdefault(sport.strip().lower(), sport_display(sport))
-        return list(seen.values())
+        return sorted(seen.values(), key=str.lower)  # one stable, alphabetical order wherever sports are listed
 
     def courts_for(self, sport: str | None) -> list[CourtFact]:
         if not sport:

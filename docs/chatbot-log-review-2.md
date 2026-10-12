@@ -42,8 +42,10 @@ suspicion rather than something proven by a test, it says so.
 - WhatsApp 09-29: bot "Kl 9:00 AM to 10:00 AM, Thu 1 Oct ka slot available hai. Aap kitni der khelna chahtay hain? 1 hour, 2 hours..." (a question, but the
   message carries `confirm_booking, decline` actions) -> player "Yes, book it" -> **Held 1 hour for PKR 3,000**.
 - The same unwanted Yes/No actions are attached to messages 10-07 (three times) that ask for the duration.
-- Root cause: `_attach_proposal_for_named_slot` / proposal actions are attached while a required field (duration) is still unknown; a bare "yes" then confirms
-  the pending slot with the default length.
+- Root cause (corrected by Agent D after reading the code): the plain-text path `_attach_proposal_for_named_slot` was already fixed to wait for a quoted duration,
+  but nothing stopped the model-driven `propose_booking_confirmation` tool from attaching Yes/No actions with the court's minimum length when the player never
+  chose one, and `explicit_proposal_data` (what a bare "yes" is matched against, in the webhook and in `hold_slot`) accepted an action stored on a message that
+  was ASKING something else ("...kitni der khelna chahtay hain?"). So a "Yes, book it" confirmed the pending slot with the default length.
 - Fix: no proposal actions unless stage == confirming and every field is player-sourced; a bare yes while a question is pending is NOT a confirmation.
 
 ### P4. Typos and sport words not understood; the real sport list is ignored
@@ -89,6 +91,22 @@ suspicion rather than something proven by a test, it says so.
 - No per-conversation lock: two fast messages can be processed in parallel and answered out of order or twice.
 - A model/tool failure returns "I'm having trouble completing that -- could you try rephrasing, or check the app directly?" in English.
 - Greetings/thanks/"ok" can still start tool loops (usage log: 514 chat calls for 40 player messages, ~13 model calls per player message).
+
+## Found while verifying the causes (Agent D, Phase 3)
+- **The WhatsApp webhook shows the model the current message twice.** `receive_whatsapp_webhook` stores the inbound player row and commits BEFORE `_handle_text`
+  calls `load_history`, so the history already ends with the current message and `process_message` appended it again (two consecutive `user` turns, and the
+  duplicate also made "the latest typed message" ambiguous for the gates). The in-app endpoint does not do this (it stores both rows after the reply). Fixed in
+  `AIChatService` (the trailing duplicate is dropped), no change needed in `webhooks.py`.
+- `AIChatService._available_sports` (the "Sports on this platform" line) read the owner-typed `venues.sports`, not the active courts, so a venue could advertise a
+  sport it had no court for. The facts layer now takes sports from the ACTIVE courts (falling back to `venues.sports` only for a venue with no court yet).
+- `_sport_choice_missing` accepted any sport-like word in ANY earlier player message of the history (so a word from a stale chat counted) and used a hard-coded
+  regex of sport words; it is replaced by the per-turn state (sport, with provenance) and the real sports list.
+- `_ensure_exact_slot_stated` appended an English-only line ("To confirm: ... Shall I book it? Reply Yes or No") next to the model's own "shall I book it?", so a
+  Roman Urdu player got two questions, one of them in English (P5/P7). The line is now localized and replaces the model's own confirmation question.
+- `sanitize_reply` did not strip emoji or the word "UTC"; it now does (both are repaired, not regenerated).
+- The give-up message after the tool loop ("I'm having trouble completing that...") was English-only and generic; it is a localized template now.
+- Test-environment note: `TEST_DB_NAME` must be lower-case (Postgres folds an unquoted `CREATE DATABASE court_booking_test_agentD` to lower case, but the test
+  engine connects with the name as given).
 
 ## Fix plan (implemented in Phase 3)
 1. `ChatState` derived on every turn from stored message metadata + the current message, with field provenance; persisted on the bot message's `metadata` (no schema change).

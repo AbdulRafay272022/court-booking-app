@@ -275,6 +275,8 @@ def decide(fold: FoldResult, facts: PlatformFacts, *, support: str | None = None
     if turn.intent in ("affirmative", "negative") and not progress:
         if pending in ASKABLE:
             return unclear_reply(state, facts, turn, support)
+        if "?" in (fold.prev_ai_text or ""):
+            return None  # a "yes" / "no" to a question this guard layer does not own ("2 ghante khelna chahte hain?"): the model answers it
         return Decision(T.render("ack_no" if turn.intent == "negative" else "ack_idle", lang), "ack", None)
 
     # 6. "any other option?" is a real availability search (the model, with the state)

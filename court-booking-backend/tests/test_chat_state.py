@@ -197,6 +197,40 @@ def test_two_sports_in_one_message():
     assert scan_sports("futsal ya padel?") == ["futsal", "padel"]
 
 
+# --- whole sentences, the way players actually write them -------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text, sport, day, start, minutes",
+    [
+        ("kal raat 9 baje se 11 baje tak futsal", "Futsal", "2026-10-14", "21:00", 120),
+        ("aaj shaam 6 se 8 padel Court 2", "Padel", "2026-10-13", "18:00", 120),
+        ("kal subah 10 baje se 12 baje tak padel Court 3", "Padel", "2026-10-14", "10:00", 120),
+        ("parson 7pm padel Court 2 2 ghantay", "Padel", "2026-10-15", "19:00", 120),
+        ("5 pm tomorrow futsal 1 hr", "Futsal", "2026-10-14", "17:00", 60),
+        ("Futsal friday 8-10 pm", "Futsal", "2026-10-16", "20:00", 120),
+        ("26/10 ko 9 pm padel Court 2", "Padel", "2026-10-26", "21:00", None),
+        ("Can I book Court A on 20 October from 6pm to 8pm?", "Futsal", "2026-10-20", "18:00", 120),
+        ("book padel Court 2 for 2 hours tonight", "Padel", "2026-10-13", None, 120),
+        ("Tomorrow morning 7 am futsal", "Futsal", "2026-10-14", "07:00", None),
+        ("7 shaam futsal kal", "Futsal", "2026-10-14", "19:00", None),
+        ("futsal kal raat ke 10 baje", "Futsal", "2026-10-14", "22:00", None),
+        ("padel Court 2 19:00 se 21:00 kal", "Padel", "2026-10-14", "19:00", 120),
+        ("kal 9:30 pm futsal", "Futsal", "2026-10-14", "21:30", None),
+        ("dopahar 2 baje futsal kal 1 ghanta", "Futsal", "2026-10-14", "14:00", 60),
+        ("sunday ko 4 se 6 baje shaam padel Court 3", "Padel", "2026-10-18", "16:00", 120),
+        ("1 AM to 3 AM futsal kal", "Futsal", "2026-10-14", "01:00", 120),
+        ("kal ke liye 2 ghante ka padel court chahiye subah 7 baje Court 2", "Padel", "2026-10-14", "07:00", 120),
+        ("futsal 12 baje raat kal", "Futsal", "2026-10-14", "00:00", None),
+        ("Court 2 ka slot kal", "Padel", "2026-10-14", None, None),
+        ("9 se 12 ka futsal kal raat", "Futsal", "2026-10-14", "21:00", 180),
+    ],
+)
+def test_real_sentences(text, sport, day, start, minutes):
+    s = run([], text).state
+    assert (s.sport, s.date, s.start_time, s.duration_minutes) == (sport, day, start, minutes), (text, s)
+
+
 # --- the fold: state from messages ------------------------------------------------------------------------------------------------------------
 
 
