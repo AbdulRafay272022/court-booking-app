@@ -21,7 +21,7 @@ from app.services.ai.tools import BOOKING_TOOLS
 from app.services.ai.usage import log_ai_usage
 from app.services.availability_service import GRID_MINUTES, MAX_BOOKING_MINUTES, AvailabilityService, min_slots
 from app.models.booking import Booking, BookingStatus
-from app.services import chat_guards, chat_templates, chat_validator
+from app.services import chat_guards, chat_templates, chat_validator, reply_text
 from app.services.booking_service import BookingService
 from app.services.chat_facts import PlatformFacts, facts_block, load_hours, load_platform_facts
 from app.services.chat_state import (
@@ -458,6 +458,9 @@ class AIChatService:
         rows: list[Row] = []
         for m in reversed(result.scalars().all()):
             is_player = m.sender_type == "player"
+            if not is_player and (m.meta or {}).get("fallback"):
+                continue  # a failure notice the system sent: never part of the conversation the model or the state sees
+
             rows.append(
                 Row(
                     role="player" if is_player else "ai",
@@ -544,20 +547,12 @@ class AIChatService:
         # surfaces as a confusing error to end users.
         if not await flag_on(self.db, "ai_chat_booking"):
             logger.warning("ai_chat.disabled_by_kill_switch")
-            return ChatResult(
-                reply="Thanks for your message! Our team will get back to you shortly. "
-                "You can also browse venues and book directly in the app.",
-                model=None,
-            )
+            return ChatResult(reply=reply_text.handoff_message(reply_language([message])), model=None)
         try:
             provider = get_chat_provider(self.settings)
         except UnconfiguredProviderError:
             logger.info("ai_chat.skipped_no_api_key")
-            return ChatResult(
-                reply="Thanks for your message! Our team will get back to you shortly. "
-                "You can also browse venues and book directly in the app.",
-                model=None,
-            )
+            return ChatResult(reply=reply_text.handoff_message(reply_language([message])), model=None)
 
         # 1. the conversation state, computed from the player's own words (never from the model's memory), and the real facts
         facts = await self._facts()
@@ -631,6 +626,7 @@ class AIChatService:
                         system_prompt += "\n\n" + chat_validator.corrective_instruction(issues, vctx)
                         continue
                     text, actions = self._safe_fallback(fold, facts, held), []
+                self._localize_actions(actions, state.language)
                 return ChatResult(
                     reply=text, actions=actions, model=model_tier, tool_calls=tool_calls_made, state=self._final_state(fold, facts, text, actions)
                 )
@@ -678,13 +674,23 @@ class AIChatService:
                 )
             messages.append({"role": "user", "content": tool_results})
 
+        self._localize_actions(actions, state.language)
         return ChatResult(
-            reply=self._safe_fallback(fold, facts, held) if held else chat_templates.render("fallback_unavailable", state.language),
+            reply=self._safe_fallback(fold, facts, held) if held else reply_text.trouble_message(state.language),
             actions=actions,
             model=model_tier,
             tool_calls=tool_calls_made,
             state=self._final_state(fold, facts, "", actions),
         )
+
+    @staticmethod
+    def _localize_actions(actions: list[ChatAction], lang: str) -> None:
+        """Yes / No labels in the player's language (WhatsApp button titles; the stored `type` is what clients act on)."""
+        for action in actions:
+            if action.type == "confirm_booking":
+                action.label = reply_text.confirm_button_title(lang)
+            elif action.type == "decline":
+                action.label = reply_text.decline_button_title(lang)
 
     @staticmethod
     def _turn_directives(fold: FoldResult) -> str | None:

@@ -444,7 +444,7 @@ async def test_tool_loop_stops_after_max_iterations(
     # "hello" alone is answered by the greeting guard with no model call (Phase 3), so ask for something that needs the model
     result = await service.process_message(user=player, message="parking hai kya?", history=[])
     # Phase 3: the give-up message is a localized template (the player wrote Roman Urdu)
-    assert "check nahi ho saka" in result.reply.lower()
+    assert "poora nahi kar saka" in result.reply.lower()  # reply_text.trouble_message("ru")
 
 
 # --- Section 32 Part 8: outgoing-reply sanitizer -----------------------------

@@ -489,6 +489,19 @@ async def test_player_language_survives_the_end_of_the_conversation(db_session, 
     assert await service.load_history(user, "whatsapp") == []  # while the conversation itself is long over
 
 
+async def test_failure_notices_are_not_part_of_the_conversation(db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule):
+    await arena(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    user = await make_user("+923050000080", role=UserRole.PLAYER, name="Sara")
+    now = datetime.now(timezone.utc)
+    for i, (role, content, meta) in enumerate(
+        [("player", "padel kal 9pm", None), ("ai", "Maaf kijiye, kuch masla ho gaya.", {"fallback": True}), ("player", "hello", None)]
+    ):
+        db_session.add(Message(sender_id=user.id, sender_type=role, channel="app", content=content, created_at=now - timedelta(minutes=10 - i), meta=meta))
+    await db_session.commit()
+    history = await AIChatService(db_session, get_settings()).load_history(user, "app")
+    assert [h["content"] for h in history] == ["padel kal 9pm", "hello"] or all("masla" not in h["content"] for h in history)
+
+
 # --- the state itself ------------------------------------------------------------------------------------------------------------------------------------
 
 
