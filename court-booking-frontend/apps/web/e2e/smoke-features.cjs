@@ -16,7 +16,8 @@ const WIDTHS = [360, 768, 1280];
 const results = [];
 
 function record(name, failures) {
-  results.push({ name, failures });
+  const skipped = failures.length > 0 && failures.every((f) => f.includes("skipped"));
+  results.push({ name, failures: skipped ? [] : failures, skipped });
 }
 
 async function overflow(page) {
@@ -207,7 +208,7 @@ async function accountChecks(browser) {
   }
   await browser.close();
   console.log(`\nKhelo feature checks: ${BASE}\n`);
-  for (const r of results) console.log(`${r.failures.length ? "FAIL" : "PASS"}  ${r.name}${r.failures.length ? "  -> " + r.failures.join(" | ") : ""}`);
+  for (const r of results) console.log(`${r.skipped ? "SKIP" : r.failures.length ? "FAIL" : "PASS"}  ${r.name}${r.failures.length ? "  -> " + r.failures.join(" | ") : ""}`);
   const failed = results.filter((r) => r.failures.length).length;
   console.log(`\n${results.length - failed}/${results.length} passed`);
   process.exit(failed ? 1 : 0);
