@@ -32,7 +32,7 @@ type Instant = Parameters<typeof formatDate>[0];
  * from `@court-booking/types` / `lib/format.ts` directly, so that Roman Urdu mode changes them too. English output is exactly what the
  * shared package functions return today. Money stays "PKR 3,500" in both languages (formatPKR is language-free).
  *
- * The implementation below is the English baseline; the localisation work replaces the bodies (tables live in messages/*/fmt.ts) without
+ * The implementation below is the English baseline; the localisation work replaces the bodies (the word tables live in the fmt message files) without
  * changing any signature.
  */
 export interface Fmt {
