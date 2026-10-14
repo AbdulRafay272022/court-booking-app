@@ -27,7 +27,7 @@ import {
   upcomingBlackouts,
   weeklyHoursLines,
 } from "@court-booking/types";
-import { formatDistance, formatRelativeTime } from "./format";
+import { formatDistance } from "./format";
 import { translate, type Lang, type MessageKey } from "./i18n";
 import { en } from "@/messages";
 

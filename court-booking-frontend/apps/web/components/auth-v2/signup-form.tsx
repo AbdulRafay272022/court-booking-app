@@ -285,7 +285,7 @@ export function SignupForm() {
                   error={errors.name}
                   showError={show("name")}
                   autoComplete="name"
-                  placeholder="Bilal Ahmed"
+                  placeholder="Bilal Ahmed" // i18n-ignore (sample name)
                 />
 
                 <div className="flex flex-col gap-2">
