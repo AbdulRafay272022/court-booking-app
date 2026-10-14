@@ -1,6 +1,7 @@
 "use client";
 
 import { parseTime24, pktDayTabs, toTime24, type Meridiem, type Time12 } from "@court-booking/types";
+import { useT } from "@/components/i18n/lang-provider";
 import { FieldLabel } from "./ui";
 
 /**
@@ -30,6 +31,7 @@ export function TimeField12({
   optional?: boolean;
   ariaLabel?: string;
 }) {
+  const t = useT();
   const parsed = parseTime24(value);
   const name = ariaLabel ?? label;
   // keep an existing off-grid minute (e.g. 06:07 from an older entry) selectable instead of silently showing :00
@@ -45,21 +47,21 @@ export function TimeField12({
       {label ? <FieldLabel>{label}</FieldLabel> : null}
       <div role="group" aria-label={name} className="flex gap-1.5">
         <select
-          aria-label={`${name} hour`}
+          aria-label={t("setup.time.hour", { name })}
           className={`${selectClass} flex-1 min-w-[3.75rem]`}
           value={parsed ? parsed.hour : ""}
           onChange={(e) => (e.target.value === "" ? onChange("") : set({ hour: Number(e.target.value) }))}
         >
-          {optional || !parsed ? <option value="">{optional ? "Any" : "--"}</option> : null}
+          {optional || !parsed ? <option value="">{optional ? t("setup.time.any") : "--"}</option> : null}
           {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
             <option key={h} value={h}>
-              {h}
+              {String(h).padStart(2, "0")}
             </option>
           ))}
         </select>
         <select
-          aria-label={`${name} minutes`}
-          className={`${selectClass} flex-1 min-w-[3.25rem]`}
+          aria-label={t("setup.time.minutes", { name })}
+          className={`${selectClass} flex-1 min-w-[3.75rem]`}
           value={parsed ? parsed.minute : 0}
           onChange={(e) => set({ minute: Number(e.target.value) })}
           disabled={optional && !parsed}
@@ -71,7 +73,7 @@ export function TimeField12({
           ))}
         </select>
         <select
-          aria-label={`${name} AM or PM`}
+          aria-label={t("setup.time.ampm", { name })}
           className={`${selectClass} flex-1 min-w-[3.75rem]`}
           value={parsed ? parsed.meridiem : "AM"}
           onChange={(e) => set({ meridiem: e.target.value as Meridiem })}

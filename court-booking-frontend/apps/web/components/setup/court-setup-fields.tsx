@@ -17,6 +17,8 @@ import {
   type CourtSetup,
   type PricingRuleDraft,
 } from "@court-booking/types";
+import { useT } from "@/components/i18n/lang-provider";
+import type { TFunction } from "@/lib/i18n";
 import { Chip, Field, FieldLabel, SectionCard, SectionLabel } from "./ui";
 import { TimeField12 } from "./time-fields";
 
@@ -35,6 +37,7 @@ export function CourtSetupFields({
   /** Venue Settings only: say what changing the slot length does to bookings that already exist. */
   slotChangeNote?: boolean;
 }) {
+  const t = useT();
   const problem = courtSetupProblem(value);
   const hoursProblem = problem && !/price/i.test(problem) ? problem : null;
   const hidden = hiddenRates(value);
@@ -68,49 +71,57 @@ export function CourtSetupFields({
       </SectionCard>
 
       <SectionCard>
-        <div className="flex items-center justify-between gap-3">
-          <SectionLabel>Opening hours</SectionLabel>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <SectionLabel>{t("setup.hours.title")}</SectionLabel>
           <button
             type="button"
             onClick={() => onChange({ sameHoursEveryDay: !value.sameHoursEveryDay })}
-            className="text-[13px] font-semibold text-owner-accent"
+            className="min-h-10 text-[13px] font-semibold text-owner-accent"
           >
-            {value.sameHoursEveryDay ? "Set different hours per day" : "Use same hours every day"}
+            {value.sameHoursEveryDay ? t("setup.hours.toggleDifferent") : t("setup.hours.toggleSame")}
           </button>
         </div>
-        <p className="text-[12.5px] font-medium text-owner-ink-faint">Times are Pakistan time (PKT).</p>
+        <p className="text-[12.5px] font-medium text-owner-ink-faint">{t("setup.hours.pkt")}</p>
 
         {value.sameHoursEveryDay ? (
-          <div className="flex flex-wrap gap-3">
-            <TimeField12 label="Opens" value={value.openTime} onChange={(v) => onChange({ openTime: v })} />
-            <TimeField12 label="Closes" value={value.closeTime} onChange={(v) => onChange({ closeTime: v })} />
+          <div className="flex flex-col gap-2">
+            <HoursSummary open={value.openTime} close={value.closeTime} t={t} />
+            <div className="flex flex-wrap gap-3">
+              <TimeField12 label={t("setup.hours.opens")} value={value.openTime} onChange={(v) => onChange({ openTime: v })} />
+              <TimeField12 label={t("setup.hours.closes")} value={value.closeTime} onChange={(v) => onChange({ closeTime: v })} />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {DAY_LABELS.map((label, day) => {
+            {DAY_LABELS.map((_label, day) => {
+              const dayName = t(`setup.day.${day}` as "setup.day.0");
               const o = value.perDayOverrides[day] ?? { open: value.openTime, close: value.closeTime };
+              const kind = hoursKind(o.open, o.close);
               return (
-                <div key={day} className="flex flex-wrap items-end gap-3">
-                  <span className="text-sm font-medium w-full sm:w-10 sm:pb-3">
-                    {label}
-                    {hoursKind(o.open, o.close) !== "same-day" ? (
-                      <span className="ml-2 text-[11.5px] font-semibold text-owner-accent">
-                        {hoursKind(o.open, o.close) === "24-hours" ? "Open 24 hours" : "Closes next day"}
+                <div key={day} role="group" aria-label={dayName} className="flex flex-col gap-2 rounded-[10px] border border-owner-border p-3" data-testid={`hours-day-${day}`}>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-sm font-semibold text-owner-ink">{dayName}</span>
+                    {kind !== "same-day" ? (
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full border border-owner-border bg-owner-bg px-2.5 py-0.5 text-[11.5px] font-semibold text-owner-ink-muted" data-testid="hours-pill">
+                        {kind === "24-hours" ? t("setup.hours.pillOpen24") : t("setup.hours.pillNextDay")}
                       </span>
                     ) : null}
-                  </span>
-                  <TimeField12
-                    label=""
-                    ariaLabel={`${label} opens`}
-                    value={o.open}
-                    onChange={(v) => onChange({ perDayOverrides: { ...value.perDayOverrides, [day]: { ...o, open: v } } })}
-                  />
-                  <TimeField12
-                    label=""
-                    ariaLabel={`${label} closes`}
-                    value={o.close}
-                    onChange={(v) => onChange({ perDayOverrides: { ...value.perDayOverrides, [day]: { ...o, close: v } } })}
-                  />
+                  </div>
+                  <HoursSummary open={o.open} close={o.close} t={t} />
+                  <div className="flex flex-wrap gap-3">
+                    <TimeField12
+                      label={t("setup.hours.opens")}
+                      ariaLabel={t("setup.hours.opensAria", { day: dayName })}
+                      value={o.open}
+                      onChange={(v) => onChange({ perDayOverrides: { ...value.perDayOverrides, [day]: { ...o, open: v } } })}
+                    />
+                    <TimeField12
+                      label={t("setup.hours.closes")}
+                      ariaLabel={t("setup.hours.closesAria", { day: dayName })}
+                      value={o.close}
+                      onChange={(v) => onChange({ perDayOverrides: { ...value.perDayOverrides, [day]: { ...o, close: v } } })}
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -172,15 +183,28 @@ export function CourtSetupFields({
   );
 }
 
+/** One line that states the pair of times, e.g. "10:00 AM – 3:00 AM (next day)"; it re-renders whenever a select changes. */
+function HoursSummary({ open, close, t }: { open: string; close: string; t: TFunction }) {
+  const kind = hoursKind(open, close);
+  const text =
+    kind === "24-hours"
+      ? t("setup.hours.summaryOpen24")
+      : t(kind === "next-day" ? "setup.hours.summaryNextDay" : "setup.hours.summary", { open: formatTime24As12(open), close: formatTime24As12(close) });
+  return (
+    <p aria-live="polite" className="text-[13.5px] font-semibold text-owner-ink" data-testid="hours-summary">
+      {text}
+    </p>
+  );
+}
+
 /** Says what the pair of times means when the court stays open past midnight (Section 32 Part 3). */
 function HoursKindNote({ open, close }: { open: string; close: string }) {
+  const t = useT();
   const kind = hoursKind(open, close);
   if (kind === "same-day") return null;
   return (
     <p className="text-[13px] font-semibold text-owner-accent" data-testid="hours-kind-note">
-      {kind === "24-hours"
-        ? "Open 24 hours: each day runs from its opening time to the same time the next morning."
-        : `Closes next day: the court stays open past midnight until ${formatTime24As12(close)} the next morning. That night belongs to the day it opens, so a Thursday 3 PM to 3 AM court covers Thursday 3 PM through Friday 3 AM.`}
+      {kind === "24-hours" ? t("setup.hours.noteOpen24") : t("setup.hours.noteNextDay", { close: formatTime24As12(close) })}
     </p>
   );
 }
