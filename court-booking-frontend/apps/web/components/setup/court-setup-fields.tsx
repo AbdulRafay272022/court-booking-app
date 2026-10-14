@@ -8,16 +8,15 @@ import {
   WEEKEND_NUMBERS,
   courtSetupProblem,
   hiddenRates,
-  formatDuration,
   formatTime24As12,
   hoursKind,
   makePricingRule,
   slotPreview,
-  slotPreviewText,
   type CourtSetup,
   type PricingRuleDraft,
 } from "@court-booking/types";
 import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import type { TFunction } from "@/lib/i18n";
 import { Chip, Field, FieldLabel, SectionCard, SectionLabel } from "./ui";
 import { TimeField12 } from "./time-fields";
@@ -38,6 +37,7 @@ export function CourtSetupFields({
   slotChangeNote?: boolean;
 }) {
   const t = useT();
+  const fmt = useFmt();
   const problem = courtSetupProblem(value);
   const hoursProblem = problem && !/price/i.test(problem) ? problem : null;
   const hidden = hiddenRates(value);
@@ -53,19 +53,19 @@ export function CourtSetupFields({
   return (
     <>
       <SectionCard>
-        <SectionLabel>Minimum booking time</SectionLabel>
+        <SectionLabel>{t("setup.slot.title")}</SectionLabel>
         <p className="text-[12.5px] font-medium text-owner-ink-faint">
-          Time is offered in 30-minute slots. Players must book at least this long (in a row) and can add 30 minutes at a time.
+          {t("setup.slot.help")}
         </p>
         <div className="flex flex-wrap gap-2">
           {SLOT_MINUTES_OPTIONS.map((m) => (
-            <Chip key={m} label={`${m} min`} selected={value.slotMinutes === m} onClick={() => onChange({ slotMinutes: m })} />
+            <Chip key={m} label={t("setup.slot.min", { m })} selected={value.slotMinutes === m} onClick={() => onChange({ slotMinutes: m })} />
           ))}
         </div>
         <SlotPreviewLine value={value} />
         {slotChangeNote ? (
           <p className="text-[12.5px] font-medium text-owner-ink-faint">
-            Bookings already made keep their own times if you change this; the price entered below is for one minimum booking. Any new time that would overlap one of them stays unavailable.
+            {t("setup.slot.changeNote")}
           </p>
         ) : null}
       </SectionCard>
@@ -130,43 +130,42 @@ export function CourtSetupFields({
         {value.sameHoursEveryDay ? <HoursKindNote open={value.openTime} close={value.closeTime} /> : null}
         {hoursProblem ? (
           <p role="alert" className="text-[13px] font-semibold text-owner-danger">
-            {hoursProblem}
+            {fmt.validation(hoursProblem)}
           </p>
         ) : null}
       </SectionCard>
 
       <SectionCard>
-        <SectionLabel>Prices for this court</SectionLabel>
+        <SectionLabel>{t("setup.pricing.title")}</SectionLabel>
         <p className="text-[12.5px] font-medium text-owner-ink-faint">
-          The first rate is the everyday price. Add a rate for peak hours or weekends: pick the days and the times it
-          applies to, and it replaces the everyday price for those slots.
+          {t("setup.pricing.help")}
         </p>
         {value.pricingRules.map((rule) => (
           <div key={rule.id} className="border border-owner-border rounded-[10px] p-4 flex flex-col gap-3">
             <div className="flex items-end gap-3">
-              <Field label="Name" value={rule.name} onChange={(e) => updateRule(rule.id, { name: e.target.value })} />
+              <Field label={t("setup.pricing.name")} value={rule.name} onChange={(e) => updateRule(rule.id, { name: e.target.value })} />
               {value.pricingRules.length > 1 ? (
                 <button type="button" onClick={() => removeRule(rule.id)} className="pb-3 text-[12.5px] font-medium text-owner-danger">
-                  Remove
+                  {t("setup.pricing.remove")}
                 </button>
               ) : null}
             </div>
             <div className="flex flex-wrap gap-3">
               <Field
-                label={`Per ${formatDuration(value.slotMinutes)} (PKR)`}
+                label={t("setup.pricing.perSlot", { duration: fmt.duration(value.slotMinutes) })}
                 value={rule.pricePerSlot}
                 onChange={(e) => updateRule(rule.id, { pricePerSlot: e.target.value.replace(/\D/g, "") })}
                 inputMode="numeric"
                 placeholder="2500"
                 mono
               />
-              <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => updateRule(rule.id, { startTime: v || null })} />
-              <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
+              <TimeField12 label={t("setup.pricing.from")} optional value={rule.startTime ?? ""} onChange={(v) => updateRule(rule.id, { startTime: v || null })} />
+              <TimeField12 label={t("setup.pricing.to")} optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
             </div>
             <RuleDays rule={rule} onChange={(dayOfWeek) => updateRule(rule.id, { dayOfWeek })} />
             {hidden[rule.id] ? (
               <p role="alert" className="text-[12.5px] font-semibold text-owner-danger">
-                {hidden[rule.id].message}
+                {fmt.validation(hidden[rule.id].message)}
               </p>
             ) : null}
           </div>
@@ -176,7 +175,7 @@ export function CourtSetupFields({
           onClick={() => onChange({ pricingRules: [...value.pricingRules, makePricingRule("Peak hours")] })}
           className="self-start min-h-10 px-3 rounded-lg border border-owner-border text-[13px] font-semibold text-owner-accent"
         >
-          + Add a peak or weekend rate
+          {t("setup.pricing.add")}
         </button>
       </SectionCard>
     </>
@@ -211,18 +210,26 @@ function HoursKindNote({ open, close }: { open: string; close: string }) {
 
 /** "11 slots a day, 6:00 AM to 10:30 PM", plus a warning when the closing time leaves a gap too short for a slot. */
 function SlotPreviewLine({ value }: { value: CourtSetup }) {
+  const t = useT();
+  const fmt = useFmt();
   if (value.sameHoursEveryDay) {
     const p = slotPreview(value.openTime, value.closeTime, GRID_MINUTES);
     return (
       <div className="flex flex-col gap-1" data-testid="slot-preview">
-        <p className="text-[13.5px] font-semibold text-owner-ink">{slotPreviewText(value.openTime, value.closeTime, GRID_MINUTES)}</p>
+        <p className="text-[13.5px] font-semibold text-owner-ink">{fmt.slotPreviewText(value.openTime, value.closeTime, GRID_MINUTES)}</p>
         <p className="text-[12.5px] font-medium text-owner-ink-faint">
-          Minimum booking: {formatDuration(value.slotMinutes)} ({Math.ceil(value.slotMinutes / GRID_MINUTES)} {value.slotMinutes <= GRID_MINUTES ? "slot" : "slots in a row"}).
+          {t(value.slotMinutes <= GRID_MINUTES ? "setup.slot.minBookingOne" : "setup.slot.minBookingMany", {
+            duration: fmt.duration(value.slotMinutes),
+            n: Math.ceil(value.slotMinutes / GRID_MINUTES),
+          })}
         </p>
         {p && p.lastEnd !== value.closeTime.slice(0, 5) ? (
           <p className="text-[12.5px] font-medium text-owner-ink-faint">
-            The last slot ends at {formatTime24As12(p.lastEnd)}; the time left before {formatTime24As12(value.closeTime)} is shorter than one{" "}
-            {formatDuration(GRID_MINUTES)} slot, so it is not offered.
+            {t("setup.slot.lastEnd", {
+              last: formatTime24As12(p.lastEnd),
+              close: formatTime24As12(value.closeTime),
+              slot: fmt.duration(GRID_MINUTES),
+            })}
           </p>
         ) : null}
       </div>
@@ -230,10 +237,10 @@ function SlotPreviewLine({ value }: { value: CourtSetup }) {
   }
   return (
     <p className="text-[13.5px] font-semibold text-owner-ink" data-testid="slot-preview">
-      Slots a day:{" "}
-      {DAY_LABELS.map((label, day) => {
+      {t("setup.slot.perDay")}{" "}
+      {DAY_LABELS.map((_label, day) => {
         const o = value.perDayOverrides[day] ?? { open: value.openTime, close: value.closeTime };
-        return `${label} ${slotPreview(o.open, o.close, GRID_MINUTES)?.count ?? 0}`;
+        return `${fmt.weekday(day)} ${slotPreview(o.open, o.close, GRID_MINUTES)?.count ?? 0}`;
       }).join(" · ")}
     </p>
   );
@@ -241,6 +248,8 @@ function SlotPreviewLine({ value }: { value: CourtSetup }) {
 
 /** Which days a price rule applies to: shortcuts for the common cases, and one toggle per weekday. */
 function RuleDays({ rule, onChange }: { rule: PricingRuleDraft; onChange: (days: number[] | null) => void }) {
+  const t = useT();
+  const fmt = useFmt();
   const days = rule.dayOfWeek;
   const same = (a: number[] | null, b: number[]) => !!a && a.length === b.length && b.every((d) => a.includes(d));
   function toggle(day: number) {
@@ -250,15 +259,15 @@ function RuleDays({ rule, onChange }: { rule: PricingRuleDraft; onChange: (days:
   }
   return (
     <div className="flex flex-col gap-2">
-      <FieldLabel>Days this price applies to</FieldLabel>
+      <FieldLabel>{t("setup.days.label")}</FieldLabel>
       <div className="flex flex-wrap gap-2">
-        <Chip label="Every day" selected={days === null} onClick={() => onChange(null)} />
-        <Chip label="Weekdays" selected={same(days, WEEKDAY_NUMBERS)} onClick={() => onChange(WEEKDAY_NUMBERS)} />
-        <Chip label="Weekends" selected={same(days, WEEKEND_NUMBERS)} onClick={() => onChange(WEEKEND_NUMBERS)} />
+        <Chip label={t("setup.days.every")} selected={days === null} onClick={() => onChange(null)} />
+        <Chip label={t("setup.days.weekdays")} selected={same(days, WEEKDAY_NUMBERS)} onClick={() => onChange(WEEKDAY_NUMBERS)} />
+        <Chip label={t("setup.days.weekends")} selected={same(days, WEEKEND_NUMBERS)} onClick={() => onChange(WEEKEND_NUMBERS)} />
       </div>
       <div className="flex flex-wrap gap-2">
         {DAY_LABELS.map((label, day) => (
-          <Chip key={label} label={label} selected={days === null || days.includes(day)} onClick={() => toggle(day)} />
+          <Chip key={label} label={fmt.weekday(day)} selected={days === null || days.includes(day)} onClick={() => toggle(day)} />
         ))}
       </div>
     </div>

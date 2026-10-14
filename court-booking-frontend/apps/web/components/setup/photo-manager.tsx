@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { compressImage } from "@/lib/compress-image";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { useT } from "@/components/i18n/lang-provider";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -12,6 +13,7 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
  * onReorder to the api-client + query invalidation and passes the fresh urls/keys. */
 export function PhotoManager({
   label,
+  testKey,
   photoUrls,
   photoKeys,
   max,
@@ -19,12 +21,15 @@ export function PhotoManager({
   onReorder,
 }: {
   label: string;
+  /** Stable (English) key for the data-testid; defaults to `label`. Pass it when `label` is translated. */
+  testKey?: string;
   photoUrls: string[];
   photoKeys: string[];
   max: number;
   onUpload: (blob: Blob) => Promise<void>;
   onReorder: (keys: string[]) => Promise<void>;
 }) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +42,7 @@ export function PhotoManager({
     try {
       await fn();
     } catch (e) {
-      setError(friendlyErrorMessage(e));
+      setError(friendlyErrorMessage(e, t));
     } finally {
       setBusy(false);
     }
@@ -58,31 +63,31 @@ export function PhotoManager({
     for (const file of files) {
       n += 1;
       if (!ALLOWED_TYPES.includes(file.type)) {
-        problems.push(`${file.name}: only JPEG, PNG or WebP images are allowed.`);
+        problems.push(t("setup.photos.badType", { file: file.name }));
         continue;
       }
       if (room <= 0) {
-        problems.push(`${file.name}: skipped, the limit of ${max} photos is reached.`);
+        problems.push(t("setup.photos.limitSkipped", { file: file.name, max }));
         continue;
       }
-      setProgress(`Uploading ${n} of ${files.length}…`);
+      setProgress(t("setup.photos.uploading", { n, total: files.length }));
       try {
         const blob = await compressImage(file);
         if (blob.size > MAX_BYTES) {
-          problems.push(`${file.name}: too large (max 5 MB).`);
+          problems.push(t("setup.photos.tooLarge", { file: file.name }));
           continue;
         }
         await onUpload(blob);
         room -= 1;
         done += 1;
       } catch (err) {
-        problems.push(`${file.name}: ${friendlyErrorMessage(err)}`);
+        problems.push(`${file.name}: ${friendlyErrorMessage(err, t)}`);
       }
     }
     setProgress(null);
     setBusy(false);
     if (problems.length > 0) {
-      setError(`${done > 0 ? `${done} of ${files.length} uploaded. ` : ""}${problems.join(" ")}`);
+      setError(`${done > 0 ? `${t("setup.photos.uploadedCount", { done, total: files.length })} ` : ""}${problems.join(" ")}`);
     }
   }
 
@@ -97,40 +102,40 @@ export function PhotoManager({
   const remove = (i: number) => run(() => onReorder(photoKeys.filter((_, idx) => idx !== i)));
 
   return (
-    <div className="flex flex-col gap-3" data-testid={`photos-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+    <div className="flex flex-col gap-3" data-testid={`photos-${(testKey ?? label).toLowerCase().replace(/\s+/g, "-")}`}>
       <div className="flex items-center justify-between">
         <p className="text-[13.5px] font-semibold text-owner-ink-muted">{label}</p>
         <span className="text-[12px] text-owner-ink-faint">{photoKeys.length}/{max}</span>
       </div>
 
       {photoUrls.length === 0 ? (
-        <p className="text-owner-ink-faint text-[13px]">No photos yet.</p>
+        <p className="text-owner-ink-faint text-[13px]">{t("setup.photos.none")}</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {photoUrls.map((url, i) => (
             <div key={photoKeys[i] ?? url} className="rounded-xl overflow-hidden border border-owner-border bg-owner-surface">
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`${label} photo ${i + 1}`} className="w-full h-28 object-cover" />
+                <img src={url} alt={t("setup.photos.alt", { label, n: i + 1 })} className="w-full h-28 object-cover" />
                 {i === 0 ? (
                   <span className="absolute top-1.5 left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-owner-accent text-white">
-                    COVER
+                    {t("setup.photos.coverBadge")}
                   </span>
                 ) : null}
               </div>
               <div className="flex items-center justify-between px-2 py-1.5 gap-1">
                 <div className="flex gap-1">
-                  <button aria-label="Move left" disabled={busy || i === 0} onClick={() => move(i, i - 1)}
+                  <button aria-label={t("setup.photos.moveLeft")} disabled={busy || i === 0} onClick={() => move(i, i - 1)}
                     className="text-owner-ink-muted disabled:opacity-30 text-sm px-1">◀</button>
-                  <button aria-label="Move right" disabled={busy || i === photoKeys.length - 1} onClick={() => move(i, i + 1)}
+                  <button aria-label={t("setup.photos.moveRight")} disabled={busy || i === photoKeys.length - 1} onClick={() => move(i, i + 1)}
                     className="text-owner-ink-muted disabled:opacity-30 text-sm px-1">▶</button>
                   {i !== 0 ? (
-                    <button aria-label="Set as cover" disabled={busy} onClick={() => setCover(i)}
-                      className="text-owner-accent text-[11px] font-semibold disabled:opacity-40">Cover</button>
+                    <button aria-label={t("setup.photos.setCoverAria")} disabled={busy} onClick={() => setCover(i)}
+                      className="text-owner-accent text-[11px] font-semibold disabled:opacity-40">{t("setup.photos.cover")}</button>
                   ) : null}
                 </div>
-                <button aria-label="Delete photo" disabled={busy} onClick={() => remove(i)}
-                  className="text-owner-danger text-[11px] font-semibold disabled:opacity-40">Delete</button>
+                <button aria-label={t("setup.photos.deleteAria")} disabled={busy} onClick={() => remove(i)}
+                  className="text-owner-danger text-[11px] font-semibold disabled:opacity-40">{t("setup.photos.delete")}</button>
               </div>
             </div>
           ))}
@@ -145,7 +150,7 @@ export function PhotoManager({
         disabled={busy || atLimit}
         className="self-start px-4 h-10 rounded-xl font-semibold border border-owner-border text-owner-ink disabled:opacity-40"
       >
-        {busy ? (progress ?? "Working…") : atLimit ? `Limit ${max} reached` : "+ Add photos"}
+        {busy ? (progress ?? t("setup.photos.working")) : atLimit ? t("setup.photos.limit", { max }) : t("setup.photos.add")}
       </button>
     </div>
   );
