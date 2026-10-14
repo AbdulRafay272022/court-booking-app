@@ -8,8 +8,8 @@ import { ApiError } from "@court-booking/api-client";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-
-const WEEKDAYS = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey } from "@/lib/i18n";
 
 function formatHourRange(hour: number): string {
   const pad = (h: number) => String(h % 24).padStart(2, "0");
@@ -17,6 +17,7 @@ function formatHourRange(hour: number): string {
 }
 
 export default function OwnerGrowthPage() {
+  const t = useT();
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
 
   const query = useQuery({
@@ -32,8 +33,8 @@ export default function OwnerGrowthPage() {
   return (
     <div className="p-8 max-w-3xl flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Fill your empty slots</h1>
-        <p className="text-owner-ink-faint text-sm">Based on your venue's booking history</p>
+        <h1 className="text-2xl font-bold">{t("odash.growth.title")}</h1>
+        <p className="text-owner-ink-faint text-sm">{t("odash.growth.sub")}</p>
       </div>
 
       {showSwitcher ? (
@@ -52,7 +53,7 @@ export default function OwnerGrowthPage() {
       ) : null}
 
       {venuesLoading || query.isLoading ? (
-        <p className="text-owner-ink-faint">Loading…</p>
+        <p className="text-owner-ink-faint">{t("odash.growth.loading")}</p>
       ) : ineligible ? (
         <div className="bg-owner-surface border border-owner-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
           <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "#FBF0DD" }}>
@@ -60,21 +61,19 @@ export default function OwnerGrowthPage() {
               <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.6-6.2 4.6 2.4-7.4L2 9.4h7.6z" />
             </svg>
           </div>
-          <p className="font-bold">Growth suggestions are a premium feature</p>
+          <p className="font-bold">{t("odash.growth.premium.title")}</p>
           <p className="text-owner-ink-faint text-sm max-w-sm">
-            Switch on Growth suggestions under Premium to see which slots at {activeVenue?.name ?? "this venue"} are
-            underbooked and get pricing suggestions to fill them.
+            {t("odash.growth.premium.body", { venue: activeVenue?.name ?? t("odash.growth.thisVenue") })}
           </p>
           <a href="/dashboard/owner/premium" className="text-sm font-semibold underline" style={{ color: "#0E6274" }}>
-            Go to Premium
+            {t("odash.growth.premium.link")}
           </a>
         </div>
       ) : query.isError ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(query.error, t)} onRetry={() => query.refetch()} tone="owner" />
       ) : suggestions.length === 0 ? (
         <div className="bg-owner-surface border border-owner-border rounded-xl p-10 text-center text-owner-ink-faint">
-          Check back in a few weeks — we need a bit more booking history at this venue before we can suggest anything
-          useful.
+          {t("odash.growth.empty")}
         </div>
       ) : (
         <div className="flex flex-col gap-3.5">
@@ -91,21 +90,21 @@ export default function OwnerGrowthPage() {
                   </div>
                   <div>
                     <p className="font-bold text-[15px]">
-                      {WEEKDAYS[s.day_of_week] ?? "This slot"} {formatHourRange(s.hour)}
+                      {s.day_of_week >= 0 && s.day_of_week <= 6 ? t(`odash.growth.day.${s.day_of_week}` as MessageKey) : t("odash.growth.thisSlot")} {formatHourRange(s.hour)}
                     </p>
                     <p className="text-owner-ink-muted text-sm mt-0.5">
-                      {growthCourt ? courtLabel(growthCourt.name, growthCourt.sport) : "Court"} · {s.suggestion}
+                      {growthCourt ? courtLabel(growthCourt.name, growthCourt.sport) : t("odash.growth.court")} · {s.suggestion}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-8">
-                  <ComparisonBar label="THIS SLOT" fraction={s.booking_rate} color="#9C5C0A" />
-                  <ComparisonBar label="VENUE AVG" fraction={s.venue_average} color="#5B7079" />
+                  <ComparisonBar label={t("odash.growth.bar.slot")} fraction={s.booking_rate} color="#9C5C0A" />
+                  <ComparisonBar label={t("odash.growth.bar.avg")} fraction={s.venue_average} color="#5B7079" />
                 </div>
 
                 <p className="text-owner-ink-fainter text-xs">
-                  Based on {s.weeks_of_data} week{s.weeks_of_data === 1 ? "" : "s"} of data
+                  {s.weeks_of_data === 1 ? t("odash.growth.weeks.one") : t("odash.growth.weeks.many", { n: s.weeks_of_data })}
                 </p>
               </div>
             );
@@ -115,7 +114,7 @@ export default function OwnerGrowthPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9C5C0A" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.6-6.2 4.6 2.4-7.4L2 9.4h7.6z" />
             </svg>
-            These insights come with your Growth suggestions feature
+            {t("odash.growth.note")}
           </p>
         </div>
       )}

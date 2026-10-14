@@ -5,7 +5,10 @@ import type { LedgerEntry } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatWhen } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
+import type { MessageKey } from "@/lib/i18n";
 
 /**
  * "Correct a payment" (Section 32 Part 5): reverses a mistaken ledger entry -- never edits or deletes it.
@@ -14,19 +17,26 @@ import { formatPKR, formatWhen } from "@/lib/format";
  * entries; an admin can correct any (enforced server-side, same accessible-booking check as recording one).
  */
 export function CorrectPaymentSheet({
-  entry,
-  onClose,
-  onReversed,
+  entry, // i18n-ignore
+  onClose, // i18n-ignore
+  onReversed, // i18n-ignore
 }: {
   entry: LedgerEntry;
   onClose: () => void;
   onReversed: () => void;
 }) {
+  const t = useT();
+  const fmt = useFmt();
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const valid = reason.trim().length > 0;
+  const methodLabel = (m: string) => {
+    const key = `odash.fix.m.${m}` as MessageKey;
+    const label = t(key);
+    return label !== key ? label : m.replace(/_/g, " ");
+  };
 
   async function handleConfirm() {
     if (!valid) return;
@@ -36,7 +46,7 @@ export function CorrectPaymentSheet({
       await api.payments.reverseEntry(entry.entry_id, reason.trim());
       onReversed();
     } catch (e) {
-      setError(friendlyErrorMessage(e));
+      setError(friendlyErrorMessage(e, t));
     } finally {
       setSubmitting(false);
     }
@@ -50,33 +60,30 @@ export function CorrectPaymentSheet({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-widest" style={{ color: "#8C3823" }}>CORRECT A PAYMENT</span>
-            <span className="text-[17px] font-bold text-owner-ink">{entry.player ?? "Walk-in"}</span>
+            <span className="text-[11px] font-bold tracking-widest" style={{ color: "#8C3823" }}>{t("odash.fix.title")}</span>
+            <span className="text-[17px] font-bold text-owner-ink">{entry.player ?? t("odash.fix.walkin")}</span>
           </div>
-          <button onClick={onClose} aria-label="Close" className="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style={{ background: "#F4F6F7" }}>
+          <button onClick={onClose} aria-label={t("odash.rec.close")} className="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style={{ background: "#F4F6F7" }}>
             ✕
           </button>
         </div>
 
         <div className="rounded-xl p-3.5 flex flex-col gap-1.5" style={{ background: "#F4F6F7" }}>
-          <Row label="Amount" value={`PKR ${formatPKR(entry.amount_pkr)}`} />
-          <Row label="Recorded" value={formatWhen(entry.recorded_at)} />
-          <Row label="Court" value={entry.court} />
-          <Row label="Booking" value={formatWhen(entry.starts_at)} />
-          <Row label="Method" value={entry.method.replace(/_/g, " ")} />
+          <Row label={t("odash.fix.amount")} value={`PKR ${formatPKR(entry.amount_pkr)}`} />
+          <Row label={t("odash.fix.recorded")} value={fmt.when(entry.recorded_at)} />
+          <Row label={t("odash.fix.court")} value={entry.court} />
+          <Row label={t("odash.fix.booking")} value={fmt.when(entry.starts_at)} />
+          <Row label={t("odash.fix.method")} value={methodLabel(entry.method)} />
         </div>
 
-        <p className="text-owner-ink-faint text-[12.5px]">
-          This will record a new entry for -PKR {formatPKR(entry.amount_pkr)}, so the original stays visible in the
-          ledger -- nothing is edited or deleted. The booking&apos;s balance updates immediately.
-        </p>
+        <p className="text-owner-ink-faint text-[12.5px]">{t("odash.fix.note", { amount: formatPKR(entry.amount_pkr) })}</p>
 
         <div className="flex flex-col gap-2">
-          <label className="text-[13px] font-semibold text-owner-ink">Why is this being corrected?</label>
+          <label className="text-[13px] font-semibold text-owner-ink">{t("odash.fix.why")}</label>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. entered the wrong amount"
+            placeholder={t("odash.fix.whyPh")}
             className="text-[14px] px-4 py-3 rounded-xl border border-owner-border resize-none"
             rows={2}
           />
@@ -90,7 +97,7 @@ export function CorrectPaymentSheet({
           className="rounded-xl text-white font-bold text-[15px] disabled:opacity-50"
           style={{ height: 50, background: "#8C3823" }}
         >
-          {submitting ? "Reversing…" : "Confirm reversal"}
+          {submitting ? t("odash.fix.reversing") : t("odash.fix.confirm")}
         </button>
       </div>
     </div>

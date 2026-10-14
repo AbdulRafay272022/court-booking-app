@@ -8,8 +8,18 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { isValidPkMobile, isValidName, toE164 } from "@court-booking/types";
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey, TFunction } from "@/lib/i18n";
+
+/** The permission label in the visitor's language (by key), falling back to the server's English label for an unknown key. */
+function permLabel(t: TFunction, key: string, fallback: string): string {
+  const k = `odash.staff.perm.${key}` as MessageKey;
+  const v = t(k);
+  return v !== k ? v : fallback;
+}
 
 export default function StaffPage() {
+  const t = useT();
   const qc = useQueryClient();
   const { venues } = useOwnerVenues();
   const staffQuery = useQuery({ queryKey: ["owner-staff"], queryFn: () => api.staff.list() });
@@ -21,21 +31,20 @@ export default function StaffPage() {
   return (
     <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Staff</h1>
+        <h1 className="text-2xl font-bold">{t("odash.staff.title")}</h1>
         <p className="text-owner-ink-faint text-sm mt-1">
-          Add people who help run your venue and choose exactly what each can do. Staff sign in with the
-          phone number and password you set here.
+          {t("odash.staff.intro")}
         </p>
       </div>
 
       <AddStaffCard venues={venues} catalog={catalog} onAdded={() => qc.invalidateQueries({ queryKey: ["owner-staff"] })} />
 
       {staffQuery.isLoading ? (
-        <p className="text-owner-ink-faint">Loading…</p>
+        <p className="text-owner-ink-faint">{t("odash.staff.loading")}</p>
       ) : staffQuery.isError ? (
-        <ErrorState message={friendlyErrorMessage(staffQuery.error)} onRetry={() => staffQuery.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(staffQuery.error, t)} onRetry={() => staffQuery.refetch()} tone="owner" />
       ) : staff.length === 0 ? (
-        <p className="text-owner-ink-faint">No staff yet. Add your first team member above.</p>
+        <p className="text-owner-ink-faint">{t("odash.staff.empty")}</p>
       ) : (
         <div className="flex flex-col gap-3">
           {staff.map((member) => (
@@ -51,14 +60,15 @@ const inputCls =
   "w-full h-11 px-3 rounded-lg border border-owner-border bg-white text-[14px] outline-none focus:border-owner-accent";
 
 function PermissionChecklist({
-  catalog,
-  selected,
-  onToggle,
+  catalog, // i18n-ignore
+  selected, // i18n-ignore
+  onToggle, // i18n-ignore
 }: {
   catalog: StaffPermissionCatalogItem[];
   selected: Set<string>;
   onToggle: (key: string, on: boolean) => void;
 }) {
+  const t = useT();
   return (
     <div className="grid sm:grid-cols-2 gap-1.5">
       {catalog.map((item) => (
@@ -66,7 +76,7 @@ function PermissionChecklist({
           key={item.key}
           className="flex items-center gap-2 text-[13.5px]"
           style={{ opacity: item.available ? 1 : 0.45 }}
-          title={item.available ? undefined : "This feature is currently turned off by the admin"}
+          title={item.available ? undefined : t("odash.staff.featureOffTitle")}
         >
           <input
             type="checkbox"
@@ -74,7 +84,7 @@ function PermissionChecklist({
             disabled={!item.available}
             onChange={(e) => onToggle(item.key, e.target.checked)}
           />
-          <span>{item.label}{item.available ? "" : " (feature off)"}</span>
+          <span>{permLabel(t, item.key, item.label)}{item.available ? "" : t("odash.staff.featureOff")}</span>
         </label>
       ))}
     </div>
@@ -82,14 +92,15 @@ function PermissionChecklist({
 }
 
 function AddStaffCard({
-  venues,
-  catalog,
-  onAdded,
+  venues, // i18n-ignore
+  catalog, // i18n-ignore
+  onAdded, // i18n-ignore
 }: {
   venues: { id: string; name: string }[];
   catalog: StaffPermissionCatalogItem[];
   onAdded: () => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [venueId, setVenueId] = useState("");
   const [name, setName] = useState("");
@@ -107,7 +118,7 @@ function AddStaffCard({
         venue_id: effectiveVenueId,
         name: name.trim(),
         phone: toE164(phone),
-        password,
+        password, // i18n-ignore
         permissions: [...selected],
       }),
     onSuccess: () => {
@@ -115,7 +126,7 @@ function AddStaffCard({
       setOpen(false);
       onAdded();
     },
-    onError: (e) => setMessage(friendlyErrorMessage(e)),
+    onError: (e) => setMessage(friendlyErrorMessage(e, t)),
   });
 
   if (!open) {
@@ -124,14 +135,14 @@ function AddStaffCard({
         onClick={() => setOpen(true)}
         className="self-start px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm"
       >
-        + Add staff member
+        {t("odash.staff.add")}
       </button>
     );
   }
 
   return (
     <div className="bg-owner-surface border border-owner-border rounded-xl p-5 flex flex-col gap-3">
-      <h2 className="font-bold">New staff member</h2>
+      <h2 className="font-bold">{t("odash.staff.new")}</h2>
       {venues.length > 1 ? (
         <select className={inputCls} value={effectiveVenueId} onChange={(e) => setVenueId(e.target.value)}>
           {venues.map((v) => (
@@ -139,17 +150,17 @@ function AddStaffCard({
           ))}
         </select>
       ) : null}
-      <input className={inputCls} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
-      <input className={inputCls} placeholder="Phone (03xx…)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      <input className={inputCls} placeholder={t("odash.staff.fullName")} value={name} onChange={(e) => setName(e.target.value)} />
+      <input className={inputCls} placeholder={t("odash.staff.phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
       <input
         className={inputCls}
         type="password"
-        placeholder="Temporary password (min 8 chars)"
+        placeholder={t("odash.staff.password")}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
       <div>
-        <p className="text-[11px] font-bold tracking-wider text-owner-ink-faint mb-1.5">WHAT THEY CAN DO</p>
+        <p className="text-[11px] font-bold tracking-wider text-owner-ink-faint mb-1.5">{t("odash.staff.can")}</p>
         <PermissionChecklist
           catalog={catalog}
           selected={selected}
@@ -170,10 +181,10 @@ function AddStaffCard({
           className="px-4 py-2.5 rounded-lg font-semibold text-sm text-white"
           style={{ background: valid ? "#0E6274" : "#C6D2D7" }}
         >
-          {create.isPending ? "Adding…" : "Add staff"}
+          {create.isPending ? t("odash.staff.adding") : t("odash.staff.addBtn")}
         </button>
         <button onClick={() => setOpen(false)} className="px-4 py-2.5 rounded-lg font-semibold text-sm border border-owner-border">
-          Cancel
+          {t("odash.staff.cancel")}
         </button>
       </div>
     </div>
@@ -181,6 +192,7 @@ function AddStaffCard({
 }
 
 function StaffRow({ member, catalog }: { member: StaffMember; catalog: StaffPermissionCatalogItem[] }) {
+  const t = useT();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(member.permissions));
@@ -196,33 +208,33 @@ function StaffRow({ member, catalog }: { member: StaffMember; catalog: StaffPerm
 
   const labelFor = useMemo(() => {
     const m = new Map(catalog.map((c) => [c.key, c.label]));
-    return (k: string) => m.get(k) ?? k;
-  }, [catalog]);
+    return (k: string) => permLabel(t, k, m.get(k) ?? k);
+  }, [catalog, t]);
 
   return (
     <div className="bg-owner-surface border border-owner-border rounded-xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-semibold text-sm">
-            {member.name ?? "Staff"}{" "}
-            {!member.is_active ? <span className="text-[11px] font-bold text-owner-danger">· INACTIVE</span> : null}
+            {member.name ?? t("odash.staff.default")}{" "}
+            {!member.is_active ? <span className="text-[11px] font-bold text-owner-danger">{t("odash.staff.inactive")}</span> : null}
           </p>
           <p className="text-xs text-owner-ink-faint">{member.phone} · {member.venue_name}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setEditing((v) => !v)} className="text-[13px] font-semibold text-owner-accent">
-            {editing ? "Cancel" : "Edit"}
+            {editing ? t("odash.staff.cancel") : t("odash.staff.edit")}
           </button>
           <button
             onClick={() => {
-              if (member.is_active && !window.confirm(`Deactivate ${member.name ?? "this staff member"}? They'll be logged out immediately.`)) return;
+              if (member.is_active && !window.confirm(t("odash.staff.confirmDeactivate", { name: member.name ?? t("odash.staff.thisMember") }))) return;
               toggleActive.mutate();
             }}
             disabled={toggleActive.isPending}
             className="text-[13px] font-semibold"
             style={{ color: member.is_active ? "#B23B3B" : "#1F7A52" }}
           >
-            {member.is_active ? "Deactivate" : "Reactivate"}
+            {member.is_active ? t("odash.staff.deactivate") : t("odash.staff.reactivate")}
           </button>
         </div>
       </div>
@@ -245,13 +257,13 @@ function StaffRow({ member, catalog }: { member: StaffMember; catalog: StaffPerm
             disabled={savePerms.isPending}
             className="self-start px-4 py-2 rounded-lg bg-owner-accent text-white font-semibold text-sm"
           >
-            {savePerms.isPending ? "Saving…" : "Save permissions"}
+            {savePerms.isPending ? t("odash.staff.saving") : t("odash.staff.savePerms")}
           </button>
         </div>
       ) : (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {member.permissions.length === 0 ? (
-            <span className="text-[12px] text-owner-ink-faint">No permissions yet</span>
+            <span className="text-[12px] text-owner-ink-faint">{t("odash.staff.noPerms")}</span>
           ) : (
             member.permissions.map((p) => (
               <span key={p} className="text-[11.5px] px-2 py-0.5 rounded-md bg-owner-bg text-owner-ink-muted">
