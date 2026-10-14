@@ -6,9 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
-import { addDays, durationChoices, formatDuration, isValidPkMobile, minSlotsFor, walkinSlots } from "@court-booking/types";
+import { addDays, backendWeekdayOf, durationChoices, isValidPkMobile, minSlotsFor, walkinSlots } from "@court-booking/types";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime, formatTimeRange, pktDayTabs } from "@/lib/format";
+import { formatPKR, pktDayTabs } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 
 /**
@@ -25,6 +27,8 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
  * and its message is shown if a stale screen still gets it.
  */
 export default function OwnerWalkinPage() {
+  const t = useT();
+  const fmt = useFmt();
   const { activeVenue } = useOwnerVenues();
   const queryClient = useQueryClient();
   const courts = (activeVenue?.courts ?? []).filter((c) => c.is_active);
@@ -106,7 +110,7 @@ export default function OwnerWalkinPage() {
     }
     const fresh = durationChoices(slots, index, minSlots);
     if (fresh.length === 0) {
-      setMessage(`That start can't fit the court's minimum booking of ${formatDuration(minSlots * 30)} in a row.`);
+      setMessage(t("odash.walkin.noFit", { duration: fmt.duration(minSlots * 30) }));
       return;
     }
     setMessage(null);
@@ -158,18 +162,18 @@ export default function OwnerWalkinPage() {
       setPlayerPhone("");
       setPhoneTouched(false);
       reset();
-      setMessage("Booking saved.");
+      setMessage(t("odash.walkin.saved"));
     } catch (e) {
       if (e instanceof ApiError && e.code === "SLOT_ALREADY_TAKEN") {
-        setMessage("Part of that time was just booked — pick another.");
+        setMessage(t("odash.walkin.taken"));
         reset();
         availabilityQuery.refetch();
       } else if (e instanceof ApiError && e.code === "WALKIN_IN_PAST") {
-        setMessage(e.message || friendlyErrorMessage(e)); // the server's own words: that slot has already ended
+        setMessage(e.message || friendlyErrorMessage(e, t)); // the server's own words: that slot has already ended
         reset();
         setNowMs(Date.now());
       } else {
-        setMessage(friendlyErrorMessage(e));
+        setMessage(friendlyErrorMessage(e, t));
       }
     } finally {
       setSubmitting(false);
@@ -178,10 +182,10 @@ export default function OwnerWalkinPage() {
 
   return (
     <div className="p-8 max-w-xl flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Add a booking</h1>
+      <h1 className="text-2xl font-bold">{t("odash.walkin.title")}</h1>
 
       <div className="flex flex-col gap-2">
-        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">COURT</span>
+        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">{t("odash.walkin.court")}</span>
         <div className="flex gap-2 flex-wrap">
           {courts.map((c) => (
             <button
@@ -197,7 +201,7 @@ export default function OwnerWalkinPage() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">DATE</span>
+        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">{t("odash.walkin.date")}</span>
         <div className="flex gap-2 flex-wrap">
           {nextDays.map((d, i) => (
             <button
@@ -206,17 +210,16 @@ export default function OwnerWalkinPage() {
               className="px-3.5 py-2.5 rounded-lg text-[13px] font-semibold"
               style={{ background: dateIdx === i ? "#0E6274" : "#FFFFFF", color: dateIdx === i ? "#fff" : "#101C21", border: dateIdx === i ? "none" : "1px solid #DCE3E6" }}
             >
-              {i === 0 ? "Today" : i === 1 ? "Tomorrow" : `${d.weekday} ${d.day}`}
+              {i === 0 ? t("odash.walkin.today") : i === 1 ? t("odash.walkin.tomorrow") : `${fmt.weekday(backendWeekdayOf(d.date))} ${d.day}`}
             </button>
           ))}
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">TIME</span>
+        <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">{t("odash.walkin.time")}</span>
         <p className="text-owner-ink-faint text-[12.5px] -mt-1" data-testid="walkin-hint">
-          Tap the first slot, then tap a later slot (or use + 30 min) to book several in a row. Minimum for this court:{" "}
-          {formatDuration(minSlots * 30)}.
+          {t("odash.walkin.hint", { duration: fmt.duration(minSlots * 30) })}
         </p>
         <div className="flex gap-2 flex-wrap" data-testid="walkin-slots">
           {slots.map((slot, i) => {
@@ -230,7 +233,7 @@ export default function OwnerWalkinPage() {
                 onClick={() => handleTapSlot(i)}
                 aria-pressed={selected}
                 data-testid={selected ? "walkin-slot-selected" : "walkin-slot"}
-                title={cannotStart ? `Needs at least ${formatDuration(minSlots * 30)} free in a row` : undefined}
+                title={cannotStart ? t("odash.walkin.needs", { duration: fmt.duration(minSlots * 30) }) : undefined}
                 className="px-4 py-2.5 rounded-lg font-mono text-sm font-semibold"
                 style={{
                   background: selected ? "#0E6274" : taken ? "#EFF2F3" : "#FFFFFF",
@@ -239,7 +242,7 @@ export default function OwnerWalkinPage() {
                   textDecoration: taken ? "line-through" : "none",
                 }}
               >
-                {formatTime(slot.starts_at)}
+                {fmt.time(slot.starts_at)}
               </button>
             );
           })}
@@ -247,9 +250,9 @@ export default function OwnerWalkinPage() {
         {selectedChoice && startsAt ? (
           <div className="flex items-center justify-between gap-3 rounded-lg px-3.5 py-3" style={{ background: "#E8F2F4" }} data-testid="walkin-summary">
             <div className="flex flex-col">
-              <span className="font-mono text-sm font-semibold">{formatTimeRange(startsAt, selectedChoice.endsAt)}</span>
+              <span className="font-mono text-sm font-semibold">{fmt.timeRange(startsAt, selectedChoice.endsAt)}</span>
               <span className="text-[12.5px] text-owner-ink-faint">
-                {formatDuration(selectedChoice.minutes)} · {slotCount} slot{slotCount === 1 ? "" : "s"}
+                {slotCount === 1 ? t("odash.walkin.summary.one", { duration: fmt.duration(selectedChoice.minutes) }) : t("odash.walkin.summary.many", { duration: fmt.duration(selectedChoice.minutes), count: slotCount })}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -260,7 +263,7 @@ export default function OwnerWalkinPage() {
                 className="h-9 px-3 rounded-lg text-[13px] font-bold bg-white border border-owner-border disabled:opacity-40"
                 data-testid="walkin-shorter"
               >
-                − 30 min
+                {t("odash.walkin.shorter")}
               </button>
               <button
                 type="button"
@@ -269,7 +272,7 @@ export default function OwnerWalkinPage() {
                 className="h-9 px-3 rounded-lg text-[13px] font-bold bg-white border border-owner-border disabled:opacity-40"
                 data-testid="walkin-longer"
               >
-                + 30 min
+                {t("odash.walkin.longer")}
               </button>
             </div>
           </div>
@@ -277,20 +280,20 @@ export default function OwnerWalkinPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Customer name" value={playerName} onChange={setPlayerName} placeholder="Usman Tariq" testId="walkin-name" />
+        <Field label={t("odash.walkin.name")} value={playerName} onChange={setPlayerName} placeholder="Usman Tariq" /* i18n-ignore */ testId="walkin-name" />
         <Field
-          label="Customer phone (optional)"
+          label={t("odash.walkin.phone")}
           value={playerPhone}
           onChange={setPlayerPhone}
           onBlur={() => setPhoneTouched(true)}
           placeholder="0333 5119042"
           mono
           testId="walkin-phone"
-          error={phoneTouched && !phoneOk ? "Enter a valid mobile number, e.g. 0333 5119042" : undefined}
+          error={phoneTouched && !phoneOk ? t("odash.walkin.phoneErr") : undefined}
         />
       </div>
       <Field
-        label="Amount collected (PKR)"
+        label={t("odash.walkin.amount")}
         value={amount}
         onChange={(v) => { setAmountTouched(true); setAmount(v.replace(/\D/g, "")); }}
         placeholder="4000"
@@ -299,13 +302,13 @@ export default function OwnerWalkinPage() {
       />
       {quote ? (
         <p className="text-owner-ink-faint text-[12.5px] -mt-2" data-testid="walkin-total">
-          Court price for {formatDuration(quote.duration_minutes)}: PKR {formatPKR(quote.price)}
+          {t("odash.walkin.total", { duration: fmt.duration(quote.duration_minutes), price: formatPKR(quote.price) })}
         </p>
       ) : quoteQuery.isError ? (
-        <p className="text-sm font-semibold -mt-2" style={{ color: "#8C3823" }}>{friendlyErrorMessage(quoteQuery.error)}</p>
+        <p className="text-sm font-semibold -mt-2" style={{ color: "#8C3823" }}>{friendlyErrorMessage(quoteQuery.error, t)}</p>
       ) : null}
 
-      {message ? <p className="text-sm font-semibold" style={{ color: message.includes("saved") ? "#1F7A52" : "#8C3823" }} data-testid="walkin-message">{message}</p> : null}
+      {message ? <p className="text-sm font-semibold" style={{ color: message === t("odash.walkin.saved") ? "#1F7A52" : "#8C3823" }} data-testid="walkin-message">{message}</p> : null}
 
       <button
         onClick={handleSubmit}
@@ -314,7 +317,7 @@ export default function OwnerWalkinPage() {
         style={{ height: 52 }}
         data-testid="walkin-save"
       >
-        {submitting ? "Saving…" : "Save booking"}
+        {submitting ? t("odash.walkin.saving") : t("odash.walkin.save")}
       </button>
     </div>
   );

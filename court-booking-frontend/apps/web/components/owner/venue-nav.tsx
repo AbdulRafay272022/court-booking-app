@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Venue, VenueStatus } from "@court-booking/types";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey } from "@/lib/i18n";
 
-export const STATUS_LABEL: Record<VenueStatus, string> = {
-  approved: "Live",
-  pending: "Under review",
-  changes_requested: "Changes requested",
-  rejected: "Not approved",
+/** Dictionary keys for a venue status; read them with `t(...)`. */
+export const STATUS_LABEL_KEY: Record<VenueStatus, MessageKey> = {
+  approved: "odash.venue.status.approved",
+  pending: "odash.venue.status.pending",
+  changes_requested: "odash.venue.status.changes_requested",
+  rejected: "odash.venue.status.rejected",
 };
 
 const STATUS_STYLE: Record<VenueStatus, { bg: string; fg: string }> = {
@@ -20,10 +23,11 @@ const STATUS_STYLE: Record<VenueStatus, { bg: string; fg: string }> = {
 };
 
 export function StatusBadge({ status }: { status: VenueStatus }) {
+  const t = useT();
   const s = STATUS_STYLE[status];
   return (
     <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap" style={{ background: s.bg, color: s.fg }}>
-      {STATUS_LABEL[status]}
+      {t(STATUS_LABEL_KEY[status])}
     </span>
   );
 }
@@ -40,14 +44,15 @@ export function VenuePicker({
   activeVenueId: string | undefined;
   onSelect: (id: string) => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const resetDraft = useVenueSetupStore((s) => s.reset);
   return (
-    <div className="px-3 pb-3 flex flex-col gap-1.5" aria-label="Your venues">
+    <div className="px-3 pb-3 flex flex-col gap-1.5" aria-label={t("odash.venue.yours")}>
       <p className="px-3.5 text-[10.5px] font-bold uppercase tracking-[0.11em] text-owner-ink-faint">
-        {venues.length > 1 ? "Your venues" : "Your venue"}
+        {venues.length > 1 ? t("odash.venue.yours") : t("odash.venue.yourOne")}
       </p>
-      <ul className="flex flex-col gap-1" role="radiogroup" aria-label="Venue">
+      <ul className="flex flex-col gap-1" role="radiogroup" aria-label={t("odash.venue.aria")}>
         {venues.map((v) => {
           const active = v.id === activeVenueId;
           return (
@@ -80,7 +85,7 @@ export function VenuePicker({
         }}
         className="mt-1 px-3.5 py-2 rounded-lg text-[13px] font-semibold text-owner-accent border border-dashed border-owner-accent-soft-border text-left"
       >
-        + Add another venue
+        {t("odash.venue.addAnother")}
       </button>
     </div>
   );
@@ -89,11 +94,12 @@ export function VenuePicker({
 /** Shown above the dashboard when the venue being managed isn't live: each venue keeps its own
  * status, so this reflects the SELECTED one, with a way to its status page. */
 export function VenueStatusBanner({ venue }: { venue: Venue }) {
+  const t = useT();
   if (venue.status === "approved") return null;
   const copy: Record<Exclude<VenueStatus, "approved">, string> = {
-    pending: "is under review. Players can't find or book it yet — you can still add walk-in bookings.",
-    changes_requested: "needs changes before it can go live.",
-    rejected: "wasn't approved, so players can't book it.",
+    pending: t("odash.venue.banner.pending"),
+    changes_requested: t("odash.venue.banner.changes_requested"),
+    rejected: t("odash.venue.banner.rejected"),
   };
   return (
     <div
@@ -109,7 +115,7 @@ export function VenueStatusBanner({ venue }: { venue: Venue }) {
         <strong>{venue.name}</strong> {copy[venue.status]}
       </span>
       <Link href={`/venue-setup/status?venueId=${venue.id}`} className="font-bold underline">
-        View status
+        {t("odash.venue.viewStatus")}
       </Link>
     </div>
   );

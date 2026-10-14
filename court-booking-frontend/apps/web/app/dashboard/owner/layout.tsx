@@ -13,9 +13,11 @@ import { SUPPORT_WHATSAPP_NUMBER, supportWhatsAppUrl } from "@/lib/support";
 import { Logo } from "@/components/auth/logo";
 import { VenuePicker, VenueStatusBanner } from "@/components/owner/venue-nav";
 import { PremiumNotices } from "@/components/owner/premium-notices";
+import { useT } from "@/components/i18n/lang-provider";
 
 export default function OwnerDashboardLayout({ children }: { children: React.ReactNode }) {
   // Staff accounts (Section 32 Part 12) use the same dashboard with a reduced view.
+  const t = useT();
   const { ready } = useRequireAuth(["owner", "staff"]);
   const pathname = usePathname();
   const router = useRouter();
@@ -27,17 +29,17 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
   // owner/admin-only (staff can't manage other staff). Per-action permissions
   // are still enforced by the backend if a staff member deep-links.
   const NAV = [
-    { href: "/dashboard/owner/today", label: "Today" },
-    { href: "/dashboard/owner/approvals", label: "Approvals" },
-    { href: "/dashboard/owner/walkin", label: "Add booking" },
-    { href: "/dashboard/owner/ledger", label: "Ledger" },
-    ...(isOn("refunds") ? [{ href: "/dashboard/owner/refunds", label: "Refunds to pay" }] : []),
-    ...(isOn("growth_suggestions") ? [{ href: "/dashboard/owner/growth", label: "Growth" }] : []),
-    ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: "Reviews" }] : []),
-    { href: "/dashboard/owner/settings", label: "Venue settings" },
-    ...(!isStaff ? [{ href: "/dashboard/owner/staff", label: "Staff" }] : []),
-    ...(!isStaff ? [{ href: "/dashboard/owner/premium", label: "Premium" }] : []),
-    { href: "/account", label: "Account" },
+    { href: "/dashboard/owner/today", label: t("odash.nav.today") },
+    { href: "/dashboard/owner/approvals", label: t("odash.nav.approvals") },
+    { href: "/dashboard/owner/walkin", label: t("odash.nav.walkin") },
+    { href: "/dashboard/owner/ledger", label: t("odash.nav.ledger") },
+    ...(isOn("refunds") ? [{ href: "/dashboard/owner/refunds", label: t("odash.nav.refunds") }] : []),
+    ...(isOn("growth_suggestions") ? [{ href: "/dashboard/owner/growth", label: t("odash.nav.growth") }] : []),
+    ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: t("odash.nav.reviews") }] : []),
+    { href: "/dashboard/owner/settings", label: t("odash.nav.settings") },
+    ...(!isStaff ? [{ href: "/dashboard/owner/staff", label: t("odash.nav.staff") }] : []),
+    ...(!isStaff ? [{ href: "/dashboard/owner/premium", label: t("odash.nav.premium") }] : []),
+    { href: "/account", label: t("odash.nav.account") },
   ];
   const { venues: pickerVenues, activeVenue, activeVenueId, setVenueId } = useOwnerVenues();
   // Section 32 Part 11: on a phone the sidebar becomes a slide-in drawer.
@@ -69,15 +71,15 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
     return <div className="min-h-screen bg-owner-bg" />;
   }
 
-  const currentLabel = NAV.find((n) => n.href === pathname)?.label ?? "Dashboard";
+  const currentLabel = NAV.find((n) => n.href === pathname)?.label ?? t("odash.nav.dashboard");
 
   const sidebarBody = (
     <>
       <div className="px-6 py-6 flex flex-col gap-2">
-        <Link href="/" aria-label="Khelo home" onClick={() => setMenuOpen(false)}>
+        <Link href="/" aria-label={t("odash.nav.homeAria")} onClick={() => setMenuOpen(false)}>
           <Logo tone="owner" size={34} />
         </Link>
-        <p className="text-xs text-owner-ink-faint">{user?.name ?? "Owner"}</p>
+        <p className="text-xs text-owner-ink-faint">{user?.name ?? t("odash.nav.owner")}</p>
       </div>
       <nav className="flex flex-col gap-1 px-3 pb-4">
         {NAV.map((item) => (
@@ -103,13 +105,13 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
           rel="noopener noreferrer"
           className="w-full px-3.5 py-2.5 rounded-lg text-[13.5px] font-semibold text-owner-ink-muted border border-owner-border text-center"
         >
-          Need help? WhatsApp us at {SUPPORT_WHATSAPP_NUMBER}
+          {t("odash.nav.help", { number: SUPPORT_WHATSAPP_NUMBER })}
         </a>
         <button
           onClick={signOut}
           className="w-full px-3.5 py-2.5 rounded-lg text-[14px] font-semibold text-owner-ink-muted border border-owner-border"
         >
-          Log out
+          {t("odash.nav.logout")}
         </button>
       </div>
     </>
@@ -119,10 +121,10 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
     <div className="min-h-screen md:flex bg-owner-bg text-owner-ink">
       {/* Mobile top bar (phones/short viewports) -- the desktop sidebar is hidden below md. */}
       <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 h-14 bg-owner-surface border-b border-owner-border">
-        <Link href="/" aria-label="Khelo home"><Logo tone="owner" size={26} /></Link>
+        <Link href="/" aria-label={t("odash.nav.homeAria")}><Logo tone="owner" size={26} /></Link>
         <span className="font-bold text-[15px] text-owner-ink">{currentLabel}</span>
         <button
-          aria-label="Open menu"
+          aria-label={t("odash.nav.openMenu")}
           onClick={() => setMenuOpen(true)}
           className="w-10 h-10 -mr-2 flex items-center justify-center text-owner-ink"
         >
@@ -138,7 +140,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
           <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
           <div className="absolute inset-y-0 left-0 w-[82%] max-w-xs bg-owner-surface border-r border-owner-border flex flex-col overflow-y-auto">
             <div className="flex justify-end p-2">
-              <button aria-label="Close menu" onClick={() => setMenuOpen(false)} className="w-9 h-9 flex items-center justify-center text-owner-ink-muted text-xl">✕</button>
+              <button aria-label={t("odash.nav.closeMenu")} onClick={() => setMenuOpen(false)} className="w-9 h-9 flex items-center justify-center text-owner-ink-muted text-xl">✕</button>
             </div>
             {sidebarBody}
           </div>

@@ -6,11 +6,13 @@ import type { PaymentMethod } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import type { MessageKey } from "@/lib/i18n";
 
-const METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: "cash_at_venue", label: "Cash" },
-  { value: "bank_transfer_proof", label: "Bank transfer" },
-  { value: "other", label: "Other" },
+const METHODS: { value: PaymentMethod; label: MessageKey }[] = [
+  { value: "cash_at_venue", label: "odash.pay.method.cash_at_venue" },
+  { value: "bank_transfer_proof", label: "odash.pay.method.bank_transfer_proof" },
+  { value: "other", label: "odash.pay.method.other" },
 ];
 
 /**
@@ -31,6 +33,7 @@ export function RecordPaymentSheet({
   onClose: () => void;
   onRecorded: (result: { amount_paid: number; balance_due: number }) => void;
 }) {
+  const t = useT();
   const [amount, setAmount] = useState(String(Math.round(balanceDue)));
   const [method, setMethod] = useState<PaymentMethod>("cash_at_venue");
   const [note, setNote] = useState("");
@@ -52,7 +55,7 @@ export function RecordPaymentSheet({
       });
       onRecorded({ amount_paid: result.amount_paid, balance_due: result.balance_due });
     } catch (e) {
-      setError(friendlyErrorMessage(e));
+      setError(friendlyErrorMessage(e, t));
     } finally {
       setSubmitting(false);
     }
@@ -66,17 +69,17 @@ export function RecordPaymentSheet({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-widest" style={{ color: "#0E6274" }}>RECORD PAYMENT</span>
+            <span className="text-[11px] font-bold tracking-widest" style={{ color: "#0E6274" }}>{t("odash.rec.title")}</span>
             <span className="text-[17px] font-bold text-owner-ink">{playerLabel}</span>
-            <span className="font-mono text-[13px] text-owner-ink-faint">PKR {formatPKR(balanceDue)} still owed</span>
+            <span className="font-mono text-[13px] text-owner-ink-faint">{t("odash.rec.owed", { amount: formatPKR(balanceDue) })}</span>
           </div>
-          <button onClick={onClose} aria-label="Close" className="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style={{ background: "#F4F6F7" }}>
+          <button onClick={onClose} aria-label={t("odash.rec.close")} className="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style={{ background: "#F4F6F7" }}>
             ✕
           </button>
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-[13px] font-semibold text-owner-ink">Amount (PKR)</label>
+          <label className="text-[13px] font-semibold text-owner-ink">{t("odash.rec.amount")}</label>
           <input
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
@@ -86,13 +89,13 @@ export function RecordPaymentSheet({
           />
           {!valid && amount.length > 0 ? (
             <span className="text-[12.5px] font-medium" style={{ color: "#8C3823" }}>
-              {amountNum > balanceDue ? `Can't be more than PKR ${formatPKR(balanceDue)}` : "Enter an amount greater than zero"}
+              {amountNum > balanceDue ? t("odash.rec.tooMuch", { amount: formatPKR(balanceDue) }) : t("odash.rec.zero")}
             </span>
           ) : null}
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-[13px] font-semibold text-owner-ink">How was it paid?</label>
+          <label className="text-[13px] font-semibold text-owner-ink">{t("odash.rec.how")}</label>
           <div className="flex gap-2">
             {METHODS.map((m) => (
               <button
@@ -101,18 +104,18 @@ export function RecordPaymentSheet({
                 className="flex-1 rounded-xl text-[13px] font-semibold"
                 style={{ height: 44, background: method === m.value ? "#0E6274" : "#F4F6F7", color: method === m.value ? "#fff" : "#5B7079" }}
               >
-                {m.label}
+                {t(m.label)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-[13px] font-semibold text-owner-ink">Note (optional)</label>
+          <label className="text-[13px] font-semibold text-owner-ink">{t("odash.rec.note")}</label>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g. paid at the counter"
+            placeholder={t("odash.rec.notePh")}
             className="text-[14px] px-4 rounded-xl border border-owner-border"
             style={{ height: 48 }}
           />
@@ -126,7 +129,7 @@ export function RecordPaymentSheet({
           className="rounded-xl text-white font-bold text-[15px] disabled:opacity-50"
           style={{ height: 50, background: "#0E6274" }}
         >
-          {submitting ? "Recording…" : `Record PKR ${valid ? formatPKR(amountNum) : "0"}`}
+          {submitting ? t("odash.rec.recording") : t("odash.rec.submit", { amount: valid ? formatPKR(amountNum) : "0" })}
         </button>
       </div>
     </div>
