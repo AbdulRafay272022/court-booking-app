@@ -1,2 +1,26 @@
-// Roman Urdu copy (source of truth for ru). Keys start with 'validation.'.
-export const ruValidation = {} as const;
+// Roman Urdu copy (source of truth for ru). Keys start with 'validation.'. Each maps one English validator message from packages/types (see lib/format-i18n.ts).
+export const ruValidation = {
+  "validation.name": "Apna poora naam likhein",
+  "validation.email": "Sahi email address likhein",
+  "validation.phone": "Sahi mobile number likhein, jaise 300 1234567",
+  "validation.city": "Apna shehar chunein",
+  "validation.gender": "Ek option chunein",
+  "validation.confirm": "Password dobara likhein",
+  "validation.mismatch": "Password match nahi karte",
+  "validation.passwordRequired": "Apna password likhein",
+  "validation.passwordMin": "Kam az kam {n} characters rakhein",
+  "validation.currentPassword": "Apna maujooda password likhein",
+  "validation.bankName": "Bank ya wallet ka naam likhein",
+  "validation.bankNameBad": "Bank / wallet ka asli naam likhein (jaise 'HBL', 'Meezan Bank', 'JazzCash', 'Easypaisa').",
+  "validation.accountTitle": "Account title likhein",
+  "validation.accountTitleFull": "Bank account par chhapa hua poora naam likhein (jaise 'Ali Raza').",
+  "validation.accountTitleBad": "Bank account par chhapa hua poora naam likhein.",
+  "validation.accountNumber": "Apna account number likhein",
+  "validation.accountNumberBad": "Apna account number likhein (sirf digits, 8 se 24 characters).",
+  "validation.iban": "Sahi Pakistani IBAN likhein (PK se shuru, 24 characters), ya khali chhor dein.",
+  "validation.hours": "Khulne aur band hone ka waqt chunein.",
+  "validation.price": "Is court ki price set karein.",
+  "validation.overnight": "{a} agli subah tak chalta hai, jabke {b} us se pehle khul jata hai. {b} der se kholein, ya {a} jaldi band karein.",
+  "validation.rateNarrower": "Yeh rate kabhi use nahi hoti: \"{name}\" zyada khaas hai aur sab kuch cover karti hai. Is rate ke din ya waqt badlein.",
+  "validation.rateHidden": "Yeh rate \"{name}\" ke peeche chhup gayi hai, is liye players se kabhi nahi li jaati. Ise \"{name}\" ke neeche karein, ya din / waqt badlein.",
+} as const;

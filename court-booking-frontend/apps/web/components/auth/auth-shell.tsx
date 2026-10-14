@@ -1,5 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { useT } from "@/components/i18n/lang-provider";
 import { FloatingIcons, OWNER_ICONS } from "./floating-icons";
 import { Logo } from "./logo";
 import { TONES, type Tone } from "./tone";
@@ -21,6 +24,7 @@ export function AuthShell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const tr = useT();
   const t = TONES[tone];
   return (
     <main
@@ -33,7 +37,7 @@ export function AuthShell({
       <FloatingIcons key={tone} color={t.accent} icons={tone === "owner" ? OWNER_ICONS : undefined} />
 
       <div className="relative z-10 w-full max-w-[420px] flex flex-col gap-8">
-        <Link href="/" className="self-start" aria-label="Khelo home">
+        <Link href="/" className="self-start" aria-label={tr("header.homeLabel")}>
           <Logo tone={tone} size={52} />
         </Link>
 

@@ -1,4 +1,5 @@
 import { formatDateString } from "./datetime";
+import type { TextLang } from "./locale-text";
 
 /** Owner premium billing (admin price list, an owner's chosen features, invoices). Money is whole PKR. */
 
@@ -81,7 +82,8 @@ export interface OwnerPremium {
 }
 
 /** One plain sentence about where a feature stands for this owner ("Free trial until Sat, 24 Oct"). The one place that wording lives. */
-export function premiumStateText(f: OwnerPremiumFeature, enforced: boolean, trialDays = 15): string {
+export function premiumStateText(f: OwnerPremiumFeature, enforced: boolean, trialDays = 15, lang: TextLang = "en"): string {
+  if (lang === "ru") return premiumStateTextRu(f, enforced, trialDays);
   if (!f.enabled && !f.cancelled) {
     return `Not switched on. Switching it on starts a ${trialDays}-day free trial.`;
   }
@@ -106,6 +108,32 @@ export function premiumStateText(f: OwnerPremiumFeature, enforced: boolean, tria
       return "Free trial is over. Pay your invoice to keep it.";
     default:
       return "Switched on.";
+  }
+}
+
+function premiumStateTextRu(f: OwnerPremiumFeature, enforced: boolean, trialDays: number): string {
+  const d = (s: string) => formatDateString(s, new Date(), "ru");
+  if (!f.enabled && !f.cancelled) return `Abhi band hai. Chalu karne par ${trialDays} din ka free trial shuru hota hai.`;
+  if (f.cancelled) {
+    const until = f.paid_through ?? f.trial_ends_on;
+    return until && f.entitled ? `Cancel ho gaya. ${d(until)} tak chalta rahega.` : "Cancel ho gaya.";
+  }
+  if (!enforced) return f.trial_ends_on ? `Chalu hai. Free trial ${d(f.trial_ends_on)} tak.` : "Chalu hai.";
+  switch (f.state) {
+    case "trial": {
+      const trial = f.trial_ends_on ? `Free trial ${d(f.trial_ends_on)} tak.` : "Free trial.";
+      return f.paid_through && f.trial_ends_on && f.paid_through > f.trial_ends_on ? `${trial} Payment ${d(f.paid_through)} tak.` : trial;
+    }
+    case "paid":
+      return f.paid_through ? `Payment ${d(f.paid_through)} tak.` : "Payment ho gayi.";
+    case "grace":
+      return "Payment late ho gayi hai. Abhi kuch din chalega: rakhne ke liye ab payment karein.";
+    case "lapsed":
+      return "Payment late hone ki wajah se band ho gaya. Payment karein, foran dobara chalu ho jayega.";
+    case "unpaid":
+      return "Free trial khatam ho gaya. Rakhne ke liye invoice ki payment karein.";
+    default:
+      return "Chalu hai.";
   }
 }
 

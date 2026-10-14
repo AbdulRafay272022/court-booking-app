@@ -89,7 +89,7 @@ export function ForgotForm() {
             value={phone}
             onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
             onBlur={() => setTouched(true)}
-            error={valid ? null : t("auth.val.phone")}
+            error={valid ? null : t("validation.phone")}
             showError={touched}
             autoComplete="tel-national"
             placeholder="300 1234567"

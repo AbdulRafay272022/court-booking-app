@@ -1,5 +1,6 @@
 import type { Slot } from "./availability";
 import { formatTime24As12, parseTime24 } from "./datetime";
+import { WORDS, type TextLang } from "./locale-text";
 
 /** The ONE slot grid of every court (Section 32 Part 4c): slots are 30 minutes, whatever the court's own setting. Mirrors
  * the backend's GRID_MINUTES. */
@@ -21,10 +22,12 @@ export const SLOT_MINUTES_OPTIONS = [30, 60, 90, 120] as const;
 export const MAX_BOOKING_MINUTES = 360;
 
 /** "30 minutes", "1 hour", "1.5 hours", "2 hours": how a booking length is said to a player. */
-export function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} minutes`;
+export function formatDuration(minutes: number, langArg: TextLang | number = "en"): string {
+  // a number (the index, when used as `.map(formatDuration)`) means English
+  const lang: TextLang = langArg === "ru" ? "ru" : "en";
+  if (minutes < 60) return WORDS[lang].minutes(minutes);
   const hours = minutes / 60;
-  return hours === 1 ? "1 hour" : `${Number(hours.toFixed(2))} hours`;
+  return hours === 1 ? WORDS[lang].oneHour : WORDS[lang].hours(Number(hours.toFixed(2)));
 }
 
 export interface SlotPreview {
@@ -77,11 +80,11 @@ export function slotPreview(open24: string, close24: string, slotMinutes: number
 }
 
 /** "11 slots a day, 6:00 AM to 10:30 PM" -- the one-line preview text. */
-export function slotPreviewText(open24: string, close24: string, slotMinutes: number): string {
+export function slotPreviewText(open24: string, close24: string, slotMinutes: number, lang: TextLang = "en"): string {
   const p = slotPreview(open24, close24, slotMinutes);
-  if (!p) return "These hours are too short for even one slot.";
-  const to = `${formatTime24As12(p.lastEnd)}${p.crossesMidnight ? " the next morning" : ""}`;
-  return `${p.count} ${p.count === 1 ? "slot" : "slots"} a day, ${formatTime24As12(p.firstStart)} to ${to}`;
+  if (!p) return WORDS[lang].tooShort;
+  const to = `${formatTime24As12(p.lastEnd)}${p.crossesMidnight ? WORDS[lang].nextMorning : ""}`;
+  return WORDS[lang].slotsADay(p.count, formatTime24As12(p.firstStart), to);
 }
 
 export interface DurationChoice {
@@ -103,7 +106,7 @@ export interface DurationChoice {
  * from the slots themselves. The price and the final say still come from the server (GET /courts/:id/quote); this
  * only decides which choices to offer. Used by the player picker (chips) and the owner walk-in (slot selection).
  */
-export function durationChoices(slots: Slot[], index: number, minSlots = 1, maxMinutes = MAX_BOOKING_MINUTES): DurationChoice[] {
+export function durationChoices(slots: Slot[], index: number, minSlots = 1, maxMinutes = MAX_BOOKING_MINUTES, lang: TextLang = "en"): DurationChoice[] {
   const choices: DurationChoice[] = [];
   let minutes = 0;
   let price = 0;
@@ -115,7 +118,7 @@ export function durationChoices(slots: Slot[], index: number, minSlots = 1, maxM
     price += slot.price;
     if (count > 1 && minutes > maxMinutes) break;
     if (count < minSlots) continue;
-    choices.push({ slotCount: count, minutes, label: formatDuration(minutes), endsAt: slot.ends_at, price: Math.round(price * 100) / 100 });
+    choices.push({ slotCount: count, minutes, label: formatDuration(minutes, lang), endsAt: slot.ends_at, price: Math.round(price * 100) / 100 });
   }
   return choices;
 }
@@ -123,13 +126,12 @@ export function durationChoices(slots: Slot[], index: number, minSlots = 1, maxM
 /** The plain-language cancellation policy of a VENUE (Section 32 Part 4: one policy per venue). */
 export function cancellationPolicyText(
   venue: { cancellation_allowed: boolean; cancellation_cutoff_hours: number | null } | null | undefined,
+  lang: TextLang = "en",
 ): string {
   if (!venue) return "";
-  if (!venue.cancellation_allowed) return "This venue does not allow cancellations once booked.";
-  if (venue.cancellation_cutoff_hours != null) {
-    return `Free cancellation up to ${venue.cancellation_cutoff_hours}h before your booking.`;
-  }
-  return "You can cancel any time before your booking starts.";
+  if (!venue.cancellation_allowed) return WORDS[lang].noCancel;
+  if (venue.cancellation_cutoff_hours != null) return WORDS[lang].freeCancel(venue.cancellation_cutoff_hours);
+  return WORDS[lang].cancelAnytime;
 }
 
 /**

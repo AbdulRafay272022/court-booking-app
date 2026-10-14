@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatCountdown } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { useT } from "@/components/i18n/lang-provider";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { recallOtpExpiry, rememberOtpExpiry } from "@/lib/pending-auth";
@@ -118,6 +119,7 @@ export function useOtpFlow(
 }
 
 export function OtpControls({ flow, tone = "player" }: { flow: ReturnType<typeof useOtpFlow>; tone?: Tone }) {
+  const tr = useT();
   const t = TONES[tone];
   const { secondsLeft, expired, resendLeft, resendLockSeconds, resending, resendError, resend } = flow;
   const canResend = resendLeft === 0 && resendLockSeconds === 0 && !resending;
@@ -125,11 +127,11 @@ export function OtpControls({ flow, tone = "player" }: { flow: ReturnType<typeof
     <div className="flex flex-col items-center gap-3 text-center">
       {secondsLeft === null ? null : expired ? (
         <p role="alert" className="text-[14px] font-bold" style={{ color: t.danger }}>
-          Code expired
+          {tr("auth.otp.expired")}
         </p>
       ) : (
         <p className="text-[14px] font-medium" style={{ color: t.muted }} aria-live="off">
-          Code expires in{" "}
+          {tr("auth.otp.expiresIn")}{" "}
           <span className="font-[family-name:var(--font-mono-x)] font-semibold" style={{ color: t.ink }}>
             {formatCountdown(secondsLeft)}
           </span>
@@ -138,11 +140,11 @@ export function OtpControls({ flow, tone = "player" }: { flow: ReturnType<typeof
 
       {canResend ? (
         <button type="button" onClick={resend} className="min-h-11 px-4 text-[14px] font-bold" style={{ color: t.accent }}>
-          Resend code
+          {tr("auth.otp.resend")}
         </button>
       ) : resendLockSeconds > 0 ? (
         <p role="alert" className="min-h-11 flex items-center text-[13.5px] font-medium" style={{ color: t.danger }}>
-          Too many code requests — resend in{" "}
+          {tr("auth.otp.rateLimited")}{" "}
           <span className="font-[family-name:var(--font-mono-x)] font-semibold ml-1" style={{ color: t.danger }}>
             {formatCountdown(resendLockSeconds)}
           </span>

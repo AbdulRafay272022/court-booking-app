@@ -3,22 +3,22 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/nav-auth";
 import { SUPPORT_WHATSAPP_NUMBER } from "@/lib/support";
 import { COMPANY_NAME } from "@/lib/site-config";
+import { getT } from "@/lib/i18n-server";
 
-export const metadata: Metadata = {
-  title: "Terms of Service",
-  description: "The terms that apply to using Khelo to find, book and manage court bookings.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("common.legal.terms.title"), description: t("common.legal.terms.description") };
+}
 
-const LAST_UPDATED = "20 September 2026";
-
-export default function TermsPage() {
+export default async function TermsPage() {
+  const t = await getT();
   return (
     <>
       <SiteHeader />
       <main className="max-w-2xl mx-auto px-6 py-12 flex flex-col gap-8 text-player-ink">
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-extrabold tracking-tight">Terms of Service</h1>
-          <p className="text-player-ink-faint text-sm">Last updated {LAST_UPDATED}</p>
+          <h1 className="text-2xl font-extrabold tracking-tight">{t("common.legal.terms.title")}</h1>
+          <p className="text-player-ink-faint text-sm">{t("common.legal.lastUpdated", { date: t("common.legal.date") })}</p>
         </div>
 
         <Section title="1. Who this is">
@@ -128,7 +128,7 @@ export default function TermsPage() {
         </Section>
 
         <p className="text-player-ink-faint text-sm">
-          See also our <Link href="/privacy" className="underline font-semibold">Privacy Policy</Link>.
+          {t("common.legal.seeAlso")}<Link href="/privacy" className="underline font-semibold">{t("common.legal.privacy.title")}</Link>.
         </p>
       </main>
     </>
