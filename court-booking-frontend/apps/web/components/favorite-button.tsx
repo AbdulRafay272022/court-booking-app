@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { FAVORITES_KEY, useFavorites } from "@/lib/use-favorites";
+import { useT } from "@/components/i18n/lang-provider";
 
 function Heart({ filled, size = 18 }: { filled: boolean; size?: number }) {
   return (
@@ -21,6 +22,7 @@ function Heart({ filled, size = 18 }: { filled: boolean; size?: number }) {
  * The heart flips at once and settles when the server answers; if the call fails it flips back and says so.
  */
 export function FavoriteButton({ venueId, venueName, variant = "card" }: { venueId: string; venueName: string; variant?: "card" | "pill" }) {
+  const t = useT();
   const router = useRouter();
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
@@ -58,7 +60,7 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
     }
   }
 
-  const label = saved ? `Remove ${venueName} from saved venues` : `Save ${venueName}`;
+  const label = saved ? t("play.fav.removeAria", { name: venueName }) : t("play.fav.saveAria", { name: venueName });
   const tone = saved ? "text-player-accent" : "text-player-ink-muted";
 
   if (variant === "pill") {
@@ -69,7 +71,7 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
         aria-pressed={saved}
         aria-label={label}
         data-testid="favorite-button"
-        title={failed ? "Couldn't update your saved venues. Try again." : undefined}
+        title={failed ? t("play.fav.failed") : undefined}
         className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13.5px] font-bold transition-colors ${
           saved ? "border-player-accent-soft-border bg-player-accent-soft text-player-accent-hover" : "border-player-border bg-player-surface text-player-ink-muted hover:border-player-accent hover:text-player-accent-hover"
         } ${busy ? "opacity-70" : ""}`}
@@ -77,7 +79,7 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
         <span className={saved ? "text-player-accent" : ""}>
           <Heart filled={saved} />
         </span>
-        {failed ? "Try again" : saved ? "Saved" : "Save"}
+        {failed ? t("play.tryAgain") : saved ? t("play.fav.saved") : t("play.fav.save")}
       </button>
     );
   }
@@ -89,7 +91,7 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
       aria-pressed={saved}
       aria-label={label}
       data-testid="favorite-button"
-      title={failed ? "Couldn't update your saved venues. Try again." : undefined}
+      title={failed ? t("play.fav.failed") : undefined}
       className={`flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-sm transition hover:scale-110 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent ${tone} ${busy ? "opacity-70" : ""}`}
     >
       <Heart filled={saved} size={20} />

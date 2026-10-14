@@ -6,7 +6,8 @@ import { AmenityBadges } from "@/components/amenity-badges";
 import { FavoriteButton } from "@/components/favorite-button";
 import { useT } from "@/components/i18n/lang-provider";
 import { rememberSearch } from "@/components/venue/back-to-results";
-import { formatDistance, formatPKR } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useFmt } from "@/lib/use-fmt";
 import { searchHref } from "@/lib/search-links";
 import { availabilityTag, settingKinds } from "@/lib/venue-tags";
 import { coordsOf, pointUrl } from "@/lib/venue-location";
@@ -42,7 +43,8 @@ const TAG_LINK =
  */
 export function VenueCard({ venue: v, href }: { venue: VenueSummary; href: string }) {
   const t = useT();
-  const distance = formatDistance(v.distance_meters);
+  const fmt = useFmt();
+  const distance = fmt.distance(v.distance_meters);
   const placeName = v.area ?? v.city;
   const settings = settingKinds(v);
   const availability = availabilityTag(v.today_free_slots);

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CITY_OPTIONS, formatMonth, monthOf, pktDateString } from "@court-booking/types";
+import { CITY_OPTIONS, monthOf, pktDateString } from "@court-booking/types";
 import { useAuthStore } from "@/lib/auth-store";
 import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
 import { Container } from "@/components/site/primitives";
 import { SavedVenues } from "@/components/bookings/saved-venues";
@@ -37,6 +38,7 @@ const TAB_LABEL: Record<TabKey, MessageKey> = {
  */
 export function AccountHub({ help }: { help: HelpContacts }) {
   const t = useT();
+  const fmt = useFmt();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -69,8 +71,9 @@ export function AccountHub({ help }: { help: HelpContacts }) {
     select(tabs[next], true);
   }
 
-  const cityLabel = CITY_OPTIONS.find((c) => c.value === user.city)?.label.replace(/\s*\(.*\)$/, "");
-  const memberSince = user.created_at ? formatMonth(monthOf(pktDateString(user.created_at))) : null;
+  const cityOption = CITY_OPTIONS.find((c) => c.value === user.city);
+  const cityLabel = cityOption ? fmt.city(cityOption.label).replace(/\s*\(.*\)$/, "") : undefined;
+  const memberSince = user.created_at ? fmt.month(monthOf(pktDateString(user.created_at))) : null;
   const roleLabel = isOwner ? t("account.role.owner") : user.role === "admin" ? t("account.role.admin") : t("account.role.player");
 
   return (

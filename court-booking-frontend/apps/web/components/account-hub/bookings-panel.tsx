@@ -5,7 +5,7 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatShortDate, formatTime } from "@/lib/format";
+import { useFmt } from "@/lib/use-fmt";
 import { courtLabel } from "@/components/court-label";
 import { useT } from "@/components/i18n/lang-provider";
 import { Button } from "@/components/site/button";
@@ -79,6 +79,7 @@ export function BookingsPanel() {
 /** Section 29 Tier 2 Part 4: "My waitlist" (mobile's profile tab has had it for a while). Player-only: owners don't join waitlists. */
 function Waitlist() {
   const t = useT();
+  const fmt = useFmt();
   const role = useAuthStore((s) => s.user?.role);
   const queryClient = useQueryClient();
   const waitlistQuery = useQuery({
@@ -117,7 +118,7 @@ function Waitlist() {
               {entry.venue_name} {"·"} {courtLabel(entry.court_name, courtSports.get(entry.court_id))}
             </span>
             <span className="text-[14px] text-khelo-muted">
-              {formatShortDate(entry.slot_starts_at)} {"·"} {formatTime(entry.slot_starts_at)} {"·"} {t("account.waitlist.position", { n: entry.position })}
+              {fmt.date(entry.slot_starts_at)} {"·"} {fmt.time(entry.slot_starts_at)} {"·"} {t("account.waitlist.position", { n: entry.position })}
             </span>
           </div>
           <button
