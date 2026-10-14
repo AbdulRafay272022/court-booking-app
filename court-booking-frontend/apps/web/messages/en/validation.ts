@@ -1,2 +1,26 @@
 // English copy: same keys as messages/ru/validation.ts; English output must stay exactly what it was before Phase 4.
-export const enValidation = {} as const;
+export const enValidation = {
+  "validation.name": "Enter your full name",
+  "validation.email": "Enter a valid email address",
+  "validation.phone": "Enter a valid mobile number, e.g. 300 1234567",
+  "validation.city": "Choose your city",
+  "validation.gender": "Choose an option",
+  "validation.confirm": "Confirm your password",
+  "validation.mismatch": "Passwords don't match",
+  "validation.passwordRequired": "Enter your password",
+  "validation.passwordMin": "Use at least {n} characters",
+  "validation.currentPassword": "Enter your current password",
+  "validation.bankName": "Enter your bank or wallet name",
+  "validation.bankNameBad": "Enter a real bank / wallet name (e.g. 'HBL', 'Meezan Bank', 'JazzCash', 'Easypaisa').",
+  "validation.accountTitle": "Enter the account title",
+  "validation.accountTitleFull": "Enter the full name printed on the bank account (e.g. 'Ali Raza').",
+  "validation.accountTitleBad": "Enter the full name printed on the bank account.",
+  "validation.accountNumber": "Enter your account number",
+  "validation.accountNumberBad": "Enter your account number (digits only, 8-24 characters).",
+  "validation.iban": "Enter a valid Pakistani IBAN (starts with PK and is 24 characters), or leave it blank.",
+  "validation.hours": "Choose an opening time and a closing time.",
+  "validation.price": "Set a price for this court.",
+  "validation.overnight": "{a} runs until the next morning, past the time {b} opens. Open {b} later, or close {a} earlier.",
+  "validation.rateNarrower": "This rate is never used: \"{name}\" is narrower and covers all of it. Change this rate's days or times.",
+  "validation.rateHidden": "This rate is hidden by \"{name}\" below it, so players are never charged it. Move it below \"{name}\", or change its days or times.",
+} as const;
