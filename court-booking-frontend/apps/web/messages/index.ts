@@ -16,6 +16,7 @@ import { ruVenue } from "./ru/venue";
 import { ruBookings } from "./ru/bookings";
 import { ruAccount } from "./ru/account";
 import { ruErrors } from "./ru/errors";
+import { ruSetup } from "./ru/setup";
 import { enCommon } from "./en/common";
 import { enHeader } from "./en/header";
 import { enFooter } from "./en/footer";
@@ -31,8 +32,9 @@ import { enVenue } from "./en/venue";
 import { enBookings } from "./en/bookings";
 import { enAccount } from "./en/account";
 import { enErrors } from "./en/errors";
+import { enSetup } from "./en/setup";
 
-export const NAMESPACES = ["common", "header", "footer", "home", "features", "owners", "about", "blog", "contact", "auth", "search", "venue", "bookings", "account", "errors"] as const;
+export const NAMESPACES = ["common", "header", "footer", "home", "features", "owners", "about", "blog", "contact", "auth", "search", "venue", "bookings", "account", "errors", "setup"] as const;
 
 export const ru = {
   ...ruCommon,
@@ -50,6 +52,7 @@ export const ru = {
   ...ruBookings,
   ...ruAccount,
   ...ruErrors,
+  ...ruSetup,
 } as const;
 
 export type MessageKey = keyof typeof ru;
@@ -70,6 +73,7 @@ export const en: Record<MessageKey, string> = {
   ...enBookings,
   ...enAccount,
   ...enErrors,
+  ...enSetup,
 };
 
 export const DICTIONARIES: Record<"ru" | "en", Record<MessageKey, string>> = { ru, en };
