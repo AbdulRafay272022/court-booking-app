@@ -11,7 +11,10 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { CorrectPaymentSheet } from "@/components/owner/correct-payment-sheet";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
+import { addDays, formatPKR, pktDateString } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
+import type { MessageKey } from "@/lib/i18n";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 
 type RangeKey = "7d" | "30d" | "month";
@@ -24,13 +27,23 @@ function rangeFor(key: RangeKey): { start: string; end: string } {
   return { start, end };
 }
 
-const METHOD_LABEL: Record<string, string> = {
-  bank_transfer_proof: "Bank transfer",
-  cash_at_venue: "Cash",
-  other: "Other",
-};
+const METHODS = ["bank_transfer_proof", "cash_at_venue", "other"];
+
+const HEADERS: (MessageKey | null)[] = [
+  "odash.ledger.h.date",
+  "odash.ledger.h.time",
+  "odash.ledger.h.player",
+  "odash.ledger.h.court",
+  "odash.ledger.h.method",
+  "odash.ledger.h.status",
+  "odash.ledger.h.amount",
+  "odash.ledger.h.running",
+  null, // i18n-ignore
+];
 
 export default function OwnerLedgerPage() {
+  const t = useT();
+  const fmt = useFmt();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
@@ -62,7 +75,7 @@ export default function OwnerLedgerPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert(friendlyErrorMessage(e));
+      alert(friendlyErrorMessage(e, t));
     } finally {
       setExporting(false);
     }
@@ -71,37 +84,37 @@ export default function OwnerLedgerPage() {
   return (
     <div className="p-8 max-w-5xl flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Ledger</h1>
+        <h1 className="text-2xl font-bold">{t("odash.ledger.title")}</h1>
         <button
           onClick={handleExport}
           disabled={exporting || !ledger || ledger.entries.length === 0}
           className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm disabled:opacity-50"
         >
-          {exporting ? "Exporting…" : "Export CSV"}
+          {exporting ? t("odash.ledger.exporting") : t("odash.ledger.export")}
         </button>
       </div>
 
       {summary ? (
         <div className="grid grid-cols-3 gap-3 max-w-xl">
-          <SummaryTile label="Collected today" value={summary.collected_today} />
-          <SummaryTile label="This week" value={summary.collected_this_week} />
-          <SummaryTile label="This month" value={summary.collected_this_month} />
+          <SummaryTile label={t("odash.ledger.tile.today")} value={summary.collected_today} />
+          <SummaryTile label={t("odash.ledger.tile.week")} value={summary.collected_this_week} />
+          <SummaryTile label={t("odash.ledger.tile.month")} value={summary.collected_this_month} />
         </div>
       ) : null}
 
       <div className="flex flex-col gap-2">
         <p className="font-mono text-4xl font-semibold">PKR {ledger ? formatPKR(ledger.summary.total_in_range) : "—"}</p>
         <p className="text-owner-ink-faint text-sm">
-          {ledger ? `${ledger.entries.length} payment${ledger.entries.length === 1 ? "" : "s"} in this range` : ""}
+          {ledger ? (ledger.entries.length === 1 ? t("odash.ledger.count.one") : t("odash.ledger.count.many", { n: ledger.entries.length })) : ""}
         </p>
         {summary && summary.outstanding_balance > 0 ? (
           <p className="text-sm font-semibold" style={{ color: "#9C5C0A" }}>
-            PKR {formatPKR(summary.outstanding_balance)} still owed on booked slots
+            {t("odash.ledger.owed", { amount: formatPKR(summary.outstanding_balance) })}
           </p>
         ) : null}
         {summary && summary.cancelled_refund_pending > 0 ? (
           <p className="text-sm font-semibold" style={{ color: "#8C3823" }}>
-            PKR {formatPKR(summary.cancelled_refund_pending)} still owed back in refunds
+            {t("odash.ledger.refundOwed", { amount: formatPKR(summary.cancelled_refund_pending) })}
           </p>
         ) : null}
       </div>
@@ -114,7 +127,7 @@ export default function OwnerLedgerPage() {
             className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
             style={{ background: rangeKey === k ? "#0E6274" : "#F4F6F7", color: rangeKey === k ? "#fff" : "#5B7079" }}
           >
-            {k === "7d" ? "7 days" : k === "30d" ? "30 days" : "This month"}
+            {t(`odash.ledger.range.${k}`)}
           </button>
         ))}
         {courts.length > 1 ? (
@@ -125,7 +138,7 @@ export default function OwnerLedgerPage() {
               className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
               style={{ background: !courtId ? "#0E6274" : "#F4F6F7", color: !courtId ? "#fff" : "#5B7079" }}
             >
-              All courts
+              {t("odash.ledger.allCourts")}
             </button>
             {courts.map((c) => (
               <button
@@ -145,43 +158,43 @@ export default function OwnerLedgerPage() {
         <table className="w-full border-collapse min-w-[720px]">
           <thead>
             <tr className="bg-owner-bg border-b border-owner-border-light text-left">
-              {["Date", "Time", "Player", "Court", "Method", "Booking status", "Amount", "Running total", ""].map((h) => (
-                <th key={h} className="px-4 py-3 text-[11px] font-bold tracking-wider text-owner-ink-faint">{h.toUpperCase()}</th>
+              {HEADERS.map((h, i) => (
+                <th key={i} className="px-4 py-3 text-[11px] font-bold tracking-wider text-owner-ink-faint">{h ? t(h).toUpperCase() : ""}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {venuesLoading || query.isLoading ? (
               <tr>
-                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">Loading…</td>
+                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">{t("odash.ledger.loading")}</td>
               </tr>
             ) : query.isError && !ledger ? (
               <tr>
                 <td colSpan={9} className="py-4">
-                  <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
+                  <ErrorState message={friendlyErrorMessage(query.error, t)} onRetry={() => query.refetch()} tone="owner" />
                 </td>
               </tr>
             ) : !ledger || ledger.entries.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">No payments in this range.</td>
+                <td colSpan={9} className="text-center py-10 text-owner-ink-faint">{t("odash.ledger.empty")}</td>
               </tr>
             ) : (
               ledger.entries.slice().reverse().map((entry) => {
                 const isCorrection = entry.amount_pkr < 0;
                 return (
                   <tr key={entry.entry_id} className="border-b border-owner-border-light last:border-0">
-                    <td className="px-4 py-3 font-mono text-sm">{formatShortDate(entry.recorded_at)}</td>
-                    <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">{formatTime(entry.recorded_at)}</td>
-                    <td className="px-4 py-3 text-sm font-semibold">{entry.player ?? "Walk-in"}</td>
+                    <td className="px-4 py-3 font-mono text-sm">{fmt.date(entry.recorded_at)}</td>
+                    <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">{fmt.time(entry.recorded_at)}</td>
+                    <td className="px-4 py-3 text-sm font-semibold">{entry.player ?? t("odash.ledger.walkin")}</td>
                     <td className="px-4 py-3 text-sm">{courtLabel(entry.court, entry.court_sport ?? sports.byName(entry.court))}</td>
                     <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">
-                      {entry.entry_type === "refund" ? "Refund" : METHOD_LABEL[entry.method] ?? entry.method}
-                      {entry.entry_type === "correction" ? " · correction" : ""}
+                      {entry.entry_type === "refund" ? t("odash.ledger.refund") : METHODS.includes(entry.method) ? t(`odash.ledger.method.${entry.method}` as MessageKey) : entry.method}
+                      {entry.entry_type === "correction" ? t("odash.ledger.correction") : ""}
                       {entry.entry_type === "refund" && entry.note ? (
                         <span className="block normal-case font-normal text-owner-ink-faint">{entry.note}</span>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{entry.booking_status}</td>
+                    <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{fmt.bookingStatus(entry.booking_status)}</td>
                     <td className="px-4 py-3 font-mono text-sm font-semibold" style={{ color: isCorrection ? "#8C3823" : undefined }}>
                       {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
                     </td>
@@ -193,7 +206,7 @@ export default function OwnerLedgerPage() {
                           className="text-[12px] font-semibold"
                           style={{ color: "#8C3823" }}
                         >
-                          Correct
+                          {t("odash.ledger.correct")}
                         </button>
                       ) : null}
                     </td>

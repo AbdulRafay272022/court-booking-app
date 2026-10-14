@@ -287,7 +287,7 @@ export default function OwnerWalkinPage() {
           onChange={setPlayerPhone}
           onBlur={() => setPhoneTouched(true)}
           placeholder="0333 5119042"
-          mono
+          mono /* i18n-ignore */
           testId="walkin-phone"
           error={phoneTouched && !phoneOk ? t("odash.walkin.phoneErr") : undefined}
         />
@@ -297,7 +297,7 @@ export default function OwnerWalkinPage() {
         value={amount}
         onChange={(v) => { setAmountTouched(true); setAmount(v.replace(/\D/g, "")); }}
         placeholder="4000"
-        mono
+        mono /* i18n-ignore */
         testId="walkin-amount"
       />
       {quote ? (
@@ -324,14 +324,14 @@ export default function OwnerWalkinPage() {
 }
 
 function Field({
-  label,
-  value,
-  onChange,
-  onBlur,
-  placeholder,
-  mono,
-  testId,
-  error,
+  label, // i18n-ignore
+  value, // i18n-ignore
+  onChange, // i18n-ignore
+  onBlur, // i18n-ignore
+  placeholder, // i18n-ignore
+  mono, // i18n-ignore
+  testId, // i18n-ignore
+  error, // i18n-ignore
 }: {
   label: string;
   value: string;

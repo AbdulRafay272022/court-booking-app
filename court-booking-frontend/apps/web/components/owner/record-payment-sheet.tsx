@@ -21,11 +21,11 @@ const METHODS: { value: PaymentMethod; label: MessageKey }[] = [
  * after. Booking is marked fully paid server-side (balance_due = 0) once the entries sum to the price.
  */
 export function RecordPaymentSheet({
-  bookingId,
-  playerLabel,
-  balanceDue,
-  onClose,
-  onRecorded,
+  bookingId, // i18n-ignore
+  playerLabel, // i18n-ignore
+  balanceDue, // i18n-ignore
+  onClose, // i18n-ignore
+  onRecorded, // i18n-ignore
 }: {
   bookingId: string;
   playerLabel: string;
@@ -41,7 +41,7 @@ export function RecordPaymentSheet({
   const [error, setError] = useState<string | null>(null);
 
   const amountNum = Number(amount);
-  const valid = Number.isFinite(amountNum) && amountNum > 0 && amountNum <= balanceDue;
+  const valid = Number.isFinite(amountNum) && amountNum > 0 && amountNum <= balanceDue; // i18n-ignore
 
   async function handleSubmit() {
     if (!valid) return;
@@ -50,7 +50,7 @@ export function RecordPaymentSheet({
     try {
       const result = await api.payments.recordEntry(bookingId, {
         amount_pkr: Math.round(amountNum),
-        method,
+        method, // i18n-ignore
         note: note.trim() || undefined,
       });
       onRecorded({ amount_paid: result.amount_paid, balance_due: result.balance_due });

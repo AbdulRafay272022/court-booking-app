@@ -9,7 +9,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatWhen } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import type { OwnerRefund } from "@court-booking/types";
 
@@ -17,6 +19,8 @@ import type { OwnerRefund } from "@court-booking/types";
  * OUTSIDE the app (JazzCash/bank) -- there is no payment gateway. This screen only records
  * that it happened, with a reference the owner can point to later if a player disputes it. */
 export default function OwnerRefundsPage() {
+  const t = useT();
+  const fmt = useFmt();
   const sports = useOwnerCourtSports();
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
@@ -34,19 +38,19 @@ export default function OwnerRefundsPage() {
   return (
     <div className="p-8 max-w-3xl flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Refunds to pay</h1>
+        <h1 className="text-2xl font-bold">{t("odash.refunds.title")}</h1>
         <p className="text-owner-ink-faint text-sm">
-          {list.length === 0 ? "Nothing owed right now" : `${list.length} refund${list.length === 1 ? "" : "s"} owed`}
+          {list.length === 0 ? t("odash.refunds.none") : list.length === 1 ? t("odash.refunds.owed.one") : t("odash.refunds.owed.many", { n: list.length })}
         </p>
       </div>
 
       {venuesLoading || query.isLoading ? (
-        <p className="p-10 text-center text-owner-ink-faint">Loading…</p>
+        <p className="p-10 text-center text-owner-ink-faint">{t("odash.refunds.loading")}</p>
       ) : query.isError ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(query.error, t)} onRetry={() => query.refetch()} tone="owner" />
       ) : list.length === 0 ? (
         <div className="bg-owner-surface border border-owner-border rounded-xl p-10 text-center text-owner-ink-faint">
-          No refunds are waiting to be paid out.
+          {t("odash.refunds.empty")}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -57,24 +61,24 @@ export default function OwnerRefundsPage() {
               style={{ borderColor: refund.is_overdue ? "#DDBAB1" : undefined }}
             >
               <div className="flex flex-col gap-0.5 min-w-0">
-                <p className="font-bold truncate">{refund.player_name ?? refund.player_phone ?? "Player"}</p>
+                <p className="font-bold truncate">{refund.player_name ?? refund.player_phone ?? t("odash.refunds.player")}</p>
                 <p className="text-owner-ink-muted text-[13px]">
-                  {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))} · {formatWhen(refund.starts_at)}
+                  {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))} · {fmt.when(refund.starts_at)}
                 </p>
                 {refund.is_overdue ? (
                   <p className="text-[12px] font-semibold" style={{ color: "#A8432C" }}>
-                    Overdue -- flagged {formatWhen(refund.created_at)}
+                    {t("odash.refunds.overdue", { when: fmt.when(refund.created_at) })}
                   </p>
                 ) : null}
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className="font-mono font-bold text-[15px]">PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))}{(refund.refunded_amount ?? 0) > 0 ? <span className="block text-[11px] font-semibold text-owner-ink-faint">remaining of PKR {formatPKR(refund.refund_amount)}</span> : null}</span>
+                <span className="font-mono font-bold text-[15px]">PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))}{(refund.refunded_amount ?? 0) > 0 ? <span className="block text-[11px] font-semibold text-owner-ink-faint">{t("odash.refunds.remainingOf", { total: formatPKR(refund.refund_amount) })}</span> : null}</span>
                 <button
                   onClick={() => setOpenId(refund.id)}
                   className="px-4 h-10 rounded-lg text-white font-semibold text-[13.5px]"
                   style={{ background: "#0E6274" }}
                 >
-                  Mark Refunded
+                  {t("odash.refunds.mark")}
                 </button>
               </div>
             </div>
@@ -98,6 +102,7 @@ export default function OwnerRefundsPage() {
 }
 
 function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; onClose: () => void; onDone: () => void }) {
+  const t = useT();
   const sports = useOwnerCourtSports();
   const [reference, setReference] = useState("");
   const [amount, setAmount] = useState(String(Math.round((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))));
@@ -108,12 +113,12 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
   async function submit() {
     const trimmedReference = reference.trim();
     if (!trimmedReference) {
-      setError("Add a reference (e.g. the JazzCash/bank transaction id) so this can be traced later.");
+      setError(t("odash.refunds.err.reference"));
       return;
     }
     const parsedAmount = Number(amount);
     if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
-      setError("Enter a valid amount.");
+      setError(t("odash.refunds.err.amount"));
       return;
     }
     setBusy(true);
@@ -122,7 +127,7 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
       await api.owners.markRefundPaid(refund.id, trimmedReference, parsedAmount, screenshot ?? undefined);
       onDone();
     } catch (e) {
-      setError(friendlyErrorMessage(e));
+      setError(friendlyErrorMessage(e, t));
     } finally {
       setBusy(false);
     }
@@ -135,14 +140,14 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h2 className="text-lg font-bold">Mark refund as sent</h2>
+          <h2 className="text-lg font-bold">{t("odash.refunds.dialogTitle")}</h2>
           <p className="text-owner-ink-faint text-[13px]">
-            {refund.player_name ?? refund.player_phone} · {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))} · remaining PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))} of PKR {formatPKR(refund.refund_amount)}
+            {t("odash.refunds.dialogLine", { who: refund.player_name ?? refund.player_phone ?? "", court: courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name)), remaining: formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0))), total: formatPKR(refund.refund_amount) })}
           </p>
         </div>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-semibold text-owner-ink-muted">Amount refunded (PKR)</span>
+          <span className="text-[13px] font-semibold text-owner-ink-muted">{t("odash.refunds.amount")}</span>
           <input
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -152,17 +157,17 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-semibold text-owner-ink-muted">Reference (required)</span>
+          <span className="text-[13px] font-semibold text-owner-ink-muted">{t("odash.refunds.reference")}</span>
           <input
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder="e.g. JazzCash TXN 12345, or bank transfer ref"
+            placeholder={t("odash.refunds.referencePh")}
             className="h-11 px-3.5 rounded-lg border border-owner-border outline-none text-sm"
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-semibold text-owner-ink-muted">Screenshot (optional)</span>
+          <span className="text-[13px] font-semibold text-owner-ink-muted">{t("odash.refunds.screenshot")}</span>
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp"
@@ -175,7 +180,7 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
 
         <div className="flex gap-2.5 mt-2">
           <button onClick={onClose} className="flex-1 h-12 rounded-xl border border-owner-border font-semibold">
-            Cancel
+            {t("odash.refunds.cancel")}
           </button>
           <button
             onClick={submit}
@@ -183,7 +188,7 @@ function MarkRefundedDialog({ refund, onClose, onDone }: { refund: OwnerRefund; 
             className="flex-1 h-12 rounded-xl text-white font-semibold disabled:opacity-60"
             style={{ background: "#0E6274" }}
           >
-            {busy ? "Saving…" : "Confirm refunded"}
+            {busy ? t("odash.refunds.saving") : t("odash.refunds.confirm")}
           </button>
         </div>
       </div>

@@ -17,9 +17,9 @@ import type { MessageKey } from "@/lib/i18n";
  * entries; an admin can correct any (enforced server-side, same accessible-booking check as recording one).
  */
 export function CorrectPaymentSheet({
-  entry,
-  onClose,
-  onReversed,
+  entry, // i18n-ignore
+  onClose, // i18n-ignore
+  onReversed, // i18n-ignore
 }: {
   entry: LedgerEntry;
   onClose: () => void;

@@ -2,9 +2,13 @@
 import { enOdashShell } from "./odash-shell";
 import { enOdashToday } from "./odash-today";
 import { enOdashOps } from "./odash-ops";
+import { enOdashMoney } from "./odash-money";
+import { enOdashAdmin } from "./odash-admin";
 
 export const enOdash = {
   ...enOdashShell,
   ...enOdashToday,
   ...enOdashOps,
+  ...enOdashMoney,
+  ...enOdashAdmin,
 };

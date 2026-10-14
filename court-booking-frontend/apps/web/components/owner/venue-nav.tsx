@@ -36,9 +36,9 @@ export function StatusBadge({ status }: { status: VenueStatus }) {
  * manages, and "+ Add another venue" (reuses the existing setup wizard, starting from a clean
  * draft). Shown for one venue too -- it's how an owner with a single venue finds "Add another". */
 export function VenuePicker({
-  venues,
-  activeVenueId,
-  onSelect,
+  venues, // i18n-ignore
+  activeVenueId, // i18n-ignore
+  onSelect, // i18n-ignore
 }: {
   venues: Venue[];
   activeVenueId: string | undefined;
