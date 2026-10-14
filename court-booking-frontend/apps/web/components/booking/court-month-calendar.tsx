@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { addMonths, daysOfMonth, formatMonth, mondayFirstWeekdayOf, monthOf, pktDateString } from "@court-booking/types";
+import { addMonths, daysOfMonth, mondayFirstWeekdayOf, monthOf, pktDateString } from "@court-booking/types";
 import type { CourtMonthSummary, DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
 
 // Day-state colours come from the Khelo tokens: available = mint, filling up = warning, fully booked = the grey of a booked slot.
@@ -54,6 +55,7 @@ export function CourtMonthCalendar({
   onSummary?: (summary: CourtMonthSummary) => void;
 }) {
   const t = useT();
+  const fmt = useFmt();
   const weekdayHeaders = t("venue.cal.weekdays").split(",");
   const todayMonth = useMemo(() => monthOf(pktDateString()), []);
   const [month, setMonth] = useState(todayMonth);
@@ -84,7 +86,7 @@ export function CourtMonthCalendar({
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <NavButton dir="prev" disabled={prevDisabled} onClick={() => setMonth((m) => addMonths(m, -1))} />
-        <span className="font-khelo-display text-[17px] font-extrabold tracking-tight text-khelo-ink">{formatMonth(month)}</span>
+        <span className="font-khelo-display text-[17px] font-extrabold tracking-tight text-khelo-ink">{fmt.month(month)}</span>
         <NavButton dir="next" disabled={nextDisabled} onClick={() => setMonth((m) => addMonths(m, 1))} />
       </div>
 

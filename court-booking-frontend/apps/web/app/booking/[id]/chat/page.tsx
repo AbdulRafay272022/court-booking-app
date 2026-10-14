@@ -7,10 +7,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTime, formatTimeRange } from "@/lib/format";
-import { formatDuration } from "@court-booking/types";
+import { formatPKR } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
-import { chatActionLabel, type ChatAction } from "@court-booking/types";
+import type { ChatAction } from "@court-booking/types";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
+import type { Fmt } from "@/lib/format-i18n";
+import type { TFunction } from "@/lib/i18n";
 
 interface Turn {
   id: string;
@@ -22,13 +25,19 @@ interface Turn {
 }
 
 /** "7:42 PM" for today's messages, "Wed, 23 Sep · 7:42 PM" for older ones (history opened days later). */
-function stamp(at: number): string {
+function stamp(at: number, fmt: Fmt): string {
   const d = new Date(at);
-  return formatDate(d) === formatDate(new Date()) ? formatTime(d) : `${formatDate(d)} · ${formatTime(d)}`;
+  return fmt.date(d) === fmt.date(new Date()) ? fmt.time(d) : `${fmt.date(d)} · ${fmt.time(d)}`;
 }
 
 /** Offered under an assistant reply that carries no buttons, so a player is never stuck typing from scratch. */
-const QUICK_REPLIES = ["What other times are free?", "Show me tomorrow", "Is another court open then?"];
+const QUICK_REPLY_KEYS = ["play.chat.quick1", "play.chat.quick2", "play.chat.quick3"] as const;
+
+/** The Yes button the assistant proposes names the exact slot ("Yes, book 7:00 PM to 8:00 PM, Wed 23 Sep"). */
+function actionLabel(action: ChatAction, t: TFunction): string {
+  const slot = action.data?.label;
+  return action.type === "confirm_booking" && typeof slot === "string" && slot ? t("play.chat.yesBook", { slot }) : action.label;
+}
 
 function AssistantAvatar() {
   return (
@@ -45,8 +54,9 @@ function AssistantAvatar() {
 }
 
 function TypingBubble() {
+  const t = useT();
   return (
-    <div className="flex items-end gap-2" role="status" aria-label="The assistant is typing" data-testid="typing-indicator">
+    <div className="flex items-end gap-2" role="status" aria-label={t("play.chat.typing")} data-testid="typing-indicator">
       <AssistantAvatar />
       <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-player-border-light bg-player-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(20,26,29,0.05)]">
         {[0, 1, 2].map((i) => (
@@ -59,6 +69,8 @@ function TypingBubble() {
 
 function ChatInner({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const t = useT();
+  const fmt = useFmt();
   const isNew = id === "new";
   const router = useRouter();
   const search = useSearchParams();
@@ -105,16 +117,21 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
         return;
       }
       const when = startsAt ? new Date(startsAt) : null;
+      const questionVars = {
+        court: courtName || t("play.chat.courtFallback"),
+        venue: venueName || t("play.chat.venueFallback"),
+        date: when ? fmt.date(when) : "",
+        time: when ? fmt.time(when) : "",
+        duration: minutes ? fmt.duration(minutes) : "",
+      };
       const question = when
-        ? `Is ${courtName || "a court"} at ${venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}${
-            minutes ? ` for ${formatDuration(minutes)}` : ""
-          }?`
-        : "What's available?";
+        ? t(minutes ? "play.chat.questionFor" : "play.chat.question", questionVars)
+        : t("play.chat.whatsAvailable");
       setTurns([{ id: "local-0", sender: "player", content: question, at: Date.now() }]);
       setSending(true);
       try {
         const res = await api.chat.send({ message: question, venue_id: venueId, channel: "app" });
-        setTurns((t) => [...t, { id: "local-1", sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
+        setTurns((prev) => [...prev, { id: "local-1", sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
       } catch (e) {
         setBootError(friendlyErrorMessage(e));
       } finally {
@@ -132,13 +149,13 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
     const text = (override ?? input).trim();
     if (!text || sending) return;
     setInput("");
-    setTurns((t) => [...t, { id: `local-${Date.now()}`, sender: "player", content: text, at: Date.now() }]);
+    setTurns((prev) => [...prev, { id: `local-${Date.now()}`, sender: "player", content: text, at: Date.now() }]);
     setSending(true);
     try {
       const res = await api.chat.send({ message: text, venue_id: venueId, booking_id: isNew ? undefined : id, channel: "app" });
-      setTurns((t) => [...t, { id: `local-${Date.now()}-ai`, sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
+      setTurns((prev) => [...prev, { id: `local-${Date.now()}-ai`, sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
     } catch (e) {
-      setTurns((t) => [...t, { id: `local-${Date.now()}-err`, sender: "ai", content: friendlyErrorMessage(e), at: Date.now() }]);
+      setTurns((prev) => [...prev, { id: `local-${Date.now()}-err`, sender: "ai", content: friendlyErrorMessage(e), at: Date.now() }]);
     } finally {
       setSending(false);
     }
@@ -146,9 +163,9 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
 
   async function handleAction(turnId: string, action: ChatAction) {
     if (action.type === "decline") {
-      setTurns((t) => [
-        ...t,
-        { id: `local-${Date.now()}`, sender: "ai", content: "No problem — let me know if you want to look at another time.", at: Date.now() },
+      setTurns((prev) => [
+        ...prev,
+        { id: `local-${Date.now()}`, sender: "ai", content: t("play.chat.decline"), at: Date.now() },
       ]);
       return;
     }
@@ -175,9 +192,9 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
     } catch (e) {
       const message =
         e instanceof ApiError && e.code === "SLOT_ALREADY_TAKEN"
-          ? "Someone just booked this slot first — pick another time."
+          ? t("play.chat.slotTaken")
           : friendlyErrorMessage(e);
-      setTurns((t) => [...t, { id: `local-${Date.now()}-holderr`, sender: "ai", content: message, at: Date.now() }]);
+      setTurns((prev) => [...prev, { id: `local-${Date.now()}-holderr`, sender: "ai", content: message, at: Date.now() }]);
     } finally {
       setHoldingKey(null);
     }
@@ -192,16 +209,16 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
       <header className="flex items-center gap-3 border-b border-player-border-light bg-player-surface px-4 sm:px-6 py-3.5">
         <button
           onClick={() => router.back()}
-          aria-label="Back"
+          aria-label={t("play.chat.back")}
           className="flex h-10 w-10 items-center justify-center rounded-xl bg-player-surface-2 text-player-ink transition-colors hover:bg-player-accent-soft hover:text-player-accent-hover"
         >
           ←
         </button>
         <AssistantAvatar />
         <div className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate text-[16px] font-bold">{venueName ?? "Booking assistant"}</span>
+          <span className="truncate text-[16px] font-bold">{venueName ?? t("play.chat.assistant")}</span>
           <span className="flex items-center gap-1.5 text-[12.5px] text-player-ink-faint">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-player-success" /> Booking assistant · replies instantly
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-player-success" /> {t("play.chat.assistantSub")}
           </span>
         </div>
       </header>
@@ -209,10 +226,10 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
       {courtName && when ? (
         <div className="flex items-center justify-between gap-3 border-b border-player-accent-soft-border bg-player-accent-soft px-4 sm:px-6 py-3">
           <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">SELECTED SLOT</span>
+            <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">{t("play.chat.selectedSlot")}</span>
             <span className="font-mono text-[14px] font-semibold">
-              {courtLabel(courtName, courtSport)} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
-              {minutes ? ` · ${formatDuration(minutes)}` : ""}
+              {courtLabel(courtName, courtSport)} · {fmt.date(when)}, {minutes ? fmt.timeRange(when, new Date(when.getTime() + minutes * 60_000)) : fmt.time(when)}
+              {minutes ? ` · ${fmt.duration(minutes)}` : ""}
             </span>
           </div>
           {price ? <span className="shrink-0 rounded-full bg-player-surface px-3 py-1 font-mono text-[14px] font-bold">PKR {formatPKR(Number(price))}</span> : null}
@@ -236,7 +253,7 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
                   <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{turn.content}</p>
                 </div>
               </div>
-              <span className={`text-[11.5px] text-player-ink-fainter ${mine ? "pr-1" : "pl-10"}`}>{stamp(turn.at)}</span>
+              <span className={`text-[11.5px] text-player-ink-fainter ${mine ? "pr-1" : "pl-10"}`}>{stamp(turn.at, fmt)}</span>
               {turn.actions && turn.actions.length > 0 ? (
                 <div className="mt-1 flex flex-wrap gap-2 pl-10">
                   {turn.actions.map((action) => {
@@ -254,7 +271,7 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
                             : "border border-player-border bg-player-surface text-player-ink-muted hover:border-player-ink-fainter"
                         }`}
                       >
-                        {isHolding ? "Holding…" : chatActionLabel(action)}
+                        {isHolding ? t("play.chat.holding") : actionLabel(action, t)}
                       </button>
                     );
                   })}
@@ -266,7 +283,7 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
         {sending ? <TypingBubble /> : null}
         {showQuickReplies ? (
           <div className="flex flex-wrap gap-2 pl-10" data-testid="quick-replies">
-            {QUICK_REPLIES.map((q) => (
+            {QUICK_REPLY_KEYS.map((k) => t(k)).map((q) => (
               <button
                 key={q}
                 type="button"
@@ -288,15 +305,15 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            placeholder="Ask about times, courts or prices…"
-            aria-label="Message"
+            placeholder={t("play.chat.placeholder")}
+            aria-label={t("play.chat.inputAria")}
             disabled={sending}
             className="h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-player-ink-fainter"
           />
           <button
             onClick={() => sendMessage()}
             disabled={sending || !input.trim()}
-            aria-label="Send message"
+            aria-label={t("play.chat.sendAria")}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-player-accent text-white transition-colors hover:bg-player-accent-hover disabled:bg-player-border"
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

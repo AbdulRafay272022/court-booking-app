@@ -6,6 +6,7 @@ import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
 import { FieldError, FormNotice, SmartButton, TextField } from "@/components/auth-v2/fields";
 import { Avatar, Card } from "./parts";
@@ -20,6 +21,7 @@ const SELECT =
  * own OTP-verified flow (Settings > Sign-in details), and the password goes through forgot-password (one password-change path). */
 export function ProfilePanel() {
   const t = useT();
+  const fmt = useFmt();
   const user = useAuthStore((s) => s.user)!;
   const theme = user.role === "owner" || user.role === "admin" ? "owner" : "player";
   const cityId = useId();
@@ -183,7 +185,7 @@ export function ProfilePanel() {
               </option>
               {CITY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {fmt.city(o.label)}
                 </option>
               ))}
             </select>

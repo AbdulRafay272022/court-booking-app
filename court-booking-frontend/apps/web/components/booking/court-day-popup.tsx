@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, durationChoices, formatDuration, minSlotsFor, monthOf, pktDateString, upcomingSlots, weekOf } from "@court-booking/types";
+import { addDays, durationChoices, minSlotsFor, mondayFirstWeekdayOf, monthOf, pktDateString, upcomingSlots, weekOf } from "@court-booking/types";
 import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -11,7 +11,8 @@ import { ApiError } from "@court-booking/api-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { CourtLabel } from "@/components/court-label";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDateString, formatPKR, formatSlotTimes } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useFmt } from "@/lib/use-fmt";
 import { DurationSheet } from "./duration-sheet";
 import { useT } from "@/components/i18n/lang-provider";
 import type { MessageKey } from "@/lib/i18n";
@@ -53,6 +54,7 @@ export function CourtDayPopup({
   onClose: () => void;
 }) {
   const t = useT();
+  const fmt = useFmt();
   const router = useRouter();
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
@@ -68,14 +70,14 @@ export function CourtDayPopup({
   // The clock that decides which of today's slots have already gone; ticks so an open popup keeps up.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
   }, []);
 
   function tabLabel(d: string) {
     if (d === today) return t("venue.pop.today");
     if (d === tomorrow) return t("venue.pop.tomorrow");
-    return formatDateString(d).split(",")[0];
+    return fmt.weekday(mondayFirstWeekdayOf(d), "short");
   }
 
   const waitlistQuery = useQuery({ queryKey: ["waitlist-mine"], queryFn: () => api.waitlist.mine(), enabled: status === "signedIn" });
@@ -261,7 +263,7 @@ export function CourtDayPopup({
                               pending ? "border-khelo-warning bg-khelo-warning-bg" : "border-khelo-success bg-khelo-success-bg"
                             }`}
                           >
-                            <span className="font-mono text-[13px] font-semibold text-khelo-ink">{formatSlotTimes(slot)}</span>
+                            <span className="font-mono text-[13px] font-semibold text-khelo-ink">{fmt.slotTimes(slot)}</span>
                             <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-extrabold ${pending ? "bg-khelo-warning text-khelo-ink" : "bg-khelo-success-text text-white"}`}>
                               {pending ? t("venue.pop.paymentPendingCaps") : t("venue.pop.yourBooking")}
                             </span>
@@ -278,7 +280,7 @@ export function CourtDayPopup({
                         <button
                           onClick={() => handleTapSlot(index, null)}
                           disabled={!isOpen}
-                          title={slot.status === "blocked" && slot.reason ? slot.reason : tooShort ? t("venue.pop.needsAtLeast", { duration: formatDuration(slotMinutes) }) : undefined}
+                          title={slot.status === "blocked" && slot.reason ? slot.reason : tooShort ? t("venue.pop.needsAtLeast", { duration: fmt.duration(slotMinutes) }) : undefined}
                           data-testid={isOpen ? "slot-open" : undefined}
                           className={`flex min-h-12 items-center justify-between rounded-2xl border-[1.5px] px-3.5 py-3 text-left ${
                             isOpen
@@ -289,7 +291,7 @@ export function CourtDayPopup({
                           }`}
                         >
                           <span className={`font-mono text-[13px] font-semibold ${isOpen ? "text-khelo-ink" : "text-khelo-muted"} ${isBooked ? "line-through" : ""}`}>
-                            {formatSlotTimes(slot)}
+                            {fmt.slotTimes(slot)}
                           </span>
                           <span className="flex items-center gap-2">
                             {isBooked ? (
@@ -307,7 +309,7 @@ export function CourtDayPopup({
                             {isOpen ? (
                               <>
                                 <span className="font-mono text-[12px] font-semibold text-khelo-muted">
-                                  PKR {formatPKR(startChoices[0].price)}{minSlots > 1 ? ` · ${formatDuration(startChoices[0].minutes)}` : ""}
+                                  PKR {formatPKR(startChoices[0].price)}{minSlots > 1 ? ` · ${fmt.duration(startChoices[0].minutes)}` : ""}
                                 </span>
                                 <span className="rounded-full bg-khelo-surface px-2.5 py-1 text-[10.5px] font-extrabold text-khelo-success-text">{t("venue.pop.open")}</span>
                               </>

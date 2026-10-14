@@ -8,10 +8,14 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 
 function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   const { id } = use(params);
+  const t = useT();
+  const fmt = useFmt();
   const router = useRouter();
   const bookingQuery = useQuery({ queryKey: ["booking", id], queryFn: () => api.bookings.get(id) });
   const courtQuery = useQuery({
@@ -29,10 +33,10 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   if (!booking && bookingQuery.isError) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center gap-3 px-8 text-center text-white" style={{ background: "#0F2D22" }}>
-        <p className="font-bold">Couldn't load your booking</p>
+        <p className="font-bold">{t("play.done.loadError")}</p>
         <p className="text-sm" style={{ color: "#9BC4B1" }}>{friendlyErrorMessage(bookingQuery.error)}</p>
         <button onClick={() => bookingQuery.refetch()} className="px-4 h-11 rounded-xl bg-white text-player-ink font-semibold text-[13.5px] mt-1">
-          Try again
+          {t("play.tryAgain")}
         </button>
       </main>
     );
@@ -41,7 +45,7 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   if (!booking) {
     return (
       <main className="min-h-screen flex items-center justify-center text-white" style={{ background: "#0F2D22" }}>
-        Loading…
+        {t("play.loading")}
       </main>
     );
   }
@@ -52,34 +56,34 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
         ✓
       </div>
       <div className="flex flex-col items-center gap-1.5 text-center">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Court is yours</h1>
+        <h1 className="text-3xl font-extrabold text-white tracking-tight">{t("play.done.title")}</h1>
         <p className="text-[14.5px]" style={{ color: "#9BC4B1" }}>
-          Confirmed by the venue
+          {t("play.done.confirmedBy")}
         </p>
       </div>
 
       <div className="w-full max-w-md bg-white rounded-3xl p-7 flex flex-col gap-5">
         <div className="flex flex-col gap-1">
           <span className="font-bold text-[19px]">
-            {venueQuery.data?.name ?? "Venue"} · {courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : "Court"}
+            {venueQuery.data?.name ?? t("play.done.venue")} · {courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : t("play.done.court")}
           </span>
           <span className="text-player-ink-faint text-sm">{venueQuery.data ? venueQuery.data.area ?? venueQuery.data.city : ""}</span>
         </div>
         <div className="grid grid-cols-2 gap-y-4">
-          <Stat label="DATE" value={formatDate(booking.starts_at)} />
-          <Stat label="TIME" value={formatTimeRange(booking.starts_at, booking.ends_at)} />
-          <Stat label="PAID" value={`PKR ${formatPKR(booking.amount_paid)}`} />
+          <Stat label={t("play.done.date")} value={fmt.date(booking.starts_at)} />
+          <Stat label={t("play.done.time")} value={fmt.timeRange(booking.starts_at, booking.ends_at)} />
+          <Stat label={t("play.done.paid")} value={`PKR ${formatPKR(booking.amount_paid)}`} />
           {/* "AT VENUE 0" read like a broken "Venue 0"; say what it means. */}
           <Stat
-            label="DUE AT VENUE"
-            value={booking.balance_due > 0 ? `PKR ${formatPKR(booking.balance_due)}` : "Nothing due"}
+            label={t("play.done.dueAtVenue")}
+            value={booking.balance_due > 0 ? `PKR ${formatPKR(booking.balance_due)}` : t("play.done.nothingDue")}
             accent={booking.balance_due > 0}
           />
         </div>
       </div>
 
       <button onClick={() => router.push("/bookings")} className="w-full max-w-md h-13 rounded-2xl bg-white font-bold" style={{ height: 52 }}>
-        Done
+        {t("play.done.done")}
       </button>
     </main>
   );
