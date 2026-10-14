@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 import { supportWhatsAppUrl } from "@/lib/support";
+import { useT } from "@/components/i18n/lang-provider";
 import { ErrorState } from "@/components/error-state";
 import { PrimaryButton, SecondaryButton, Stepper } from "@/components/setup/ui";
 import { PhotoManager } from "@/components/setup/photo-manager";
@@ -46,6 +47,7 @@ function Timeline({ rows }: { rows: { state: "done" | "active" | "upcoming"; tit
  *  and real next steps (mobile used to drop a rejected owner onto the normal Today screen
  *  with no message at all). */
 function StatusView() {
+  const t = useT();
   const router = useRouter();
   const search = useSearchParams();
   const venueId = search.get("venueId") ?? "";
@@ -58,7 +60,7 @@ function StatusView() {
   const hasLiveVenue = (venuesQuery.data ?? []).some((v) => v.status === "approved");
   const backToDashboard = hasLiveVenue ? (
     <Link href="/dashboard/owner/today" className="self-start text-[13.5px] font-bold text-owner-accent underline">
-      ← Back to your dashboard
+      {t("setup.status.backDash")}
     </Link>
   ) : null;
 
@@ -68,9 +70,9 @@ function StatusView() {
     if (approved) router.replace("/dashboard/owner/today");
   }, [approved, router]);
 
-  if (!venueId) return <p className="text-owner-ink-muted">No venue selected.</p>;
-  if (query.isError) return <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />;
-  if (!query.data) return <p className="text-owner-ink-faint">Loading…</p>;
+  if (!venueId) return <p className="text-owner-ink-muted">{t("setup.status.noVenue")}</p>;
+  if (query.isError) return <ErrorState message={friendlyErrorMessage(query.error, t)} onRetry={() => query.refetch()} tone="owner" />;
+  if (!query.data) return <p className="text-owner-ink-faint">{t("setup.status.loading")}</p>;
 
   const venue = query.data;
   const courtCount = venue.courts?.filter((c) => c.is_active).length ?? 0;
@@ -84,30 +86,30 @@ function StatusView() {
         <div className="bg-owner-danger-soft border border-owner-danger-soft-border rounded-2xl p-5 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <h1 className="text-[18px] font-bold tracking-tight">{venue.name}</h1>
-            <span className="px-3 py-1.5 rounded-full bg-owner-surface border border-owner-danger-soft-border text-owner-danger text-xs font-semibold">Not approved</span>
+            <span className="px-3 py-1.5 rounded-full bg-owner-surface border border-owner-danger-soft-border text-owner-danger text-xs font-semibold">{t("setup.status.notApproved")}</span>
           </div>
           <p className="text-owner-danger text-sm leading-5 font-medium">
-            {venue.rejection_reason ?? "We couldn't approve this venue as submitted."}
+            {venue.rejection_reason ?? t("setup.status.rejectedDefault")}
           </p>
         </div>
 
         <div className="bg-owner-surface border border-owner-border rounded-2xl p-5 flex flex-col gap-3">
-          <p className="font-bold text-[15px]">What you can do next</p>
+          <p className="font-bold text-[15px]">{t("setup.status.nextTitle")}</p>
           <ul className="text-[13.5px] leading-6 font-medium text-owner-ink-muted list-disc pl-5">
-            <li>Message us and we&apos;ll tell you exactly what would change the decision.</li>
-            <li>Or register the venue again with the details corrected.</li>
+            <li>{t("setup.status.next1")}</li>
+            <li>{t("setup.status.next2")}</li>
           </ul>
           <div className="grid sm:grid-cols-2 gap-3 pt-1">
             <a
-              href={supportWhatsAppUrl(`Hi, my venue "${venue.name}" wasn't approved. Can you help?`)}
+              href={supportWhatsAppUrl(t("setup.status.waMessage", { name: venue.name }))}
               target="_blank"
               rel="noopener noreferrer"
               className="h-12 w-full rounded-[10px] bg-owner-accent text-white text-[15px] font-bold flex items-center justify-center text-center px-3"
             >
-              Message support on WhatsApp
+              {t("setup.status.msgSupport")}
             </a>
             <SecondaryButton
-              label="Register a new venue"
+              label={t("setup.status.registerNew")}
               onClick={() => {
                 resetDraft();
                 router.push("/venue-setup/register");
@@ -128,23 +130,23 @@ function StatusView() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-[18px] font-bold tracking-tight">{venue.name}</h1>
           <span className="px-3 py-1.5 rounded-full bg-owner-warn-soft border border-owner-warn-soft-border text-owner-warn text-xs font-semibold">
-            {changes ? "Changes requested" : "Under review"}
+            {changes ? t("setup.status.changesRequested") : t("setup.status.underReview")}
           </span>
         </div>
         <p className="text-owner-ink-muted text-sm leading-5 font-medium">
           {changes
-            ? (venue.rejection_reason ?? "We asked for a few changes — message us and we'll go through them with you.")
-            : "Submitted just now. We review every venue by hand — usually within a day."}
+            ? (venue.rejection_reason ?? t("setup.status.changesDefault"))
+            : t("setup.status.submitted")}
         </p>
       </div>
 
       <Timeline
         rows={[
-          { state: "done", title: "You sent it in", subtitle: `${courtCount} court${courtCount === 1 ? "" : "s"}, hours and prices received` },
+          { state: "done", title: t("setup.status.tl1"), subtitle: t(courtCount === 1 ? "setup.status.tl1subOne" : "setup.status.tl1subMany", { n: courtCount }) },
           changes
-            ? { state: "upcoming", title: "Waiting on your changes", subtitle: "Message us to sort out what we flagged" }
-            : { state: "active", title: "We're checking it now", subtitle: "Confirming your details are complete and accurate" },
-          { state: "upcoming", title: "You go live", subtitle: "Players nearby can find and book you" },
+            ? { state: "upcoming", title: t("setup.status.tl2changes"), subtitle: t("setup.status.tl2changesSub") }
+            : { state: "active", title: t("setup.status.tl2"), subtitle: t("setup.status.tl2sub") },
+          { state: "upcoming", title: t("setup.status.tl3"), subtitle: t("setup.status.tl3sub") },
         ]}
       />
 
@@ -158,14 +160,14 @@ function StatusView() {
           exists at this point. */}
       <div className="bg-owner-surface border border-owner-border rounded-2xl p-5 flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <p className="font-bold text-[15px]">Add photos while we check it</p>
+          <p className="font-bold text-[15px]">{t("setup.status.photosTitle")}</p>
           <p className="text-[12.5px] leading-[18px] font-medium text-owner-ink-faint">
-            Good photos help players choose you. You can add more or reorder them anytime in Venue
-            settings, and any photos you add now show the moment you go live.
+            {t("setup.status.photosHelp")}
           </p>
         </div>
         <PhotoManager
-          label="Venue photos"
+          label={t("setup.status.venuePhotos")}
+          testKey="Venue photos"
           photoUrls={venue.photo_urls}
           photoKeys={venue.photo_keys}
           max={8}
@@ -181,7 +183,8 @@ function StatusView() {
         {venue.courts.filter((c) => c.is_active).map((c) => (
           <div key={c.id} className="pt-3 border-t border-owner-border-light">
             <PhotoManager
-              label={`${c.name} · ${c.sport} photos`}
+              label={t("setup.status.courtPhotos", { name: c.name, sport: c.sport })}
+              testKey={`${c.name} · ${c.sport} photos`}
               photoUrls={c.photo_urls}
               photoKeys={c.photo_keys}
               max={5}
@@ -199,23 +202,23 @@ function StatusView() {
       </div>
 
       <div className="bg-owner-accent-soft border border-owner-accent-soft-border rounded-2xl p-5 flex flex-col gap-3">
-        <p className="font-bold text-owner-accent-hover text-[15px]">You don&apos;t have to wait to start</p>
+        <p className="font-bold text-owner-accent-hover text-[15px]">{t("setup.status.startTitle")}</p>
         <p className="text-[13px] leading-5 font-medium text-owner-ink-muted">
-          Add today&apos;s phone and walk-in bookings now. When you go live, your calendar is already correct.
+          {t("setup.status.startBody")}
         </p>
         <Link href="/dashboard/owner/walkin" className="h-11 rounded-[9px] bg-owner-accent text-white text-sm font-semibold flex items-center justify-center">
-          Add a booking
+          {t("setup.status.addBooking")}
         </Link>
       </div>
 
       <p className="text-[13px] font-medium text-owner-ink-faint">
-        Taking too long?{" "}
+        {t("setup.status.slow")}{" "}
         <a href={supportWhatsAppUrl()} target="_blank" rel="noopener noreferrer" className="font-bold underline">
-          Message us
+          {t("setup.status.slowLink")}
         </a>{" "}
-        and we&apos;ll look straight away.
+        {t("setup.status.slowEnd")}
       </p>
-      <PrimaryButton label="Check again" onClick={() => query.refetch()} />
+      <PrimaryButton label={t("setup.status.checkAgain")} onClick={() => query.refetch()} />
     </>
   );
 }

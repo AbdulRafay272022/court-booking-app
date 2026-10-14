@@ -7,6 +7,8 @@ import { isStaleVenueDraftError } from "@court-booking/api-client";
 import { buildPricingRules, buildSchedules, courtSetupProblem, defaultCourtSetup } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import { useVenueSetupStore, type CourtDraft } from "@/lib/venue-setup-store";
 import { PrimaryButton, SecondaryButton, SectionLabel, Stepper } from "@/components/setup/ui";
 import { CourtSetupFields } from "@/components/setup/court-setup-fields";
@@ -30,6 +32,8 @@ function stripIds(setup: object): unknown {
 
 export default function VenueCourtsPage() {
   const router = useRouter();
+  const t = useT();
+  const fmt = useFmt();
   const queryClient = useQueryClient();
   const store = useVenueSetupStore();
   const [submitting, setSubmitting] = useState(false);
@@ -51,7 +55,7 @@ export default function VenueCourtsPage() {
 
   // Each court is valid on its own: a name, usable hours (closing at/before opening, e.g. 06:00 -> 02:00, used to reach the
   // API, 500, and surface as "Can't reach the server"), and a price.
-  const courtProblems = store.courts.map((c) => (c.name.trim() ? courtSetupProblem(c) : "Give this court a name."));
+  const courtProblems = store.courts.map((c) => (c.name.trim() ? courtSetupProblem(c) : t("setup.courts.needName")));
   const isValid = store.courts.length > 0 && courtProblems.every((p) => p === null);
 
   async function handleSubmit() {
@@ -137,7 +141,7 @@ export default function VenueCourtsPage() {
         store.setField("orphanCourtIds", []);
         setStaleDraft(true);
       } else {
-        setError(friendlyErrorMessage(e));
+        setError(friendlyErrorMessage(e, t));
       }
     } finally {
       setSubmitting(false);
@@ -148,11 +152,11 @@ export default function VenueCourtsPage() {
     <>
       <Stepper current={2} />
       <div className="flex flex-col gap-1.5">
-        <h1 className="text-[26px] font-bold tracking-tight">Your courts and prices</h1>
-        <p className="text-owner-ink-muted text-[15px]">Each court has its own minimum booking time, opening hours and prices. We build its schedule from them.</p>
+        <h1 className="text-[26px] font-bold tracking-tight">{t("setup.courts.title")}</h1>
+        <p className="text-owner-ink-muted text-[15px]">{t("setup.courts.subtitle")}</p>
       </div>
 
-      <SectionLabel>Courts</SectionLabel>
+      <SectionLabel>{t("setup.tabs.aria")}</SectionLabel>
       <CourtTabs
         count={store.courts.length}
         active={active}
@@ -164,7 +168,7 @@ export default function VenueCourtsPage() {
         canDelete={store.courts.length > 1}
         onDelete={() => {
           const court = store.courts[active];
-          if (courtHasData(court, active) && !window.confirm(`Delete "${court.name}"? Everything you entered for it will be lost.`)) return;
+          if (courtHasData(court, active) && !window.confirm(t("setup.courts.confirmDelete", { name: court.name }))) return;
           store.removeCourt(active);
           setActiveTab(Math.max(0, active - 1));
         }}
@@ -179,7 +183,7 @@ export default function VenueCourtsPage() {
               isIndoor={!!court.isIndoor}
               sportOptions={store.sports}
               onChange={(patch) => store.updateCourt(index, patch)}
-              note={index > 0 ? "This court started as a copy of the one before it. Change anything below that is different for this court." : undefined}
+              note={index > 0 ? t("setup.courts.copyNote") : undefined}
             />
             <CourtSetupFields value={court} onChange={(patch) => store.updateCourt(index, patch)} />
           </div>
@@ -188,14 +192,14 @@ export default function VenueCourtsPage() {
 
       {courtProblems.some((p) => p !== null) ? (
         <p className="text-[12.5px] font-medium text-owner-warn" data-testid="court-problems">
-          {courtProblems.map((p, i) => (p ? `Court ${i + 1}: ${p}` : null)).filter(Boolean).join(" · ")}
+          {courtProblems.map((p, i) => (p ? t("setup.courts.problem", { n: i + 1, problem: fmt.validation(p) }) : null)).filter(Boolean).join(" · ")}
         </p>
       ) : null}
 
       {staleDraft ? (
         <div role="alert" className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border px-4 py-3 flex flex-col gap-3">
           <p className="text-owner-danger text-[13.5px] font-semibold">
-            Your previous session for this venue has expired. Let&apos;s start fresh.
+            {t("setup.courts.stale")}
           </p>
           <button
             type="button"
@@ -206,21 +210,21 @@ export default function VenueCourtsPage() {
             }}
             className="self-start min-h-10 px-4 rounded-lg bg-owner-accent text-white text-[13.5px] font-semibold"
           >
-            Start fresh
+            {t("setup.courts.startFresh")}
           </button>
         </div>
       ) : null}
 
       {error ? (
         <p role="alert" className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border text-owner-danger text-[13.5px] font-semibold px-4 py-3">
-          Couldn&apos;t send for review: {error}
+          {t("setup.courts.sendFailed", { error })}
         </p>
       ) : null}
 
-      <p className="text-[13px] font-medium text-owner-ink-faint">We&apos;ll review it and come back to you within a day.</p>
+      <p className="text-[13px] font-medium text-owner-ink-faint">{t("setup.courts.reviewNote")}</p>
       <div className="flex gap-3">
-        <SecondaryButton label="Back" onClick={() => router.back()} />
-        <PrimaryButton label="Send for review" ready={isValid} busy={submitting} onClick={handleSubmit} />
+        <SecondaryButton label={t("setup.back")} onClick={() => router.back()} />
+        <PrimaryButton label={t("setup.courts.send")} ready={isValid} busy={submitting} onClick={handleSubmit} />
       </div>
     </>
   );
