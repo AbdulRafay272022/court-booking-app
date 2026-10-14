@@ -14,7 +14,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 
 function useCountdown(target: string | null | undefined) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!target) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -71,7 +71,7 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
         })
         .catch(() => setRejectionReason(booking.cancellation_reason ?? t("play.pay.rejectedDefault")));
     }
-  }, [booking, id, rejectionReason]);
+  }, [booking, id, rejectionReason, t]);
 
   useEffect(() => {
     if (booking?.status === "booked") router.replace(`/booking/${id}/done`);

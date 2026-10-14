@@ -71,6 +71,7 @@ function CheckinPageInner({ params }: PageProps<"/booking/[id]/checkin">) {
   const startMs = new Date(booking.starts_at).getTime();
   const windowMessage = window.isOpen
     ? ""
+    // eslint-disable-next-line react-hooks/purity -- same "now" the shared selfCheckinWindow helper uses just above
     : Date.now() < startMs
       ? t("play.checkin.opensAt", { time: fmt.time(new Date(startMs - 15 * 60_000)) })
       : t("play.checkin.closedAt", { time: fmt.time(new Date(startMs + 15 * 60_000)) });
