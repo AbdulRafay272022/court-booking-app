@@ -11,11 +11,10 @@
  * fixed offset is exact. Mirrors backend `app/utils/timezone.py`.
  */
 
+import { MONTH_HEADER, MONTH_SHORT, WEEKDAY_SHORT, WORDS, type TextLang } from "./locale-text";
+
 const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 export type Instant = Date | string | number;
 
@@ -88,12 +87,12 @@ export interface DayTab {
 }
 
 /** `count` consecutive Pakistan calendar days starting today. */
-export function pktDayTabs(count: number, now: Instant = new Date()): DayTab[] {
+export function pktDayTabs(count: number, now: Instant = new Date(), lang: TextLang = "en"): DayTab[] {
   const today = pktDateString(now);
   return Array.from({ length: count }, (_, i) => {
     const date = addDays(today, i);
     const { month, day } = parseDateString(date);
-    return { date, weekday: WEEKDAYS[weekdayOf(date)], day, month: MONTHS[month], isToday: i === 0 };
+    return { date, weekday: WEEKDAY_SHORT[lang][weekdayOf(date)], day, month: MONTH_SHORT[lang][month], isToday: i === 0 };
   });
 }
 
@@ -110,9 +109,9 @@ export function addMonths(monthStr: string, n: number): string {
 }
 
 /** "2026-09" -> "Sep 2026". */
-export function formatMonth(monthStr: string): string {
+export function formatMonth(monthStr: string, lang: TextLang = "en"): string {
   const [, m] = monthStr.split("-").map(Number);
-  return `${MONTHS[m - 1]} ${monthStr.slice(0, 4)}`;
+  return `${MONTH_HEADER[lang][m - 1]} ${monthStr.slice(0, 4)}`;
 }
 
 /** Every "YYYY-MM-DD" calendar date in a "YYYY-MM" month, in order. */
@@ -148,20 +147,20 @@ export function formatTime(instant: Instant): string {
 /** "7:30 PM to 9:00 PM". When the range ends on a LATER Pakistan calendar day (an overnight court, Section 32 Part 3) the
  * end names its day so nobody has to guess: "11:00 PM to Fri 1:00 AM". Ending exactly at midnight is not named
  * ("11:00 PM to 12:00 AM"): that reads unambiguously. */
-export function formatTimeRange(start: Instant, end: Instant): string {
+export function formatTimeRange(start: Instant, end: Instant, lang: TextLang = "en"): string {
   const s = pktParts(start);
   const e = pktParts(end);
   const nextDay = e.day !== s.day || e.month !== s.month || e.year !== s.year;
   const atMidnight = e.hour === 0 && e.minute === 0;
-  const endText = nextDay && !atMidnight ? `${WEEKDAYS[e.weekday]} ${formatTime(end)}` : formatTime(end);
-  return `${formatTime(start)} to ${endText}`;
+  const endText = nextDay && !atMidnight ? `${WEEKDAY_SHORT[lang][e.weekday]} ${formatTime(end)}` : formatTime(end);
+  return `${formatTime(start)} ${WORDS[lang].to} ${endText}`;
 }
 
 /** How a slot's times read in a schedule day's list. A slot AFTER MIDNIGHT (`after_midnight`) belongs to the day it
  * opened but sits on the next calendar day, so it says so: "Fri 1:00 AM to 2:00 AM". */
-export function formatSlotTimes(slot: { starts_at: Instant; ends_at: Instant; after_midnight?: boolean }): string {
-  const range = formatTimeRange(slot.starts_at, slot.ends_at);
-  return slot.after_midnight ? `${WEEKDAYS[pktParts(slot.starts_at).weekday]} ${range}` : range;
+export function formatSlotTimes(slot: { starts_at: Instant; ends_at: Instant; after_midnight?: boolean }, lang: TextLang = "en"): string {
+  const range = formatTimeRange(slot.starts_at, slot.ends_at, lang);
+  return slot.after_midnight ? `${WEEKDAY_SHORT[lang][pktParts(slot.starts_at).weekday]} ${range}` : range;
 }
 
 /** Section 32 Part 9: the player's self-check-in window is about 15 minutes before to 15 minutes after a
@@ -177,55 +176,55 @@ export interface CheckinWindow {
   message: string;
 }
 
-export function selfCheckinWindow(startsAt: Instant, now: Instant = new Date()): CheckinWindow {
+export function selfCheckinWindow(startsAt: Instant, now: Instant = new Date(), lang: TextLang = "en"): CheckinWindow {
   const start = new Date(startsAt).getTime();
   const nowMs = new Date(now).getTime();
   const opensAt = start - CHECKIN_WINDOW_MINUTES * 60_000;
   const closesAt = start + CHECKIN_WINDOW_MINUTES * 60_000;
   if (nowMs < opensAt) {
-    return { isOpen: false, message: `You can check in starting at ${formatTime(new Date(opensAt))}.` };
+    return { isOpen: false, message: WORDS[lang].checkinFrom(formatTime(new Date(opensAt))) };
   }
   if (nowMs > closesAt) {
-    return { isOpen: false, message: `Check-in for this booking closed at ${formatTime(new Date(closesAt))}.` };
+    return { isOpen: false, message: WORDS[lang].checkinClosed(formatTime(new Date(closesAt))) };
   }
   return { isOpen: true, message: "" };
 }
 
 /** "Wed, 23 Sep"; the year is added only when it is not the current (Pakistan) year: "Tue, 5 Jan 2027". */
-export function formatDate(instant: Instant, now: Instant = new Date()): string {
+export function formatDate(instant: Instant, now: Instant = new Date(), lang: TextLang = "en"): string {
   const p = pktParts(instant);
-  const base = `${WEEKDAYS[p.weekday]}, ${p.day} ${MONTHS[p.month]}`;
+  const base = `${WEEKDAY_SHORT[lang][p.weekday]}, ${p.day} ${MONTH_SHORT[lang][p.month]}`;
   return p.year === pktParts(now).year ? base : `${base} ${p.year}`;
 }
 
 /** Same as `formatDate` for a "YYYY-MM-DD" calendar date (no time attached). */
-export function formatDateString(dateStr: string, now: Instant = new Date()): string {
-  return formatDate(pktMidnightUtc(dateStr), now);
+export function formatDateString(dateStr: string, now: Instant = new Date(), lang: TextLang = "en"): string {
+  return formatDate(pktMidnightUtc(dateStr), now, lang);
 }
 
 /** "Today" / "Tomorrow" within a day of today (Pakistan calendar), otherwise `formatDate`. */
-export function formatDateRelative(instant: Instant, now: Instant = new Date()): string {
+export function formatDateRelative(instant: Instant, now: Instant = new Date(), lang: TextLang = "en"): string {
   const diffDays = Math.round(
     (pktMidnightUtc(pktDateString(instant)).getTime() - pktMidnightUtc(pktDateString(now)).getTime()) / DAY_MS,
   );
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Tomorrow";
-  return formatDate(instant, now);
+  if (diffDays === 0) return WORDS[lang].today;
+  if (diffDays === 1) return WORDS[lang].tomorrow;
+  return formatDate(instant, now, lang);
 }
 
 /** "Wed, 23 Sep, 7:30 PM" (or "Today, 7:30 PM"): a moment in time, e.g. a blackout start or a timestamp. */
-export function formatWhen(instant: Instant, now: Instant = new Date()): string {
-  return `${formatDateRelative(instant, now)}, ${formatTime(instant)}`;
+export function formatWhen(instant: Instant, now: Instant = new Date(), lang: TextLang = "en"): string {
+  return `${formatDateRelative(instant, now, lang)}, ${formatTime(instant)}`;
 }
 
 /** "Wed, 23 Sep, 7:30 PM to 9:00 PM". */
-export function formatWhenRange(start: Instant, end: Instant, now: Instant = new Date()): string {
-  return `${formatDateRelative(start, now)}, ${formatTimeRange(start, end)}`;
+export function formatWhenRange(start: Instant, end: Instant, now: Instant = new Date(), lang: TextLang = "en"): string {
+  return `${formatDateRelative(start, now, lang)}, ${formatTimeRange(start, end, lang)}`;
 }
 
 /** The ready-made slot label the backend hands the chat assistant: "7:30 PM to 9:00 PM, Wed 23 Sep". */
-export function formatSlotLabel(start: Instant, end: Instant, now: Instant = new Date()): string {
-  return `${formatTimeRange(start, end)}, ${formatDate(start, now).replace(",", "")}`;
+export function formatSlotLabel(start: Instant, end: Instant, now: Instant = new Date(), lang: TextLang = "en"): string {
+  return `${formatTimeRange(start, end, lang)}, ${formatDate(start, now, lang).replace(",", "")}`;
 }
 
 // ---- owner time inputs (stored as "HH:MM" 24-hour, shown as 12-hour) -----------------------------------
