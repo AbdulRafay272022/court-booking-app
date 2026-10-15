@@ -40,7 +40,7 @@ export function CourtBasicsFields({
       </div>
       <div className="flex flex-col gap-2">
         <FieldLabel>{t("setup.court.setting")}</FieldLabel>
-        <div className="flex gap-2" role="radiogroup" aria-label={t("setup.court.settingAria")}>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("setup.court.settingAria")}>
           {[
             { label: fmt.setting("outdoor"), value: false },
             { label: fmt.setting("indoor"), value: true },
@@ -51,7 +51,7 @@ export function CourtBasicsFields({
               role="radio"
               aria-checked={isIndoor === o.value}
               onClick={() => onChange({ isIndoor: o.value })}
-              className={`min-h-10 px-4 rounded-full text-[13.5px] font-semibold border ${
+              className={`min-h-10 px-4 rounded-full whitespace-nowrap text-[13.5px] font-semibold border ${
                 isIndoor === o.value ? "bg-owner-accent text-white border-owner-accent" : "bg-owner-surface text-owner-ink-muted border-owner-border"
               }`}
             >

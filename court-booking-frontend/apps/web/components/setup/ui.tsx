@@ -56,7 +56,7 @@ export function Chip({ label, selected, onClick }: { label: string; selected: bo
       role="checkbox"
       aria-checked={selected}
       onClick={onClick}
-      className={`min-h-10 px-4 rounded-full text-[13.5px] font-semibold border transition-colors ${
+      className={`min-h-10 px-4 rounded-full whitespace-nowrap text-[13.5px] font-semibold border transition-colors ${
         selected ? "bg-owner-accent text-white border-owner-accent" : "bg-owner-surface text-owner-ink-muted border-owner-border"
       }`}
     >

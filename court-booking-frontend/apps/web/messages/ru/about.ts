@@ -29,6 +29,6 @@ export const ruAbout = {
   "about.founder.role": "Founder, {company}",
   "about.founder.body": "Khelo, {company} ka product hai, jo Pakistan mein registered software company hai.",
   "about.cta.title": "Hamare sath khelo.",
-  "about.cta.play": "Start playing",
+  "about.cta.play": "Khelna shuru karo",
   "about.cta.talk": "Baat karo",
 } as const;

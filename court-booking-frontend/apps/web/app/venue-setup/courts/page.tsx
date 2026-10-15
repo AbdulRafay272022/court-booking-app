@@ -222,7 +222,7 @@ export default function VenueCourtsPage() {
       ) : null}
 
       <p className="text-[13px] font-medium text-owner-ink-faint">{t("setup.courts.reviewNote")}</p>
-      <div className="flex gap-3">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row">
         <SecondaryButton label={t("setup.back")} onClick={() => router.back()} />
         <PrimaryButton label={t("setup.courts.send")} ready={isValid} busy={submitting} onClick={handleSubmit} />
       </div>

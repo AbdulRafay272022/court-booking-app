@@ -93,23 +93,23 @@ export default function OwnerTodayPage() {
           <h1 className="text-2xl font-bold">{activeVenue?.name ?? t("odash.today.title")}</h1>
           {data ? <p className="text-owner-ink-faint text-sm">{fmt.dateString(data.date)}</p> : null}
         </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard/owner/checkin" className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm">
+        <div className="flex shrink-0 gap-2">
+          <Link href="/dashboard/owner/checkin" className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm whitespace-nowrap">
             {t("odash.today.checkinTools")}
           </Link>
-          <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm">
+          <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm whitespace-nowrap">
             {t("odash.today.addBooking")}
           </Link>
         </div>
       </div>
 
       {showSwitcher ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {venues.map((v) => (
             <button
               key={v.id}
               onClick={() => setVenueId(v.id)}
-              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold"
+              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold whitespace-nowrap"
               style={{ background: v.id === activeVenueId ? "#0E6274" : "#F4F6F7", color: v.id === activeVenueId ? "#fff" : "#5B7079" }}
             >
               {v.name}

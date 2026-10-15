@@ -38,12 +38,12 @@ export default function OwnerGrowthPage() {
       </div>
 
       {showSwitcher ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {venues.map((v) => (
             <button
               key={v.id}
               onClick={() => setVenueId(v.id)}
-              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold"
+              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold whitespace-nowrap"
               style={{ background: v.id === activeVenueId ? "#0E6274" : "#F4F6F7", color: v.id === activeVenueId ? "#fff" : "#5B7079" }}
             >
               {v.name}

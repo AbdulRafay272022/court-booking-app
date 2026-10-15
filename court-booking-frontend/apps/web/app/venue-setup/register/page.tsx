@@ -184,7 +184,7 @@ export default function VenueRegisterPage() {
       <p className="text-[13px] font-medium text-owner-ink-faint">
         {t("setup.reg.savedNote")}
       </p>
-      <div className="flex gap-3">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row">
         <SecondaryButton label={t("setup.reg.saveLater")} onClick={() => router.push("/")} />
         <PrimaryButton label={t("setup.reg.next")} ready={isValid} onClick={() => router.push("/venue-setup/courts")} />
       </div>

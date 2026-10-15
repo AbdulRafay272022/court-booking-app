@@ -68,5 +68,5 @@ export const ruOdashShell = {
   "odash.meta.reviews": "Reviews",
   "odash.meta.staff": "Staff",
   "odash.meta.premium": "Premium",
-  "odash.meta.checkin": "Check-in tools",
+  "odash.meta.checkin": "Check-in ke tools",
 } as const;

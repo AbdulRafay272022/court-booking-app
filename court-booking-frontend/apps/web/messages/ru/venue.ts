@@ -19,8 +19,8 @@ export const ruVenue = {
   "venue.card.view": "Dekhein",
   "venue.card.freeToday": "Aaj khali",
   "venue.card.fewSlots": "Kam slots",
-  "venue.card.indoor": "Indoor",
-  "venue.card.outdoor": "Outdoor",
+  "venue.card.indoor": "Andar (Indoor)",
+  "venue.card.outdoor": "Bahar (Outdoor)",
   "venue.card.openInMaps": "Maps mein kholein",
   "venue.card.openInMapsFor": "{name} ko Maps mein kholein",
 
@@ -28,7 +28,7 @@ export const ruVenue = {
   "venue.hero.courtOne": "{count} {sports} court",
   "venue.hero.courtMany": "{count} {sports} courts",
   "venue.aside.label": "Venue ka khulasa",
-  "venue.aside.sports": "Sports",
+  "venue.aside.sports": "Khel",
   "venue.aside.setting": "Qism",
   "venue.aside.location": "Jagah",
   "venue.aside.check": "Availability dekhein",
@@ -53,7 +53,7 @@ export const ruVenue = {
   "venue.map.view": "Venue dekhein \u2192",
 
   // availability section
-  "venue.avail.title": "Availability",
+  "venue.avail.title": "Khali slots",
   "venue.avail.noCourts": "Is sport ke liye abhi koi active court nahi.",
   "venue.avail.minimum": "kam az kam {duration}",
   "venue.avail.fromPrice": "PKR {price} se",

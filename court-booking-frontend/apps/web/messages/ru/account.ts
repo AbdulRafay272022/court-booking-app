@@ -12,7 +12,7 @@ export const ruAccount = {
   "account.tabs.aria": "Account ke hisse",
   "account.tab.profile": "Profile",
   "account.tab.bookings": "Bookings",
-  "account.tab.saved": "Saved",
+  "account.tab.saved": "Pasandida",
   "account.tab.settings": "Settings",
   "account.owner.title": "Owner dashboard",
   "account.owner.body": "Aaj ki bookings, approvals aur aapka venue.",

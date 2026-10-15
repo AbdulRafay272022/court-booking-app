@@ -85,7 +85,9 @@ async function dumpRoutes(browser, lang, routes, role, result) {
   await context.close();
 }
 
-(async () => {
+module.exports = { PUBLIC, PLAYER_ROUTES, OWNER_ROUTES, BASE, OWNER, PLAYER, PASSWORD, login, createHold };
+
+if (require.main === module) (async () => {
   const pw = loadPlaywright();
   const browser = await pw.chromium.launch();
   const result = {};

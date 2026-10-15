@@ -2,9 +2,9 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AMENITY_OPTIONS, SPORT_OPTIONS, amenityLabel, formatDuration, formatTime24As12, pktDayTabs } from "@court-booking/types";
-import { formatDayHeader } from "@/lib/format";
+import { AMENITY_OPTIONS, SPORT_OPTIONS, formatTime24As12, pktDayTabs } from "@court-booking/types";
 import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import { activeFilterCount, filtersToParams, parseFilters, type DiscoveryFilters } from "@/lib/discovery-filters";
 
 /** Booking horizon offered by the date list (the venue default; a venue may allow fewer days, the server decides). */
@@ -52,6 +52,7 @@ function SlidersIcon() {
  */
 export function FilterBar({ areas, city, total, children }: { areas: string[]; city: string; total: number | null; children: ReactNode }) {
   const t = useT();
+  const fmt = useFmt();
   const router = useRouter();
   const search = useSearchParams();
   const [pending, startTransition] = useTransition();
@@ -147,10 +148,10 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
     chips.push({ key: "price", label, clear: () => set({ minPrice: undefined, maxPrice: undefined }) });
   }
   if (filters.indoor !== undefined) chips.push({ key: "indoor", label: filters.indoor ? t("search.more.indoor") : t("search.more.outdoor"), clear: () => set({ indoor: undefined }) });
-  for (const a of filters.amenities) chips.push({ key: `am-${a}`, label: amenityLabel(a), clear: () => set({ amenities: filters.amenities.filter((x) => x !== a) }) });
+  for (const a of filters.amenities) chips.push({ key: `am-${a}`, label: fmt.amenity(a), clear: () => set({ amenities: filters.amenities.filter((x) => x !== a) }) });
   if (filters.date) {
-    const when = `${formatDayHeader(filters.date)}${filters.startTime ? `, ${formatTime24As12(filters.startTime)}` : ""}${
-      filters.startTime && filters.durationMinutes ? ` · ${formatDuration(filters.durationMinutes)}` : ""
+    const when = `${fmt.dateString(filters.date)}${filters.startTime ? `, ${formatTime24As12(filters.startTime)}` : ""}${
+      filters.startTime && filters.durationMinutes ? ` · ${fmt.duration(filters.durationMinutes)}` : ""
     }`;
     chips.push({ key: "when", label: when, clear: () => set({ date: undefined, startTime: undefined, durationMinutes: undefined }) });
   }
@@ -249,11 +250,11 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
               }}
             >
               <option value="">{t("search.date.any")}</option>
-              {filters.date && !dayOptions.some((d) => d.date === filters.date) ? <option value={filters.date}>{formatDayHeader(filters.date)}</option> : null}
+              {filters.date && !dayOptions.some((d) => d.date === filters.date) ? <option value={filters.date}>{fmt.dateString(filters.date)}</option> : null}
               {dayOptions.map((d, i) => (
                 <option key={d.date} value={d.date}>
-                  {i === 0 ? t("search.date.today") : i === 1 ? t("search.date.tomorrow") : formatDayHeader(d.date)}
-                  {i < 2 ? ` · ${formatDayHeader(d.date)}` : ""}
+                  {i === 0 ? t("search.date.today") : i === 1 ? t("search.date.tomorrow") : fmt.dateString(d.date)}
+                  {i < 2 ? ` · ${fmt.dateString(d.date)}` : ""}
                 </option>
               ))}
             </select>
@@ -305,7 +306,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
                         aria-pressed={on}
                         onClick={() => set({ amenities: on ? filters.amenities.filter((k) => k !== a.key) : [...filters.amenities, a.key] })}
                       >
-                        {a.label}
+                        {fmt.amenity(a.key)}
                       </button>
                     );
                   })}
@@ -339,7 +340,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
                       <option value="">{t("search.more.minBooking")}</option>
                       {DURATIONS.map((d) => (
                         <option key={d} value={d}>
-                          {formatDuration(d)}
+                          {fmt.duration(d)}
                         </option>
                       ))}
                     </select>

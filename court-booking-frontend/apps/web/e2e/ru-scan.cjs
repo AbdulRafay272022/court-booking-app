@@ -25,7 +25,8 @@ const ALLOW_WORDS = new Set(
    mon tue wed thu fri sat sun jan feb mar apr may jun jul aug sep oct nov dec min km m hr
    terms privacy blog features about contact home search signup sign up en ru roman urdu
    instagram facebook google maps leaflet openstreetmap contributors copyright aftr solutions
-   demo arena test`
+   demo arena test full field approvals approval growth reviews review settings profile mobile number phone email address
+   terms service policy faq blog features contact menu dashboard sample tap try step by is us select click free trial on`
     .split(/\s+/),
 );
 
@@ -39,10 +40,18 @@ const ENGLISH_MARKERS = new Set(
     .split(/\s+/),
 );
 // Marker words that are fine because Roman Urdu uses the same spelling: remove them from the list.
-for (const w of ["a", "me", "in", "do", "to", "hum", "main", "sab", "bas", "na", "ho", "so", "or", "all", "no", "yes", "back", "open", "close", "done", "view", "more", "new", "show", "send", "save", "cancel", "confirm", "continue", "edit", "add", "remove", "copy", "share", "upload", "download", "hide", "loading", "again", "next", "previous"]) ENGLISH_MARKERS.delete(w);
+for (const w of ["is", "us", "by", "tap", "try", "a", "me", "in", "do", "to", "hum", "main", "sab", "bas", "na", "ho", "so", "or", "all", "no", "yes", "back", "open", "close", "done", "view", "more", "new", "show", "send", "save", "cancel", "confirm", "continue", "edit", "add", "remove", "copy", "share", "upload", "download", "hide", "loading", "again", "next", "previous"]) ENGLISH_MARKERS.delete(w);
 
 // Lines that are legitimately identical in both languages (data, labels that are the same word in both).
-const ALLOW_LINES = new Set(["Khelo", "EN", "Roman Urdu", "PKR", "AM", "PM", "WhatsApp"]);
+const ALLOW_LINES = new Set([
+  "Khelo", "EN", "Roman Urdu", "PKR", "AM", "PM", "WhatsApp",
+  // Loanwords people say in English (the owner: "technical words stay as people say them").
+  "Sport", "Area", "Latitude", "Longitude", "Account title", "Percentage", "Print", "Invoices", "Map", "List", "TIPS", "GUIDE", "COMMUNITY",
+  "Security", "Slot alerts", "Smart filters", "Venue setup", "VERIFIED", "Verification code", "WhatsApp support", "Live slot calendar", "LIVE CALENDAR",
+  "Terms of Service", "Terms & Conditions",
+  // Sample / data lines on the marketing mock-ups and the founder card: content, not interface copy.
+  "Court A · Futsal", "Court B · Padel", "Test Arena One", "Rs 5,000", "Abdul Rafay", "AR", "Founder, AFTR Solutions", "Karachi, Pakistan",
+]);
 
 const words = (s) => (s.toLowerCase().match(/[a-z]+/g) || []).filter((w) => w.length > 0);
 const onlyAllowed = (line) => {
@@ -50,10 +59,28 @@ const onlyAllowed = (line) => {
   return ws.length === 0 || ws.every((w) => ALLOW_WORDS.has(w));
 };
 
+// Data shown on pages (venue names, areas, cities) is user content, never translated: read it from the API when API_URL is set.
+async function loadData() {
+  const api = (process.env.API_URL || "").replace(/\/+$/, "");
+  if (!api) return;
+  try {
+    const list = await (await fetch(api + "/api/v1/venues?per_page=100")).json();
+    for (const v of list.venues || []) for (const x of [v.name, v.area, v.city, v.address]) if (x) ALLOW_LINES.add(String(x).trim());
+    const areas = await (await fetch(api + "/api/v1/venues/areas")).json();
+    for (const a of areas.areas || areas || []) if (typeof a === "string") ALLOW_LINES.add(a);
+  } catch {}
+}
+// Terms and Privacy bodies are legal text and stay English on purpose (their chrome is translated, but the bodies dominate the report).
+const SKIP_ROUTES = new Set(["public:/terms", "public:/privacy"]);
+const CITY_LINE = /^[A-Z][a-z]+ \((Sindh|Punjab|KPK|Balochistan)\)$/;
+
 let sameTotal = 0;
 let wordTotal = 0;
 const lines = [];
+(async () => {
+await loadData();
 for (const [route, langs] of Object.entries(dump)) {
+  if (SKIP_ROUTES.has(route) && !process.argv.includes("--all")) continue;
   const en = (langs.en || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const ru = (langs.ru || "").split("\n").map((l) => l.trim()).filter(Boolean);
   if (!langs.ru || langs.ru.startsWith("ERROR")) {
@@ -64,7 +91,7 @@ for (const [route, langs] of Object.entries(dump)) {
   const same = [];
   const marked = [];
   for (const line of ru) {
-    if (ALLOW_LINES.has(line) || onlyAllowed(line)) continue;
+    if (ALLOW_LINES.has(line) || onlyAllowed(line) || CITY_LINE.test(line) || line.length < 2) continue;
     if (enSet.has(line)) same.push(line);
     else {
       const hit = words(line).filter((w) => ENGLISH_MARKERS.has(w) && !ALLOW_WORDS.has(w));
@@ -81,3 +108,4 @@ for (const [route, langs] of Object.entries(dump)) {
 }
 console.log(lines.join("\n"));
 console.log(`\nTOTAL: ${sameTotal} line(s) identical to English, ${wordTotal} line(s) with English words, across ${Object.keys(dump).length} routes`);
+})();

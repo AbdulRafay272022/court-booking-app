@@ -7,7 +7,7 @@ export const ruBlog = {
   "blog.hero.title": "Khel, courts aur community ki baatein.",
   "blog.hero.sub": "Padel aur futsal ke guides, Karachi ke areas, aur venue owners ke liye tips.",
   "blog.comingSoon": "Jald aa raha hai",
-  "blog.tag.featured": "FEATURED",
+  "blog.tag.featured": "KHAAS",
   "blog.tag.futsal": "FUTSAL",
   "blog.tag.padel": "PADEL",
   "blog.tag.tips": "TIPS",
