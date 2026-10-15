@@ -22,7 +22,8 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { formatWhen } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import { Chip, Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
 import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
 import { CourtSetupFields } from "@/components/setup/court-setup-fields";
@@ -33,6 +34,11 @@ import { CourtTabs } from "@/components/setup/court-tabs";
 import { CourtBasicsFields } from "@/components/setup/court-basics-fields";
 import { AmenitiesPicker } from "@/components/setup/amenities-picker";
 import { CourtLabel, courtLabel } from "@/components/court-label";
+
+// Sample values shown greyed in empty fields; they are examples, not copy.
+const SAMPLE_AREA = "DHA Phase 6"; // i18n-ignore
+const SAMPLE_BANK = "Meezan Bank"; // i18n-ignore
+const SAMPLE_TITLE = "Padel Republic"; // i18n-ignore
 
 const MAX_VENUE_PHOTOS = 8;
 const MAX_COURT_PHOTOS = 5;
@@ -51,19 +57,20 @@ function SaveMessage({ message }: { message: Message }) {
 type SettingsTab = "venue" | "courts";
 
 export default function VenueSettingsPage() {
+  const t = useT();
   const { activeVenue } = useOwnerVenues();
   const [tab, setTab] = useState<SettingsTab>("venue");
 
   return (
     <div className="p-8 max-w-3xl flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <h1 className="text-2xl font-bold">{t("setup.set.title")}</h1>
 
       {/* Venue-level and court-level settings live on separate tabs so it is always clear what an edit applies to. */}
-      <div role="tablist" aria-label="Settings sections" className="flex gap-1 border-b border-owner-border">
+      <div role="tablist" aria-label={t("setup.set.sectionsAria")} className="flex gap-1 border-b border-owner-border">
         {(
           [
-            ["venue", "Venue"],
-            ["courts", "Courts"],
+            ["venue", t("setup.set.tabVenue")],
+            ["courts", t("setup.set.tabCourts")],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -86,7 +93,7 @@ export default function VenueSettingsPage() {
           {/* QA signup-venue round item 3: post-approval editing for the fields the wizard's own
               copy already promised are editable -- name, WhatsApp, sports, address, area, location
               pin, bank details, amenities. */}
-          {activeVenue ? <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} /> : <p className="text-owner-ink-faint">Loading…</p>}
+          {activeVenue ? <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} /> : <p className="text-owner-ink-faint">{t("setup.set.loading")}</p>}
           {activeVenue ? <VenuePhotosCard venue={activeVenue} /> : null}
           {/* ONE cancellation policy for the whole venue (Section 32 Part 4). */}
           {activeVenue ? (
@@ -100,7 +107,7 @@ export default function VenueSettingsPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-6" role="tabpanel" aria-labelledby="settings-tab-courts" data-testid="settings-courts">
-          {activeVenue ? <CourtsSection key={activeVenue.id} venue={activeVenue} /> : <p className="text-owner-ink-faint">Loading…</p>}
+          {activeVenue ? <CourtsSection key={activeVenue.id} venue={activeVenue} /> : <p className="text-owner-ink-faint">{t("setup.set.loading")}</p>}
         </div>
       )}
     </div>
@@ -108,12 +115,14 @@ export default function VenueSettingsPage() {
 }
 
 function VenuePhotosCard({ venue }: { venue: Venue }) {
+  const t = useT();
   const queryClient = useQueryClient();
   return (
     <SectionCard>
-      <SectionLabel>Venue photos</SectionLabel>
+      <SectionLabel>{t("setup.set.venuePhotos")}</SectionLabel>
       <PhotoManager
-        label="Venue photos"
+        label={t("setup.set.venuePhotos")}
+        testKey="Venue photos"
         photoUrls={venue.photo_urls}
         photoKeys={venue.photo_keys}
         max={MAX_VENUE_PHOTOS}
@@ -134,6 +143,7 @@ function VenuePhotosCard({ venue }: { venue: Venue }) {
  * the selected court everything court-level -- name, sport, indoor, minimum booking time, hours, prices, advance rule, photos,
  * blackouts. */
 function CourtsSection({ venue }: { venue: Venue }) {
+  const t = useT();
   const queryClient = useQueryClient();
   // Only ACTIVE courts are editable here -- a deactivated ("deleted") court shouldn't be a
   // tab in the settings editor. Its history still lives in the ledger (post-batch #2).
@@ -162,7 +172,7 @@ function CourtsSection({ venue }: { venue: Venue }) {
   async function deleteActive() {
     setDeleteError(null);
     if (onDraft) {
-      if (draftDirty && !window.confirm("Discard this new court? Everything you entered for it will be lost.")) return;
+      if (draftDirty && !window.confirm(t("setup.set.discardConfirm"))) return;
       setDrafting(false);
       setDraftDirty(false);
       setSelected(Math.max(0, courts.length - 1));
@@ -172,23 +182,20 @@ function CourtsSection({ venue }: { venue: Venue }) {
     if (!c) return;
     // Soft-delete: the backend deactivates the court (is_active=false). Existing bookings and
     // their payments are untouched and stay in the ledger (post-batch #2) -- say so in the confirm.
-    if (!window.confirm(
-      `Delete "${courtLabel(c.name, c.sport)}"? It will stop taking new bookings and disappear from the player app. ` +
-      `Its past bookings and payments stay in your ledger.`,
-    )) return;
+    if (!window.confirm(t("setup.set.deleteConfirm", { label: courtLabel(c.name, c.sport) }))) return;
     try {
       await api.courts.deactivate(c.id);
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       setSelected(Math.max(0, active - 1));
     } catch (e) {
-      setDeleteError(friendlyErrorMessage(e));
+      setDeleteError(friendlyErrorMessage(e, t));
     }
   }
 
   return (
     <>
       <p className="text-[13.5px] font-medium text-owner-ink-muted">
-        Each court has its own name, sport, minimum booking time, opening hours, prices and photos. Pick a court to edit, or add a new one.
+        {t("setup.set.courtsIntro")}
       </p>
       <CourtTabs
         count={tabCount}
@@ -217,19 +224,20 @@ function CourtsSection({ venue }: { venue: Venue }) {
           }}
         />
       ) : courts.length === 0 ? (
-        <p className="text-owner-ink-faint">No courts yet — use “+ Court” to add your first one.</p>
+        <p className="text-owner-ink-faint">{t("setup.set.noCourts")}</p>
       ) : loading ? (
-        <p className="text-owner-ink-faint">Loading…</p>
+        <p className="text-owner-ink-faint">{t("setup.set.loading")}</p>
       ) : courtQuery.isError ? (
-        <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(courtQuery.error, t)} onRetry={() => courtQuery.refetch()} tone="owner" />
       ) : court ? (
         <>
           {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
           <CourtSettingsForm key={court.id} court={court} venueSports={venue.sports} />
           <SectionCard key={`photos-${court.id}`}>
-            <SectionLabel>{courtLabel(court.name, court.sport)} photos</SectionLabel>
+            <SectionLabel>{t("setup.set.courtPhotosTitle", { label: courtLabel(court.name, court.sport) })}</SectionLabel>
             <PhotoManager
-              label={`${court.name} photos`}
+              label={t("setup.set.courtPhotos", { name: court.name })}
+              testKey={`${court.name} photos`}
               photoUrls={court.photo_urls}
               photoKeys={court.photo_keys}
               max={MAX_COURT_PHOTOS}
@@ -264,6 +272,8 @@ function NewCourtForm({
   onDirty: () => void;
   onCreated: () => void;
 }) {
+  const t = useT();
+  const fmt = useFmt();
   const queryClient = useQueryClient();
   const [name, setName] = useState(defaultName);
   const [sport, setSport] = useState(venue.sports[0] ?? "Padel");
@@ -275,8 +285,8 @@ function NewCourtForm({
   const valid = name.trim().length > 0 && sport.trim().length > 0 && !problem;
 
   async function create() {
-    if (!name.trim()) { setMessage({ kind: "error", text: "Give the court a name." }); return; }
-    if (problem) { setMessage({ kind: "error", text: problem }); return; }
+    if (!name.trim()) { setMessage({ kind: "error", text: t("setup.set.needName") }); return; }
+    if (problem) { setMessage({ kind: "error", text: fmt.validation(problem) }); return; }
     setSaving(true);
     setMessage(null);
     try {
@@ -286,7 +296,7 @@ function NewCourtForm({
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       onCreated();
     } catch (e) {
-      setMessage({ kind: "error", text: friendlyErrorMessage(e) });
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
     } finally {
       setSaving(false);
     }
@@ -299,7 +309,7 @@ function NewCourtForm({
         sport={sport}
         isIndoor={isIndoor}
         sportOptions={venue.sports}
-        note="Save the court first, then add its photos from its tab."
+        note={t("setup.set.newCourtNote")}
         onChange={(patch) => {
           onDirty();
           if (patch.name !== undefined) setName(patch.name);
@@ -315,12 +325,14 @@ function NewCourtForm({
         }}
       />
       <SaveMessage message={message} />
-      <PrimaryButton label="Create court" onClick={create} busy={saving} ready={valid} />
+      <PrimaryButton label={t("setup.set.createCourt")} onClick={create} busy={saving} ready={valid} />
     </div>
   );
 }
 
 function VenueBasicsCard({ venue }: { venue: Venue }) {
+  const t = useT();
+  const fmt = useFmt();
   const queryClient = useQueryClient();
   const [name, setName] = useState(venue.name);
   const [description, setDescription] = useState(venue.description ?? "");
@@ -343,7 +355,7 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
 
   function updatePin() {
     if (!("geolocation" in navigator)) {
-      setMessage({ kind: "error", text: "This browser can't share a location." });
+      setMessage({ kind: "error", text: t("setup.set.geoUnsupported") });
       return;
     }
     setPinning(true);
@@ -355,7 +367,7 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
       },
       () => {
         setPinning(false);
-        setMessage({ kind: "error", text: "Couldn't get your location — you can type the coordinates manually below." });
+        setMessage({ kind: "error", text: t("setup.set.geoFailed") });
       },
       { enableHighAccuracy: true, timeout: 15_000 },
     );
@@ -365,7 +377,11 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
   // check; see QA signup-venue round item 5). Blanking all three clears them.
   const bankTouched = !!(bankName || accountTitle || accountNumber);
   const bErrors = bankTouched
-    ? { bank: bankNameError(bankName), title: accountTitleError(accountTitle), num: accountNumberError(accountNumber) }
+    ? {
+        bank: bankNameError(bankName) ? fmt.validation(bankNameError(bankName)!) : null,
+        title: accountTitleError(accountTitle) ? fmt.validation(accountTitleError(accountTitle)!) : null,
+        num: accountNumberError(accountNumber) ? fmt.validation(accountNumberError(accountNumber)!) : null,
+      }
     : { bank: null, title: null, num: null };
   const bankOk = !bankTouched || (!bErrors.bank && !bErrors.title && !bErrors.num);
 
@@ -408,9 +424,9 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
       }
       await api.venues.update(venue.id, patch);
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setMessage({ kind: "ok", text: "Saved. Players see the new details right away." });
+      setMessage({ kind: "ok", text: t("setup.set.saved") });
     } catch (e) {
-      setMessage({ kind: "error", text: friendlyErrorMessage(e) });
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
     } finally {
       setSaving(false);
     }
@@ -418,18 +434,18 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
 
   return (
     <SectionCard>
-      <SectionLabel>Venue basics</SectionLabel>
-      <Field label="Venue name" value={name} onChange={(e) => setName(e.target.value)} />
-      <Field label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-      <Field label="Street address" value={address} onChange={(e) => setAddress(e.target.value)} />
-      <Field label="Area" value={area} onChange={(e) => setArea(e.target.value)} placeholder="DHA Phase 6" />
-      <Field label="WhatsApp number for bookings" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+923001234567" mono />
+      <SectionLabel>{t("setup.set.basics")}</SectionLabel>
+      <Field label={t("setup.reg.venueName")} value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label={t("setup.set.description")} value={description} onChange={(e) => setDescription(e.target.value)} />
+      <Field label={t("setup.reg.address")} value={address} onChange={(e) => setAddress(e.target.value)} />
+      <Field label={t("setup.reg.area")} value={area} onChange={(e) => setArea(e.target.value)} placeholder={SAMPLE_AREA} />
+      <Field label={t("setup.set.whatsapp")} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+923001234567" mono />
 
       <div className="flex flex-col gap-2">
-        <FieldLabel>Sports you offer</FieldLabel>
+        <FieldLabel>{t("setup.reg.sports")}</FieldLabel>
         <div className="flex flex-wrap gap-2">
           {SPORT_OPTIONS.map((s) => (
-            <Chip key={s} label={s} selected={sports.includes(s)} onClick={() => toggleSport(s)} />
+            <Chip key={s} label={fmt.sport(s)} selected={sports.includes(s)} onClick={() => toggleSport(s)} />
           ))}
         </div>
       </div>
@@ -440,29 +456,29 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
       />
 
       <div className="flex flex-col gap-2">
-        <FieldLabel>Location pin (players use this to find the gate)</FieldLabel>
+        <FieldLabel>{t("setup.set.pin")}</FieldLabel>
         <button
           type="button"
           onClick={updatePin}
           disabled={pinning}
           className="self-start h-10 px-4 rounded-lg border border-owner-border bg-owner-surface text-[13.5px] font-semibold text-owner-ink-muted disabled:opacity-60"
         >
-          {pinning ? "Locating…" : "Update pin from my current location"}
+          {pinning ? t("setup.reg.locating") : t("setup.set.updatePin")}
         </button>
         <div className="flex gap-3">
-          <Field label="Latitude" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Leave blank to keep current pin" mono />
-          <Field label="Longitude" value={lon} onChange={(e) => setLon(e.target.value)} placeholder="Leave blank to keep current pin" mono />
+          <Field label={t("setup.set.lat")} value={lat} onChange={(e) => setLat(e.target.value)} placeholder={t("setup.set.pinPlaceholder")} mono />
+          <Field label={t("setup.set.lon")} value={lon} onChange={(e) => setLon(e.target.value)} placeholder={t("setup.set.pinPlaceholder")} mono />
         </div>
         <p className="text-[12px] text-owner-ink-faint">
-          Leave both boxes blank to keep the current pin. Fill both to move it (e.g. after using the button above).
+          {t("setup.set.pinHelp")}
         </p>
       </div>
 
       <div className="flex flex-col gap-3 pt-2 border-t border-owner-border-light">
-        <SectionLabel>Bank details (players see these on the pay screen)</SectionLabel>
-        <Field label="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Meezan Bank" error={bankName ? bErrors.bank : null} />
-        <Field label="Account title" value={accountTitle} onChange={(e) => setAccountTitle(e.target.value)} placeholder="Padel Republic" error={accountTitle ? bErrors.title : null} />
-        <Field label="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="03445551234 or 12345678901234" mono error={accountNumber ? bErrors.num : null} />
+        <SectionLabel>{t("setup.set.bankTitle")}</SectionLabel>
+        <Field label={t("setup.bank.name")} value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder={SAMPLE_BANK} error={bankName ? bErrors.bank : null} />
+        <Field label={t("setup.bank.title")} value={accountTitle} onChange={(e) => setAccountTitle(e.target.value)} placeholder={SAMPLE_TITLE} error={accountTitle ? bErrors.title : null} />
+        <Field label={t("setup.bank.number")} value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder={t("setup.bank.numberPlaceholder")} mono error={accountNumber ? bErrors.num : null} />
         {/* Bank changes are the highest-risk edit here (money goes where these fields say it goes).
             Show a plain-text nudge so an owner doesn't mistake this for a low-stakes change. This is the
             "extra safeguard" for bank_details per the round's flag-back: an inline warning, not a
@@ -470,12 +486,12 @@ function VenueBasicsCard({ venue }: { venue: Venue }) {
             authenticated. If a fuller ceremony is wanted later (admin notice / OTP re-verify), it goes
             here. */}
         <p className="text-[12.5px] font-medium text-owner-warn">
-          These fields decide where players send their money. Update carefully.
+          {t("setup.set.bankWarn")}
         </p>
       </div>
 
       <SaveMessage message={message} />
-      <PrimaryButton label="Save venue details" onClick={save} busy={saving} ready={canSave} />
+      <PrimaryButton label={t("setup.set.saveVenue")} onClick={save} busy={saving} ready={canSave} />
     </SectionCard>
   );
 }
@@ -489,6 +505,7 @@ function VenueCancellationCard({
   initialAllowed: boolean;
   initialCutoff: number | null;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [allowed, setAllowed] = useState(initialAllowed);
   const [cutoff, setCutoff] = useState(initialCutoff != null ? String(initialCutoff) : "");
@@ -505,9 +522,9 @@ function VenueCancellationCard({
       });
       // players see this policy before they pay, and the owner lists read it too
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setMessage({ kind: "ok", text: "Cancellation policy updated for every court." });
+      setMessage({ kind: "ok", text: t("setup.set.cancelSaved") });
     } catch (e) {
-      setMessage({ kind: "error", text: friendlyErrorMessage(e) });
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
     } finally {
       setSaving(false);
     }
@@ -517,7 +534,7 @@ function VenueCancellationCard({
     <div className="flex flex-col gap-3" data-testid="venue-cancellation">
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
       <SaveMessage message={message} />
-      <PrimaryButton label="Save cancellation policy" onClick={save} busy={saving} />
+      <PrimaryButton label={t("setup.set.saveCancel")} onClick={save} busy={saving} />
     </div>
   );
 }
@@ -526,6 +543,8 @@ function VenueCancellationCard({
  * from the court it is mounted for (the parent keys it by court id), so it holds its own edits and never needs an
  * effect to copy server data into state. Deleting the court is the tab control's job (CourtsSection). */
 function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: string[] }) {
+  const t = useT();
+  const fmt = useFmt();
   const queryClient = useQueryClient();
   const [name, setName] = useState(court.name);
   const [sport, setSport] = useState(court.sport);
@@ -539,15 +558,15 @@ function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: 
 
   const problem = courtSetupProblem(setup);
   const advanceProblem =
-    advanceType !== "" && !advanceValue.trim() ? "Enter an advance amount or percentage, or switch back to Default." : null;
+    advanceType !== "" && !advanceValue.trim() ? t("setup.set.advanceProblem") : null;
 
   async function save() {
     if (!name.trim()) {
-      setMessage({ kind: "error", text: "Give the court a name." });
+      setMessage({ kind: "error", text: t("setup.set.needName") });
       return;
     }
     if (problem) {
-      setMessage({ kind: "error", text: problem });
+      setMessage({ kind: "error", text: fmt.validation(problem) });
       return;
     }
     if (advanceProblem) {
@@ -573,9 +592,9 @@ function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: 
       await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setMessage({ kind: "ok", text: `${courtLabel(name.trim(), sport)}: details, slot length, hours, prices and advance rule updated.` });
+      setMessage({ kind: "ok", text: t("setup.set.courtSaved", { label: courtLabel(name.trim(), sport) }) });
     } catch (e) {
-      setMessage({ kind: "error", text: friendlyErrorMessage(e) });
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
     } finally {
       setSaving(false);
     }
@@ -609,12 +628,14 @@ function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: 
         }}
       />
       <SaveMessage message={message} />
-      <PrimaryButton label="Save changes" onClick={save} busy={saving} />
+      <PrimaryButton label={t("setup.set.saveChanges")} onClick={save} busy={saving} />
     </>
   );
 }
 
 function BlackoutsCard({ courtId }: { courtId: string }) {
+  const t = useT();
+  const fmt = useFmt();
   const queryClient = useQueryClient();
   const blackoutsQuery = useQuery({
     queryKey: ["court-blackouts", courtId],
@@ -632,7 +653,7 @@ function BlackoutsCard({ courtId }: { courtId: string }) {
 
   async function add() {
     if (!startDate || !endDate) {
-      setError("Pick a start and end date/time for the blackout.");
+      setError(t("setup.set.blackoutPick"));
       return;
     }
     setAdding(true);
@@ -648,7 +669,7 @@ function BlackoutsCard({ courtId }: { courtId: string }) {
       setEndDate("");
       await queryClient.invalidateQueries({ queryKey: ["court-blackouts", courtId] });
     } catch (e) {
-      setError(friendlyErrorMessage(e));
+      setError(friendlyErrorMessage(e, t));
     } finally {
       setAdding(false);
     }
@@ -656,28 +677,28 @@ function BlackoutsCard({ courtId }: { courtId: string }) {
 
   return (
     <SectionCard>
-      <SectionLabel>Blackout dates</SectionLabel>
+      <SectionLabel>{t("setup.set.blackoutTitle")}</SectionLabel>
       {(blackoutsQuery.data ?? []).length === 0 ? (
-        <p className="text-owner-ink-faint text-[13px]">No blackout dates yet.</p>
+        <p className="text-owner-ink-faint text-[13px]">{t("setup.set.blackoutNone")}</p>
       ) : (
         (blackoutsQuery.data ?? []).map((b) => (
           <div key={b.id} className="border border-owner-border rounded-[10px] p-3">
-            <p className="text-sm font-semibold">{b.title ?? "Blocked"}</p>
+            <p className="text-sm font-semibold">{b.title ?? t("setup.set.blocked")}</p>
             <p className="font-mono text-xs text-owner-ink-faint mt-0.5">
-              {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
+              {t("setup.set.blackoutRange", { start: fmt.when(b.starts_at), end: fmt.when(b.ends_at) })}
             </p>
           </div>
         ))
       )}
       <div className="h-px bg-owner-border-light" />
-      <FieldLabel>Add a blackout</FieldLabel>
+      <FieldLabel>{t("setup.set.blackoutAdd")}</FieldLabel>
       <div className="flex flex-wrap gap-3">
-        <Field label="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Maintenance" />
+        <Field label={t("setup.set.blackoutName")} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("setup.set.blackoutPlaceholder")} />
         <div className="flex flex-col gap-3 w-full">
-          <DayPicker label="Starts on" value={startDate} onChange={setStartDate} />
-          <TimeField12 label="Starts at" value={startTime} onChange={setStartTime} />
-          <DayPicker label="Ends on" value={endDate} onChange={setEndDate} />
-          <TimeField12 label="Ends at" value={endTime} onChange={setEndTime} />
+          <DayPicker label={t("setup.set.startsOn")} value={startDate} onChange={setStartDate} />
+          <TimeField12 label={t("setup.set.startsAt")} value={startTime} onChange={setStartTime} />
+          <DayPicker label={t("setup.set.endsOn")} value={endDate} onChange={setEndDate} />
+          <TimeField12 label={t("setup.set.endsAt")} value={endTime} onChange={setEndTime} />
         </div>
       </div>
       {error ? (
@@ -685,7 +706,7 @@ function BlackoutsCard({ courtId }: { courtId: string }) {
           {error}
         </p>
       ) : null}
-      <PrimaryButton label="Add blackout" onClick={add} busy={adding} />
+      <PrimaryButton label={t("setup.set.blackoutButton")} onClick={add} busy={adding} />
     </SectionCard>
   );
 }

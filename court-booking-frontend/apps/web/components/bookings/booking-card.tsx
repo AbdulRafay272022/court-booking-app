@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { cancellationPolicyText } from "@court-booking/api-client";
 import Link from "next/link";
 import { statusGroup, type Booking, type BookingStatus, type Review, type StatusGroup } from "@court-booking/types";
 import { courtLabel } from "@/components/court-label";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useFmt } from "@/lib/use-fmt";
 import { buttonClasses } from "@/components/site/button";
 import { useT } from "@/components/i18n/lang-provider";
 import type { MessageKey, TFunction } from "@/lib/i18n";
@@ -21,8 +21,8 @@ const REVIEW_EDIT_WINDOW_MS = 7 * 24 * 3600 * 1000;
 function useNow(everyMs = 60_000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), everyMs);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(timer);
   }, [everyMs]);
   return now;
 }
@@ -189,6 +189,7 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   const router = useRouter();
   const t = useT();
   const now = useNow();
+  const fmt = useFmt();
   const courtQuery = useQuery({ queryKey: ["court", booking.court_id], queryFn: () => api.courts.get(booking.court_id) });
   const venueQuery = useQuery({
     queryKey: ["venue", courtQuery.data?.venue_id],
@@ -205,7 +206,7 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   const canCancelBooked = booking.status === "booked" && !!court?.cancellation_allowed && !withinCutoff;
   const canCancel = canResumePay || canCancelBooked;
   const bookedNotCancellable = booking.status === "booked" && !canCancelBooked && !!court;
-  const policyNote = bookedNotCancellable ? (withinCutoff ? t("bookings.policy.closed") : cancellationPolicyText(court)) : null;
+  const policyNote = bookedNotCancellable ? (withinCutoff ? t("bookings.policy.closed") : fmt.cancellationPolicy(court)) : null;
 
   async function handleCancel() {
     const isPaid = booking.status === "booked";
@@ -306,10 +307,11 @@ export function BookingTags({
 /** One booking in the Upcoming / Past lists. */
 export function BookingCard({ booking, review, onChanged }: { booking: Booking; review?: Review; onChanged: () => void }) {
   const t = useT();
+  const fmt = useFmt();
   const v = useBookingView(booking, onChanged);
   const group = statusGroup(booking.status);
   const style = GROUP_STYLE[group];
-  const dateParts = formatDate(booking.starts_at).match(/^(\w+), (\d+) (\w+)/);
+  const dateParts = fmt.date(booking.starts_at).match(/^(\w+), (\d+) (\w+)/);
 
   return (
     <article
@@ -336,7 +338,7 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
             <h3 className="truncate font-khelo-display text-[19px] font-extrabold leading-snug tracking-tight">{v.venueName ?? "…"}</h3>
             <p className="text-[14px] text-khelo-muted">
               {courtLine(v.court)}
-              {formatDate(booking.starts_at)} {"·"} {formatTimeRange(booking.starts_at, booking.ends_at)}
+              {fmt.date(booking.starts_at)} {"·"} {fmt.timeRange(booking.starts_at, booking.ends_at)}
             </p>
             <span className="mt-1 self-start">
               <StatusPill status={booking.status} />
@@ -403,6 +405,7 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
 /** The featured card at the top of the dashboard: the player's next active booking. */
 export function NextBookingCard({ booking, onChanged, showPaid = false }: { booking: Booking; onChanged: () => void; showPaid?: boolean }) {
   const t = useT();
+  const fmt = useFmt();
   const v = useBookingView(booking, onChanged);
   const group = statusGroup(booking.status);
 
@@ -425,7 +428,7 @@ export function NextBookingCard({ booking, onChanged, showPaid = false }: { book
           <h2 className="font-khelo-display text-[28px] font-extrabold leading-tight tracking-[-0.5px] sm:text-4xl">{v.venueName ?? "…"}</h2>
           <p className="text-[16px] text-white/80">
             {courtLine(v.court)}
-            {formatDate(booking.starts_at)} {"·"} {formatTimeRange(booking.starts_at, booking.ends_at)}
+            {fmt.date(booking.starts_at)} {"·"} {fmt.timeRange(booking.starts_at, booking.ends_at)}
           </p>
         </div>
         <BookingTags court={v.court} venue={v.venue} dark />

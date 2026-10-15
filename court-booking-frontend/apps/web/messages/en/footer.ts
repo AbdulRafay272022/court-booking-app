@@ -14,5 +14,5 @@ export const enFooter = {
   "footer.link.contact": "Contact",
   "footer.link.terms": "Terms",
   "footer.link.privacy": "Privacy",
-  "footer.copyright": "© 2026 Khelo, a {company} product.",
+  "footer.copyright": "\u00a9 2026 Khelo, a {company} product.",
 } as const;

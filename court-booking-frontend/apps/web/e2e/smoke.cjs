@@ -50,6 +50,8 @@ function slug(route) {
 async function checkPage(browser, baseUrl, route, width, outDir) {
   const failures = [];
   const context = await browser.newContext({ viewport: { width, height: HEIGHT } });
+  // SMOKE_LANG=en|ru sets the khelo_lang cookie (default is the site default, Roman Urdu)
+  if (process.env.SMOKE_LANG) await context.addCookies([{ name: "khelo_lang", value: process.env.SMOKE_LANG, url: baseUrl }]);
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", (m) => {
@@ -65,11 +67,11 @@ async function checkPage(browser, baseUrl, route, width, outDir) {
       overflow: document.documentElement.scrollWidth - window.innerWidth,
       h1: document.querySelectorAll("h1").length,
       main: document.querySelectorAll("main").length,
-      headerLogo: document.querySelectorAll('header a[aria-label="Khelo home"]').length,
+      headerLogo: document.querySelectorAll('header a[href="/"]').length,
       text: document.body.innerText,
     }));
     if (m.overflow > 1) failures.push(`horizontal scroll (+${m.overflow}px)`);
-    if (m.headerLogo < 1) failures.push('header link "Khelo home" missing');
+    if (m.headerLogo < 1) failures.push('header logo link (to "/") missing');
     if (m.h1 !== 1) failures.push(`expected 1 <h1>, found ${m.h1}`);
     if (m.main < 1) failures.push("no <main> landmark");
     for (const name of findPlaceholders(m.text)) failures.push(`placeholder text: ${name}`);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { Logo } from "@/components/auth/logo";
+import { useT } from "@/components/i18n/lang-provider";
 import { supportWhatsAppUrl } from "@/lib/support";
 
 /** Venue onboarding (owner system: teal / Plex Sans). Web counterpart of the mobile
@@ -13,6 +14,7 @@ import { supportWhatsAppUrl } from "@/lib/support";
 export default function VenueSetupLayout({ children }: { children: React.ReactNode }) {
   const { ready } = useRequireAuth(["owner"]);
   const router = useRouter();
+  const t = useT();
   const user = useAuthStore((s) => s.user);
 
   if (!ready) return <div className="min-h-screen bg-owner-bg" />;
@@ -20,7 +22,7 @@ export default function VenueSetupLayout({ children }: { children: React.ReactNo
   return (
     <div className="min-h-screen bg-owner-bg text-owner-ink font-[family-name:var(--font-plex-x)]">
       <header className="flex items-center justify-between gap-4 px-5 sm:px-8 py-4 bg-owner-surface border-b border-owner-border">
-        <Link href="/" aria-label="Khelo home">
+        <Link href="/" aria-label={t("setup.layout.home")}>
           <Logo tone="owner" size={36} />
         </Link>
         <div className="flex items-center gap-3">
@@ -30,9 +32,9 @@ export default function VenueSetupLayout({ children }: { children: React.ReactNo
             rel="noopener noreferrer"
             className="hidden sm:inline text-[13px] font-semibold text-owner-ink-muted"
           >
-            Need help? WhatsApp us
+            {t("setup.layout.help")}
           </a>
-          <span className="hidden sm:inline text-[13px] text-owner-ink-faint">{user?.name ?? "Owner"}</span>
+          <span className="hidden sm:inline text-[13px] text-owner-ink-faint">{user?.name ?? t("setup.layout.owner")}</span>
           <button
             onClick={() => {
               void useAuthStore.getState().signOut();
@@ -40,7 +42,7 @@ export default function VenueSetupLayout({ children }: { children: React.ReactNo
             }}
             className="px-3.5 py-2 rounded-lg text-[13px] font-semibold border border-owner-border"
           >
-            Log out
+            {t("setup.layout.logout")}
           </button>
         </div>
       </header>

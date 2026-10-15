@@ -2,6 +2,7 @@
 
 import { parseTime24, pktDayTabs, toTime24, type Meridiem, type Time12 } from "@court-booking/types";
 import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 import { FieldLabel } from "./ui";
 
 /**
@@ -100,6 +101,8 @@ export function DayPicker({
   onChange: (next: string) => void;
   days?: number;
 }) {
+  const t = useT();
+  const fmt = useFmt();
   const options = pktDayTabs(days);
   return (
     <div className="flex flex-col gap-2 min-w-0">
@@ -120,7 +123,7 @@ export function DayPicker({
                 borderColor: selected ? "#0E6274" : "#DCE3E6",
               }}
             >
-              {i === 0 ? "Today" : i === 1 ? "Tomorrow" : `${d.weekday} ${d.day} ${d.month}`}
+              {i === 0 ? t("setup.time.today") : i === 1 ? t("setup.time.tomorrow") : `${fmt.weekday((new Date(`${d.date}T00:00:00Z`).getUTCDay() + 6) % 7)} ${d.day} ${d.month}`}
             </button>
           );
         })}

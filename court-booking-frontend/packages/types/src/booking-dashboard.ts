@@ -1,4 +1,5 @@
 import type { Booking, BookingStatus } from "./booking";
+import { WORDS, type TextLang } from "./locale-text";
 
 /** The four buckets the player dashboard filters and counts by (the six raw statuses are too fine for a player). */
 export type StatusGroup = "confirmed" | "pending" | "completed" | "cancelled";
@@ -57,13 +58,13 @@ export function countByGroup(bookings: Pick<Booking, "status">[]): BookingCounts
 }
 
 /** "in 2 days", "in 3 hours", "in 25 min", "happening now" -- for the next-booking card. */
-export function startsInText(startsAt: string, endsAt: string, now: number = Date.now()): string {
+export function startsInText(startsAt: string, endsAt: string, now: number = Date.now(), lang: TextLang = "en"): string {
   const start = Date.parse(startsAt);
-  if (now >= start) return Date.parse(endsAt) > now ? "happening now" : "finished";
+  if (now >= start) return Date.parse(endsAt) > now ? WORDS[lang].happeningNow : WORDS[lang].finished;
   const minutes = Math.ceil((start - now) / 60_000);
-  if (minutes < 60) return `in ${minutes} min`;
+  if (minutes < 60) return WORDS[lang].inMin(minutes);
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `in ${hours} hour${hours === 1 ? "" : "s"}`;
+  if (hours < 24) return WORDS[lang].inHours(hours);
   const days = Math.floor(hours / 24);
-  return `in ${days} day${days === 1 ? "" : "s"}`;
+  return WORDS[lang].inDays(days);
 }

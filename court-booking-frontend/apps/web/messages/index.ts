@@ -17,6 +17,10 @@ import { ruBookings } from "./ru/bookings";
 import { ruAccount } from "./ru/account";
 import { ruErrors } from "./ru/errors";
 import { ruSetup } from "./ru/setup";
+import { ruOdash } from "./ru/odash";
+import { ruPlay } from "./ru/play";
+import { ruValidation } from "./ru/validation";
+import { ruFmt } from "./ru/fmt";
 import { enCommon } from "./en/common";
 import { enHeader } from "./en/header";
 import { enFooter } from "./en/footer";
@@ -33,8 +37,12 @@ import { enBookings } from "./en/bookings";
 import { enAccount } from "./en/account";
 import { enErrors } from "./en/errors";
 import { enSetup } from "./en/setup";
+import { enOdash } from "./en/odash";
+import { enPlay } from "./en/play";
+import { enValidation } from "./en/validation";
+import { enFmt } from "./en/fmt";
 
-export const NAMESPACES = ["common", "header", "footer", "home", "features", "owners", "about", "blog", "contact", "auth", "search", "venue", "bookings", "account", "errors", "setup"] as const;
+export const NAMESPACES = ["common", "header", "footer", "home", "features", "owners", "about", "blog", "contact", "auth", "search", "venue", "bookings", "account", "errors", "setup", "fmt", "validation", "play", "odash"] as const;
 
 export const ru = {
   ...ruCommon,
@@ -53,6 +61,10 @@ export const ru = {
   ...ruAccount,
   ...ruErrors,
   ...ruSetup,
+  ...ruOdash,
+  ...ruPlay,
+  ...ruValidation,
+  ...ruFmt,
 } as const;
 
 export type MessageKey = keyof typeof ru;
@@ -74,6 +86,10 @@ export const en: Record<MessageKey, string> = {
   ...enAccount,
   ...enErrors,
   ...enSetup,
+  ...enOdash,
+  ...enPlay,
+  ...enValidation,
+  ...enFmt,
 };
 
 export const DICTIONARIES: Record<"ru" | "en", Record<MessageKey, string>> = { ru, en };

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { reviewStats, type Review } from "@court-booking/types";
 import { api } from "@/lib/api";
-import { formatRelativeTime, formatShortDate } from "@/lib/format";
+import { useFmt } from "@/lib/use-fmt";
+import type { Fmt } from "@/lib/format-i18n";
 import { useAuthStore } from "@/lib/auth-store";
 import { useFeatureFlags } from "@/lib/use-feature-flags";
 import { useT } from "@/components/i18n/lang-provider";
@@ -64,8 +65,8 @@ function Avatar({ name }: { name: string }) {
 }
 
 /** "3d ago" for recent reviews, a calendar date once it is older than a month. */
-function when(iso: string): string {
-  return Date.now() - new Date(iso).getTime() > 30 * 86_400_000 ? formatShortDate(iso) : formatRelativeTime(iso);
+function when(iso: string, fmt: Fmt): string {
+  return Date.now() - new Date(iso).getTime() > 30 * 86_400_000 ? fmt.date(iso) : fmt.relative(iso);
 }
 
 function Summary({ average, count, distribution }: { average: number; count: number; distribution: number[] }) {
@@ -106,6 +107,7 @@ function Summary({ average, count, distribution }: { average: number; count: num
  * the page also gets Hide/Unhide (the list includes hidden reviews for admins). */
 export function VenueReviews({ venueId }: { venueId: string }) {
   const t = useT();
+  const fmt = useFmt();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
@@ -169,7 +171,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                         {r.is_hidden ? <span className="ml-2 text-[11px] font-bold text-khelo-muted-2">{t("venue.reviews.hidden")}</span> : null}
                       </span>
                       <span className="text-[12.5px] text-khelo-muted-2">
-                        {when(r.created_at)}
+                        {when(r.created_at, fmt)}
                         {r.updated_at ? ` \u00b7 ${t("venue.reviews.edited")}` : ""}
                       </span>
                     </div>

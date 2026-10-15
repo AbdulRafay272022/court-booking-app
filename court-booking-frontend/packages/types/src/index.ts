@@ -22,3 +22,4 @@ export * from "./booking-duration";
 export * from "./court-setup";
 export * from "./sports";
 export * from "./court-hours";
+export * from "./locale-text";

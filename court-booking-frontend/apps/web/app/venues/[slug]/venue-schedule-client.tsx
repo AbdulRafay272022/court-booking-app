@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { formatPKR, sameSport } from "@/lib/format";
 import { CourtLabel } from "@/components/court-label";
 import { PhotoGallery } from "@/components/photo-gallery";
-import { formatDuration, type Court } from "@court-booking/types";
+import type { Court } from "@court-booking/types";
+import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
 import { CourtMonthCalendar } from "@/components/booking/court-month-calendar";
 import { CourtDayPopup } from "@/components/booking/court-day-popup";
@@ -31,6 +32,7 @@ export function VenueScheduleClient({
   horizonDays?: number | null;
 }) {
   const t = useT();
+  const fmt = useFmt();
   const searchParams = useSearchParams();
   const sportParam = searchParams.get("sport");
   const [sport, setSport] = useState<string | undefined>(undefined);
@@ -87,7 +89,7 @@ export function VenueScheduleClient({
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-khelo-muted">
                     <span>{court.is_indoor ? t("venue.card.indoor") : t("venue.card.outdoor")}</span>
                     <span aria-hidden="true">·</span>
-                    <span>{t("venue.avail.minimum", { duration: formatDuration(court.slot_minutes) })}</span>
+                    <span>{t("venue.avail.minimum", { duration: fmt.duration(court.slot_minutes) })}</span>
                     {price != null ? (
                       <>
                         <span aria-hidden="true">·</span>

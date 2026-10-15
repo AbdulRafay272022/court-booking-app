@@ -11,7 +11,10 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { RecordPaymentSheet } from "@/components/owner/record-payment-sheet";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDateString, formatPKR, formatTime, formatTimeRange, formatWhen } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
+import type { TFunction } from "@/lib/i18n";
 import { bookingSourceLabel } from "@court-booking/types";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
@@ -27,6 +30,8 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function OwnerTodayPage() {
+  const t = useT();
+  const fmt = useFmt();
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const [activeCourt, setActiveCourt] = useState<string | "all">("all");
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
@@ -46,20 +51,20 @@ export default function OwnerTodayPage() {
       await api.bookings.checkin(bookingId);
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
     } catch (e) {
-      alert(friendlyErrorMessage(e));
+      alert(friendlyErrorMessage(e, t));
     } finally {
       setBusyBookingId(null);
     }
   }
 
   async function handleNoShow(bookingId: string) {
-    if (!confirm("Mark this booking as a no-show? This records that the player never showed up.")) return;
+    if (!confirm(t("odash.today.confirmNoShow"))) return;
     setBusyBookingId(bookingId);
     try {
       await api.bookings.noShow(bookingId);
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
     } catch (e) {
-      alert(friendlyErrorMessage(e));
+      alert(friendlyErrorMessage(e, t));
     } finally {
       setBusyBookingId(null);
     }
@@ -85,26 +90,26 @@ export default function OwnerTodayPage() {
     <div className="p-8 flex flex-col gap-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{activeVenue?.name ?? "Today"}</h1>
-          {data ? <p className="text-owner-ink-faint text-sm">{formatDateString(data.date)}</p> : null}
+          <h1 className="text-2xl font-bold">{activeVenue?.name ?? t("odash.today.title")}</h1>
+          {data ? <p className="text-owner-ink-faint text-sm">{fmt.dateString(data.date)}</p> : null}
         </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard/owner/checkin" className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm">
-            Check-in tools
+        <div className="flex shrink-0 gap-2">
+          <Link href="/dashboard/owner/checkin" className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm whitespace-nowrap">
+            {t("odash.today.checkinTools")}
           </Link>
-          <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm">
-            + Add booking
+          <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm whitespace-nowrap">
+            {t("odash.today.addBooking")}
           </Link>
         </div>
       </div>
 
       {showSwitcher ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {venues.map((v) => (
             <button
               key={v.id}
               onClick={() => setVenueId(v.id)}
-              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold"
+              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold whitespace-nowrap"
               style={{ background: v.id === activeVenueId ? "#0E6274" : "#F4F6F7", color: v.id === activeVenueId ? "#fff" : "#5B7079" }}
             >
               {v.name}
@@ -114,10 +119,10 @@ export default function OwnerTodayPage() {
       ) : null}
 
       <div className="grid grid-cols-3 gap-3">
-        <Stat label="Booked" value={data ? `${rows.filter((r) => r.status === "booked" || r.status === "payment_submitted").length}/${rows.length}` : "—"} />
-        <Stat label="Revenue today" value={data ? formatPKR(data.summary.total_revenue) : "—"} />
+        <Stat label={t("odash.today.stat.booked")} value={data ? `${rows.filter((r) => r.status === "booked" || r.status === "payment_submitted").length}/${rows.length}` : "—"} />
+        <Stat label={t("odash.today.stat.revenue")} value={data ? formatPKR(data.summary.total_revenue) : "—"} />
         <Link href="/dashboard/owner/approvals">
-          <Stat label="Pending" value={data ? String(data.summary.pending_approvals) : "—"} warn />
+          <Stat label={t("odash.today.stat.pending")} value={data ? String(data.summary.pending_approvals) : "—"} warn />
         </Link>
       </div>
 
@@ -128,7 +133,7 @@ export default function OwnerTodayPage() {
             className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
             style={{ background: activeCourt === "all" ? "#0E6274" : "#F4F6F7", color: activeCourt === "all" ? "#fff" : "#5B7079" }}
           >
-            All
+            {t("odash.today.all")}
           </button>
           {courts.map((c) => (
             <button
@@ -145,11 +150,11 @@ export default function OwnerTodayPage() {
 
       <div className="bg-owner-surface border border-owner-border rounded-xl overflow-hidden">
         {venuesLoading || todayQuery.isLoading ? (
-          <p className="p-8 text-center text-owner-ink-faint">Loading…</p>
+          <p className="p-8 text-center text-owner-ink-faint">{t("odash.today.loading")}</p>
         ) : todayQuery.isError && !data ? (
-          <ErrorState message={friendlyErrorMessage(todayQuery.error)} onRetry={() => todayQuery.refetch()} tone="owner" />
+          <ErrorState message={friendlyErrorMessage(todayQuery.error, t)} onRetry={() => todayQuery.refetch()} tone="owner" />
         ) : rows.length === 0 ? (
-          <p className="p-8 text-center text-owner-ink-faint">Nothing scheduled.</p>
+          <p className="p-8 text-center text-owner-ink-faint">{t("odash.today.empty")}</p>
         ) : (
           rows.map((slot) => (
             <div
@@ -157,29 +162,29 @@ export default function OwnerTodayPage() {
               className="flex items-center gap-4 px-5 py-3.5 border-b border-owner-border-light last:border-0"
               style={{ borderLeft: `3px solid ${STATUS_COLOR[slot.status] ?? "#DCE3E6"}` }}
             >
-              <span className="font-mono text-sm font-semibold w-[4.75rem] shrink-0">{formatTime(slot.starts_at)}</span>
+              <span className="font-mono text-sm font-semibold w-[4.75rem] shrink-0">{fmt.time(slot.starts_at)}</span>
               <div className="flex-1">
                 <p className="font-semibold text-sm" data-testid="today-row-title">
-                  {slot.booking_id || activeCourt === "all" ? `${courtLabel(slot.courtName, slot.courtSport)} · ` : ""}{slot.player_name ?? statusLabel(slot.status)}
+                  {slot.booking_id || activeCourt === "all" ? `${courtLabel(slot.courtName, slot.courtSport)} · ` : ""}{slot.player_name ?? statusLabel(t, slot.status)}
                 </p>
-                <p className="text-xs text-owner-ink-faint">{statusSubtitle(slot.status)}</p>
+                <p className="text-xs text-owner-ink-faint">{statusSubtitle(t, slot.status)}</p>
                 {slot.booking_id ? (
                   <p className="text-xs font-semibold" data-testid="today-row-range">
-                    {formatTimeRange(slot.starts_at, slot.ends_at)}
+                    {fmt.timeRange(slot.starts_at, slot.ends_at)}
                   </p>
                 ) : null}
                 {slot.booking_id ? (
                   <>
                     <p className="text-xs text-owner-ink-faint" data-testid="today-row-origin">
                       {[
-                        bookingSourceLabel(slot.booking_source) ? `Booked via ${bookingSourceLabel(slot.booking_source)}` : null,
-                        slot.booked_at ? `on ${formatWhen(slot.booked_at)}` : null,
-                        slot.account_name && slot.account_name !== slot.player_name ? `Account: ${slot.account_name}` : null,
+                        bookingSourceLabel(slot.booking_source) ? t("odash.today.bookedVia", { source: bookingSourceLabel(slot.booking_source) ?? "" }) : null,
+                        slot.booked_at ? t("odash.today.bookedOn", { when: fmt.when(slot.booked_at) }) : null,
+                        slot.account_name && slot.account_name !== slot.player_name ? t("odash.today.account", { name: slot.account_name }) : null,
                       ].filter(Boolean).join(" · ")}
                     </p>
                     {slot.price != null ? (
                       <p className="text-xs font-mono text-owner-ink-muted" data-testid="today-row-money">
-                        Total PKR {formatPKR(slot.price)} · Paid PKR {formatPKR(slot.amount_paid ?? 0)} · Balance PKR {formatPKR(slot.balance_due ?? 0)}
+                        {t("odash.today.money", { total: formatPKR(slot.price), paid: formatPKR(slot.amount_paid ?? 0), balance: formatPKR(slot.balance_due ?? 0) })}
                       </p>
                     ) : null}
                   </>
@@ -187,18 +192,18 @@ export default function OwnerTodayPage() {
               </div>
               {slot.status === "payment_submitted" ? (
                 <Link href="/dashboard/owner/approvals" className="px-3 py-2 rounded-lg text-white text-xs font-semibold" style={{ background: "#9C5C0A" }}>
-                  Review
+                  {t("odash.today.review")}
                 </Link>
               ) : slot.status === "booked" && slot.balance_due != null && slot.balance_due > 0 && slot.booking_id ? (
                 <button
                   onClick={() =>
-                    setRecording({ bookingId: slot.booking_id!, playerLabel: slot.player_name ?? "Player", balanceDue: slot.balance_due! })
+                    setRecording({ bookingId: slot.booking_id!, playerLabel: slot.player_name ?? t("odash.today.player"), balanceDue: slot.balance_due! })
                   }
                   className="text-right"
                 >
                   <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid ?? 0)}</span>
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full inline-block mt-0.5" style={{ background: "#FBF0DD", color: "#9C5C0A" }}>
-                    RECORD PKR {formatPKR(slot.balance_due)}
+                    {t("odash.today.record", { amount: formatPKR(slot.balance_due) })}
                   </span>
                 </button>
               ) : slot.amount_paid != null ? (
@@ -206,7 +211,7 @@ export default function OwnerTodayPage() {
                   <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid)}</span>
                   {slot.status === "booked" && slot.balance_due != null ? (
                     <span className="text-[11px] font-semibold block" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
-                      {slot.balance_due > 0 ? `PKR ${formatPKR(slot.balance_due)} due at venue` : "Fully paid"}
+                      {slot.balance_due > 0 ? t("odash.today.dueAtVenue", { amount: formatPKR(slot.balance_due) }) : t("odash.today.fullyPaid")}
                     </span>
                   ) : null}
                   {slot.status === "booked" && slot.booking_id ? (
@@ -217,7 +222,7 @@ export default function OwnerTodayPage() {
                         className="px-2.5 py-1 rounded text-white text-[11px] font-semibold disabled:opacity-50"
                         style={{ background: "#0E6274" }}
                       >
-                        Check in
+                        {t("odash.today.checkIn")}
                       </button>
                       <button
                         disabled={busyBookingId === slot.booking_id}
@@ -225,15 +230,15 @@ export default function OwnerTodayPage() {
                         className="px-2.5 py-1 rounded border text-[11px] font-semibold disabled:opacity-50"
                         style={{ borderColor: "#8C3823", color: "#8C3823" }}
                       >
-                        No-show
+                        {t("odash.today.noShow")}
                       </button>
                     </div>
                   ) : slot.status === "completed" && slot.checked_in_at ? (
                     <span className="text-[11px] font-semibold block" style={{ color: "#1F7A52" }}>
-                      Checked in {formatTime(slot.checked_in_at)}{slot.checked_in_by ? ` · ${slot.checked_in_by}` : ""}
+                      {slot.checked_in_by ? t("odash.today.checkedInBy", { time: fmt.time(slot.checked_in_at), by: slot.checked_in_by }) : t("odash.today.checkedIn", { time: fmt.time(slot.checked_in_at) })}
                     </span>
                   ) : slot.status === "no_show" ? (
-                    <span className="text-[11px] font-semibold block" style={{ color: "#8C3823" }}>No-show</span>
+                    <span className="text-[11px] font-semibold block" style={{ color: "#8C3823" }}>{t("odash.today.noShow")}</span>
                   ) : null}
                 </div>
               ) : null}
@@ -267,26 +272,26 @@ function Stat({ label, value, warn }: { label: string; value: string; warn?: boo
   );
 }
 
-function statusLabel(status: string): string {
+function statusLabel(t: TFunction, status: string): string {
   switch (status) {
-    case "held": return "Held";
-    case "available": return "Open";
-    case "blocked": return "Closed";
-    case "completed": return "Checked in";
-    case "no_show": return "No-show";
-    default: return "Booking";
+    case "held": return t("odash.today.status.held");
+    case "available": return t("odash.today.status.available");
+    case "blocked": return t("odash.today.status.blocked");
+    case "completed": return t("odash.today.status.completed");
+    case "no_show": return t("odash.today.status.no_show");
+    default: return t("odash.today.status.default");
   }
 }
 
-function statusSubtitle(status: string): string {
+function statusSubtitle(t: TFunction, status: string): string {
   switch (status) {
-    case "booked": return "Confirmed booking";
-    case "payment_submitted": return "Screenshot waiting for review";
-    case "held": return "Player is paying now";
-    case "available": return "No booking yet";
-    case "blocked": return "Blocked by venue";
-    case "completed": return "Player checked in";
-    case "no_show": return "Player never checked in";
+    case "booked": return t("odash.today.sub.booked");
+    case "payment_submitted": return t("odash.today.sub.payment_submitted");
+    case "held": return t("odash.today.sub.held");
+    case "available": return t("odash.today.sub.available");
+    case "blocked": return t("odash.today.sub.blocked");
+    case "completed": return t("odash.today.sub.completed");
+    case "no_show": return t("odash.today.sub.no_show");
     default: return "";
   }
 }

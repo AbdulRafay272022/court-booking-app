@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { bookingHorizonText, upcomingBlackouts, weeklyHoursLines } from "@court-booking/types";
+import { useFmt } from "@/lib/use-fmt";
 import type { Court } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -15,14 +15,15 @@ import { useT } from "@/components/i18n/lang-provider";
  */
 export function CourtHoursPanel({ court, horizonDays }: { court: Court; horizonDays: number | null | undefined }) {
   const t = useT();
+  const fmt = useFmt();
   const blackoutsQuery = useQuery({
     queryKey: ["court-blackouts", court.id],
     queryFn: () => api.courts.listBlackouts(court.id),
     staleTime: 60_000,
   });
-  const lines = weeklyHoursLines(court.schedule_templates ?? []);
-  const blackouts = upcomingBlackouts(blackoutsQuery.data ?? []);
-  const horizon = bookingHorizonText(horizonDays);
+  const lines = fmt.weeklyHoursLines(court.schedule_templates ?? []);
+  const blackouts = fmt.upcomingBlackouts(blackoutsQuery.data ?? []);
+  const horizon = fmt.bookingHorizon(horizonDays);
 
   return (
     <div className="rounded-2xl border border-khelo-divider bg-khelo-page px-3.5 py-3 flex flex-col gap-2.5" data-testid={`court-hours-${court.name}`}>

@@ -10,13 +10,24 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTimeRange } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
+import type { MessageKey } from "@/lib/i18n";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 
-const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks like a duplicate", "Other"];
+// The English value is what is sent to the backend (and shown to the player); only the label on the button is translated.
+const REJECT_REASONS: { value: string; label: MessageKey }[] = [
+  { value: "Amount doesn't match", label: "odash.approvals.reason.amount" },
+  { value: "Screenshot unreadable", label: "odash.approvals.reason.unreadable" },
+  { value: "Looks like a duplicate", label: "odash.approvals.reason.duplicate" },
+  { value: "Other", label: "odash.approvals.reason.other" },
+];
 
 export default function OwnerApprovalsPage() {
+  const t = useT();
+  const fmt = useFmt();
   const sports = useOwnerCourtSports();
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
@@ -56,7 +67,7 @@ export default function OwnerApprovalsPage() {
   async function handleApprove() {
     if (!current) return;
     if (current.checks && (amountValue === null || amountValue <= 0)) {
-      alert("Enter the amount the player actually paid (whole PKR).");
+      alert(t("odash.approvals.alert.amount"));
       return;
     }
     setBusy(true);
@@ -65,7 +76,7 @@ export default function OwnerApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
     } catch (e) {
-      alert(friendlyErrorMessage(e));
+      alert(friendlyErrorMessage(e, t));
     } finally {
       setBusy(false);
     }
@@ -75,7 +86,7 @@ export default function OwnerApprovalsPage() {
     if (!current) return;
     const reason = rejectReason === "Other" ? rejectNote.trim() : rejectReason;
     if (!reason) {
-      alert("Choose a reason (or write one) before rejecting.");
+      alert(t("odash.approvals.alert.reason"));
       return;
     }
     setBusy(true);
@@ -85,29 +96,36 @@ export default function OwnerApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
     } catch (e) {
-      alert(friendlyErrorMessage(e));
+      alert(friendlyErrorMessage(e, t));
     } finally {
       setBusy(false);
     }
   }
 
+  const summaryText = summary
+    ? summary.status === "paid_in_full"
+      ? t("odash.approvals.sum.paid_in_full")
+      : t(summary.status === "overpaid" ? "odash.approvals.sum.overpaid" : "odash.approvals.sum.underpaid", {
+          amount: `PKR ${formatPKR(Math.abs((amountValue ?? 0) - (current?.checks?.expected_amount ?? 0)))}`,
+        })
+    : "";
   const verdict = current?.ocr_verdict ?? null;
   const tone = verdict === "match" ? "match" : verdict === "mismatch" ? "mismatch" : "unreadable";
 
   return (
     <div className="p-8 max-w-2xl flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Payment review</h1>
-        <p className="text-owner-ink-faint text-sm">{list.length === 0 ? "Nothing waiting" : `1 of ${list.length} waiting`}</p>
+        <h1 className="text-2xl font-bold">{t("odash.approvals.title")}</h1>
+        <p className="text-owner-ink-faint text-sm">{list.length === 0 ? t("odash.approvals.none") : t("odash.approvals.count", { n: list.length })}</p>
       </div>
 
       {venuesLoading || query.isLoading ? (
-        <p className="p-10 text-center text-owner-ink-faint">Loading…</p>
+        <p className="p-10 text-center text-owner-ink-faint">{t("odash.approvals.loading")}</p>
       ) : query.isError && list.length === 0 ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(query.error, t)} onRetry={() => query.refetch()} tone="owner" />
       ) : !current ? (
         <div className="bg-owner-surface border border-owner-border rounded-xl p-10 text-center text-owner-ink-faint">
-          All caught up — no payment screenshots are waiting for review.
+          {t("odash.approvals.empty")}
         </div>
       ) : (
         <>
@@ -120,12 +138,12 @@ export default function OwnerApprovalsPage() {
           >
             <div className="flex flex-col">
               <span className="font-bold text-[14.5px]" style={{ color: tone === "match" ? "#14563A" : tone === "mismatch" ? "#8C3823" : "#5B7079" }}>
-                {tone === "match" ? "Amount matches" : tone === "mismatch" ? "Amount mismatch" : "Couldn't read the screenshot"}
+                {t(`odash.approvals.tone.${tone}`)}
               </span>
               <span className="text-[12.5px]" style={{ color: tone === "match" ? "#3D7A5E" : "#5B7079" }}>
                 {current.ocr_amount != null
-                  ? `We read PKR ${formatPKR(current.ocr_amount)} · expected PKR ${formatPKR(current.expected_amount)}`
-                  : `Expected PKR ${formatPKR(current.expected_amount)}`}
+                  ? t("odash.approvals.read", { read: formatPKR(current.ocr_amount), expected: formatPKR(current.expected_amount) })
+                  : t("odash.approvals.expected", { expected: formatPKR(current.expected_amount) })}
               </span>
             </div>
           </div>
@@ -136,24 +154,24 @@ export default function OwnerApprovalsPage() {
                 {(current.player_name ?? "?").slice(0, 2).toUpperCase()}
               </div>
               <div>
-                <p className="font-bold">{current.player_name ?? "Player"}</p>
+                <p className="font-bold">{current.player_name ?? t("odash.approvals.player")}</p>
                 {current.player_phone ? <p className="font-mono text-[12.5px] text-owner-ink-muted">{current.player_phone}</p> : null}
               </div>
             </div>
             <div className="h-px bg-owner-border-light" />
-            <Row label="Slot" value={`${courtLabel(current.court_name, current.court_sport ?? sports.byName(current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
-            <Row label="Advance due" value={`PKR ${formatPKR(current.expected_amount)}`} />
-            <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
+            <Row label={t("odash.approvals.row.slot")} value={`${courtLabel(current.court_name, current.court_sport ?? sports.byName(current.court_name))} \u00b7 ${fmt.timeRange(current.starts_at, current.ends_at)}`} />
+            <Row label={t("odash.approvals.row.advance")} value={`PKR ${formatPKR(current.expected_amount)}`} />
+            <Row label={t("odash.approvals.row.submitted")} value={t("odash.approvals.minAgo", { n: current.minutes_since_submission.toFixed(0) })} />
           </div>
 
           {current.checks ? (
             <div className="bg-owner-surface border border-owner-border rounded-xl p-5 flex flex-col gap-2.5">
-              <p className="font-bold text-owner-ink text-[13.5px]">Checks</p>
+              <p className="font-bold text-owner-ink text-[13.5px]">{t("odash.approvals.checks")}</p>
               <CheckRow check={current.checks.name} />
               <CheckRow check={current.checks.amount} />
               <div className="flex flex-col gap-2 rounded-lg border border-owner-border p-3 -mx-1">
                 <label className="text-[13px] font-semibold text-owner-ink" htmlFor="amount-received">
-                  Amount received (PKR)
+                  {t("odash.approvals.amountReceived")}
                 </label>
                 <input
                   id="amount-received"
@@ -168,14 +186,14 @@ export default function OwnerApprovalsPage() {
                       className="text-[14px] font-bold"
                       style={{ color: summary.status === "paid_in_full" ? "#14563A" : summary.status === "overpaid" ? "#8A5A00" : "#8C3823" }}
                     >
-                      {summary.text}
+                      {summaryText}
                     </p>
                     <p className="font-mono text-owner-ink-muted text-[12.5px]">
-                      Total PKR {formatPKR(summary.totalAfter + summary.balanceAfter)}. Paid after approval PKR {formatPKR(summary.totalAfter)}. Balance due at the venue: PKR {formatPKR(summary.balanceAfter)}.
+                      {t("odash.approvals.totals", { total: formatPKR(summary.totalAfter + summary.balanceAfter), paid: formatPKR(summary.totalAfter), balance: formatPKR(summary.balanceAfter) })}
                     </p>
                     {summary.excess > 0 ? (
                       <p className="text-[12.5px]" style={{ color: "#8A5A00" }}>
-                        PKR {formatPKR(summary.excess)} is more than the booking price. Only the price is recorded; the excess will be added to Refunds to pay.
+                        {t("odash.approvals.excess", { amount: formatPKR(summary.excess) })}
                       </p>
                     ) : null}
                   </>
@@ -190,24 +208,24 @@ export default function OwnerApprovalsPage() {
           {current.proof_url ? (
             <div className="bg-owner-surface border border-owner-border rounded-xl p-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={current.proof_url} alt="Payment proof" className="w-full max-h-80 object-contain rounded-lg" />
+              <img src={current.proof_url} alt={t("odash.approvals.proofAlt")} className="w-full max-h-80 object-contain rounded-lg" />
             </div>
           ) : (
-            <div className="bg-owner-surface border border-owner-border rounded-xl p-5 text-owner-ink-faint text-sm">No screenshot on file.</div>
+            <div className="bg-owner-surface border border-owner-border rounded-xl p-5 text-owner-ink-faint text-sm">{t("odash.approvals.noProof")}</div>
           )}
 
           {rejecting ? (
             <div className="flex flex-col gap-3">
-              <p className="font-semibold text-owner-ink-muted text-sm">Why are you rejecting this?</p>
+              <p className="font-semibold text-owner-ink-muted text-sm">{t("odash.approvals.why")}</p>
               <div className="flex flex-wrap gap-2">
                 {REJECT_REASONS.map((r) => (
                   <button
-                    key={r}
-                    onClick={() => setRejectReason(r)}
+                    key={r.value}
+                    onClick={() => setRejectReason(r.value)}
                     className="px-3.5 py-2.5 rounded-lg text-[13px] font-semibold"
-                    style={{ background: rejectReason === r ? "#8C3823" : "#F4F6F7", color: rejectReason === r ? "#fff" : "#5B7079" }}
+                    style={{ background: rejectReason === r.value ? "#8C3823" : "#F4F6F7", color: rejectReason === r.value ? "#fff" : "#5B7079" }}
                   >
-                    {r}
+                    {t(r.label)}
                   </button>
                 ))}
               </div>
@@ -215,24 +233,24 @@ export default function OwnerApprovalsPage() {
                 <input
                   value={rejectNote}
                   onChange={(e) => setRejectNote(e.target.value)}
-                  placeholder="Describe the issue"
+                  placeholder={t("odash.approvals.describe")}
                   className="h-11 px-3.5 rounded-lg border border-owner-border outline-none text-sm"
                 />
               ) : null}
               <div className="flex gap-2.5">
-                <button onClick={resetRejectSheet} className="flex-1 h-12 rounded-xl border border-owner-border font-semibold">Cancel</button>
+                <button onClick={resetRejectSheet} className="flex-1 h-12 rounded-xl border border-owner-border font-semibold">{t("odash.approvals.cancel")}</button>
                 <button onClick={submitReject} disabled={busy} className="flex-1 h-12 rounded-xl text-white font-semibold disabled:opacity-60" style={{ background: "#8C3823" }}>
-                  Confirm reject
+                  {t("odash.approvals.confirmReject")}
                 </button>
               </div>
             </div>
           ) : (
             <div className="flex gap-2.5">
               <button onClick={handleApprove} disabled={busy} className="flex-1 h-13 rounded-xl text-white font-bold disabled:opacity-60" style={{ background: "#1F7A52", height: 52 }}>
-                Approve
+                {t("odash.approvals.approve")}
               </button>
               <button onClick={() => setRejecting(true)} disabled={busy} className="w-28 h-13 rounded-xl font-bold border" style={{ borderColor: "#DDBAB1", color: "#A8432C", height: 52 }}>
-                Reject
+                {t("odash.approvals.reject")}
               </button>
             </div>
           )}

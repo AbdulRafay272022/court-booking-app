@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, type InputHTMLAttributes, type ReactNode } from "react";
+import { useT } from "@/components/i18n/lang-provider";
 
 /** Small owner-system (teal / IBM Plex Sans) UI kit for the venue-setup wizard. Same
  * shapes as the mobile wizard's _components.tsx so the two read as one product. */
@@ -55,7 +56,7 @@ export function Chip({ label, selected, onClick }: { label: string; selected: bo
       role="checkbox"
       aria-checked={selected}
       onClick={onClick}
-      className={`min-h-10 px-4 rounded-full text-[13.5px] font-semibold border transition-colors ${
+      className={`min-h-10 px-4 rounded-full whitespace-nowrap text-[13.5px] font-semibold border transition-colors ${
         selected ? "bg-owner-accent text-white border-owner-accent" : "bg-owner-surface text-owner-ink-muted border-owner-border"
       }`}
     >
@@ -76,6 +77,7 @@ export function PrimaryButton({
   ready?: boolean;
   busy?: boolean;
 }) {
+  const t = useT();
   const active = ready && !busy;
   return (
     <button
@@ -93,7 +95,7 @@ export function PrimaryButton({
             : "bg-owner-border text-owner-ink-faint cursor-not-allowed"
       }`}
     >
-      {busy ? "Please wait…" : label}
+      {busy ? t("setup.ui.wait") : label}
     </button>
   );
 }
@@ -111,9 +113,10 @@ export function SecondaryButton({ label, onClick }: { label: string; onClick: ()
 }
 
 export function Stepper({ current }: { current: 1 | 2 | 3 }) {
-  const steps = ["Your venue", "Courts & pricing", "We review it"];
+  const t = useT();
+  const steps = [t("setup.step.venue"), t("setup.step.courts"), t("setup.step.review")];
   return (
-    <ol className="flex flex-wrap items-center gap-x-3 gap-y-2" aria-label="Setup progress">
+    <ol className="flex flex-wrap items-center gap-x-3 gap-y-2" aria-label={t("setup.step.aria")}>
       {steps.map((label, i) => {
         const n = i + 1;
         const done = n < current;

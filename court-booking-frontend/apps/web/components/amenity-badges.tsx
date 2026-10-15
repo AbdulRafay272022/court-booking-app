@@ -1,4 +1,7 @@
-import { amenityLabel } from "@court-booking/types";
+"use client";
+
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 
 type IconProps = { className?: string };
 
@@ -61,6 +64,8 @@ export function AmenityBadges({
   /** `khelo` = the Khelo website/search palette; `player` (default) = the player app's. */
   tone?: "player" | "khelo";
 }) {
+  const t = useT();
+  const fmt = useFmt();
   const list = amenities ?? [];
   if (list.length === 0) return null;
   const shown = max != null ? list.slice(0, max) : list;
@@ -71,7 +76,7 @@ export function AmenityBadges({
       : "px-2 py-1 text-[12px] gap-1.5 rounded-md";
 
   return (
-    <ul className="flex gap-1.5 flex-wrap" aria-label="Amenities" data-testid="amenity-badges">
+    <ul className="flex gap-1.5 flex-wrap" aria-label={t("play.amenities")} data-testid="amenity-badges">
       {shown.map((key) => {
         const Icon = ICONS[key] ?? FallbackIcon;
         return (
@@ -80,13 +85,13 @@ export function AmenityBadges({
             className={`inline-flex items-center font-semibold border ${tone === "khelo" ? "bg-khelo-warm-2 text-khelo-orange-label border-khelo-warm" : "bg-player-accent-soft text-player-accent-hover border-player-accent-soft-border"} ${chip}`}
           >
             <Icon className="shrink-0" />
-            {amenityLabel(key)}
+            {fmt.amenity(key)}
           </li>
         );
       })}
       {hidden > 0 ? (
         <li
-          title={list.slice(shown.length).map(amenityLabel).join(", ")}
+          title={list.slice(shown.length).map((k) => fmt.amenity(k)).join(", ")}
           className={`inline-flex items-center font-semibold ${tone === "khelo" ? "bg-khelo-page text-khelo-muted-2" : "bg-player-surface-2 text-player-ink-muted"} ${chip}`}
         >
           +{hidden}

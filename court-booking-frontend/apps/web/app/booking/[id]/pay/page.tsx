@@ -10,10 +10,11 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { supportWhatsAppUrl } from "@/lib/support";
-import { cancellationPolicyText } from "@court-booking/api-client";
+import { useT } from "@/components/i18n/lang-provider";
+import { useFmt } from "@/lib/use-fmt";
 
 function useCountdown(target: string | null | undefined) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!target) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -25,6 +26,8 @@ function useCountdown(target: string | null | undefined) {
 
 function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
   const { id } = use(params);
+  const t = useT();
+  const fmt = useFmt();
   const router = useRouter();
   const queryClient = useQueryClient();
   const paymentInstructions = useBookingFlowStore((s) => s.paymentInstructionsByBookingId[id]);
@@ -56,7 +59,7 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
     queryFn: () => api.courts.get(booking!.court_id),
     enabled: !!booking?.court_id,
   });
-  const policyText = cancellationPolicyText(courtQuery.data);
+  const policyText = courtQuery.data ? fmt.cancellationPolicy(courtQuery.data) : "";
 
   useEffect(() => {
     if (booking?.status === "cancelled" && booking.cancelled_by === "owner" && !rejectionReason) {
@@ -64,11 +67,11 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
         .listForBooking(id)
         .then((payments) => {
           const rejected = payments.find((p) => p.review_verdict === "rejected");
-          setRejectionReason(rejected?.rejection_reason ?? booking.cancellation_reason ?? "The venue couldn't confirm your payment.");
+          setRejectionReason(rejected?.rejection_reason ?? booking.cancellation_reason ?? t("play.pay.rejectedDefault"));
         })
-        .catch(() => setRejectionReason(booking.cancellation_reason ?? "The venue couldn't confirm your payment."));
+        .catch(() => setRejectionReason(booking.cancellation_reason ?? t("play.pay.rejectedDefault")));
     }
-  }, [booking, id, rejectionReason]);
+  }, [booking, id, rejectionReason, t]);
 
   useEffect(() => {
     if (booking?.status === "booked") router.replace(`/booking/${id}/done`);
@@ -88,9 +91,9 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
       const result = await api.bookings.submitPaymentProof(id, file, file.name, file.type || "image/jpeg", setUploadProgress);
       queryClient.setQueryData(["booking", id], result.booking);
       if (result.booking.status !== "booked" && result.payment.ocr_verdict === "mismatch") {
-        alert("We noticed a mismatch — the amount in your screenshot doesn't quite match. The venue will review this manually.");
+        alert(t("play.pay.mismatch"));
       } else if (result.payment.ocr_verdict === "unreadable") {
-        alert("We couldn't read the screenshot automatically — the venue will review it manually.");
+        alert(t("play.pay.unreadable"));
       }
     } catch (e) {
       alert(friendlyErrorMessage(e));
@@ -109,7 +112,7 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
   }
 
   if (bookingQuery.isLoading || !booking) {
-    return <main className="min-h-screen flex items-center justify-center text-player-ink-faint">Loading…</main>;
+    return <main className="min-h-screen flex items-center justify-center text-player-ink-faint">{t("play.loading")}</main>;
   }
 
   if (booking.status === "cancelled" && booking.cancelled_by === "owner") {
@@ -117,16 +120,16 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
       <main className="max-w-lg mx-auto min-h-screen flex flex-col px-6 py-10 gap-6">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="w-14 h-14 rounded-full bg-player-danger-soft flex items-center justify-center text-2xl">✕</div>
-          <h1 className="text-2xl font-extrabold">Payment not confirmed</h1>
-          <p className="text-player-ink-muted">The venue couldn't match your screenshot.</p>
+          <h1 className="text-2xl font-extrabold">{t("play.pay.rejectedTitle")}</h1>
+          <p className="text-player-ink-muted">{t("play.pay.rejectedBody")}</p>
         </div>
         <div className="border-[1.5px] border-player-danger-soft-border rounded-2xl p-5 flex flex-col gap-2">
-          <span className="text-[11px] font-bold tracking-widest text-player-danger">WHAT THE VENUE SAID</span>
+          <span className="text-[11px] font-bold tracking-widest text-player-danger">{t("play.pay.venueSaid")}</span>
           <p className="font-semibold">&quot;{rejectionReason ?? "…"}&quot;</p>
         </div>
-        <p className="text-center text-player-ink-muted text-sm">Your slot is open again — you're welcome to try booking it once more.</p>
+        <p className="text-center text-player-ink-muted text-sm">{t("play.pay.slotOpenAgain")}</p>
         <button onClick={() => router.push("/search")} className="h-14 rounded-2xl bg-player-accent text-white font-bold">
-          Find another slot
+          {t("play.pay.findAnother")}
         </button>
       </main>
     );
@@ -135,12 +138,12 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
   if (booking.status === "cancelled" || expired) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center gap-4 px-8 text-center">
-        <h1 className="text-xl font-extrabold">{expired ? "This hold expired" : "This booking was cancelled"}</h1>
+        <h1 className="text-xl font-extrabold">{expired ? t("play.pay.expiredTitle") : t("play.pay.cancelledTitle")}</h1>
         <p className="text-player-ink-muted">
-          {expired ? "You didn't complete payment in time, so the slot was released." : "This slot is available for someone else now."}
+          {expired ? t("play.pay.expiredBody") : t("play.pay.cancelledBody")}
         </p>
         <button onClick={() => router.push("/search")} className="px-6 h-12 rounded-2xl bg-player-accent text-white font-bold">
-          Try again
+          {t("play.tryAgain")}
         </button>
       </main>
     );
@@ -154,14 +157,14 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
     <main className="max-w-lg mx-auto min-h-screen flex flex-col">
       <div className="px-6 py-5 bg-player-surface border-b border-player-border-light flex items-center gap-3">
         <button onClick={() => router.back()} className="w-10 h-10 rounded-xl bg-player-surface-2 flex items-center justify-center">←</button>
-        <h1 className="font-bold text-[17px] flex-1">{isWaitingReview ? "Waiting for the venue" : "Pay to hold your slot"}</h1>
+        <h1 className="font-bold text-[17px] flex-1">{isWaitingReview ? t("play.pay.titleWaiting") : t("play.pay.titleHold")}</h1>
         <a
-          href={supportWhatsAppUrl(`I need help with a payment for booking ${id}`)}
+          href={supportWhatsAppUrl(t("play.pay.helpMessage", { id }))}
           target="_blank"
           rel="noopener noreferrer"
           className="text-[13px] font-semibold text-player-accent whitespace-nowrap"
         >
-          Need help?
+          {t("play.pay.help")}
         </a>
       </div>
 
@@ -171,42 +174,42 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
             className="text-center py-2.5 rounded-xl font-mono text-[13px] font-semibold"
             style={{ background: secondsLeft < 120 ? "#F8E5E0" : "#FDF6E9", color: secondsLeft < 120 ? "#8C3823" : "#8A5A0A" }}
           >
-            Held · {minutes}:{String(seconds).padStart(2, "0")} left
+            {t("play.pay.held", { time: `${minutes}:${String(seconds).padStart(2, "0")}` })}
           </div>
         ) : null}
 
         <div className="bg-player-ink text-white rounded-2xl p-6 flex flex-col gap-1.5">
-          <span className="text-[11px] font-bold tracking-widest text-white/60">{isWaitingReview ? "SENT" : "ADVANCE DUE NOW"}</span>
+          <span className="text-[11px] font-bold tracking-widest text-white/60">{isWaitingReview ? t("play.pay.sent") : t("play.pay.advanceDue")}</span>
           <span className="font-mono text-4xl font-semibold">{formatPKR(booking.advance_amount)}</span>
-          <span className="text-[13.5px] text-white/65">Balance {formatPKR(booking.balance_due)} payable at the venue</span>
+          <span className="text-[13.5px] text-white/65">{t("play.pay.balance", { amount: formatPKR(booking.balance_due) })}</span>
         </div>
 
         {isWaitingReview ? (
           <div className="bg-player-surface border border-player-border-light rounded-2xl p-5 text-player-ink-muted text-sm">
-            The venue is reviewing your screenshot. This page will update automatically.
+            {t("play.pay.reviewing")}
           </div>
         ) : (
           <>
             {paymentInstructions ? (
               <div className="bg-player-surface border border-player-border-light rounded-2xl p-5 flex flex-col gap-3">
-                <span className="text-[11px] font-bold tracking-widest text-player-ink-fainter">SEND TO</span>
-                {paymentInstructions.bank ? <Row label="Bank" value={paymentInstructions.bank} /> : null}
-                {paymentInstructions.account_title ? <Row label="Account title" value={paymentInstructions.account_title} /> : null}
-                {paymentInstructions.account_number ? <Row label="Account number" value={paymentInstructions.account_number} mono /> : null}
-                {paymentInstructions.iban ? <Row label="IBAN" value={paymentInstructions.iban} mono /> : null}
+                <span className="text-[11px] font-bold tracking-widest text-player-ink-fainter">{t("play.pay.sendTo")}</span>
+                {paymentInstructions.bank ? <Row label={t("play.pay.bank")} value={paymentInstructions.bank} /> : null}
+                {paymentInstructions.account_title ? <Row label={t("play.pay.accountTitle")} value={paymentInstructions.account_title} /> : null}
+                {paymentInstructions.account_number ? <Row label={t("play.pay.accountNumber")} value={paymentInstructions.account_number} mono /> : null}
+                {paymentInstructions.iban ? <Row label={t("play.pay.iban")} value={paymentInstructions.iban} mono /> : null}
               </div>
             ) : (
               <div className="bg-player-surface border border-player-border-light rounded-2xl p-5 text-player-ink-faint text-[13px]">
-                Payment details were shown when this hold was created — check your chat with the venue if you need them again.
+                {t("play.pay.noDetails")}
               </div>
             )}
 
             {previewUrl ? (
               <div className="bg-player-surface border border-player-border-light rounded-2xl p-3 flex flex-col items-center gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previewUrl} alt="Payment proof preview" className="max-h-56 rounded-xl object-contain" />
+                <img src={previewUrl} alt={t("play.pay.previewAlt")} className="max-h-56 rounded-xl object-contain" />
                 <button onClick={() => { setFile(null); setPreviewUrl(null); }} className="text-player-danger text-[13px] font-semibold">
-                  Remove and choose another
+                  {t("play.pay.remove")}
                 </button>
               </div>
             ) : (
@@ -218,8 +221,8 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
                 className="border-2 border-dashed rounded-2xl p-10 flex flex-col items-center gap-2 cursor-pointer text-center"
                 style={{ borderColor: dragOver ? "#EF5A2C" : "#E0D9D4", background: dragOver ? "#FFF3EE" : "transparent" }}
               >
-                <span className="font-bold text-[15px]">Attach payment screenshot</span>
-                <span className="text-[13px] text-player-ink-muted">Drag and drop, or click to browse. We read the amount automatically.</span>
+                <span className="font-bold text-[15px]">{t("play.pay.attach")}</span>
+                <span className="text-[13px] text-player-ink-muted">{t("play.pay.attachHint")}</span>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -250,7 +253,7 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
             disabled={!file || submitting}
             className="w-full h-14 rounded-2xl bg-player-accent text-white font-bold disabled:opacity-50"
           >
-            {submitting ? `Uploading… ${Math.round(uploadProgress * 100)}%` : "Submit payment proof"}
+            {submitting ? t("play.pay.uploading", { pct: Math.round(uploadProgress * 100) }) : t("play.pay.submit")}
           </button>
         </div>
       ) : null}

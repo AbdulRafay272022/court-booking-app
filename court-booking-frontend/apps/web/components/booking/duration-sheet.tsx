@@ -3,10 +3,11 @@
 import { courtLabel } from "@/components/court-label";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { durationChoices, formatDuration, minSlotsFor, type Slot } from "@court-booking/types";
+import { durationChoices, minSlotsFor, type Slot } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
+import { formatPKR } from "@/lib/format";
+import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
 
 /**
@@ -36,6 +37,7 @@ export function DurationSheet({
   onContinue: (choice: { slotCount: number; minutes: number; price: number }) => void;
 }) {
   const t = useT();
+  const fmt = useFmt();
   const slot = slots[index];
   // `slotMinutes` is the court's MINIMUM booking time (the grid itself is always 30 minutes)
   const choices = durationChoices(slots, index, minSlotsFor(slotMinutes));
@@ -58,9 +60,9 @@ export function DurationSheet({
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-extrabold tracking-widest text-khelo-orange-label">{courtLabel(courtName, courtSport).toUpperCase()}</span>
-            <span className="font-khelo-display text-[19px] font-extrabold">{formatDate(slot.starts_at)}</span>
+            <span className="font-khelo-display text-[19px] font-extrabold">{fmt.date(slot.starts_at)}</span>
             <span className="font-mono text-[14.5px] font-semibold" data-testid="sheet-time-range">
-              {quote ? formatTimeRange(quote.starts_at, quote.ends_at) : formatTimeRange(slot.starts_at, choices.find((c) => c.slotCount === slotCount)?.endsAt ?? slot.ends_at)}
+              {quote ? fmt.timeRange(quote.starts_at, quote.ends_at) : fmt.timeRange(slot.starts_at, choices.find((c) => c.slotCount === slotCount)?.endsAt ?? slot.ends_at)}
             </span>
           </div>
           <button onClick={onClose} aria-label={t("venue.common.close")} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-khelo-page font-bold text-khelo-ink">
@@ -82,7 +84,7 @@ export function DurationSheet({
                     selected ? "border-khelo-orange bg-khelo-orange" : "border-khelo-border bg-khelo-surface"
                   }`}
                 >
-                  {c.label}
+                  {fmt.duration(c.minutes)}
                 </button>
               );
             })}
@@ -97,7 +99,7 @@ export function DurationSheet({
           ) : (
             <>
               <div className="flex items-baseline justify-between">
-                <span className="text-[13px] font-semibold text-khelo-muted">{t("venue.sheet.total", { duration: formatDuration(quote.duration_minutes) })}</span>
+                <span className="text-[13px] font-semibold text-khelo-muted">{t("venue.sheet.total", { duration: fmt.duration(quote.duration_minutes) })}</span>
                 <span className="font-mono text-[22px] font-bold">PKR {formatPKR(quote.price)}</span>
               </div>
               {quote.advance_amount < quote.price ? (

@@ -83,6 +83,7 @@ export interface ProofUrlOut {
 export function approvalSummary(
   checks: Pick<PaymentChecks, "expected_amount" | "paid_amount" | "total_after_approval" | "balance_after_approval">,
   amount: number,
+  lang: "en" | "ru" = "en",
 ): {
   status: "paid_in_full" | "overpaid" | "underpaid";
   text: string;
@@ -99,12 +100,12 @@ export function approvalSummary(
   const balanceAfter = Math.max(price - totalAfter, 0);
   const excess = Math.max(amount - credited, 0);
   if (amount === checks.expected_amount) {
-    return { status: "paid_in_full", text: "Paid in full", creditedNow: credited, totalAfter, balanceAfter, excess };
+    return { status: "paid_in_full", text: lang === "ru" ? "Poori payment mil gayi" : "Paid in full", creditedNow: credited, totalAfter, balanceAfter, excess };
   }
   if (amount > checks.expected_amount) {
     return {
       status: "overpaid",
-      text: `Overpaid by ${fmt(amount - checks.expected_amount)}`,
+      text: lang === "ru" ? `${fmt(amount - checks.expected_amount)} zyada mile` : `Overpaid by ${fmt(amount - checks.expected_amount)}`,
       creditedNow: credited,
       totalAfter,
       balanceAfter,
@@ -113,7 +114,7 @@ export function approvalSummary(
   }
   return {
     status: "underpaid",
-    text: `Underpaid by ${fmt(checks.expected_amount - amount)}`,
+    text: lang === "ru" ? `${fmt(checks.expected_amount - amount)} kam mile` : `Underpaid by ${fmt(checks.expected_amount - amount)}`,
     creditedNow: credited,
     totalAfter,
     balanceAfter,

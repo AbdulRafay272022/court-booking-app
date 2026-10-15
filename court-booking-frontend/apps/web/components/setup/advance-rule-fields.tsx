@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from "@/components/i18n/lang-provider";
 import { Chip, Field, FieldLabel, SectionCard, SectionLabel } from "./ui";
 
 /** Section 32 Part 5: this COURT's advance rule -- a fixed PKR amount or a percentage of the total, with an
@@ -16,18 +17,19 @@ export function AdvanceRuleFields({
   advanceMinimum: string;
   onChange: (patch: { advanceType?: "" | "fixed" | "percent"; advanceValue?: string; advanceMinimum?: string }) => void;
 }) {
+  const t = useT();
   return (
     <SectionCard>
-      <SectionLabel>Advance payment</SectionLabel>
-      <FieldLabel>How much does a player pay now to hold a slot on this court?</FieldLabel>
+      <SectionLabel>{t("setup.advance.title")}</SectionLabel>
+      <FieldLabel>{t("setup.advance.question")}</FieldLabel>
       <div className="flex flex-wrap gap-2">
-        <Chip label="Default (from pricing)" selected={advanceType === ""} onClick={() => onChange({ advanceType: "" })} />
-        <Chip label="Fixed amount" selected={advanceType === "fixed"} onClick={() => onChange({ advanceType: "fixed" })} />
-        <Chip label="Percentage" selected={advanceType === "percent"} onClick={() => onChange({ advanceType: "percent" })} />
+        <Chip label={t("setup.advance.default")} selected={advanceType === ""} onClick={() => onChange({ advanceType: "" })} />
+        <Chip label={t("setup.advance.fixed")} selected={advanceType === "fixed"} onClick={() => onChange({ advanceType: "fixed" })} />
+        <Chip label={t("setup.advance.percent")} selected={advanceType === "percent"} onClick={() => onChange({ advanceType: "percent" })} />
       </div>
       {advanceType === "fixed" ? (
         <Field
-          label="Advance amount (PKR)"
+          label={t("setup.advance.amount")}
           value={advanceValue}
           onChange={(e) => onChange({ advanceValue: e.target.value.replace(/\D/g, "") })}
           inputMode="numeric"
@@ -36,7 +38,7 @@ export function AdvanceRuleFields({
         />
       ) : advanceType === "percent" ? (
         <Field
-          label="Percentage of the total (%)"
+          label={t("setup.advance.percentOfTotal")}
           value={advanceValue}
           onChange={(e) => onChange({ advanceValue: e.target.value.replace(/\D/g, "") })}
           inputMode="numeric"
@@ -45,17 +47,16 @@ export function AdvanceRuleFields({
         />
       ) : (
         <p className="text-owner-ink-faint text-[12.5px]">
-          Uses each price rule&apos;s own advance percentage (set when you add a price rate below). Most courts
-          default to 100% -- pay in full to hold the slot.
+          {t("setup.advance.defaultNote")}
         </p>
       )}
       {advanceType !== "" ? (
         <Field
-          label="Minimum advance (PKR, optional)"
+          label={t("setup.advance.min")}
           value={advanceMinimum}
           onChange={(e) => onChange({ advanceMinimum: e.target.value.replace(/\D/g, "") })}
           inputMode="numeric"
-          placeholder="Leave blank for no floor"
+          placeholder={t("setup.advance.minPlaceholder")}
           mono
         />
       ) : null}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from "@/components/i18n/lang-provider";
 import { Chip, Field, FieldLabel, SectionCard, SectionLabel } from "./ui";
 
 /**
@@ -18,23 +19,24 @@ export function CancellationPolicyFields({
   onAllowedChange: (allowed: boolean) => void;
   onCutoffChange: (hours: string) => void;
 }) {
+  const t = useT();
   return (
     <SectionCard>
-      <SectionLabel>Cancellations</SectionLabel>
+      <SectionLabel>{t("setup.cancel.title")}</SectionLabel>
       <div className="flex flex-col gap-2">
-        <FieldLabel>Can a player cancel a booking after they&apos;ve already paid? This applies to every court at your venue.</FieldLabel>
+        <FieldLabel>{t("setup.cancel.question")}</FieldLabel>
         <div className="flex gap-2">
-          <Chip label="Allowed" selected={allowed} onClick={() => onAllowedChange(true)} />
-          <Chip label="Not allowed" selected={!allowed} onClick={() => onAllowedChange(false)} />
+          <Chip label={t("setup.cancel.allowed")} selected={allowed} onClick={() => onAllowedChange(true)} />
+          <Chip label={t("setup.cancel.notAllowed")} selected={!allowed} onClick={() => onAllowedChange(false)} />
         </div>
       </div>
       {allowed ? (
         <Field
-          label="Require cancelling at least this many hours before (optional)"
+          label={t("setup.cancel.cutoff")}
           value={cutoffHours}
           onChange={(e) => onCutoffChange(e.target.value.replace(/\D/g, ""))}
           inputMode="numeric"
-          placeholder="Leave blank for no limit"
+          placeholder={t("setup.cancel.cutoffPlaceholder")}
           mono
         />
       ) : null}
