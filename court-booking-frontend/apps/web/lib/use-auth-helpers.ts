@@ -7,7 +7,7 @@ import { useAuthStore } from "./auth-store";
 
 /** Where a freshly signed-in user lands, unless a `next` path says otherwise. */
 export function homeForRole(role: UserRole): string {
-  if (role === "owner") return "/dashboard/owner/today"; // the owner layout sends a venue-less owner on to setup
+  if (role === "owner" || role === "staff") return "/dashboard/owner/today"; // the owner layout sends a venue-less owner on to setup; staff use the same dashboard
   if (role === "admin") return "/dashboard/admin/venues";
   return "/";
 }

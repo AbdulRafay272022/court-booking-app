@@ -27,7 +27,7 @@ test("dates and times in Roman Urdu", () => {
   assert.equal(formatDate(wed, NOW), "Wed, 23 Sep");
   assert.equal(formatDate(wed, NOW, "ru"), "Budh, 23 Sep");
   assert.equal(formatDateRelative(NOW, NOW, "ru"), "Aaj");
-  assert.equal(formatDateRelative(at("2026-09-22T05:00:00Z"), NOW, "ru"), "Kal");
+  assert.equal(formatDateRelative(at("2026-09-22T05:00:00Z"), NOW, "ru"), "Kal · 22 Sep");
   assert.equal(formatWhen(wed, NOW, "ru"), "Budh, 23 Sep, 7:30 PM");
   assert.equal(formatTimeRange(wed, at("2026-09-23T16:00:00Z"), "ru"), "7:30 PM se 9:00 PM");
   assert.equal(formatSlotLabel(wed, at("2026-09-23T16:00:00Z"), NOW, "ru"), "7:30 PM se 9:00 PM, Budh 23 Sep");
@@ -63,7 +63,7 @@ test("hours, horizon, blackouts, policy, preview, amenities", () => {
     ["Peer–Hafta", "6:00 AM – 11:00 PM"],
     ["Itwar", "Band"],
   ]);
-  assert.equal(bookingHorizonText(90, "ru"), "90 din aage tak book ho sakta hai");
+  assert.equal(bookingHorizonText(90, "ru"), "90 din pehle tak booking ho sakti hai");
   assert.equal(bookingHorizonText(90), "Bookable up to 90 days ahead");
   const bo = upcomingBlackouts(
     [{ id: "1", starts_at: "2026-09-23T14:00:00Z", ends_at: "2026-09-23T15:00:00Z", reason: "weather", title: null }] as never,

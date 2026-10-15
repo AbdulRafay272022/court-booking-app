@@ -97,9 +97,6 @@ export default function OwnerTodayPage() {
           <Link href="/dashboard/owner/checkin" className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm whitespace-nowrap">
             {t("odash.today.checkinTools")}
           </Link>
-          <Link href="/dashboard/owner/walkin" className="px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm whitespace-nowrap">
-            {t("odash.today.addBooking")}
-          </Link>
         </div>
       </div>
 

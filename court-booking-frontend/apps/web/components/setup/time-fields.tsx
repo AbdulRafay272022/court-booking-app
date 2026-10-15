@@ -123,7 +123,7 @@ export function DayPicker({
                 borderColor: selected ? "#0E6274" : "#DCE3E6",
               }}
             >
-              {i === 0 ? t("setup.time.today") : i === 1 ? t("setup.time.tomorrow") : `${fmt.weekday((new Date(`${d.date}T00:00:00Z`).getUTCDay() + 6) % 7)} ${d.day} ${d.month}`}
+              {i === 0 ? t("setup.time.today") : i === 1 ? (fmt.lang === "ru" ? `${t("setup.time.tomorrow")} · ${d.day} ${d.month}` : t("setup.time.tomorrow")) : `${fmt.weekday((new Date(`${d.date}T00:00:00Z`).getUTCDay() + 6) % 7)} ${d.day} ${d.month}`}
             </button>
           );
         })}

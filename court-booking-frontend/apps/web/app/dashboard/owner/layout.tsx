@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useRequireAuth } from "@/lib/use-require-auth";
+import { suppressAuthRedirect, useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useFeatureFlags } from "@/lib/use-feature-flags";
@@ -31,7 +31,6 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
   const NAV = [
     { href: "/dashboard/owner/today", label: t("odash.nav.today") },
     { href: "/dashboard/owner/approvals", label: t("odash.nav.approvals") },
-    { href: "/dashboard/owner/walkin", label: t("odash.nav.walkin") },
     { href: "/dashboard/owner/ledger", label: t("odash.nav.ledger") },
     ...(isOn("refunds") ? [{ href: "/dashboard/owner/refunds", label: t("odash.nav.refunds") }] : []),
     ...(isOn("growth_suggestions") ? [{ href: "/dashboard/owner/growth", label: t("odash.nav.growth") }] : []),
@@ -62,6 +61,7 @@ export default function OwnerDashboardLayout({ children }: { children: React.Rea
   }, [venues, pathname, router, isStaff]);
 
   function signOut() {
+    suppressAuthRedirect(); // deliberate sign-out: land on "/", not on /login?next=
     useAuthStore.getState().signOut();
     router.push("/");
   }

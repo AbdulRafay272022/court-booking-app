@@ -5,9 +5,11 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/auth/logo";
 import { useAuthStore } from "@/lib/auth-store";
+import { suppressAuthRedirect } from "@/lib/use-require-auth";
 import { homeForRole } from "@/lib/use-auth-helpers";
 import { useT } from "@/components/i18n/lang-provider";
 import { LanguageSwitch } from "@/components/i18n/language-switch";
+import { ProfileMenu, menuEntriesFor } from "./profile-menu";
 import type { MessageKey } from "@/lib/i18n";
 
 export const NAV_LINKS: readonly { href: string; labelKey: MessageKey }[] = [
@@ -29,6 +31,7 @@ function useIsCurrent() {
 function logout(router: ReturnType<typeof useRouter>) {
   // Best effort server-side revoke; the local sign-out happens regardless.
   void import("@/lib/api").then(({ api }) => api.auth.logout().catch(() => undefined)).finally(() => {
+    suppressAuthRedirect(); // a deliberate sign-out: the page's own "signed out -> /login?next=" guard must not win the race to "/"
     useAuthStore.getState().signOut();
     router.push("/");
   });
@@ -101,6 +104,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
   const dashboardHref = user ? (user.role === "player" ? "/bookings" : homeForRole(user.role)) : "/login";
   const dashboardLabel = user?.role === "player" ? t("header.myBookings") : t("header.dashboard");
   const initial = (user?.name?.trim()?.[0] ?? user?.phone?.replace(/\D/g, "").slice(-1) ?? "?").toUpperCase();
+  const displayName = user?.name?.trim() || user?.phone || "";
   const linkTone = (href: string) => (isCurrent(href) ? "text-khelo-orange" : "");
 
   return (
@@ -127,14 +131,13 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
               <Link href={dashboardHref} className={`khelo-navlink inline-flex min-h-11 items-center px-3.5 text-[14px] font-bold max-[1120px]:hidden ${linkTone(dashboardHref)}`}>
                 {dashboardLabel}
               </Link>
-              <Link
-                href="/account"
-                aria-label={t("header.account")}
-                title={t("header.account")}
-                className="khelo-btn flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-[15px] font-extrabold text-white max-[1120px]:hidden"
-              >
-                {initial}
-              </Link>
+              <ProfileMenu
+                role={user!.role}
+                displayName={displayName}
+                initial={initial}
+                onLogout={() => logout(router)}
+                className="max-[1120px]:hidden"
+              />
             </>
           ) : (
             <>
@@ -183,13 +186,13 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
             <LanguageSwitch tone="dark" className="self-start" />
             {signedIn ? (
               <>
-                <Link href={dashboardHref} className={`${OUTLINE_PILL} justify-center`}>
-                  {dashboardLabel}
-                </Link>
-                <Link href="/account" className={`${OUTLINE_PILL} justify-center`}>
-                  {t("header.account")}
-                </Link>
-                <button type="button" onClick={() => logout(router)} className={`${OUTLINE_PILL} cursor-pointer justify-center`}>
+                <p className="px-1 pt-1 text-[13px] font-semibold text-white/60">{t("header.pm.signedInAs", { name: displayName })}</p>
+                {menuEntriesFor(user!.role).map((e) => (
+                  <Link key={e.labelKey} href={e.href} className={`${OUTLINE_PILL} justify-center`}>
+                    {t(e.labelKey)}
+                  </Link>
+                ))}
+                <button type="button" data-testid="menu-logout" onClick={() => logout(router)} className={`${OUTLINE_PILL} cursor-pointer justify-center`}>
                   {t("header.logout")}
                 </button>
               </>

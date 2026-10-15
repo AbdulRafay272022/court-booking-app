@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StaffMember, StaffPermissionCatalogItem } from "@court-booking/types";
 import { api } from "@/lib/api";
@@ -18,6 +18,12 @@ function permLabel(t: TFunction, key: string, fallback: string): string {
   return v !== k ? v : fallback;
 }
 
+/** Permissions the backend still knows but the form no longer offers (the owner's manual booking form is gone). An existing staff member
+ * who already has one keeps it: it is never shown, and never removed when the owner saves other permissions. */
+const HIDDEN_PERMISSIONS = new Set(["walkin"]);
+/** A new staff member starts with the safest single permission ticked; everything else is the owner's choice. */
+const DEFAULT_PERMISSIONS = ["view_ledger"];
+
 export default function StaffPage() {
   const t = useT();
   const qc = useQueryClient();
@@ -25,6 +31,7 @@ export default function StaffPage() {
   const staffQuery = useQuery({ queryKey: ["owner-staff"], queryFn: () => api.staff.list() });
   const catalogQuery = useQuery({ queryKey: ["staff-permission-catalog"], queryFn: () => api.staff.permissionCatalog() });
 
+  const [justAdded, setJustAdded] = useState(false);
   const catalog = catalogQuery.data ?? [];
   const staff = staffQuery.data ?? [];
 
@@ -37,7 +44,21 @@ export default function StaffPage() {
         </p>
       </div>
 
-      <AddStaffCard venues={venues} catalog={catalog} onAdded={() => qc.invalidateQueries({ queryKey: ["owner-staff"] })} />
+      <AddStaffCard
+        venues={venues}
+        catalog={catalog}
+        onAdded={(created) => {
+          // show the new member at once, then let the server list confirm it
+          qc.setQueryData<StaffMember[]>(["owner-staff"], (old) => [created, ...(old ?? []).filter((m) => m.id !== created.id)]);
+          void qc.invalidateQueries({ queryKey: ["owner-staff"] });
+          setJustAdded(true);
+        }}
+      />
+      {justAdded ? (
+        <p role="status" aria-live="polite" className="text-[13px] font-semibold" style={{ color: "#1F7A52" }}>
+          {t("odash.staff.added")}
+        </p>
+      ) : null}
 
       {staffQuery.isLoading ? (
         <p className="text-owner-ink-faint">{t("odash.staff.loading")}</p>
@@ -71,15 +92,16 @@ function PermissionChecklist({
   const t = useT();
   return (
     <div className="grid sm:grid-cols-2 gap-1.5">
-      {catalog.map((item) => (
+      {catalog.filter((item) => !HIDDEN_PERMISSIONS.has(item.key)).map((item) => (
         <label
           key={item.key}
-          className="flex items-center gap-2 text-[13.5px]"
+          className="flex min-h-11 items-center gap-2.5 text-[13.5px]"
           style={{ opacity: item.available ? 1 : 0.45 }}
           title={item.available ? undefined : t("odash.staff.featureOffTitle")}
         >
           <input
             type="checkbox"
+            className="h-5 w-5 shrink-0"
             checked={selected.has(item.key)}
             disabled={!item.available}
             onChange={(e) => onToggle(item.key, e.target.checked)}
@@ -98,19 +120,26 @@ function AddStaffCard({
 }: {
   venues: { id: string; name: string }[];
   catalog: StaffPermissionCatalogItem[];
-  onAdded: () => void;
+  onAdded: (created: StaffMember) => void;
 }) {
   const t = useT();
+  const uid = useId();
   const [open, setOpen] = useState(false);
   const [venueId, setVenueId] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showPassword, setShowPassword] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set(DEFAULT_PERMISSIONS));
+  const [touched, setTouched] = useState({ name: false, phone: false, password: false });
+  const [phoneTaken, setPhoneTaken] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const effectiveVenueId = venueId || venues[0]?.id || "";
-  const valid = isValidName(name) && isValidPkMobile(phone) && password.length >= 8 && !!effectiveVenueId;
+  const nameOk = isValidName(name);
+  const phoneOk = isValidPkMobile(phone);
+  const passwordOk = password.length >= 8;
+  const valid = nameOk && phoneOk && passwordOk && !!effectiveVenueId;
 
   const create = useMutation({
     mutationFn: () =>
@@ -121,73 +150,180 @@ function AddStaffCard({
         password, // i18n-ignore
         permissions: [...selected],
       }),
-    onSuccess: () => {
-      setName(""); setPhone(""); setPassword(""); setSelected(new Set()); setMessage(null);
+    onSuccess: (created) => {
+      setName("");
+      setPhone("");
+      setPassword("");
+      setShowPassword(false);
+      setSelected(new Set(DEFAULT_PERMISSIONS));
+      setTouched({ name: false, phone: false, password: false });
+      setPhoneTaken(false);
+      setMessage(null);
       setOpen(false);
-      onAdded();
+      onAdded(created);
     },
-    onError: (e) => setMessage(friendlyErrorMessage(e, t)),
+    onError: (e) => {
+      // The backend uses the same code when the number belongs to ANY other account. On this form that means "pick another number", so it is
+      // shown under the phone field in staff wording (the login and signup screens keep their own text).
+      if ((e as { code?: string }).code === "PHONE_ALREADY_REGISTERED") {
+        setPhoneTaken(true);
+        setMessage(null);
+      } else {
+        setMessage(friendlyErrorMessage(e, t));
+      }
+    },
   });
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="self-start px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm"
-      >
+      <button onClick={() => setOpen(true)} className="self-start min-h-11 px-4 py-2.5 rounded-lg bg-owner-accent text-white font-semibold text-sm">
         {t("odash.staff.add")}
       </button>
     );
   }
 
+  const phoneErrorText = phoneTaken ? t("odash.staff.phoneTaken") : touched.phone && !phoneOk ? t("odash.staff.phoneInvalid") : null;
+  const labelCls = "text-[13px] font-semibold text-owner-ink";
+  const hintCls = "text-[12.5px] text-owner-ink-faint";
+
   return (
-    <div className="bg-owner-surface border border-owner-border rounded-xl p-5 flex flex-col gap-3">
+    <form
+      noValidate
+      className="bg-owner-surface border border-owner-border rounded-xl p-5 flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setTouched({ name: true, phone: true, password: true });
+        if (valid && !create.isPending) create.mutate();
+      }}
+    >
       <h2 className="font-bold">{t("odash.staff.new")}</h2>
       {venues.length > 1 ? (
-        <select className={inputCls} value={effectiveVenueId} onChange={(e) => setVenueId(e.target.value)}>
+        <select aria-label={t("odash.staff.venueAria")} className={inputCls} value={effectiveVenueId} onChange={(e) => setVenueId(e.target.value)}>
           {venues.map((v) => (
-            <option key={v.id} value={v.id}>{v.name}</option>
+            <option key={v.id} value={v.id}>
+              {v.name}
+            </option>
           ))}
         </select>
       ) : null}
-      <input className={inputCls} placeholder={t("odash.staff.fullName")} value={name} onChange={(e) => setName(e.target.value)} />
-      <input className={inputCls} placeholder={t("odash.staff.phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
-      <input
-        className={inputCls}
-        type="password"
-        placeholder={t("odash.staff.password")}
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <div>
-        <p className="text-[11px] font-bold tracking-wider text-owner-ink-faint mb-1.5">{t("odash.staff.can")}</p>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${uid}-name`} className={labelCls}>
+          {t("odash.staff.fullName")}
+        </label>
+        <input
+          id={`${uid}-name`}
+          className={inputCls}
+          autoComplete="off"
+          value={name}
+          aria-invalid={touched.name && !nameOk}
+          aria-describedby={touched.name && !nameOk ? `${uid}-name-err` : undefined}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => setTouched((x) => ({ ...x, name: true }))}
+        />
+        {touched.name && !nameOk ? (
+          <p id={`${uid}-name-err`} role="alert" className="text-[12.5px] font-semibold text-owner-danger">
+            {t("odash.staff.nameInvalid")}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${uid}-phone`} className={labelCls}>
+          {t("odash.staff.labelPhone")}
+        </label>
+        <input
+          id={`${uid}-phone`}
+          className={`${inputCls} ${phoneErrorText ? "border-owner-danger" : ""}`}
+          type="tel"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="03XXXXXXXXX"
+          value={phone}
+          aria-invalid={!!phoneErrorText}
+          aria-describedby={`${uid}-phone-hint ${uid}-phone-err`}
+          onChange={(e) => {
+            setPhone(e.target.value);
+            setPhoneTaken(false);
+          }}
+          onBlur={() => setTouched((x) => ({ ...x, phone: true }))}
+        />
+        <p id={`${uid}-phone-hint`} className={hintCls}>
+          {t("odash.staff.phoneHint")}
+        </p>
+        <p id={`${uid}-phone-err`} role="alert" aria-live="polite" data-testid="staff-phone-error" className="text-[12.5px] font-semibold text-owner-danger empty:hidden">
+          {phoneErrorText}
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${uid}-pw`} className={labelCls}>
+          {t("odash.staff.labelPassword")}
+        </label>
+        <div className="relative">
+          <input
+            id={`${uid}-pw`}
+            className={`${inputCls} pr-24`}
+            type={showPassword ? "text" : "password"}
+            autoComplete="new-password"
+            value={password}
+            aria-invalid={touched.password && !passwordOk}
+            aria-describedby={`${uid}-pw-hint`}
+            onChange={(e) => setPassword(e.target.value)}
+            onBlur={() => setTouched((x) => ({ ...x, password: true }))}
+          />
+          <button
+            type="button"
+            aria-pressed={showPassword}
+            aria-label={showPassword ? t("odash.staff.hidePasswordAria") : t("odash.staff.showPasswordAria")}
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-0 top-0 h-11 min-w-11 cursor-pointer rounded-lg px-3 text-[13px] font-bold text-owner-accent"
+          >
+            <span aria-hidden="true">{showPassword ? t("odash.staff.hidePassword") : t("odash.staff.showPassword")}</span>
+          </button>
+        </div>
+        <p id={`${uid}-pw-hint`} className={touched.password && !passwordOk ? "text-[12.5px] font-semibold text-owner-danger" : hintCls}>
+          {touched.password && !passwordOk ? t("odash.staff.passwordShort") : t("odash.staff.passwordHint")}
+        </p>
+      </div>
+
+      <fieldset className="m-0 border-0 p-0">
+        <legend className="text-[11px] font-bold tracking-wider text-owner-ink-faint mb-1">{t("odash.staff.can")}</legend>
+        <p className="mb-1.5 text-[12.5px] text-owner-ink-faint">{t("odash.staff.permHint")}</p>
         <PermissionChecklist
           catalog={catalog}
           selected={selected}
           onToggle={(key, on) =>
             setSelected((prev) => {
               const next = new Set(prev);
-              if (on) next.add(key); else next.delete(key);
+              if (on) next.add(key);
+              else next.delete(key);
               return next;
             })
           }
         />
-      </div>
-      {message ? <p role="alert" className="text-[13px] font-semibold text-owner-danger">{message}</p> : null}
-      <div className="flex gap-2">
+      </fieldset>
+
+      {message ? (
+        <p role="alert" className="text-[13px] font-semibold text-owner-danger">
+          {message}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
         <button
+          type="submit"
           disabled={!valid || create.isPending}
-          onClick={() => create.mutate()}
-          className="px-4 py-2.5 rounded-lg font-semibold text-sm text-white"
-          style={{ background: valid ? "#0E6274" : "#C6D2D7" }}
+          aria-busy={create.isPending}
+          className="min-h-11 px-4 py-2.5 rounded-lg font-semibold text-sm text-white disabled:cursor-not-allowed"
+          style={{ background: valid && !create.isPending ? "#0E6274" : "#C6D2D7" }}
         >
           {create.isPending ? t("odash.staff.adding") : t("odash.staff.addBtn")}
         </button>
-        <button onClick={() => setOpen(false)} className="px-4 py-2.5 rounded-lg font-semibold text-sm border border-owner-border">
+        <button type="button" onClick={() => setOpen(false)} disabled={create.isPending} className="min-h-11 px-4 py-2.5 rounded-lg font-semibold text-sm border border-owner-border">
           {t("odash.staff.cancel")}
         </button>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -262,10 +398,10 @@ function StaffRow({ member, catalog }: { member: StaffMember; catalog: StaffPerm
         </div>
       ) : (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {member.permissions.length === 0 ? (
+          {member.permissions.filter((p) => !HIDDEN_PERMISSIONS.has(p)).length === 0 ? (
             <span className="text-[12px] text-owner-ink-faint">{t("odash.staff.noPerms")}</span>
           ) : (
-            member.permissions.map((p) => (
+            member.permissions.filter((p) => !HIDDEN_PERMISSIONS.has(p)).map((p) => (
               <span key={p} className="text-[11.5px] px-2 py-0.5 rounded-md bg-owner-bg text-owner-ink-muted">
                 {labelFor(p)}
               </span>
