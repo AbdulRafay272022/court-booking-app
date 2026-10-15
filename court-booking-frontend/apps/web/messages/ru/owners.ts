@@ -7,7 +7,7 @@ export const ruOwners = {
   "owners.hero.title": "Court aapka. Bookings hamari zimmedari.",
   "owners.hero.sub": "Call, chat aur notebook se azadi. Khelo bookings leta hai, payment ka proof sambhalta hai, aur batata hai kaun se slots khali reh rahe hain.",
   "owners.hero.cta": "Apna venue list karo",
-  "owners.pricing.cta": "Pricing poochein",
+  "owners.pricing.cta": "Pricing poocho",
   "owners.faq.title": "Owners ke sawal",
   "owners.faq.q1": "Kya mujhe tech ka ilm chahiye?",
   "owners.faq.a1": "Nahi. Setup wizard step by step guide karta hai, aur dashboard seedha simple hai.",

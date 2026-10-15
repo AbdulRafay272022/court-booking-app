@@ -21,7 +21,7 @@ export const ruFeatures = {
   "features.chat.m1": "Sunday 9 baje padel court chahiye",
   "features.chat.m2": "Court 2 free hai, 9:00 PM. Booking start karun?",
   "features.chat.m3": "Haan karo",
-  "features.chat.m4": "Slot hold ho gaya. Payment ka screenshot yahan bhej dein.",
+  "features.chat.m4": "Slot hold ho gaya. Payment ka screenshot yahan bhej do.",
   "features.cal.court": "Court A \u00b7 Futsal",
   "features.cal.free": "khali",
   "features.cal.booked": "book",

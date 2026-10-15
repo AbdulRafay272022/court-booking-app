@@ -7,7 +7,7 @@ export const ruHome = {
   "home.hero.title2": "Slot lo.",
   "home.hero.title3": "Khelo.",
   "home.hero.sub": "Apne area ke sports courts dekho, khali slots turant check karo, aur chat ya WhatsApp se booking confirm karo. Koi call nahi, koi intezar nahi.",
-  "home.hero.cta.book": "Court book karein",
+  "home.hero.cta.book": "Court book karo",
   "home.hero.cta.how": "Kaise kaam karta hai",
   "home.hero.point.ai": "AI chat booking",
   "home.hero.point.whatsapp": "WhatsApp support",

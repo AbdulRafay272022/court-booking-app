@@ -47,7 +47,8 @@ export function AccountHub({ help }: { help: HelpContacts }) {
   const isOwner = user.role === "owner";
 
   // Saved venues are a player feature (the favorites list is off for owners and admins).
-  const tabs: TabKey[] = isPlayer ? ["profile", "bookings", "saved", "settings"] : ["profile", "bookings", "settings"];
+  // Bookings and Saved are the PLAYER's pages; an owner, staff member or admin manages bookings in the dashboard, so they only get Profile and Settings.
+  const tabs: TabKey[] = isPlayer ? ["profile", "bookings", "saved", "settings"] : ["profile", "settings"];
   const requested = params.get("tab");
   const active: TabKey = tabs.find((k) => k === requested) ?? "profile";
   const tabRefs = useRef<Partial<Record<TabKey, HTMLButtonElement | null>>>({});
@@ -74,7 +75,7 @@ export function AccountHub({ help }: { help: HelpContacts }) {
   const cityOption = CITY_OPTIONS.find((c) => c.value === user.city);
   const cityLabel = cityOption ? fmt.city(cityOption.label).replace(/\s*\(.*\)$/, "") : undefined;
   const memberSince = user.created_at ? fmt.month(monthOf(pktDateString(user.created_at))) : null;
-  const roleLabel = isOwner ? t("account.role.owner") : user.role === "admin" ? t("account.role.admin") : t("account.role.player");
+  const roleLabel = isOwner ? t("account.role.owner") : user.role === "admin" ? t("account.role.admin") : user.role === "staff" ? t("account.role.staff") : t("account.role.player");
 
   return (
     <Container className="py-8 lg:py-10">

@@ -4,7 +4,6 @@ import type { ruOdashToday } from "../ru/odash-today";
 export const enOdashToday: Record<keyof typeof ruOdashToday, string> = {
   "odash.today.title": "Today",
   "odash.today.checkinTools": "Check-in tools",
-  "odash.today.addBooking": "+ Add booking",
   "odash.today.stat.booked": "Booked",
   "odash.today.stat.revenue": "Revenue today",
   "odash.today.stat.pending": "Pending",

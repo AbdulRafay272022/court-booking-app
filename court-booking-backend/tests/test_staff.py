@@ -202,3 +202,45 @@ async def test_permission_catalog_marks_off_flags_unavailable(
     by_key = {item["key"]: item for item in resp.json()}
     assert by_key["mark_refunds"]["available"] is False  # refunds flag off
     assert by_key["check_in"]["available"] is True  # not flag-bound
+
+
+async def test_staff_phone_already_on_another_account_is_a_clear_409(
+    client, make_user, make_venue, make_court, make_auth_headers
+):
+    """The Staff form shows its own 'use a different number' text for this exact code, so the code and status must stay put."""
+    owner, venue, _court = await _make_owner_venue_court(make_user, make_venue, make_court, "+923017000004")
+    await make_user("+923017000404", role=UserRole.PLAYER)  # the number already belongs to a player account
+    headers = await make_auth_headers(owner)
+    resp = await client.post(
+        "/api/v1/staff",
+        headers=headers,
+        json={"venue_id": str(venue.id), "name": "Dup", "phone": "+923017000404", "password": "staffpass123", "permissions": ["view_ledger"]},
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error"]["code"] == "PHONE_ALREADY_REGISTERED"
+
+
+async def test_walkin_permission_still_works_for_existing_staff_but_is_optional(
+    client, make_user, make_venue, make_court, make_auth_headers
+):
+    """The UI no longer offers 'walkin', but the backend key stays: a staff member who has it keeps it, and one created without it is fine."""
+    owner, venue, _court = await _make_owner_venue_court(make_user, make_venue, make_court, "+923017000005")
+    headers = await make_auth_headers(owner)
+    with_key = await client.post(
+        "/api/v1/staff",
+        headers=headers,
+        json={"venue_id": str(venue.id), "name": "Old", "phone": "+923017000505", "password": "staffpass123", "permissions": ["walkin", "view_ledger"]},
+    )
+    assert with_key.status_code == 201, with_key.text
+    sid = with_key.json()["id"]
+    assert set(with_key.json()["permissions"]) == {"walkin", "view_ledger"}
+    # saving other permissions through the API keeps the key when the client sends it back (the Staff page does exactly this)
+    kept = await client.patch(f"/api/v1/staff/{sid}/permissions", headers=headers, json={"permissions": ["walkin", "view_ledger", "check_in"]})
+    assert kept.status_code == 200, kept.text
+    assert "walkin" in kept.json()["permissions"]
+    without = await client.post(
+        "/api/v1/staff",
+        headers=headers,
+        json={"venue_id": str(venue.id), "name": "New", "phone": "+923017000506", "password": "staffpass123", "permissions": ["view_ledger"]},
+    )
+    assert without.status_code == 201 and without.json()["permissions"] == ["view_ledger"]

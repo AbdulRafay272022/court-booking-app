@@ -21,7 +21,7 @@ const PLAYER = process.env.PLAYER_PHONE || "3000000003";
 const PUBLIC = ["/", "/features", "/for-owners", "/about", "/blog", "/contact", "/login", "/signup", "/signup?role=owner", "/search", "/forgot-password", "/verify?phone=%2B923001234567", "/reset-password?phone=%2B923001234567", "/terms", "/privacy"];
 const PLAYER_ROUTES = ["/bookings", "/account", "/account?tab=bookings", "/account?tab=saved", "/account?tab=settings", "/account/phone"];
 const OWNER_ROUTES = [
-  "/dashboard/owner/today", "/dashboard/owner/approvals", "/dashboard/owner/walkin", "/dashboard/owner/ledger", "/dashboard/owner/growth",
+  "/dashboard/owner/today", "/dashboard/owner/approvals", "/dashboard/owner/ledger", "/dashboard/owner/growth",
   "/dashboard/owner/checkin", "/dashboard/owner/checkin/qr", "/dashboard/owner/checkin/manual", "/dashboard/owner/reviews", "/dashboard/owner/refunds",
   "/dashboard/owner/staff", "/dashboard/owner/premium", "/dashboard/owner/settings", "/dashboard/owner/settings#courts",
   "/venue-setup/register", "/venue-setup/courts", "/venue-setup/status", "/account",

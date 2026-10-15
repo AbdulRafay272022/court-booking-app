@@ -58,7 +58,7 @@ function ListSkeleton() {
 
 export default function BookingsPage() {
   const t = useT();
-  const { ready } = useRequireAuth();
+  const { ready } = useRequireAuth(["player"]); // My bookings is the player's page; owners and staff manage bookings in the dashboard
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<Tab>("upcoming");
   const [filter, setFilter] = useState<Filter>("all");

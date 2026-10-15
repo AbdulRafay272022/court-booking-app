@@ -67,7 +67,7 @@ export const WORDS = {
     closed: "Band",
     open24: "24 ghante khula",
     nextDay: " (agle din)",
-    horizon: (d: number) => `${d} din aage tak book ho sakta hai`,
+    horizon: (d: number) => `${d} din pehle tak booking ho sakti hai`,
     reason: { maintenance: "Maintenance", weather: "Mausam", private_event: "Private event", other: "Band" } as Record<string, string>,
     happeningNow: "abhi chal raha hai",
     finished: "khatam",

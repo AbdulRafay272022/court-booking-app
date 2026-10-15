@@ -17,4 +17,13 @@ export const ruHeader = {
   "header.startPlaying": "Khelna shuru karo",
   "header.menu.open": "Menu kholo",
   "header.menu.close": "Menu band karo",
+  "header.pm.aria": "Account menu",
+  "header.pm.search": "Court dhoondo",
+  "header.pm.dashboard": "Dashboard",
+  "header.pm.bookings": "Bookings",
+  "header.pm.venues": "Venues",
+  "header.pm.settings": "Settings",
+  "header.pm.profile": "Profile",
+  "header.pm.saved": "Pasandida",
+  "header.pm.signedInAs": "{name} login hain",
 } as const;

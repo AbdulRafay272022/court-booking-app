@@ -208,7 +208,12 @@ export function formatDateRelative(instant: Instant, now: Instant = new Date(), 
     (pktMidnightUtc(pktDateString(instant)).getTime() - pktMidnightUtc(pktDateString(now)).getTime()) / DAY_MS,
   );
   if (diffDays === 0) return WORDS[lang].today;
-  if (diffDays === 1) return WORDS[lang].tomorrow;
+  if (diffDays === 1) {
+    // "Kal" alone does not say which day it is, so Roman Urdu adds the date ("Kal · 17 Oct"); "Today" / "Aaj" and the English "Tomorrow" stay as they are
+    if (lang !== "ru") return WORDS[lang].tomorrow;
+    const p = pktParts(instant);
+    return `${WORDS[lang].tomorrow} · ${p.day} ${MONTH_SHORT[lang][p.month]}`;
+  }
   return formatDate(instant, now, lang);
 }
 

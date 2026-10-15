@@ -17,7 +17,7 @@ export const ruBlog = {
   "blog.post.padel-kya-hai.title": "Padel kya hai? Beginners ke liye pura guide",
   "blog.post.padel-kya-hai.summary": "Rules, scoring, racket aur pehla match. Sab kuch saada zubaan mein.",
   "blog.post.karachi-futsal-areas.title": "Karachi ke best futsal areas: DHA se Gulshan tak",
-  "blog.post.padel-racket-chunna.title": "Padel racket kaise chunein",
+  "blog.post.padel-racket-chunna.title": "Padel racket kaise chuno",
   "blog.post.team-slot-booking-tips.title": "Apni team ke liye slot book karne ke 5 asaan tareeqe",
   "blog.post.khali-slots-discount.title": "Khali slots ko kaise bharein: discount ki sahi strategy",
   "blog.post.online-payment-proof.title": "Online payment aur screenshot proof: kaise kaam karta hai",

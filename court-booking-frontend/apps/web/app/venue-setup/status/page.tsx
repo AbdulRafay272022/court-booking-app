@@ -201,16 +201,6 @@ function StatusView() {
         ))}
       </div>
 
-      <div className="bg-owner-accent-soft border border-owner-accent-soft-border rounded-2xl p-5 flex flex-col gap-3">
-        <p className="font-bold text-owner-accent-hover text-[15px]">{t("setup.status.startTitle")}</p>
-        <p className="text-[13px] leading-5 font-medium text-owner-ink-muted">
-          {t("setup.status.startBody")}
-        </p>
-        <Link href="/dashboard/owner/walkin" className="h-11 rounded-[9px] bg-owner-accent text-white text-sm font-semibold flex items-center justify-center">
-          {t("setup.status.addBooking")}
-        </Link>
-      </div>
-
       <p className="text-[13px] font-medium text-owner-ink-faint">
         {t("setup.status.slow")}{" "}
         <a href={supportWhatsAppUrl()} target="_blank" rel="noopener noreferrer" className="font-bold underline">

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "./auth-store";
 import type { UserRole } from "@court-booking/types";
+import { homeForRole } from "./use-auth-helpers";
 
 /** Redirects away if the session isn't ready for this page yet. `hydrating` is not
  * an error state -- Providers hasn't finished reading localStorage/calling /auth/me
@@ -31,7 +32,8 @@ export function useRequireAuth(allowedRoles?: UserRole[]) {
       return;
     }
     if (allowedRoles && role && !allowedRoles.includes(role)) {
-      router.replace("/");
+      // wrong role for this page: send the person to THEIR own home (an owner who opens /bookings lands on the dashboard)
+      router.replace(role === "player" ? "/" : homeForRole(role));
     }
   }, [status, role, allowedRoles, router]);
 

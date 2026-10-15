@@ -17,4 +17,13 @@ export const enHeader = {
   "header.startPlaying": "Start playing",
   "header.menu.open": "Open menu",
   "header.menu.close": "Close menu",
+  "header.pm.aria": "Account menu",
+  "header.pm.search": "Search",
+  "header.pm.dashboard": "Dashboard",
+  "header.pm.bookings": "Bookings",
+  "header.pm.venues": "Venues",
+  "header.pm.settings": "Settings",
+  "header.pm.profile": "Profile",
+  "header.pm.saved": "Saved",
+  "header.pm.signedInAs": "Signed in as {name}",
 } as const;

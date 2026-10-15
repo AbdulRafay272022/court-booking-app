@@ -90,4 +90,5 @@ export const enAccount = {
   "account.phone.verifying": "Verifying\u2026",
   "account.phone.verify": "Verify and change number",
   "account.phone.different": "Use a different number",
+  "account.role.staff": "Staff",
 } as const;

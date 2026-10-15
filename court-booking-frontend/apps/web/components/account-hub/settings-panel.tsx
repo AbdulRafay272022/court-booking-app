@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
+import { suppressAuthRedirect } from "@/lib/use-require-auth";
 import { useT } from "@/components/i18n/lang-provider";
 import { LanguageSwitch } from "@/components/i18n/language-switch";
 import { Card } from "./parts";
@@ -15,6 +16,7 @@ const H2 = "font-khelo-display text-[20px] font-extrabold tracking-tight";
 function logout(router: ReturnType<typeof useRouter>) {
   // Best effort server-side revoke; the local sign-out happens regardless.
   void import("@/lib/api").then(({ api }) => api.auth.logout().catch(() => undefined)).finally(() => {
+    suppressAuthRedirect(); // deliberate sign-out: land on "/", not on /login?next=
     useAuthStore.getState().signOut();
     router.push("/");
   });

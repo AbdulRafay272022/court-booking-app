@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRequireAuth } from "@/lib/use-require-auth";
+import { suppressAuthRedirect, useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { Logo } from "@/components/auth/logo";
 import { useT } from "@/components/i18n/lang-provider";
@@ -37,6 +37,7 @@ export default function VenueSetupLayout({ children }: { children: React.ReactNo
           <span className="hidden sm:inline text-[13px] text-owner-ink-faint">{user?.name ?? t("setup.layout.owner")}</span>
           <button
             onClick={() => {
+              suppressAuthRedirect(); // deliberate sign-out: land on "/", not on /login?next=
               void useAuthStore.getState().signOut();
               router.push("/");
             }}

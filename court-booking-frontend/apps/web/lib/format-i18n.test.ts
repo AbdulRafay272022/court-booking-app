@@ -93,7 +93,7 @@ test("ru mode on key outputs", () => {
   assert.equal(ru_.duration(60), "1 ghanta");
   assert.equal(ru_.duration(45), "45 minute");
   assert.equal(ru_.hoursText({ open_time: "00:00:00", close_time: "00:00:00", closes_next_day: false }), "24 ghante khula");
-  assert.equal(ru_.bookingHorizon(90), "90 din aage tak book ho sakta hai");
+  assert.equal(ru_.bookingHorizon(90), "90 din pehle tak booking ho sakti hai");
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map((i) => ru_.weekday(i)), ["Peer", "Mangal", "Budh", "Jumerat", "Jumma", "Hafta", "Itwar"]);
   assert.equal(ru_.month("2026-10"), "Aktoobar 2026");
   assert.equal(ru_.bookingStatus("booked"), "Book ho gaya");
@@ -152,7 +152,7 @@ test("every validator message translates (en passes through, ru differs)", () =>
   }
   assert.equal(ru_.validation("Something nobody wrote"), "Something nobody wrote");
   assert.equal(ru_.validation("Mon: Choose an opening time and a closing time."), "Peer: Khulne aur band hone ka waqt chunein.");
-  assert.equal(ru_.validation("Use at least 8 characters"), "Kam az kam 8 characters rakhein");
+  assert.equal(ru_.validation("Use at least 8 characters"), "Kam az kam 8 characters rakho");
 });
 
 test("fmt and validation keys exist in both dictionaries", () => {
