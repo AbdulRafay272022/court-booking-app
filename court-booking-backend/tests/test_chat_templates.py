@@ -40,6 +40,8 @@ SAMPLE = {
     "hours": dict(venue="Test Arena 1", hours="6:00 AM to 11:00 PM every day"),
     "hours_unknown": {},
     "ask_which_venue_info": dict(venues=["Test Arena 1", "Clifton Padel Club"]),
+    "slot_available": dict(court="Court 2", venue="Test Arena 1", label="9:00 PM to 11:00 PM, Wed 14 Oct", duration="2 hours", total="PKR 6,000"),
+    "slot_unavailable": dict(court="Court 2", venue="Test Arena 1", date="Wed 14 Oct 2026", time="4:00 AM", others=["6:00 AM to 7:00 AM (PKR 3,000)"]),
     "fallback_ask": {},
     "fallback_unavailable": {},
     "held": dict(label="9:00 PM to 10:00 PM, Wed 14 Oct", total="PKR 3,000", advance="PKR 1,000", until="9:15 PM"),

@@ -43,6 +43,12 @@ _EMOJI_RE = re.compile(
 _MD_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1", re.DOTALL)
 _UTC_RE = re.compile(r"(?i)\bUTC\b|\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 _PKR_RE = re.compile(r"PKR\s?([\d,]+(?:\.\d+)?)")
+# every way a price is written: "PKR 6,000", "PKR 6000", "Rs 6,000", "Rs.6000", "6000/-", "6,000 rupees", "6000 PKR"
+_MONEY_RES = (
+    re.compile(r"(?i)(?:\bPKR|\bRs\b\.?|\bRs(?=\d)\.?|₨)\s?(\d[\d,]*(?:\.\d+)?)"),
+    re.compile(r"(?<![\d,.])(\d[\d,]*(?:\.\d+)?)\s?/-"),
+    re.compile(r"(?i)(?<![\d,.:])(\d[\d,]*(?:\.\d+)?)\s?(?:rupees?|rupay|rupaye|pkr)\b"),
+)
 _CLOCK_RE = re.compile(r"\b(\d{1,2}):(\d{2}) ?(AM|PM)\b")
 _DATE_LABEL_RE = re.compile(r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b")
 _COURT_MENTION_RE = re.compile(r"\bCourt ([A-Z0-9]{1,2})\b")
@@ -101,8 +107,53 @@ def _clock_set(text: str) -> set[str]:
     return {_normalize_clock(*m) for m in _CLOCK_RE.findall(text or "")}
 
 
+def _normalize_amount(raw: str) -> str:
+    """"6,000" / "6000.00" / "6000.0" -> "6000" (whole rupees; a real fraction is kept)."""
+    value = raw.replace(",", "").rstrip(".")
+    if "." in value:
+        whole, _, frac = value.partition(".")
+        value = whole if not frac.strip("0") else f"{whole}.{frac.rstrip('0')}"
+    return value.lstrip("0") or "0"
+
+
 def _amounts(text: str) -> set[str]:
-    return {m.replace(",", "") for m in _PKR_RE.findall(text or "")}
+    """The money amounts a text mentions, spelled one way whatever the spelling in the text."""
+    found: set[str] = set()
+    for rx in _MONEY_RES:
+        for raw in rx.findall(text or ""):
+            found.add(_normalize_amount(raw))
+    return found
+
+
+def has_money(text: str) -> bool:
+    return bool(_amounts(text))
+
+
+def canonical_money(text: str, source: str) -> str:
+    """Rewrite every price in `text` that is really one of the amounts in `source` (tool results) the way the tool wrote it ("PKR 6,000"), so
+    "PKR 6000", "Rs 6,000" and "6000/-" read the same to the player. An amount that is not in `source` is left alone (the validator judges it)."""
+    known: dict[str, str] = {}
+    for m in re.finditer(r"PKR\s?(\d[\d,]*(?:\.\d+)?)", source or ""):
+        known.setdefault(_normalize_amount(m.group(1)), "PKR " + m.group(1))
+    if not known:
+        return text
+
+    def swap(m: re.Match) -> str:
+        return known.get(_normalize_amount(m.group(1)), m.group(0))
+
+    for rx in _MONEY_RES:
+        text = rx.sub(swap, text or "")
+    return text
+
+
+_PHONE_LIKE_RE = re.compile(r"(?<![\w:])\+?\d[\d \-]{8,}\d(?![\w:])")
+
+
+def mask_phones_in_text(text: str) -> str:
+    """Phone numbers in free text (a draft that quotes a venue number, a player's message) reduced to ***1234 with the project's own mask."""
+    from app.services.whatsapp_service import mask_phone
+
+    return _PHONE_LIKE_RE.sub(lambda m: mask_phone(re.sub(r"\D", "", m.group(0))) or "", text or "")
 
 
 def _allowed_times(ctx: ValidationContext) -> set[str]:
@@ -211,7 +262,7 @@ def validate(draft: str, ctx: ValidationContext) -> list[Issue]:
     allowed_amounts = _allowed_amounts(ctx)
     for amount in _amounts(text):
         if amount not in allowed_amounts:
-            unknown.append(f"PKR {amount}")
+            unknown.append(f"PKR {int(amount):,}" if amount.isdigit() else f"PKR {amount}")
     allowed_times = _allowed_times(ctx)
     for clock in _clock_set(text):
         if clock not in allowed_times:
@@ -259,9 +310,9 @@ def validate(draft: str, ctx: ValidationContext) -> list[Issue]:
     # (g) answers the player's LAST message
     lowered = text.lower()
     has_slot = bool(re.search(r"\d{1,2}:\d{2} (?:AM|PM) to ", text))
-    if turn.intent in ("greeting", "thanks") and (has_slot or _PKR_RE.search(text)):
+    if turn.intent in ("greeting", "thanks") and (has_slot or has_money(text)):
         issues.append(Issue("stale_intent", f"the player only said {turn.intent}"))
-    elif turn.intent == "price_question" and not _PKR_RE.search(text) and not re.search(r"(?i)price|rate|qeemat|cost|charges|fee", lowered):
+    elif turn.intent == "price_question" and not has_money(text) and not re.search(r"(?i)price|rate|qeemat|cost|charges|fee", lowered):
         issues.append(Issue("stale_intent", "the player asked about the price"))
     elif turn.intent == "sport_question" and not scan_sports(text, ctx.facts.sports()):
         issues.append(Issue("stale_intent", "the player asked which sports are available"))

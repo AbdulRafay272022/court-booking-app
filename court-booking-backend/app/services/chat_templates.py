@@ -239,6 +239,30 @@ def _t_ask_which_venue_info(lang: Lang, venues: list[str], **_: object) -> str:
     return f"Kis venue ke baare mein? {listed}." if lang == "ru" else f"Which venue do you mean: {listed}?"
 
 
+def _where(court: str, venue: str | None, lang: Lang) -> str:
+    return f"{court} at {venue}" if venue and lang != "ru" else (f"{venue} ka {court}" if venue else court)
+
+
+def _t_slot_available(lang: Lang, court: str, label: str, duration: str, total: str, venue: str | None = None, ask_name: bool = False, price_only: bool = False, **_: object) -> str:
+    """The answer to "is <court> free at <time> for <duration>?" (or "how much?"), built from the check_availability result of the turn. `label` is the
+    tool's own "9:00 PM to 11:00 PM, Sat 17 Oct". One question only: "shall I book it?", or the booking name when the account has none."""
+    if lang == "ru":
+        head = f"{label} ({duration}) ke liye {_where(court, venue, lang)} ka total {total} hai." if price_only else f"Ji haan, {_where(court, venue, lang)} {label} ({duration}) ke liye khali hai. Total {total}."
+        return head + (" Booking kis naam par rakhun?" if ask_name else " Kya main book kar dun? Haan ya Na likh dein")
+    head = f"{_where(court, venue, lang)} costs {total} for {duration}, {label}." if price_only else f"Yes, {_where(court, venue, lang)} is available, {label} ({duration}). Total {total}."
+    return head + (" What name should I put the booking under?" if ask_name else " Shall I book it? Reply Yes or No")
+
+
+def _t_slot_unavailable(lang: Lang, court: str, date: str, time: str, others: list[str] | None = None, venue: str | None = None, **_: object) -> str:
+    """The asked time is not available. Says only that (never a reason) and lists the nearest free times that were really found."""
+    others = [o for o in (others or []) if o]
+    if lang == "ru":
+        head = f"Maaf kijiye, {_where(court, venue, lang)} {date} ko {time} par khali nahi hai."
+        return head + (f" Khali times: {', '.join(others)}. Kaun sa time chahiye?" if others else " Kya aap koi aur date dekhna chahenge?")
+    head = f"Sorry, {_where(court, venue, lang)} is not available on {date} at {time}."
+    return head + (f" Free times: {', '.join(others)}. Which time would you like?" if others else " Would you like to try another date?")
+
+
 def _t_fallback_ask(lang: Lang, **_: object) -> str:
     return "Maaf kijiye, mujhe dobara likh dein ke aap kya chahte hain." if lang == "ru" else "Sorry, could you tell me again what you would like?"
 
@@ -296,6 +320,8 @@ _TEMPLATES: dict[str, Callable[..., str]] = {
     "hours": _t_hours,
     "hours_unknown": _t_hours_unknown,
     "ask_which_venue_info": _t_ask_which_venue_info,
+    "slot_available": _t_slot_available,
+    "slot_unavailable": _t_slot_unavailable,
     "fallback_ask": _t_fallback_ask,
     "fallback_unavailable": _t_fallback_unavailable,
     "held": _t_held,
