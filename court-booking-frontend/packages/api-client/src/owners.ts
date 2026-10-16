@@ -2,6 +2,13 @@ import type {
   Booking,
   Growth,
   Ledger,
+  HistoryFilters,
+  CompletionInput,
+  OwnerBadges,
+  OwnerBookingDetail,
+  OwnerBookingRow,
+  OwnerBookingsPage,
+  OwnerOverview,
   OwnerDigest,
   OwnerRefund,
   OwnerToday,
@@ -20,6 +27,24 @@ export interface LedgerFilters {
   courtId?: string;
   method?: string;
   bookingStatus?: string;
+}
+
+function historyQuery(f: HistoryFilters): string {
+  const usp = new URLSearchParams();
+  const set = (k: string, v: string | number | undefined | null) => {
+    if (v !== undefined && v !== null && v !== "") usp.set(k, String(v));
+  };
+  set("venue_id", f.venueId);
+  set("date_from", f.dateFrom);
+  set("date_to", f.dateTo);
+  set("court_ids", f.courtIds?.join(",") || undefined);
+  for (const s of f.statuses ?? []) usp.append("statuses", s);
+  set("q", f.q?.trim());
+  set("page", f.page);
+  set("page_size", f.pageSize);
+  set("sort", f.sort);
+  const text = usp.toString();
+  return text ? `?${text}` : "";
 }
 
 export function createOwnersApi(client: ApiClient) {
@@ -62,6 +87,27 @@ export function createOwnersApi(client: ApiClient) {
           booking_status: filters.bookingStatus,
         })}`,
       ),
+
+    /** Owner Overview (docs/owner-overview-contract.md). `courtIds` empty/undefined = all courts. */
+    overview: (params: { date?: string; venueId?: string; courtIds?: string[] } = {}) =>
+      client.request<OwnerOverview>(
+        `/owners/overview${toQuery({ date: params.date, venue_id: params.venueId, court_ids: params.courtIds?.join(",") || undefined })}`,
+      ),
+
+    bookingsHistory: (f: HistoryFilters) =>
+      client.request<OwnerBookingsPage>(`/owners/bookings-history${historyQuery(f)}`),
+
+    bookingsHistoryCsv: (f: HistoryFilters) =>
+      client.requestText(`/owners/bookings-history/export.csv${historyQuery(f)}`),
+
+    bookingDetail: (bookingId: string) =>
+      client.request<OwnerBookingDetail>(`/owners/bookings/${bookingId}/overview-detail`),
+
+    /** Booking completed (Haan / Nahi). Needs the record_payments permission. */
+    markCompletion: (bookingId: string, input: CompletionInput) =>
+      client.request<OwnerBookingRow>(`/owners/bookings/${bookingId}/completion`, { method: "POST", body: JSON.stringify(input) }),
+
+    badges: (venueId?: string) => client.request<OwnerBadges>(`/owners/badges${toQuery({ venue_id: venueId })}`),
 
     growth: (venueId?: string) =>
       client.request<Growth>(`/owners/growth${toQuery({ venue_id: venueId })}`),
