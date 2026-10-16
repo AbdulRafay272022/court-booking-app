@@ -108,15 +108,46 @@ export function PasswordField({
 }
 
 /** A form-level message (server errors, notices). Errors are `role=alert`, notices `role=status`. */
-export function FormNotice({ kind, children }: { kind: "error" | "success"; children: ReactNode }) {
+const NOTICE_ICON: Record<"error" | "success" | "info", ReactNode> = {
+  error: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="mt-px shrink-0">
+      <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.14" />
+      <path d="M10 5.5v5.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="10" cy="14.2" r="1.15" fill="currentColor" />
+    </svg>
+  ),
+  success: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="mt-px shrink-0">
+      <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.14" />
+      <path d="M6 10.3l2.7 2.7L14 7.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  info: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="mt-px shrink-0">
+      <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.14" />
+      <path d="M10 9v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="10" cy="6.2" r="1.15" fill="currentColor" />
+    </svg>
+  ),
+};
+
+/** A message box that cannot be mistaken for an input: a tinted panel with a left accent bar and an icon, then the text.
+ *  `error` is announced at once (role=alert), `success` / `info` politely (role=status). */
+export function FormNotice({ kind, children }: { kind: "error" | "success" | "info"; children: ReactNode }) {
+  const tone =
+    kind === "error"
+      ? `border-khelo-danger bg-khelo-danger/10 ${ERROR_TEXT}`
+      : kind === "success"
+        ? "border-khelo-success bg-khelo-success-bg text-khelo-success-text"
+        : "border-khelo-teal bg-khelo-mint text-khelo-ink";
   return (
     <div
       role={kind === "error" ? "alert" : "status"}
-      className={`rounded-[14px] border px-4 py-3 text-[14px] font-semibold leading-snug ${
-        kind === "error" ? `border-khelo-danger/40 bg-white ${ERROR_TEXT}` : "border-khelo-success bg-khelo-success-bg text-khelo-success-text"
-      }`}
+      aria-live={kind === "error" ? "assertive" : "polite"}
+      className={`flex items-start gap-3 rounded-[10px] border-l-4 px-4 py-3 text-[14px] font-semibold leading-snug ${tone}`}
     >
-      {children}
+      {NOTICE_ICON[kind]}
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }

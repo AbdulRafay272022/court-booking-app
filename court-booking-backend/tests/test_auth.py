@@ -1268,3 +1268,60 @@ async def test_otp_send_with_no_open_window_fails_cleanly(client, db_session, mo
     assert resp.json()["error"]["code"] == "OTP_DELIVERY_FAILED"
     rows = (await db_session.execute(select(OtpRequest).where(OtpRequest.phone == phone))).scalars().all()
     assert rows == []
+
+
+# ------------------------------------------------ password-less account that was never verified (WhatsApp guest)
+
+
+async def test_passwordless_unverified_account_goes_straight_to_set_password_with_one_code(client, make_user, otp_box):
+    """A number that only ever messaged the business WhatsApp has a user row with NO password and NO verified phone.
+    Logging in used to answer PHONE_REVERIFICATION_REQUIRED -> a code page -> a second PASSWORD_NOT_SET dead end.
+    Now it answers PASSWORD_NOT_SET at once; ONE code (the reset flow) proves the phone AND sets the password, and a session
+    only comes from a normal login afterwards."""
+    phone = "+923001190001"
+    await make_user(phone, phone_verified_at=None)  # no password_hash, never verified
+
+    denied = await login(client, phone, "anything")
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "PASSWORD_NOT_SET"
+    assert otp_box.sent == []  # no code was sent just to hit a dead end
+    assert "token" not in denied.json()
+
+    req = await client.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+    assert req.status_code == 200
+    assert len(otp_box.sent) == 1
+    done = await client.post(
+        "/api/v1/auth/verify-password-reset",
+        json={"phone": phone, "otp": otp_box.code, "new_password": PASSWORD, "confirm_password": PASSWORD},
+    )
+    assert done.status_code == 200
+    assert "token" not in done.json()  # setting the password does not itself sign anyone in
+    ok = await login(client, phone)
+    assert ok.status_code == 200 and ok.json()["token"]
+
+
+async def test_set_password_flow_rejects_a_wrong_code_and_keeps_the_account_passwordless(client, make_user, otp_box):
+    phone = "+923001190002"
+    await make_user(phone, phone_verified_at=None)
+    await client.post("/api/v1/auth/request-password-reset", json={"phone": phone})
+    wrong = "000000" if otp_box.code != "000000" else "111111"
+    bad = await client.post(
+        "/api/v1/auth/verify-password-reset",
+        json={"phone": phone, "otp": wrong, "new_password": PASSWORD, "confirm_password": PASSWORD},
+    )
+    assert bad.status_code == 400
+    assert bad.json()["error"]["code"] in {"INVALID_OTP", "OTP_EXPIRED"}
+    still = await login(client, phone, "anything")
+    assert still.json()["error"]["code"] == "PASSWORD_NOT_SET"
+
+
+
+async def test_unverified_account_with_a_password_still_routes_to_phone_verification(client, make_user):
+    """Unchanged behaviour: an account that HAS a password but whose phone is not (or no longer) verified still goes to the code screen."""
+    from app.utils.security import hash_password
+
+    phone = "+923001190003"
+    await make_user(phone, phone_verified_at=None, password_hash=await hash_password(PASSWORD))
+    resp = await login(client, phone, PASSWORD)
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "PHONE_REVERIFICATION_REQUIRED"

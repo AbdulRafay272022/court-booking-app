@@ -106,7 +106,7 @@ export const ruAuth = {
   "auth.forgot.brand.text": "Apna number daalo, hum WhatsApp par code bhejenge. Naya password banao aur wapas court par.",
   "auth.forgot.title.set": "Apna password set karo",
   "auth.forgot.title.reset": "Password reset karo",
-  "auth.forgot.subtitle.set": "Khelo accounts ab password se chalte hain. WhatsApp par apna number confirm karo, phir password chuno.",
+  "auth.forgot.subtitle.set": "Is number ke liye abhi password set nahi hai. Naya password set karo taake login ho sake.",
   "auth.forgot.subtitle.reset": "Apna mobile number daalo, hum WhatsApp par code bhejenge.",
   "auth.forgot.locked": "Bohat zyada code requests. {seconds} second baad try karo.",
   "auth.forgot.busy": "Code bhej rahe hain\u2026",

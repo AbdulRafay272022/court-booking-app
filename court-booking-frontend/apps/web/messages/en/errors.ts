@@ -7,7 +7,7 @@ export const enErrors = {
   "errors.code.INVALID_CREDENTIALS": "Invalid phone number or password.",
   "errors.code.LOGIN_RATE_LIMITED": "Too many failed attempts. Wait a few minutes, or reset your password.",
   "errors.code.PHONE_REVERIFICATION_REQUIRED": "Please verify your phone number to continue.",
-  "errors.code.PASSWORD_NOT_SET": "Set a password for your account to continue.",
+  "errors.code.PASSWORD_NOT_SET": "No password is set for this number yet. Set a new password so you can log in.",
   "errors.code.PHONE_ALREADY_REGISTERED": "An account with this number already exists. Log in instead.",
   "errors.code.EMAIL_ALREADY_IN_USE": "That email address is already in use.",
   "errors.code.SESSION_EXPIRED": "Your session has expired. Please log in again.",

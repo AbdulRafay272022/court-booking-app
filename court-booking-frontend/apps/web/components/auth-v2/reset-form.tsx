@@ -11,6 +11,8 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useAuthStore } from "@/lib/auth-store";
 import { suppressAuthRedirect } from "@/lib/use-require-auth";
+import { webDeviceInfo } from "@/lib/device";
+import { homeForRole, safeNext } from "@/lib/use-auth-helpers";
 import { useOtpFlow } from "@/components/auth/otp-controls";
 import { AuthFrame } from "./frame";
 import { FormNotice, PasswordField, SmartButton } from "./fields";
@@ -24,6 +26,7 @@ export function ResetForm() {
   const search = useSearchParams();
   const phone = search.get("phone") ?? "";
   const setMode = search.get("mode") === "set";
+  const next = safeNext(search.get("next"));
 
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -59,6 +62,18 @@ export function ResetForm() {
       if (useAuthStore.getState().token) {
         suppressAuthRedirect();
         useAuthStore.getState().signOut();
+      }
+      if (setMode) {
+        // First password for an account that had none: the code just proved the phone, so log straight in with the new password
+        // (a session is only ever issued by a normal login, never by the code alone). If that fails, fall back to the login screen.
+        try {
+          const res = await api.auth.login({ phone, password, ...webDeviceInfo() });
+          useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
+          router.replace(next ?? homeForRole(res.user.role));
+          return;
+        } catch {
+          /* fall through to the login screen */
+        }
       }
       router.replace(`/login?phone=${encodeURIComponent(phone)}&notice=password-updated`);
     } catch (err) {

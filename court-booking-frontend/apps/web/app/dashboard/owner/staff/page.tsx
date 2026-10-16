@@ -350,15 +350,15 @@ function StaffRow({ member, catalog }: { member: StaffMember; catalog: StaffPerm
   return (
     <div className="bg-owner-surface border border-owner-border rounded-xl p-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="font-semibold text-sm">
             {member.name ?? t("odash.staff.default")}{" "}
             {!member.is_active ? <span className="text-[11px] font-bold text-owner-danger">{t("odash.staff.inactive")}</span> : null}
           </p>
           <p className="text-xs text-owner-ink-faint">{member.phone} · {member.venue_name}</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setEditing((v) => !v)} className="text-[13px] font-semibold text-owner-accent">
+        <div className="flex shrink-0 gap-3">
+          <button onClick={() => setEditing((v) => !v)} className="min-h-11 whitespace-nowrap text-[13px] font-semibold text-owner-accent">
             {editing ? t("odash.staff.cancel") : t("odash.staff.edit")}
           </button>
           <button
@@ -367,7 +367,7 @@ function StaffRow({ member, catalog }: { member: StaffMember; catalog: StaffPerm
               toggleActive.mutate();
             }}
             disabled={toggleActive.isPending}
-            className="text-[13px] font-semibold"
+            className="min-h-11 whitespace-nowrap text-[13px] font-semibold"
             style={{ color: member.is_active ? "#B23B3B" : "#1F7A52" }}
           >
             {member.is_active ? t("odash.staff.deactivate") : t("odash.staff.reactivate")}

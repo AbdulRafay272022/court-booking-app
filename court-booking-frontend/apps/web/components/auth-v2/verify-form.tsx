@@ -84,6 +84,12 @@ export function VerifyForm() {
       useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
       router.replace(next ?? homeForRole(res.user.role));
     } catch (err) {
+      if (err instanceof ApiError && err.code === "PASSWORD_NOT_SET") {
+        // The account has no password yet (see AuthService.login): proving the phone is not enough, so go to the set-password step
+        // instead of a dead-end error. (The login screen normally sends such an account there before any code is requested.)
+        router.replace(`/forgot-password?phone=${encodeURIComponent(phone)}&mode=set${next ? `&next=${encodeURIComponent(next)}` : ""}`);
+        return;
+      }
       if (err instanceof ApiError && err.code === "ALREADY_VERIFIED") {
         // QA #2: a dropped-response retry after verify already succeeded -> offer Log in, not a
         // dead-end expired-code error.

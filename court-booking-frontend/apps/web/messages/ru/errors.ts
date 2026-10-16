@@ -7,7 +7,7 @@ export const ruErrors = {
   "errors.code.INVALID_CREDENTIALS": "Phone number ya password galat hai.",
   "errors.code.LOGIN_RATE_LIMITED": "Bohat zyada galat koshishein. Kuch minute ruko, ya password reset karo.",
   "errors.code.PHONE_REVERIFICATION_REQUIRED": "Aage barhne ke liye apna phone number verify karo.",
-  "errors.code.PASSWORD_NOT_SET": "Aage barhne ke liye apne account ka password set karo.",
+  "errors.code.PASSWORD_NOT_SET": "Is number ke liye abhi password set nahi hai. Naya password set karo taake login ho sake.",
   "errors.code.PHONE_ALREADY_REGISTERED": "Is number se account pehle se bana hua hai. Login karo.",
   "errors.code.EMAIL_ALREADY_IN_USE": "Yeh email address pehle se istemal mein hai.",
   "errors.code.SESSION_EXPIRED": "Aapka session khatam ho gaya hai. Dobara login karo.",
