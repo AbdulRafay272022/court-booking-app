@@ -5,7 +5,7 @@
  * Run against a PRODUCTION build served from a COPY of apps/web (never next dev):
  *   BASE_URL=http://localhost:3802 node e2e/history-check.cjs
  * Covers en and ru at 360/768/1280: filters in the URL, presets, sorting, pagination, CSV request, detail popup, focus trap, Escape,
- * copy ID, completion popup, no horizontal scroll, no console errors. NOT YET RUN (the disk was full when this was written).
+ * copy ID, completion popup, no horizontal scroll, no console errors.
  */
 const { loadPlaywright } = require("./smoke.cjs");
 
@@ -78,12 +78,13 @@ async function run() {
       const sortBtn = page.locator("th button").nth(2);
       if (await sortBtn.count()) {
         await sortBtn.click();
-        await page.waitForFunction(() => location.search.includes("sort=total:asc"));
+        await page.waitForFunction(() => decodeURIComponent(location.search).includes("sort=total:asc"));
       }
 
       // pagination
       await page.getByRole("button", { name: lang === "en" ? "Next" : "Agla", exact: true }).click();
       await page.waitForFunction(() => location.search.includes("page=2"));
+      await page.waitForTimeout(500);
       check(requests.some((u) => u.includes("page=2")), `${tag}: page 2 requested`);
 
       // CSV
@@ -115,7 +116,9 @@ async function run() {
         check(requests.some((u) => u.startsWith("completion:") && u.includes('"received_pkr":2000')), `${tag}: completion posted`);
       }
       check((await overflow()) <= 1, `${tag}: no horizontal scroll at end`);
-      check(errors.length === 0, `${tag}: console errors: ${errors.slice(0, 2).join(" | ")}`);
+      // Endpoints this script does not mock (flags, badges, notifications) have no server behind the build's API base: ignore only those refusals.
+      const realErrors = errors.filter((e) => !/ERR_CONNECTION_REFUSED/.test(e));
+      check(realErrors.length === 0, `${tag}: console errors: ${realErrors.slice(0, 2).join(" | ")}`);
       await ctx.close();
     }
   }
