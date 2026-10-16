@@ -2,12 +2,13 @@ import { useState } from "react";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatWhen } from "@/lib/format";
+import { formatDayHeader, formatPKR, formatWhen } from "@/lib/format";
+import { OwnerTabBar } from "@/components/owner-tab-bar";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
@@ -18,12 +19,15 @@ import type { OwnerRefund } from "@court-booking/types";
  * the app (JazzCash/bank) -- there is no payment gateway. This just records that it happened. */
 export default function RefundsScreen() {
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
+  const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
+  const filterDate = routeParams.date || undefined;
+  const filterCourts = routeParams.courts ? routeParams.courts.split(",").filter(Boolean) : [];
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
 
   const query = useQuery({
-    queryKey: ["owner-refunds", activeVenueId],
-    queryFn: () => api.owners.refunds(activeVenueId),
+    queryKey: ["owner-refunds", activeVenueId, filterDate, filterCourts.join(",")],
+    queryFn: () => api.owners.refunds(activeVenueId, { date: filterDate, courtIds: filterCourts }),
     enabled: !!activeVenueId,
   });
 
@@ -31,7 +35,7 @@ export default function RefundsScreen() {
   const open = list.find((r) => r.id === openId) ?? null;
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
+    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
       <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
           <ChevronLeftIcon />
@@ -43,6 +47,15 @@ export default function RefundsScreen() {
           </Text>
         </View>
       </View>
+      {filterDate ? (
+        <View className="px-4.5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
+          <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">{`Filter: ${formatDayHeader(filterDate)}${filterCourts.length ? ` · ${filterCourts.length} court(s)` : ""}`}</Text>
+          <Pressable onPress={() => router.setParams({ date: undefined, courts: undefined })} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Sab dikhao</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
 
       {venuesLoading || query.isLoading ? (
         <View className="flex-1 items-center justify-center">
@@ -90,6 +103,7 @@ export default function RefundsScreen() {
           ))}
         </ScrollView>
       )}
+      <OwnerTabBar active="refunds" />
     </SafeAreaView>
   );
 }

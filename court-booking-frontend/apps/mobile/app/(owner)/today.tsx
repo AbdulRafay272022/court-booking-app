@@ -1,149 +1,129 @@
-import { useState } from "react";
-import { courtLabel, sportForCourtName } from "@/components/court-label";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import type { OwnerBookingRow, OwnerOverview } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
 
-import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDayHeader, formatPKR, formatTime, formatTimeRange, formatWhen } from "@/lib/format";
-import { bookingSourceLabel } from "@court-booking/types";
+import { formatDayHeader, formatPKR, pktDateString } from "@/lib/format";
+import { api } from "@/lib/api";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useAuthStore } from "@/lib/auth-store";
-import { openSupportWhatsApp } from "@/lib/support";
-import { confirmLogout } from "@/lib/logout";
-import { BellIcon, PlusIcon, CalendarIcon, BarsIcon, TrendingUpIcon, WhatsAppIcon, SettingsIcon, QrIcon, RefreshIcon, StarBadgeIcon, PersonIcon, StarIcon } from "@/components/icons";
-import { ErrorState } from "@/components/error-state";
-import { RecordPaymentSheet } from "@/components/record-payment-sheet";
-import { EmptyState, StatTile, Tab, VenueSwitcher, VenueStatusBanner, IconButton } from "./_dashboard-components";
-import { PremiumNotices } from "@/components/premium-notices";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
+import { OV, courtShort, dateTitle, historyParams } from "@/lib/overview";
+import { BellIcon } from "@/components/icons";
+import { ErrorState } from "@/components/error-state";
+import { PremiumNotices } from "@/components/premium-notices";
+import { BookingDetailSheet } from "@/components/booking-detail-sheet";
+import { OwnerTabBar } from "@/components/owner-tab-bar";
+import { BookingCard } from "@/components/overview/booking-card";
+import { DateChooserSheet, MultiSelectSheet, courtsSummary } from "@/components/overview/pickers";
+import { SlotsSheet } from "@/components/overview/slots-sheet";
+import { BottomSheet, OrangeButton, OutlineButton, Pill, SelectButton, SmallChip } from "@/components/overview/ui";
+import { VenueStatusBanner, VenueSwitcher } from "./_dashboard-components";
 
-const STATUS_STYLE: Record<string, { border: string; bg: string }> = {
-  booked: { border: "#1F7A52", bg: "#FFFFFF" },
-  payment_submitted: { border: "#9C5C0A", bg: "#FBF0DD" },
-  held: { border: "#5B7079", bg: "#FFFFFF" },
-  available: { border: "#C6D2D7", bg: "#FFFFFF" },
-  blocked: { border: "#DCE3E6", bg: "#EFF2F3" },
-  completed: { border: "#5B7079", bg: "#FFFFFF" },
-  no_show: { border: "#8C3823", bg: "#F8E5E0" },
-};
+type Filter = "all" | "booked" | "cancelled" | "refund";
 
-export default function OwnerTodayScreen() {
+/** Owner "Overview of days" (replaces Today): filters, KPI cards, the day's bookings. */
+export default function OwnerOverviewScreen() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const isOwner = useAuthStore((s) => s.user?.role) === "owner";
-  const [activeCourt, setActiveCourt] = useState<string | "all">("all");
-  const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
-  const [recording, setRecording] = useState<{ bookingId: string; playerLabel: string; balanceDue: number } | null>(null);
-  const queryClient = useQueryClient();
+  const [date, setDate] = useState(pktDateString());
+  const [courtIds, setCourtIds] = useState<string[]>([]);
+  const [sheet, setSheet] = useState<null | "date" | "courts" | "slots" | "booked-courts">(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const listY = useRef(0);
+  const cardY = useRef(new Map<string, number>());
 
-  const todayQuery = useQuery({
-    queryKey: ["owner-today", activeVenueId],
-    queryFn: () => api.owners.today({ venue_id: activeVenueId }),
+  const allCourts = (activeVenue?.courts ?? []).filter((c) => c.is_active !== false);
+  // A court selection belongs to one venue.
+  useEffect(() => setCourtIds([]), [activeVenueId]);
+
+  const query = useQuery({
+    queryKey: ["owner-overview", activeVenueId, date, courtIds.join(",")],
+    queryFn: () => api.owners.overview({ date, venueId: activeVenueId, courtIds }),
     enabled: !!activeVenueId,
-    refetchInterval: (query) => pollInterval(query, 15_000),
+    refetchInterval: (q) => pollInterval(q, 15_000),
   });
+  const data: OwnerOverview | undefined = query.data;
+  const forbidden = query.error instanceof ApiError && query.error.status === 403;
+  const rows = data?.rows ?? [];
+  const counts = {
+    all: rows.length,
+    booked: rows.filter((r) => r.kind === "booked").length,
+    cancelled: rows.filter((r) => r.kind === "cancelled").length,
+    refund: rows.filter((r) => r.kind === "refund").length,
+  };
+  const shown = filter === "all" ? rows : rows.filter((r) => r.kind === filter);
 
-  async function handleCheckIn(bookingId: string) {
-    setBusyBookingId(bookingId);
-    try {
-      await api.bookings.checkin(bookingId);
-      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
-    } catch (e) {
-      Alert.alert("Couldn't check in", friendlyErrorMessage(e));
-    } finally {
-      setBusyBookingId(null);
+  const goHistory = (status?: string, courts: string[] = courtIds) =>
+    router.push({ pathname: "/(owner)/history", params: historyParams(date, courts, status) });
+
+  function openOriginal(row: OwnerBookingRow) {
+    const id = row.original_booking_id;
+    if (!id) return;
+    const target = rows.find((r) => r.booking_id === id && r.kind === "booked");
+    if (!target) {
+      setDetailId(id);
+      return;
     }
+    setFilter("all");
+    setHighlight(id);
+    setTimeout(() => {
+      const y = cardY.current.get(`${id}:booked`);
+      if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, listY.current + y - 12), animated: true });
+    }, 120);
+    setTimeout(() => setHighlight(null), 2400);
   }
 
-  async function handleNoShow(bookingId: string) {
-    Alert.alert("Mark as no-show?", "This records that the player never showed up for this booking.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Mark no-show",
-        style: "destructive",
-        onPress: async () => {
-          setBusyBookingId(bookingId);
-          try {
-            await api.bookings.noShow(bookingId);
-            await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
-          } catch (e) {
-            Alert.alert("Couldn't mark no-show", friendlyErrorMessage(e));
-          } finally {
-            setBusyBookingId(null);
-          }
-        },
-      },
-    ]);
-  }
-
-  const sportOf = (id: string) => activeVenue?.courts.find((c) => c.id === id)?.sport;
-  const data = todayQuery.data;
-  const courts = data?.courts ?? [];
-  const courtId = activeCourt === "all" ? undefined : activeCourt;
-  const rows = courts
-    .filter((c) => !courtId || c.court_id === courtId)
-    .flatMap((c) =>
-      c.slots.map((s) => ({
-        ...s,
-        courtId: c.court_id,
-        courtName: s.court_name ?? c.name,
-        // The API carries the sport now; the owner-venues lookup only covers an old backend.
-        courtSport: s.court_sport ?? c.sport ?? sportOf(c.court_id),
-      })),
-    )
-    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const topCourt = data ? [...data.slots.by_court].sort((a, b) => b.booked - a.booked)[0] : undefined;
+  const slotCourts = (courtIds.length ? allCourts.filter((c) => courtIds.includes(c.id)) : allCourts).map((c) => ({ id: c.id, name: c.name }));
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
-        <View className="flex-row items-center justify-between">
-          <View className="gap-0.5">
-            <Text className="font-plex-semibold text-owner-ink-faint text-[11px] tracking-[1.5px]">
-              {data ? formatDayHeader(data.date) : "TODAY"}
-            </Text>
-            <Text className="font-plex-bold text-owner-ink text-[19px] -tracking-[0.3px]">
-              {activeVenue?.name ?? "Your venue"}
-            </Text>
-          </View>
-          <View className="flex-row items-center gap-2">
-            <Pressable
-              onPress={() => openSupportWhatsApp()}
-              accessibilityLabel="Need help? WhatsApp us"
-              className="w-[42px] h-[42px] rounded-[11px] bg-owner-bg items-center justify-center"
-            >
-              <WhatsAppIcon size={18} color="#0E6274" />
-            </Pressable>
-            <Pressable
-              onPress={() => router.push("/(owner)/notifications")}
-              accessibilityLabel="Notifications"
-              className="w-[42px] h-[42px] rounded-[11px] bg-owner-bg items-center justify-center"
-            >
-              <BellIcon />
-            </Pressable>
-            <Pressable
-              onPress={() => router.push("/(owner)/account")}
-              accessibilityLabel="Account"
-              accessibilityRole="button"
-              className="h-[42px] px-3 rounded-[11px] bg-owner-bg items-center justify-center"
-            >
-              <Text className="font-plex-semibold text-owner-ink-muted text-[12.5px]">Account</Text>
-            </Pressable>
-          </View>
+    <View className="flex-1 bg-owner-bg">
+      <SafeAreaView edges={["top"]} style={{ backgroundColor: "#0D171B" }}>
+        <View className="flex-row items-center justify-between px-4 py-3">
+          <Image source={require("../../assets/brand/khelo-logo-full-dark.png")} style={{ width: 100, height: 32 }} resizeMode="contain" accessibilityLabel="Khelo" />
+          <Pressable
+            onPress={() => router.push("/(owner)/notifications")}
+            accessibilityLabel="Notifications"
+            accessibilityRole="button"
+            className="w-11 h-11 rounded-xl items-center justify-center"
+            style={{ backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.25)" }}
+          >
+            <BellIcon color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </SafeAreaView>
+
+      <ScrollView ref={scrollRef} className="flex-1" contentContainerClassName="px-4 pt-5 pb-8 gap-4">
+        <View className="gap-1">
+          <Text className="font-plex-bold text-owner-ink text-[30px] -tracking-[0.6px]" accessibilityRole="header">
+            Overview
+          </Text>
+          <Text className="font-plex-medium text-owner-ink-muted text-[14px]">
+            {`${formatDayHeader(date)} · ${activeVenue?.name ?? "Your venue"}`}
+          </Text>
         </View>
 
-        <VenueSwitcher
-          venues={venues}
-          activeVenueId={activeVenueId}
-          onSelect={setVenueId}
-          onAdd={() => {
-            // Reuses the existing setup wizard, from a clean draft (not whatever was left half-done).
-            useVenueSetupStore.getState().reset();
-            router.push("/(owner)/venue-setup/register");
-          }}
-        />
+        {showSwitcher ? (
+          <VenueSwitcher
+            venues={venues}
+            activeVenueId={activeVenueId}
+            onSelect={setVenueId}
+            onAdd={() => {
+              // Reuses the existing setup wizard, from a clean draft (not whatever was left half-done).
+              useVenueSetupStore.getState().reset();
+              router.push("/(owner)/venue-setup/register");
+            }}
+          />
+        ) : null}
         {isOwner ? <PremiumNotices /> : null}
         {activeVenue ? (
           <VenueStatusBanner
@@ -158,266 +138,250 @@ export default function OwnerTodayScreen() {
         ) : null}
 
         <View className="flex-row gap-2.5">
-          <StatTile
-            label="Booked"
-            value={data ? `${rows.filter((r) => r.status === "booked" || r.status === "payment_submitted").length}/${rows.length}` : "—"}
-          />
-          <StatTile label="Today" value={data ? formatPKR(data.summary.total_revenue) : "—"} />
-          <Pressable className="flex-1" onPress={() => router.push("/(owner)/approvals")}>
-            <StatTile label="Pending" value={data ? String(data.summary.pending_approvals) : "—"} tone="warn" />
-          </Pressable>
+          <OutlineButton flex label="Check-in" onPress={() => router.push("/(owner)/checkin")} />
+          <OrangeButton flex label="Add booking" onPress={() => router.push("/(owner)/walkin")} />
+          <OutlineButton flex label="History" onPress={() => goHistory()} />
         </View>
-      </View>
 
-      {courts.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0 bg-owner-surface border-b border-owner-border" contentContainerClassName="px-4.5 py-3 gap-1.5">
-          {courts.map((c) => (
-            <Tab key={c.court_id} label={courtLabel(c.name, c.sport ?? sportOf(c.court_id))} selected={activeCourt === c.court_id} onPress={() => setActiveCourt(c.court_id)} />
-          ))}
-          <Tab label="All" selected={activeCourt === "all"} onPress={() => setActiveCourt("all")} />
-        </ScrollView>
-      ) : null}
+        <SelectButton label="Tareekh" value={`${formatDayHeader(date)}${date === pktDateString() ? " (Aaj)" : ""}`} onPress={() => setSheet("date")} />
+        <SelectButton label="Courts" value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} disabled={allCourts.length === 0} />
 
-      {venuesLoading || todayQuery.isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#0E6274" />
-        </View>
-      ) : todayQuery.isError && !data ? (
-        <ErrorState message={friendlyErrorMessage(todayQuery.error)} onRetry={() => todayQuery.refetch()} tone="owner" />
-      ) : rows.length === 0 ? (
-        <EmptyState title="Nothing scheduled" subtitle="No courts set up yet, or nothing on the books for today." />
-      ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-3.5 pb-4 gap-1.5">
-          {rows.map((slot) => {
-            const style = STATUS_STYLE[slot.status] ?? STATUS_STYLE.available;
-            const isOpen = slot.status === "available";
-            const isDashed = isOpen;
-            return (
-              <View
-                key={`${slot.courtName}-${slot.starts_at}`}
-                className="flex-row items-center gap-3 px-3.5 rounded-[9px]"
-                style={{
-                  minHeight: 60,
-                  backgroundColor: style.bg,
-                  borderWidth: 1,
-                  borderColor: isDashed ? "#C6D2D7" : "#DCE3E6",
-                  borderStyle: isDashed ? "dashed" : "solid",
-                  borderLeftWidth: isDashed || slot.status === "blocked" ? 1 : 3,
-                  borderLeftColor: style.border,
-                }}
-              >
-                <Text
-                  className="font-mono-semibold text-[13.5px]"
-                  style={{ minWidth: 66, color: slot.status === "payment_submitted" ? "#9C5C0A" : slot.status === "available" || slot.status === "blocked" ? "#8399A1" : "#101C21" }}
+        {venuesLoading || query.isLoading ? (
+          <View className="py-16 items-center">
+            <ActivityIndicator color={OV.accent} />
+          </View>
+        ) : forbidden ? (
+          <View className="rounded-2xl p-4" style={{ backgroundColor: OV.amberBg, borderWidth: 1, borderColor: OV.amberBorder }}>
+            <Text className="font-plex-semibold text-[14px]" style={{ color: OV.amberDark }}>
+              Aapke paas Overview dekhne ki ijazat nahi hai.
+            </Text>
+            <Text className="font-plex-medium text-[12.5px] mt-1" style={{ color: OV.amberDark }}>
+              Owner se "View dashboard, bookings and ledger" ki ijazat maangein.
+            </Text>
+          </View>
+        ) : query.isError && !data ? (
+          <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
+        ) : data ? (
+          <>
+            {/* Total slots */}
+            <View className="rounded-2xl bg-owner-surface p-4 gap-3" style={{ borderWidth: 1.5, borderColor: OV.border }}>
+              <View className="flex-row items-center justify-between">
+                <Text className="font-plex-semibold text-owner-ink-muted text-[13.5px]">Total slots</Text>
+                <Pressable
+                  onPress={() => setSheet("slots")}
+                  accessibilityRole="button"
+                  className="px-3 rounded-full justify-center"
+                  style={{ minHeight: 40, backgroundColor: "#EDF1F2" }}
                 >
-                  {formatTime(slot.starts_at)}
-                </Text>
-                <View className="flex-1 gap-0.5">
-                  <Text
-                    className="font-plex-semibold text-sm"
-                    style={{ color: slot.status === "available" || slot.status === "blocked" ? "#8399A1" : "#101C21" }}
-                  >
-                    {slot.booking_id || !courtId ? `${courtLabel(slot.courtName, slot.courtSport)} · ${slot.player_name ?? statusLabel(slot.status)}` : slot.player_name ?? statusLabel(slot.status)}
-                  </Text>
-                  <Text
-                    className="font-plex-medium text-xs"
-                    style={{ color: slot.status === "payment_submitted" ? "#9C5C0A" : "#8399A1" }}
-                  >
-                    {statusSubtitle(slot.status)}
-                  </Text>
-                  {slot.booking_id ? (
-                    <>
-                      <Text className="font-plex-semibold text-xs" style={{ color: "#101C21" }} testID="today-row-range">
-                        {formatTimeRange(slot.starts_at, slot.ends_at)}
-                      </Text>
-                      <Text className="font-plex-medium text-xs text-owner-ink-faint" testID="today-row-origin">
-                        {[
-                          bookingSourceLabel(slot.booking_source) ? `Booked via ${bookingSourceLabel(slot.booking_source)}` : null,
-                          slot.booked_at ? `on ${formatWhen(slot.booked_at)}` : null,
-                          slot.account_name && slot.account_name !== slot.player_name ? `Account: ${slot.account_name}` : null,
-                        ].filter(Boolean).join(" · ")}
-                      </Text>
-                      {slot.price != null ? (
-                        <Text className="font-mono-medium text-[11px] text-owner-ink-muted" testID="today-row-money">
-                          Total PKR {formatPKR(slot.price)} · Paid PKR {formatPKR(slot.amount_paid ?? 0)} · Balance PKR {formatPKR(slot.balance_due ?? 0)}
-                        </Text>
-                      ) : null}
-                    </>
-                  ) : null}
-                </View>
-                {slot.status === "payment_submitted" ? (
-                  <Pressable
-                    onPress={() => router.push("/(owner)/approvals")}
-                    className="px-3.5 rounded-lg items-center justify-center"
-                    style={{ minHeight: 44, backgroundColor: "#9C5C0A" }}
-                  >
-                    <Text className="font-plex-semibold text-white text-[12.5px]">Review</Text>
-                  </Pressable>
-                ) : slot.status === "available" ? (
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(owner)/walkin",
-                        params: { courtId: slot.courtId, startsAt: slot.starts_at },
-                      })
-                    }
-                    className="px-3 rounded-lg border border-owner-border items-center justify-center"
-                    style={{ minHeight: 44 }}
-                  >
-                    <Text className="font-plex-semibold text-owner-accent text-[12.5px]">Add booking</Text>
-                  </Pressable>
-                ) : slot.status === "booked" && slot.balance_due != null && slot.balance_due > 0 && slot.booking_id ? (
-                  <Pressable
-                    onPress={() =>
-                      setRecording({
-                        bookingId: slot.booking_id!,
-                        playerLabel: slot.player_name ?? "Player",
-                        balanceDue: slot.balance_due!,
-                      })
-                    }
-                    className="items-end"
-                  >
-                    <Text className="font-mono-semibold text-[13.5px] text-owner-ink">PKR {formatPKR(slot.amount_paid ?? 0)}</Text>
-                    <View className="px-2.5 h-7 rounded-full items-center justify-center flex-row" style={{ backgroundColor: "#FBF0DD" }}>
-                      <Text className="font-plex-bold text-[10.5px]" style={{ color: "#9C5C0A" }}>
-                        RECORD PKR {formatPKR(slot.balance_due)}
-                      </Text>
-                    </View>
-                  </Pressable>
-                ) : slot.amount_paid != null ? (
-                  <View className="items-end gap-1">
-                    <Text className="font-mono-semibold text-[13.5px] text-owner-ink">PKR {formatPKR(slot.amount_paid)}</Text>
-                    {slot.status === "booked" && slot.balance_due != null ? (
-                      <Text className="font-plex-semibold text-[11px]" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
-                        {slot.balance_due > 0 ? `PKR ${formatPKR(slot.balance_due)} due at venue` : "Fully paid"}
-                      </Text>
-                    ) : null}
-                    {slot.status === "booked" && slot.booking_id ? (
-                      <View className="flex-row gap-1.5 mt-0.5">
-                        <Pressable
-                          disabled={busyBookingId === slot.booking_id}
-                          onPress={() => handleCheckIn(slot.booking_id as string)}
-                          className="px-2.5 py-1 rounded-md"
-                          style={{ backgroundColor: "#0E6274", opacity: busyBookingId === slot.booking_id ? 0.5 : 1 }}
-                        >
-                          <Text className="font-plex-semibold text-white text-[10.5px]">Check in</Text>
-                        </Pressable>
-                        <Pressable
-                          disabled={busyBookingId === slot.booking_id}
-                          onPress={() => handleNoShow(slot.booking_id as string)}
-                          className="px-2.5 py-1 rounded-md border"
-                          style={{ borderColor: "#8C3823", opacity: busyBookingId === slot.booking_id ? 0.5 : 1 }}
-                        >
-                          <Text className="font-plex-semibold text-[10.5px]" style={{ color: "#8C3823" }}>No-show</Text>
-                        </Pressable>
-                      </View>
-                    ) : slot.status === "completed" && slot.checked_in_at ? (
-                      <Text className="font-plex-semibold text-[11px]" style={{ color: "#1F7A52" }}>
-                        Checked in {formatTime(slot.checked_in_at)}
-                        {slot.checked_in_by ? ` · ${slot.checked_in_by}` : ""}
-                      </Text>
-                    ) : slot.status === "no_show" ? (
-                      <Text className="font-plex-semibold text-[11px]" style={{ color: "#8C3823" }}>No-show</Text>
+                  <Text className="font-plex-semibold text-owner-ink text-[12.5px]">Sab slots dekho</Text>
+                </Pressable>
+              </View>
+              <Text className="font-mono-semibold text-owner-ink text-[40px] leading-[44px]">{data.slots.total}</Text>
+              <View className="flex-row rounded-full overflow-hidden" style={{ height: 10, backgroundColor: OV.bar.free }} accessibilityLabel="Slots split">
+                {(["booked", "pending", "blocked"] as const).map((k) =>
+                  data.slots[k] > 0 && data.slots.total > 0 ? <View key={k} style={{ flex: data.slots[k], backgroundColor: OV.bar[k] }} /> : null,
+                )}
+                {data.slots.free > 0 && data.slots.total > 0 ? <View style={{ flex: data.slots.free }} /> : null}
+              </View>
+              <View className="flex-row flex-wrap gap-x-3 gap-y-1">
+                {[
+                  ["Booked", data.slots.booked, OV.bar.booked],
+                  ["Pending", data.slots.pending, OV.bar.pending],
+                  ["Blocked", data.slots.blocked, OV.bar.blocked],
+                  ["Khali", data.slots.free, "#9FC9C2"],
+                ].map(([label, n, color]) => (
+                  <View key={label as string} className="flex-row items-center gap-1.5">
+                    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color as string }} />
+                    <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{`${label} ${n}`}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View className="flex-row gap-3">
+              <KpiCard label="Booked slots" onPress={() => goHistory("booked")}>
+                <Big>{data.slots.booked}</Big>
+                {topCourt && topCourt.booked > 0 ? (
+                  <View className="flex-row flex-wrap gap-1.5">
+                    <SmallChip label={`${courtShort(topCourt.court_name)} · ${topCourt.booked}`} bg="#EDF1F2" fg={OV.ink} />
+                    {data.slots.by_court.length > 1 ? (
+                      <SmallChip label={`+${data.slots.by_court.length - 1} aur`} bg="#EDF1F2" fg={OV.ink} onPress={() => setSheet("booked-courts")} />
                     ) : null}
                   </View>
                 ) : null}
+              </KpiCard>
+              <KpiCard label="Khali slots" onPress={() => setSheet("slots")}>
+                <Big>{data.slots.free}</Big>
+                <Sub>{`aane wale ${data.slots.free_upcoming} · guzre ${data.slots.free_past}`}</Sub>
+              </KpiCard>
+            </View>
+
+            <View className="flex-row gap-3">
+              <KpiCard label="Bookings" onPress={() => goHistory("booked")}>
+                <Big>{data.bookings.count}</Big>
+                <Sub>{`${data.slots.booked} slots mein`}</Sub>
+              </KpiCard>
+              <KpiCard label="Cancelled" onPress={() => goHistory("cancelled")}>
+                <Big>{data.bookings.cancelled}</Big>
+              </KpiCard>
+            </View>
+
+            <View className="flex-row gap-3">
+              <KpiCard label="Refunds" onPress={() => goHistory("refund")}>
+                <Big>{data.bookings.refunds.count}</Big>
+                <Sub>{`PKR ${formatPKR(data.bookings.refunds.amount)}`}</Sub>
+              </KpiCard>
+              <View className="flex-1 rounded-2xl overflow-hidden" style={{ backgroundColor: "#FFF1E8", borderWidth: 1.5, borderColor: "#F6C9AE" }}>
+                <Pressable
+                  onPress={() => router.push({ pathname: "/(owner)/approvals", params: { date, ...(courtIds.length ? { courts: courtIds.join(",") } : {}) } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Pending ${data.bookings.pending.count}`}
+                  className="p-4 gap-1.5"
+                >
+                  <Text className="font-plex-semibold text-[13.5px]" style={{ color: OV.amberDark }}>
+                    Pending
+                  </Text>
+                  <Text className="font-mono-semibold text-owner-ink text-[30px] leading-[34px]">{data.bookings.pending.count}</Text>
+                  <Text className="font-plex-medium text-[12.5px]" style={{ color: OV.amberDark }}>
+                    {`approval ${data.bookings.pending.awaiting_approval}`}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => goHistory("held")}
+                  accessibilityRole="button"
+                  className="px-4 justify-center"
+                  style={{ minHeight: 44 }}
+                >
+                  <Text className="font-plex-semibold text-[12.5px] underline" style={{ color: OV.amberDark }}>
+                    {`Payment ke intezar (${data.bookings.pending.awaiting_payment})`}
+                  </Text>
+                </Pressable>
               </View>
-            );
-          })}
-        </ScrollView>
-      )}
+            </View>
 
-      <View className="px-4.5 pt-3.5 pb-6 bg-owner-surface border-t border-owner-border flex-row gap-2.5">
-        <Pressable
-          onPress={() => router.push("/(owner)/walkin")}
-          className="flex-1 h-12 rounded-[10px] bg-owner-accent flex-row items-center justify-center gap-2"
-        >
-          <PlusIcon />
-          <Text className="font-plex-semibold text-white text-[14.5px]">Walk-in</Text>
-        </Pressable>
-        <IconButton onPress={() => Alert.alert("Coming soon", "Browsing other days from Today isn't built yet — use the ledger for a date range.")}>
-          <CalendarIcon />
-        </IconButton>
-        <IconButton onPress={() => router.push("/(owner)/checkin")}>
-          <QrIcon />
-        </IconButton>
-        <IconButton onPress={() => router.push("/(owner)/ledger")}>
-          <BarsIcon />
-        </IconButton>
-        <IconButton onPress={() => router.push("/(owner)/refunds")}>
-          <RefreshIcon size={16} color="#5B7079" />
-        </IconButton>
-        <IconButton onPress={() => router.push("/(owner)/growth")}>
-          <TrendingUpIcon size={18} color="#5B7079" />
-        </IconButton>
-        <IconButton onPress={() => router.push("/(owner)/reviews")}>
-          <StarBadgeIcon size={18} color="#5B7079" />
-        </IconButton>
-        {isOwner ? (
-          <IconButton onPress={() => router.push("/(owner)/staff")}>
-            <PersonIcon size={18} color="#5B7079" />
-          </IconButton>
-        ) : null}
-        {isOwner ? (
-          <IconButton onPress={() => router.push("/(owner)/premium")}>
-            <StarIcon size={16} color="#5B7079" />
-          </IconButton>
-        ) : null}
-        <IconButton onPress={() => router.push("/(owner)/venue-settings")}>
-          <SettingsIcon />
-        </IconButton>
-      </View>
+            <View className="flex-row gap-3">
+              <KpiCard label="Collected" onPress={() => goHistory("booked")}>
+                <Money>{`PKR ${formatPKR(data.money.collected)}`}</Money>
+              </KpiCard>
+              <KpiCard label="Due" onPress={() => goHistory("booked")}>
+                <Money>{`PKR ${formatPKR(data.money.due)}`}</Money>
+                {data.money.due_bookings > 0 ? <Sub>{`${data.money.due_bookings} bookings`}</Sub> : null}
+              </KpiCard>
+            </View>
 
-      {recording ? (
-        <RecordPaymentSheet
-          bookingId={recording.bookingId}
-          playerLabel={recording.playerLabel}
-          balanceDue={recording.balanceDue}
-          onClose={() => setRecording(null)}
-          onRecorded={() => {
-            setRecording(null);
-            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+            <Text className="font-plex-bold text-owner-ink text-[22px] mt-2" accessibilityRole="header">
+              {`${dateTitle(date)} ki bookings`}
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              <Pill label={`Sab ${counts.all}`} selected={filter === "all"} onPress={() => setFilter("all")} />
+              <Pill label={`Booked ${counts.booked}`} tone="green" selected={filter === "booked"} onPress={() => setFilter("booked")} />
+              <Pill label={`Cancelled ${counts.cancelled}`} tone="red" selected={filter === "cancelled"} onPress={() => setFilter("cancelled")} />
+              <Pill label={`Refund ${counts.refund}`} tone="amber" selected={filter === "refund"} onPress={() => setFilter("refund")} />
+            </View>
+
+            <View className="gap-3" onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
+              {shown.length === 0 ? (
+                <View className="py-10 items-center">
+                  <Text className="font-plex-medium text-owner-ink-faint text-[14px]">Is din koi booking nahi.</Text>
+                </View>
+              ) : (
+                shown.map((row) => (
+                  <BookingCard
+                    key={`${row.booking_id}:${row.kind}`}
+                    row={row}
+                    highlighted={highlight === row.booking_id && row.kind === "booked"}
+                    onLayoutY={(y) => cardY.current.set(`${row.booking_id}:${row.kind}`, y)}
+                    onOpen={() => setDetailId(row.booking_id)}
+                    onOpenOriginal={() => openOriginal(row)}
+                  />
+                ))
+              )}
+            </View>
+            <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Kisi bhi card par dabayein: poori detail neeche se khulti hai.</Text>
+          </>
+        ) : null}
+      </ScrollView>
+
+      <OwnerTabBar active="overview" />
+
+      {sheet === "date" ? (
+        <DateChooserSheet
+          value={date}
+          onClose={() => setSheet(null)}
+          onPick={(d) => {
+            setDate(d);
+            setSheet(null);
           }}
         />
       ) : null}
-    </SafeAreaView>
+      {sheet === "courts" ? (
+        <MultiSelectSheet
+          title="Courts chunein"
+          allLabel={`Sab courts (${allCourts.length})`}
+          options={allCourts.map((c) => ({ id: c.id, label: c.name, sub: c.sport }))}
+          value={courtIds}
+          onClose={() => setSheet(null)}
+          onApply={(ids) => {
+            setCourtIds(ids);
+            setSheet(null);
+          }}
+        />
+      ) : null}
+      {sheet === "slots" ? <SlotsSheet date={date} courts={slotCourts} onClose={() => setSheet(null)} /> : null}
+      {sheet === "booked-courts" && data ? (
+        <BottomSheet title="Booked slots, court ke hisaab se" subtitle={formatDayHeader(date)} onClose={() => setSheet(null)}>
+          {[...data.slots.by_court]
+            .sort((a, b) => b.booked - a.booked)
+            .map((c) => (
+              <Pressable
+                key={c.court_id}
+                onPress={() => {
+                  setSheet(null);
+                  goHistory("booked", [c.court_id]);
+                }}
+                accessibilityRole="button"
+                className="flex-row items-center justify-between border-b border-owner-border-light"
+                style={{ minHeight: 48 }}
+              >
+                <Text className="font-plex-semibold text-owner-ink text-[15px]">{c.court_name}</Text>
+                <Text className="font-mono-semibold text-owner-ink text-[15px]">{`${c.booked} / ${c.total}`}</Text>
+              </Pressable>
+            ))}
+        </BottomSheet>
+      ) : null}
+      {detailId ? (
+        <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} />
+      ) : null}
+    </View>
   );
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case "held":
-      return "Held";
-    case "available":
-      return "Open";
-    case "blocked":
-      return "Closed";
-    case "completed":
-      return "Checked in";
-    case "no_show":
-      return "No-show";
-    default:
-      return "Booking";
-  }
+function KpiCard({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      className="flex-1 rounded-2xl bg-owner-surface p-4 gap-1.5"
+      style={{ borderWidth: 1.5, borderColor: OV.border }}
+    >
+      <Text className="font-plex-semibold text-owner-ink-muted text-[13.5px]">{label}</Text>
+      {children}
+    </Pressable>
+  );
 }
 
-function statusSubtitle(status: string): string {
-  switch (status) {
-    case "booked":
-      return "Confirmed booking";
-    case "payment_submitted":
-      return "Screenshot waiting for review";
-    case "held":
-      return "Player is paying now";
-    case "available":
-      return "No booking yet";
-    case "blocked":
-      return "Blocked by venue";
-    case "completed":
-      return "Player checked in";
-    case "no_show":
-      return "Player never checked in";
-    default:
-      return "";
-  }
+function Big({ children }: { children: React.ReactNode }) {
+  return <Text className="font-mono-semibold text-owner-ink text-[30px] leading-[34px]">{children}</Text>;
+}
+
+function Money({ children }: { children: React.ReactNode }) {
+  return (
+    <Text className="font-mono-semibold text-owner-ink text-[20px]" numberOfLines={1} adjustsFontSizeToFit>
+      {children}
+    </Text>
+  );
+}
+
+function Sub({ children }: { children: React.ReactNode }) {
+  return <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{children}</Text>;
 }

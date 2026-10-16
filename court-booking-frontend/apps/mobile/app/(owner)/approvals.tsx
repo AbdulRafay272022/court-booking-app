@@ -2,14 +2,15 @@ import { useState } from "react";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { approvalSummary } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTimeRange } from "@/lib/format";
+import { formatDayHeader, formatPKR, formatTimeRange } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
+import { OwnerTabBar } from "@/components/owner-tab-bar";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon, CheckIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
@@ -19,6 +20,9 @@ const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks 
 
 export default function ApprovalsScreen() {
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
+  const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
+  const filterDate = routeParams.date || undefined;
+  const filterCourts = routeParams.courts ? routeParams.courts.split(",").filter(Boolean) : [];
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -26,8 +30,8 @@ export default function ApprovalsScreen() {
   const [rejectNote, setRejectNote] = useState("");
 
   const query = useQuery({
-    queryKey: ["owner-pending-approvals", activeVenueId],
-    queryFn: () => api.owners.pendingApprovals(activeVenueId),
+    queryKey: ["owner-pending-approvals", activeVenueId, filterDate, filterCourts.join(",")],
+    queryFn: () => api.owners.pendingApprovals(activeVenueId, { date: filterDate, courtIds: filterCourts }),
     // Was unconditional before -- fired once with activeVenueId still undefined (an unscoped
     // fetch across every venue the owner has) and again once it resolved. Gating on it, like
     // every other owner screen, avoids that flash and keeps this query's own isLoading
@@ -96,7 +100,7 @@ export default function ApprovalsScreen() {
     verdict === "match" ? "match" : verdict === "mismatch" ? "mismatch" : "unreadable";
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
+    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
       <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
           <ChevronLeftIcon />
@@ -108,6 +112,15 @@ export default function ApprovalsScreen() {
           </Text>
         </View>
       </View>
+      {filterDate ? (
+        <View className="px-4.5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
+          <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">{`Filter: ${formatDayHeader(filterDate)}${filterCourts.length ? ` · ${filterCourts.length} court(s)` : ""}`}</Text>
+          <Pressable onPress={() => router.setParams({ date: undefined, courts: undefined })} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Sab dikhao</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
 
       {venuesLoading || query.isLoading ? (
         <View className="flex-1 items-center justify-center">
@@ -291,6 +304,7 @@ export default function ApprovalsScreen() {
           )}
         </View>
       ) : null}
+      <OwnerTabBar active="approvals" />
     </SafeAreaView>
   );
 }
