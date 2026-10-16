@@ -199,16 +199,21 @@ export default function OwnerOverviewScreen() {
             </View>
 
             <View className="flex-row gap-3">
-              <KpiCard label="Booked slots" onPress={() => goHistory("booked")}>
+              <KpiCard
+                label="Booked slots"
+                onPress={() => goHistory("booked")}
+                footer={
+                  topCourt && topCourt.booked > 0 ? (
+                    <View className="flex-row flex-wrap gap-1.5">
+                      <SmallChip label={`${courtShort(topCourt.court_name)} · ${topCourt.booked}`} bg="#EDF1F2" fg={OV.ink} />
+                      {data.slots.by_court.length > 1 ? (
+                        <SmallChip label={`+${data.slots.by_court.length - 1} aur`} bg="#EDF1F2" fg={OV.ink} onPress={() => setSheet("booked-courts")} />
+                      ) : null}
+                    </View>
+                  ) : null
+                }
+              >
                 <Big>{data.slots.booked}</Big>
-                {topCourt && topCourt.booked > 0 ? (
-                  <View className="flex-row flex-wrap gap-1.5">
-                    <SmallChip label={`${courtShort(topCourt.court_name)} · ${topCourt.booked}`} bg="#EDF1F2" fg={OV.ink} />
-                    {data.slots.by_court.length > 1 ? (
-                      <SmallChip label={`+${data.slots.by_court.length - 1} aur`} bg="#EDF1F2" fg={OV.ink} onPress={() => setSheet("booked-courts")} />
-                    ) : null}
-                  </View>
-                ) : null}
               </KpiCard>
               <KpiCard label="Khali slots" onPress={() => setSheet("slots")}>
                 <Big>{data.slots.free}</Big>
@@ -356,17 +361,16 @@ export default function OwnerOverviewScreen() {
   );
 }
 
-function KpiCard({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
+function KpiCard({ label, onPress, children, footer }: { label: string; onPress: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
+  // The footer sits OUTSIDE the card's Pressable: a button inside a button is invalid on web.
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      className="flex-1 rounded-2xl bg-owner-surface p-4 gap-1.5"
-      style={{ borderWidth: 1.5, borderColor: OV.border }}
-    >
-      <Text className="font-plex-semibold text-owner-ink-muted text-[13.5px]">{label}</Text>
-      {children}
-    </Pressable>
+    <View className="flex-1 rounded-2xl bg-owner-surface" style={{ borderWidth: 1.5, borderColor: OV.border }}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} className="p-4 gap-1.5">
+        <Text className="font-plex-semibold text-owner-ink-muted text-[13.5px]">{label}</Text>
+        {children}
+      </Pressable>
+      {footer ? <View className="px-4 pb-4 -mt-1">{footer}</View> : null}
+    </View>
   );
 }
 

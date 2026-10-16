@@ -110,6 +110,7 @@ export function MultiSelectSheet({
   options,
   value,
   allLabel,
+  exclusiveFromAll,
   onApply,
   onClose,
 }: {
@@ -117,6 +118,8 @@ export function MultiSelectSheet({
   options: PickOption[];
   value: string[];
   allLabel: string;
+  /** Tapping an option while "all" is on selects just that option (statuses); otherwise it unticks that one (courts). */
+  exclusiveFromAll?: boolean;
   onApply: (ids: string[]) => void;
   onClose: () => void;
 }) {
@@ -124,6 +127,10 @@ export function MultiSelectSheet({
   const allSelected = picked.size === 0 || picked.size === options.length;
 
   function toggle(id: string) {
+    if (allSelected && exclusiveFromAll) {
+      setPicked(new Set([id]));
+      return;
+    }
     const next = new Set(allSelected ? options.map((o) => o.id) : picked);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -144,7 +151,7 @@ export function MultiSelectSheet({
     >
       <Checkbox checked={allSelected} label={allLabel} onPress={() => setPicked(new Set())} />
       {options.map((o) => (
-        <Checkbox key={o.id} checked={allSelected || picked.has(o.id)} label={o.label} sub={o.sub} onPress={() => toggle(o.id)} />
+        <Checkbox key={o.id} checked={(allSelected && !exclusiveFromAll) || picked.has(o.id)} label={o.label} sub={o.sub} onPress={() => toggle(o.id)} />
       ))}
     </BottomSheet>
   );

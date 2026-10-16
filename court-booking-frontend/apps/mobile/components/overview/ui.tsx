@@ -53,7 +53,7 @@ export function BottomSheet({
             <ScrollView
               keyboardShouldPersistTaps="handled"
               contentContainerClassName="px-5 pb-6 gap-3"
-              style={{ flexGrow: 0 }}
+              style={{ flexGrow: 0, flexShrink: 1 }}
             >
               {children}
             </ScrollView>

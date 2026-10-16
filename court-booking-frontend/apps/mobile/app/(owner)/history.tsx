@@ -244,6 +244,7 @@ export default function HistoryScreen() {
         <MultiSelectSheet
           title="Status chunein"
           allLabel="Sab status"
+          exclusiveFromAll
           options={STATUS_FILTERS.map((f) => ({ id: f.key, label: f.label }))}
           value={statuses}
           onClose={() => setSheet(null)}
