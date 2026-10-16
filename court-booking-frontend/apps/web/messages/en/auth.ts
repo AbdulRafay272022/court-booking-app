@@ -106,7 +106,7 @@ export const enAuth = {
   "auth.forgot.brand.text": "Enter your number and we'll send a code on WhatsApp. Set a new password and get back on court.",
   "auth.forgot.title.set": "Set your password",
   "auth.forgot.title.reset": "Reset your password",
-  "auth.forgot.subtitle.set": "Khelo accounts now use a password. Confirm your number on WhatsApp, then choose one.",
+  "auth.forgot.subtitle.set": "No password is set for this number yet. Set a new password so you can log in.",
   "auth.forgot.subtitle.reset": "Enter your mobile number and we'll send a code on WhatsApp.",
   "auth.forgot.locked": "Too many code requests. Please try again in {seconds}s.",
   "auth.forgot.busy": "Sending code\u2026",

@@ -20,7 +20,7 @@ export const NAV_LINKS: readonly { href: string; labelKey: MessageKey }[] = [
   { href: "/contact", labelKey: "header.nav.contact" },
 ];
 
-const PILL = "khelo-btn inline-flex min-h-11 items-center rounded-full px-5 py-3 text-[14px] font-bold";
+const PILL = "khelo-btn inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-4 py-3 text-[14px] font-bold min-[1200px]:px-5";
 const OUTLINE_PILL = `${PILL} border-[1.5px] border-white/35 text-white`;
 
 function useIsCurrent() {
@@ -49,7 +49,7 @@ function HamburgerIcon({ open }: { open: boolean }) {
  * The Khelo site header (dark), identical on every public page and the app screens: logo, the five section links, then
  * the account actions. `wide` is the 1240px / 16px-padding variant the design uses on Login, Signup and Search; the
  * marketing pages use 1200px / 20px. The current page's link is orange. Signed-in visitors see their own entry
- * (dashboard + account + log out) instead of Log in / Sign up. Below 1120px the section links and the two secondary buttons move into a
+ * (dashboard + account + log out) instead of Log in / Sign up. Below 1024px the section links and the two secondary buttons move into a
  * menu panel opened by a 44px hamburger. (The design's only breakpoint is 760px, but the full header needs about 1100px, so between
  * 761 and 1100 it wrapped onto two rows; collapsing earlier keeps one clean row at every width.)
  */
@@ -109,12 +109,12 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
 
   return (
     <header className="khelo relative border-b border-white/10 bg-khelo-ink font-[family-name:var(--font-khelo-body-x)] text-white">
-      <div className={`mx-auto flex w-full flex-wrap items-center justify-between gap-4 px-6 max-[1120px]:flex-nowrap ${wide ? "max-w-[1288px] py-4" : "max-w-[1248px] py-5"}`}>
+      <div className={`mx-auto flex w-full items-center justify-between gap-3 px-6 min-[1200px]:gap-4 ${wide ? "max-w-[1288px] py-4" : "max-w-[1248px] py-5"}`}>
         <Link href="/" aria-label={t("header.homeLabel")}>
           <Logo size={34} onDark />
         </Link>
 
-        <nav aria-label={t("header.nav.main")} className="flex flex-wrap gap-5 text-[15px] min-[1240px]:gap-7 font-semibold max-[1120px]:hidden">
+        <nav aria-label={t("header.nav.main")} data-testid="desktop-nav" className="flex items-center gap-4 whitespace-nowrap text-[14px] font-semibold min-[1200px]:gap-6 min-[1200px]:text-[15px] max-[1024px]:hidden">
           {NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} aria-current={isCurrent(l.href) ? "page" : undefined} className={`khelo-navlink ${linkTone(l.href)}`}>
               {t(l.labelKey)}
@@ -122,13 +122,13 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
           ))}
         </nav>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <LanguageSwitch tone="dark" className="max-[1120px]:hidden" />
+        <div className="flex items-center gap-2 whitespace-nowrap min-[1200px]:gap-2.5">
+          <LanguageSwitch tone="dark" className="max-[1024px]:hidden" />
           {status === "hydrating" ? (
             <span className="inline-block h-11 w-24" aria-hidden="true" />
           ) : signedIn ? (
             <>
-              <Link href={dashboardHref} className={`khelo-navlink inline-flex min-h-11 items-center px-3.5 text-[14px] font-bold max-[1120px]:hidden ${linkTone(dashboardHref)}`}>
+              <Link href={dashboardHref} className={`khelo-navlink inline-flex min-h-11 items-center whitespace-nowrap px-2.5 text-[14px] font-bold min-[1200px]:px-3.5 max-[1024px]:hidden ${linkTone(dashboardHref)}`}>
                 {dashboardLabel}
               </Link>
               <ProfileMenu
@@ -136,18 +136,18 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
                 displayName={displayName}
                 initial={initial}
                 onLogout={() => logout(router)}
-                className="max-[1120px]:hidden"
+                className="max-[1024px]:hidden"
               />
             </>
           ) : (
             <>
-              <Link href="/login" aria-current={isCurrent("/login") ? "page" : undefined} className={`khelo-navlink inline-flex min-h-11 items-center px-3.5 text-[14px] font-bold max-[460px]:hidden ${linkTone("/login")}`}>
+              <Link href="/login" aria-current={isCurrent("/login") ? "page" : undefined} className={`khelo-navlink inline-flex min-h-11 items-center whitespace-nowrap px-2.5 text-[14px] font-bold min-[1200px]:px-3.5 max-[460px]:hidden ${linkTone("/login")}`}>
                 {t("header.login")}
               </Link>
               <Link
                 href="/signup"
                 aria-current={isCurrent("/signup") ? "page" : undefined}
-                className={`${PILL} border-[1.5px] max-[1120px]:hidden ${isCurrent("/signup") ? "border-khelo-orange text-khelo-orange" : "border-white/35 text-white"}`}
+                className={`${PILL} border-[1.5px] max-[1024px]:hidden ${isCurrent("/signup") ? "border-khelo-orange text-khelo-orange" : "border-white/35 text-white"}`}
               >
                 {t("header.signup")}
               </Link>
@@ -159,11 +159,12 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
           <button
             ref={toggleRef}
             type="button"
+            data-testid="menu-toggle"
             aria-label={open ? t("header.menu.close") : t("header.menu.open")}
             aria-expanded={open}
             aria-controls={panelId}
             onClick={() => setOpenFor(open ? null : pathname)}
-            className="hidden h-11 w-11 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-white/35 text-white max-[1120px]:inline-flex"
+            className="hidden h-11 w-11 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-white/35 text-white max-[1024px]:inline-flex"
           >
             <HamburgerIcon open={open} />
           </button>

@@ -33,7 +33,7 @@ export function LanguageSwitch({ tone = "dark", className = "" }: { tone?: "dark
           aria-pressed={lang === code}
           data-testid={`lang-${code}`}
           onClick={() => choose(code)}
-          className={`inline-flex min-h-10 min-w-11 cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] font-bold ${lang === code ? on : off}`}
+          className={`inline-flex min-h-10 min-w-10 cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-bold min-[1200px]:min-w-11 min-[1200px]:px-3 ${lang === code ? on : off}`}
         >
           {code === "en" ? t("common.lang.en") : t("common.lang.ru")}
         </button>

@@ -90,7 +90,7 @@ export function LoginForm() {
         }
       } else if (err instanceof ApiError && err.code === "PASSWORD_NOT_SET") {
         // Account from before passwords existed: set one through the reset flow.
-        router.push(`/forgot-password?phone=${encodeURIComponent(e164)}&mode=set`);
+        router.push(`/forgot-password?phone=${encodeURIComponent(e164)}&mode=set${next ? `&next=${encodeURIComponent(next)}` : ""}`);
         return;
       } else {
         setError(friendlyErrorMessage(err));

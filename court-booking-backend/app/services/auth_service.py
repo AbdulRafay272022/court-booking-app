@@ -614,20 +614,23 @@ class AuthService:
                 details={"retry_after_seconds": await self._login_account_retry_after(phone)},
             )
 
-        # Phone-verification gate (spec): a stale/unverified EXISTING account routes to OTP,
+        # No password yet (a pre-Section-26 account, or a WhatsApp guest row that never signed up): there is nothing to check,
+        # and "verify your phone" would be a dead end, because proving the phone does not give the account a password. The client
+        # sends the person to the set-password flow (forgot-password mode=set), which proves the phone AND sets the password with
+        # ONE code, and a session is only issued by a later normal login. This check must come BEFORE the phone gate below.
+        if user.password_hash is None:
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                ErrorCode.PASSWORD_NOT_SET,
+                "No password is set for this number yet. Set a new password to log in.",
+            )
+        # Phone-verification gate (spec): a stale/unverified EXISTING account (one that HAS a password) routes to OTP,
         # not "wrong password". Only ever reached for a number that has a user row (QA #12).
         if not self._phone_trusted(user):
             raise AppError(
                 status.HTTP_403_FORBIDDEN,
                 ErrorCode.PHONE_REVERIFICATION_REQUIRED,
                 "Please verify your phone number to continue.",
-            )
-        if user.password_hash is None:
-            # Pre-Section-26 account: there is nothing to check yet.
-            raise AppError(
-                status.HTTP_403_FORBIDDEN,
-                ErrorCode.PASSWORD_NOT_SET,
-                "Set a password for your account to continue.",
             )
 
         if not await verify_password(password, user.password_hash):

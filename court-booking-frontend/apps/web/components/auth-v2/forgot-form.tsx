@@ -9,6 +9,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { rememberOtpExpiry } from "@/lib/pending-auth";
+import { safeNext } from "@/lib/use-auth-helpers";
 import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
 import { AuthFrame } from "./frame";
 import { CountryPrefix, FormNotice, SmartButton, TextField } from "./fields";
@@ -21,6 +22,7 @@ export function ForgotForm() {
   const router = useRouter();
   const search = useSearchParams();
   const setMode = search.get("mode") === "set";
+  const next = safeNext(search.get("next"));
 
   const [phone, setPhone] = useState(search.get("phone")?.replace(/^\+92/, "") ?? "");
   const [touched, setTouched] = useState(false);
@@ -41,7 +43,7 @@ export function ForgotForm() {
       const e164 = toE164(phone);
       const res = await api.auth.requestPasswordReset({ phone: e164 });
       rememberOtpExpiry("password_reset", e164, res.expires_in);
-      router.push(`/reset-password?phone=${encodeURIComponent(e164)}${setMode ? "&mode=set" : ""}`);
+      router.push(`/reset-password?phone=${encodeURIComponent(e164)}${setMode ? "&mode=set" : ""}${next ? `&next=${encodeURIComponent(next)}` : ""}`);
     } catch (err) {
       // NEW BUG 1: no account -> tell them to sign up; never advance to the code screen (we only
       // navigate on a successful send above).
