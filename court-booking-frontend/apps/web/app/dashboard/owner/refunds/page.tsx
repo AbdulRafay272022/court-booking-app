@@ -5,6 +5,7 @@ import { useOwnerCourtSports } from "@/lib/court-sports";
 import { courtLabel } from "@/components/court-label";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
@@ -14,6 +15,11 @@ import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import type { OwnerRefund } from "@court-booking/types";
+import { BookingDetail } from "@/components/owner/booking-detail";
+import { FilterBanner, NayaChip, RowLinks } from "@/components/owner/queue-extras";
+import { parseQueueFilter } from "@/lib/queue-filter";
+import { isNaya } from "@/lib/owner-seen";
+import { useSeenSince } from "@/lib/use-owner-seen";
 
 /** Section 32 Part 10: the owner's "Refunds to pay" screen. A refund here was always sent
  * OUTSIDE the app (JazzCash/bank) -- there is no payment gateway. This screen only records
@@ -25,10 +31,13 @@ export default function OwnerRefundsPage() {
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const filter = parseQueueFilter(useSearchParams());
+  const since = useSeenSince("refunds", activeVenueId);
 
   const query = useQuery({
-    queryKey: ["owner-refunds", activeVenueId],
-    queryFn: () => api.owners.refunds(activeVenueId),
+    queryKey: ["owner-refunds", activeVenueId, filter.date ?? null, filter.courtIds.join(",")],
+    queryFn: () => api.owners.refunds(activeVenueId, { date: filter.date, courtIds: filter.courtIds }),
     enabled: !!activeVenueId,
   });
 
@@ -44,6 +53,8 @@ export default function OwnerRefundsPage() {
         </p>
       </div>
 
+      {filter.active && !query.isLoading && !venuesLoading ? <FilterBanner kind="refunds" count={list.length} /> : null}
+
       {venuesLoading || query.isLoading ? (
         <p className="p-10 text-center text-owner-ink-faint">{t("odash.refunds.loading")}</p>
       ) : query.isError ? (
@@ -57,11 +68,15 @@ export default function OwnerRefundsPage() {
           {list.map((refund) => (
             <div
               key={refund.id}
-              className="bg-owner-surface border rounded-xl p-4 flex items-center justify-between gap-4"
+              data-testid="refund-row"
+              className="bg-owner-surface border rounded-xl p-4 flex flex-wrap items-center justify-between gap-4"
               style={{ borderColor: refund.is_overdue ? "#DDBAB1" : undefined }}
             >
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <p className="font-bold truncate">{refund.player_name ?? refund.player_phone ?? t("odash.refunds.player")}</p>
+              <div className="flex flex-col gap-1 min-w-0">
+                <p className="font-bold flex flex-wrap items-center gap-2">
+                  <span className="truncate">{refund.player_name ?? refund.player_phone ?? t("odash.refunds.player")}</span>
+                  {isNaya(refund.created_at, since) ? <NayaChip /> : null}
+                </p>
                 <p className="text-owner-ink-muted text-[13px]">
                   {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))} · {fmt.when(refund.starts_at)}
                 </p>
@@ -70,6 +85,13 @@ export default function OwnerRefundsPage() {
                     {t("odash.refunds.overdue", { when: fmt.when(refund.created_at) })}
                   </p>
                 ) : null}
+                <RowLinks
+                  bookingId={refund.booking_id}
+                  startsAt={refund.starts_at}
+                  filterDate={filter.date}
+                  who={refund.player_name ?? refund.player_phone ?? t("odash.refunds.player")}
+                  onDetails={() => setDetailId(refund.booking_id)}
+                />
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className="font-mono font-bold text-[15px]">PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))}{(refund.refunded_amount ?? 0) > 0 ? <span className="block text-[11px] font-semibold text-owner-ink-faint">{t("odash.refunds.remainingOf", { total: formatPKR(refund.refund_amount) })}</span> : null}</span>
@@ -86,6 +108,17 @@ export default function OwnerRefundsPage() {
         </div>
       )}
 
+      {detailId ? (
+        <BookingDetail
+          bookingId={detailId}
+          onClose={() => setDetailId(null)}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
+            void queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
+          }}
+        />
+      ) : null}
+
       {open ? (
         <MarkRefundedDialog
           refund={open}
@@ -94,6 +127,7 @@ export default function OwnerRefundsPage() {
             setOpenId(null);
             await queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
             await queryClient.invalidateQueries({ queryKey: ["owner-ledger"] });
+            await queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
           }}
         />
       ) : null}
