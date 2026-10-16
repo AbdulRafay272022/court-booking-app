@@ -18,9 +18,9 @@ function permLabel(t: TFunction, key: string, fallback: string): string {
   return v !== k ? v : fallback;
 }
 
-/** Permissions the backend still knows but the form no longer offers (the owner's manual booking form is gone). An existing staff member
- * who already has one keeps it: it is never shown, and never removed when the owner saves other permissions. */
-const HIDDEN_PERMISSIONS = new Set(["walkin"]);
+/** Permissions the form does not offer. Empty since the owner's Add booking page came back: the "Add walk-in bookings" (`walkin`) checkbox
+ * is shown again in the form and the list. A new staff member still starts with ONLY `view_ledger` ticked. */
+const HIDDEN_PERMISSIONS = new Set<string>();
 /** A new staff member starts with the safest single permission ticked; everything else is the owner's choice. */
 const DEFAULT_PERMISSIONS = ["view_ledger"];
 

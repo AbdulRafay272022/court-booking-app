@@ -5,6 +5,12 @@
 // timezone or on UTC, and produced 24-hour times and one-day-off dates.
 export {
   addDays,
+  addMonths,
+  daysOfMonth,
+  formatMonth,
+  mondayFirstWeekdayOf,
+  monthOf,
+  weekOf,
   formatDate,
   formatDateRelative,
   formatDateString,

@@ -7,6 +7,8 @@ export default function OwnerLayout() {
       <Stack.Screen name="today" />
       <Stack.Screen name="approvals" />
       <Stack.Screen name="walkin" />
+      <Stack.Screen name="history" />
+      <Stack.Screen name="more" />
       <Stack.Screen name="ledger" />
       <Stack.Screen name="refunds" />
       <Stack.Screen name="staff" />

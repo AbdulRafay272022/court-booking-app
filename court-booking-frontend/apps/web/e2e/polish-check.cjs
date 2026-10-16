@@ -3,7 +3,7 @@
 /**
  * Polish-pass checks (plain Node + Playwright). Needs a running web build and the API with the seeded demo owner / player:
  *   BASE_URL=http://localhost:3000 node e2e/polish-check.cjs
- * 1. Staff form (owner), 360 / 768 / 1280 x en / ru: only "view dashboard" is ticked by default, no walk-in permission is offered, the password has a
+ * 1. Staff form (owner), 360 / 768 / 1280 x en / ru: only "view dashboard" is ticked by default, the walk-in permission is offered but unticked, the password has a
  *    44px Show/Hide, a NEW number adds the member to the list at once and closes the form, a number that is ALREADY registered shows the staff-specific
  *    message under the phone field (not the login text).
  * 2. Roles: owner menu (Dashboard, Bookings, Venues, Settings, Log out) with no My bookings / Saved; player menu (Search, My bookings, Saved, Profile,
@@ -51,7 +51,7 @@ async function staffForm(browser, width, lang) {
   await page.waitForTimeout(500);
   const form = page.locator("form").first();
 
-  // defaults: exactly one ticked permission (view dashboard / ledger), no walk-in offered
+  // defaults: exactly one ticked permission (view dashboard / ledger)
   const boxes = form.locator('input[type=checkbox]');
   const total = await boxes.count();
   const ticked = await form.locator('input[type=checkbox]:checked').count();
@@ -59,7 +59,10 @@ async function staffForm(browser, width, lang) {
   const tickedLabel = (await form.locator('input[type=checkbox]:checked').first().locator("xpath=..").innerText()).toLowerCase();
   if (!/ledger|dashboard/.test(tickedLabel)) f.push(`the default tick is "${tickedLabel}"`);
   const formText = (await form.innerText()).toLowerCase();
-  if (/walk-in|walkin/.test(formText)) f.push("a walk-in permission is still offered");
+  // the "Add walk-in bookings" permission is offered again (the Add booking page is back) but is NOT ticked by default
+  const walkinLabel = form.locator("label").filter({ hasText: /walk-in|walkin/i });
+  if ((await walkinLabel.count()) !== 1) f.push(`walk-in permission checkbox offered ${await walkinLabel.count()} times (expected 1)`);
+  else if (await walkinLabel.locator("input[type=checkbox]").isChecked()) f.push("walk-in permission is ticked by default");
   if (total < 5) f.push(`only ${total} permission checkboxes`);
   const hint = lang === "en" ? "tick only what" : "sirf wahi tick karein";
   if (!formText.includes(hint)) f.push("permission hint line missing");
@@ -130,10 +133,8 @@ async function menus(browser) {
   await page.goto(BASE + "/bookings", { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
   if (!page.url().includes("/dashboard/owner/today")) f.push(`owner on /bookings ends at ${page.url()}`);
-  const gone = await page.goto(BASE + "/dashboard/owner/walkin", { waitUntil: "networkidle" });
-  if (gone && gone.status() !== 404) f.push(`the old Add booking page answers ${gone.status()}`);
-  await page.goto(BASE + "/dashboard/owner/today", { waitUntil: "networkidle" });
-  if (/add booking/i.test(await page.evaluate(() => document.body.innerText))) f.push("an Add booking button/link is still on the dashboard");
+  const back = await page.goto(BASE + "/dashboard/owner/walkin", { waitUntil: "networkidle" });
+  if (!back || back.status() !== 200) f.push(`the restored Add booking page answers ${back && back.status()}`);
   await page.goto(BASE + "/account", { waitUntil: "networkidle" });
   await btn.click();
   await page.locator('[data-testid="profile-menu-logout"]').click();

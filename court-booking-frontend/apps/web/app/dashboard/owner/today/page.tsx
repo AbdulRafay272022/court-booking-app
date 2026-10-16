@@ -1,113 +1,249 @@
 "use client";
 
-import { useOwnerCourtSports } from "@/lib/court-sports";
-
-import { courtLabel } from "@/components/court-label";
-
-import { useState } from "react";
 import Link from "next/link";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@court-booking/api-client";
+import type { CompletionResult, OwnerBookingRow, OwnerOverview } from "@court-booking/types";
 import { api } from "@/lib/api";
-import { ErrorState } from "@/components/error-state";
-import { RecordPaymentSheet } from "@/components/owner/record-payment-sheet";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR } from "@/lib/format";
+import { pollInterval } from "@/lib/polling";
+import { pktDateString } from "@/lib/format";
+import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
-import type { TFunction } from "@/lib/i18n";
-import { bookingSourceLabel } from "@court-booking/types";
-import { pollInterval } from "@/lib/polling";
-import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { ErrorState } from "@/components/error-state";
+import { BookingDetail } from "@/components/owner/booking-detail";
+import { BookingsTable } from "@/components/owner/overview/bookings-table";
+import { CompletionDialog } from "@/components/owner/overview/completion-dialog";
+import { CourtSelect } from "@/components/owner/overview/court-select";
+import { DateSelect } from "@/components/owner/overview/date-select";
+import { KpiCards } from "@/components/owner/overview/kpi-cards";
+import { SlotsDialog } from "@/components/owner/overview/slots-dialog";
+import {
+  applyCompletion,
+  courtsParam,
+  findOriginalRow,
+  historyHref,
+  isDateString,
+  overviewHref,
+  parseCourtIds,
+  patchOverviewRow,
+  rowDomId,
+  rowMatchesFilter,
+} from "@/lib/overview-helpers";
+import type { RowFilter } from "@/lib/overview-helpers";
 
-const STATUS_COLOR: Record<string, string> = {
-  booked: "#1F7A52",
-  payment_submitted: "#9C5C0A",
-  held: "#5B7079",
-  available: "#C6D2D7",
-  blocked: "#DCE3E6",
-  completed: "#5B7079",
-  no_show: "#8C3823",
-};
+export default function OwnerOverviewPage() {
+  // useSearchParams needs a Suspense boundary above it
+  return (
+    <Suspense fallback={null}>
+      <OverviewScreen />
+    </Suspense>
+  );
+}
 
-export default function OwnerTodayPage() {
+function Skeleton({ className }: { className: string }) {
+  return <div className={`animate-pulse rounded-2xl bg-khelo-divider ${className}`} aria-hidden="true" />;
+}
+
+function OverviewSkeleton() {
+  const t = useT();
+  return (
+    <div role="status" aria-busy="true" data-testid="ovw-skeleton" className="flex flex-col gap-4">
+      <span className="sr-only">{t("ovw.state.loading")}</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <Skeleton className="col-span-2 h-44" />
+        <Skeleton className="h-44" />
+        <Skeleton className="h-44" />
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-36" />
+        ))}
+        <Skeleton className="lg:col-span-2 h-32" />
+        <Skeleton className="lg:col-span-2 h-32" />
+      </div>
+      <Skeleton className="h-72" />
+    </div>
+  );
+}
+
+function OverviewScreen() {
   const t = useT();
   const fmt = useFmt();
-  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
-  const [activeCourt, setActiveCourt] = useState<string | "all">("all");
-  const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
-  const [recording, setRecording] = useState<{ bookingId: string; playerLabel: string; balanceDue: number } | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
   const queryClient = useQueryClient();
+  const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
 
-  const todayQuery = useQuery({
-    queryKey: ["owner-today", activeVenueId],
-    queryFn: () => api.owners.today({ venue_id: activeVenueId }),
-    enabled: !!activeVenueId,
+  const today = pktDateString();
+  const dateParam = search.get("date");
+  const date = isDateString(dateParam) ? dateParam : today;
+
+  const courts = useMemo(() => (activeVenue?.courts ?? []).filter((c) => c.is_active), [activeVenue]);
+  const allIds = useMemo(() => courts.map((c) => c.id), [courts]);
+  const selected = parseCourtIds(search.get("courts"), allIds);
+  const courtsValue = courtsParam(selected, allIds);
+  const effectiveCourts = selected.length > 0 ? courts.filter((c) => selected.includes(c.id)) : courts;
+
+  function go(nextDate: string, nextCourts: string[]) {
+    router.push(overviewHref(nextDate, today, courtsParam(nextCourts, allIds)), { scroll: false });
+  }
+
+  const [filter, setFilter] = useState<RowFilter>("all");
+  const [slotsOpen, setSlotsOpen] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [dialogRow, setDialogRow] = useState<OwnerBookingRow | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [noPermission, setNoPermission] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    },
+    [],
+  );
+
+  const queryKey = ["owner-overview", activeVenueId, date, courtsValue ?? "all"] as const;
+  const overviewQuery = useQuery({
+    queryKey,
+    queryFn: () => api.owners.overview({ date, venueId: activeVenueId, courtIds: selected }),
+    enabled: !!activeVenueId && courts.length > 0,
+    // a different day or court set must never show the previous one's numbers under the new label
+    placeholderData: undefined,
     refetchInterval: (query) => pollInterval(query, 15_000),
   });
+  const data = overviewQuery.data;
 
-  async function handleCheckIn(bookingId: string) {
-    setBusyBookingId(bookingId);
+  function completionError(e: unknown): string {
+    if (e instanceof ApiError && e.code === "COMPLETION_TOO_EARLY") return t("ovw.complete.err.tooEarly");
+    if (e instanceof ApiError && e.status === 403) {
+      setNoPermission(true);
+      return t("ovw.complete.err.forbidden");
+    }
+    return friendlyErrorMessage(e, t);
+  }
+
+  function applyServerRow(row: OwnerBookingRow) {
+    queryClient.setQueryData<OwnerOverview>(queryKey, (prev) => (prev ? patchOverviewRow(prev, row) : prev));
+    void queryClient.invalidateQueries({ queryKey: ["owner-overview"] });
+  }
+
+  async function markYes(row: OwnerBookingRow) {
+    setMessage(null);
+    setBusyId(row.booking_id);
+    await queryClient.cancelQueries({ queryKey });
+    const previous = queryClient.getQueryData<OwnerOverview>(queryKey);
+    queryClient.setQueryData<OwnerOverview>(queryKey, (prev) => (prev ? patchOverviewRow(prev, applyCompletion(row, "yes")) : prev));
     try {
-      await api.bookings.checkin(bookingId);
-      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+      applyServerRow(await api.owners.markCompletion(row.booking_id, { result: "yes" }));
     } catch (e) {
-      alert(friendlyErrorMessage(e, t));
+      queryClient.setQueryData(queryKey, previous); // roll the row back
+      setMessage(completionError(e));
     } finally {
-      setBusyBookingId(null);
+      setBusyId(null);
     }
   }
 
-  async function handleNoShow(bookingId: string) {
-    if (!confirm(t("odash.today.confirmNoShow"))) return;
-    setBusyBookingId(bookingId);
-    try {
-      await api.bookings.noShow(bookingId);
-      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
-    } catch (e) {
-      alert(friendlyErrorMessage(e, t));
-    } finally {
-      setBusyBookingId(null);
+  function onComplete(row: OwnerBookingRow, result: CompletionResult) {
+    if (result === "yes") void markYes(row);
+    else {
+      setMessage(null);
+      setDialogRow(row);
     }
   }
 
-  const sports = useOwnerCourtSports();
-  const data = todayQuery.data;
-  const courts = data?.courts ?? [];
-  const courtId = activeCourt === "all" ? undefined : activeCourt;
-  const rows = courts
-    .filter((c) => !courtId || c.court_id === courtId)
-    .flatMap((c) =>
-      c.slots.map((s) => ({
-        ...s,
-        courtName: s.court_name ?? c.name,
-        // The API carries the sport now; the owner-venues lookup only covers an old backend.
-        courtSport: s.court_sport ?? c.sport ?? sports.byId(c.court_id),
-      })),
-    )
-    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  async function saveNo(row: OwnerBookingRow, receivedPkr: number, reason: string): Promise<string | null> {
+    try {
+      const updated = await api.owners.markCompletion(row.booking_id, { result: "no", received_pkr: receivedPkr, reason: reason || undefined });
+      applyServerRow(updated);
+      setDialogRow(null);
+      return null;
+    } catch (e) {
+      return completionError(e);
+    }
+  }
+
+  function jumpToOriginal(row: OwnerBookingRow) {
+    const original = data ? findOriginalRow(data.rows, row) : null;
+    if (!original) {
+      setDetailId(row.original_booking_id ?? row.booking_id);
+      return;
+    }
+    if (!rowMatchesFilter(original, filter)) setFilter("all");
+    const id = rowDomId(original);
+    setHighlightId(id);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightId(null), 2500);
+    // wait a frame so a row hidden by the previous filter exists before scrolling to it
+    requestAnimationFrame(() => {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document.getElementById(id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    });
+  }
+
+  const loading = venuesLoading || overviewQuery.isLoading || (!!activeVenueId && courts.length > 0 && !data && !overviewQuery.isError);
+  const subtitle = [fmt.dateString(date), activeVenue?.name].filter(Boolean).join(" · ");
 
   return (
-    <div className="p-8 flex flex-col gap-6 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{activeVenue?.name ?? t("odash.today.title")}</h1>
-          {data ? <p className="text-owner-ink-faint text-sm">{fmt.dateString(data.date)}</p> : null}
+    <div className="px-4 py-6 sm:px-8 sm:py-8 flex flex-col gap-5 md:gap-6 max-w-[1240px] [&_*:focus-visible]:outline-2 [&_*:focus-visible]:outline-offset-2 [&_*:focus-visible]:outline-khelo-teal">
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+        <div className="min-w-0">
+          <h1 className="font-khelo-display font-extrabold text-4xl md:text-5xl text-khelo-ink leading-tight">{t("ovw.title")}</h1>
+          <p className="mt-1 text-[15px] text-khelo-muted" data-testid="ovw-subtitle">
+            {subtitle}
+          </p>
         </div>
-        <div className="flex shrink-0 gap-2">
-          <Link href="/dashboard/owner/checkin" className="px-4 py-2.5 rounded-lg border border-owner-border font-semibold text-sm whitespace-nowrap">
-            {t("odash.today.checkinTools")}
+        <nav className="flex flex-wrap gap-2.5 w-full sm:w-auto">
+          <Link
+            href="/dashboard/owner/checkin"
+            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl border-[1.5px] border-khelo-ink bg-khelo-surface font-bold text-khelo-ink whitespace-nowrap"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12l5 5 9-10" />
+            </svg>
+            {t("ovw.checkin")}
           </Link>
-        </div>
-      </div>
+          <Link
+            href="/dashboard/owner/walkin"
+            data-testid="ovw-add-booking"
+            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl bg-khelo-orange font-bold text-khelo-ink whitespace-nowrap"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            {t("ovw.addBooking")}
+          </Link>
+          <Link
+            href={historyHref({ date, courts: courtsValue })}
+            data-testid="ovw-history-link"
+            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl border-[1.5px] border-khelo-ink bg-khelo-surface font-bold text-khelo-ink whitespace-nowrap"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />
+            </svg>
+            {t("ovw.history")}
+          </Link>
+        </nav>
+      </header>
 
       {showSwitcher ? (
-        <div className="flex flex-wrap gap-2">
+        <div role="group" aria-label={t("ovw.venueAria")} className="flex flex-wrap gap-2">
           {venues.map((v) => (
             <button
               key={v.id}
-              onClick={() => setVenueId(v.id)}
-              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold whitespace-nowrap"
-              style={{ background: v.id === activeVenueId ? "#0E6274" : "#F4F6F7", color: v.id === activeVenueId ? "#fff" : "#5B7079" }}
+              type="button"
+              aria-pressed={v.id === activeVenueId}
+              onClick={() => {
+                setVenueId(v.id);
+                router.push(`${pathname}${date === today ? "" : `?date=${date}`}`, { scroll: false });
+              }}
+              className={`min-h-11 px-4 rounded-full text-sm font-bold whitespace-nowrap ${
+                v.id === activeVenueId ? "bg-khelo-ink text-white" : "bg-khelo-surface border border-khelo-border text-khelo-ink"
+              }`}
             >
               {v.name}
             </button>
@@ -115,180 +251,48 @@ export default function OwnerTodayPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-3 gap-3">
-        <Stat label={t("odash.today.stat.booked")} value={data ? `${rows.filter((r) => r.status === "booked" || r.status === "payment_submitted").length}/${rows.length}` : "—"} />
-        <Stat label={t("odash.today.stat.revenue")} value={data ? formatPKR(data.summary.total_revenue) : "—"} />
-        <Link href="/dashboard/owner/approvals">
-          <Stat label={t("odash.today.stat.pending")} value={data ? String(data.summary.pending_approvals) : "—"} warn />
-        </Link>
-      </div>
-
-      {courts.length > 1 ? (
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveCourt("all")}
-            className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
-            style={{ background: activeCourt === "all" ? "#0E6274" : "#F4F6F7", color: activeCourt === "all" ? "#fff" : "#5B7079" }}
-          >
-            {t("odash.today.all")}
-          </button>
-          {courts.map((c) => (
-            <button
-              key={c.court_id}
-              onClick={() => setActiveCourt(c.court_id)}
-              className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
-              style={{ background: activeCourt === c.court_id ? "#0E6274" : "#F4F6F7", color: activeCourt === c.court_id ? "#fff" : "#5B7079" }}
-            >
-              {courtLabel(c.name, c.sport ?? sports.byId(c.court_id))}
-            </button>
-          ))}
+      <section className="rounded-2xl border border-khelo-border bg-khelo-surface p-4 md:p-5 flex flex-wrap items-end gap-x-5 gap-y-4" data-testid="ovw-filters">
+        <div className="w-full sm:w-auto">
+          <DateSelect date={date} today={today} onChange={(d) => go(d, selected)} />
         </div>
+        {courts.length > 0 ? (
+          <div className="w-full sm:w-auto">
+            <CourtSelect courts={courts.map((c) => ({ id: c.id, name: c.name, sport: c.sport }))} selected={selected} onChange={(ids) => go(date, ids)} />
+          </div>
+        ) : null}
+        <p className="flex-1 min-w-[14rem] text-sm text-khelo-muted pb-2.5">{t("ovw.filters.hint")}</p>
+      </section>
+
+      {activeVenueId && courts.length === 0 && !venuesLoading ? (
+        <p className="rounded-2xl border border-khelo-border bg-khelo-surface px-6 py-12 text-center text-khelo-muted">{t("ovw.state.noCourts")}</p>
+      ) : loading ? (
+        <OverviewSkeleton />
+      ) : overviewQuery.isError && !data ? (
+        <div className="rounded-2xl border border-khelo-border bg-khelo-surface">
+          <ErrorState message={friendlyErrorMessage(overviewQuery.error, t)} onRetry={() => overviewQuery.refetch()} tone="owner" />
+        </div>
+      ) : data ? (
+        <>
+          <KpiCards overview={data} date={date} courts={courtsValue} onOpenSlots={() => setSlotsOpen(true)} />
+          <BookingsTable
+            rows={data.rows}
+            filter={filter}
+            onFilter={setFilter}
+            title={date === today ? t("ovw.table.titleToday") : t("ovw.table.titleDay", { date: fmt.dateString(date) })}
+            onOpen={setDetailId}
+            onComplete={onComplete}
+            onJumpToOriginal={jumpToOriginal}
+            highlightId={highlightId}
+            noPermission={noPermission}
+            busyBookingId={busyId}
+            message={message}
+          />
+        </>
       ) : null}
 
-      <div className="bg-owner-surface border border-owner-border rounded-xl overflow-hidden">
-        {venuesLoading || todayQuery.isLoading ? (
-          <p className="p-8 text-center text-owner-ink-faint">{t("odash.today.loading")}</p>
-        ) : todayQuery.isError && !data ? (
-          <ErrorState message={friendlyErrorMessage(todayQuery.error, t)} onRetry={() => todayQuery.refetch()} tone="owner" />
-        ) : rows.length === 0 ? (
-          <p className="p-8 text-center text-owner-ink-faint">{t("odash.today.empty")}</p>
-        ) : (
-          rows.map((slot) => (
-            <div
-              key={`${slot.courtName}-${slot.starts_at}`}
-              className="flex items-center gap-4 px-5 py-3.5 border-b border-owner-border-light last:border-0"
-              style={{ borderLeft: `3px solid ${STATUS_COLOR[slot.status] ?? "#DCE3E6"}` }}
-            >
-              <span className="font-mono text-sm font-semibold w-[4.75rem] shrink-0">{fmt.time(slot.starts_at)}</span>
-              <div className="flex-1">
-                <p className="font-semibold text-sm" data-testid="today-row-title">
-                  {slot.booking_id || activeCourt === "all" ? `${courtLabel(slot.courtName, slot.courtSport)} · ` : ""}{slot.player_name ?? statusLabel(t, slot.status)}
-                </p>
-                <p className="text-xs text-owner-ink-faint">{statusSubtitle(t, slot.status)}</p>
-                {slot.booking_id ? (
-                  <p className="text-xs font-semibold" data-testid="today-row-range">
-                    {fmt.timeRange(slot.starts_at, slot.ends_at)}
-                  </p>
-                ) : null}
-                {slot.booking_id ? (
-                  <>
-                    <p className="text-xs text-owner-ink-faint" data-testid="today-row-origin">
-                      {[
-                        bookingSourceLabel(slot.booking_source) ? t("odash.today.bookedVia", { source: bookingSourceLabel(slot.booking_source) ?? "" }) : null,
-                        slot.booked_at ? t("odash.today.bookedOn", { when: fmt.when(slot.booked_at) }) : null,
-                        slot.account_name && slot.account_name !== slot.player_name ? t("odash.today.account", { name: slot.account_name }) : null,
-                      ].filter(Boolean).join(" · ")}
-                    </p>
-                    {slot.price != null ? (
-                      <p className="text-xs font-mono text-owner-ink-muted" data-testid="today-row-money">
-                        {t("odash.today.money", { total: formatPKR(slot.price), paid: formatPKR(slot.amount_paid ?? 0), balance: formatPKR(slot.balance_due ?? 0) })}
-                      </p>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-              {slot.status === "payment_submitted" ? (
-                <Link href="/dashboard/owner/approvals" className="px-3 py-2 rounded-lg text-white text-xs font-semibold" style={{ background: "#9C5C0A" }}>
-                  {t("odash.today.review")}
-                </Link>
-              ) : slot.status === "booked" && slot.balance_due != null && slot.balance_due > 0 && slot.booking_id ? (
-                <button
-                  onClick={() =>
-                    setRecording({ bookingId: slot.booking_id!, playerLabel: slot.player_name ?? t("odash.today.player"), balanceDue: slot.balance_due! })
-                  }
-                  className="text-right"
-                >
-                  <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid ?? 0)}</span>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full inline-block mt-0.5" style={{ background: "#FBF0DD", color: "#9C5C0A" }}>
-                    {t("odash.today.record", { amount: formatPKR(slot.balance_due) })}
-                  </span>
-                </button>
-              ) : slot.amount_paid != null ? (
-                <div className="text-right">
-                  <span className="font-mono text-sm font-semibold block">PKR {formatPKR(slot.amount_paid)}</span>
-                  {slot.status === "booked" && slot.balance_due != null ? (
-                    <span className="text-[11px] font-semibold block" style={{ color: slot.balance_due > 0 ? "#9C5C0A" : "#1F7A52" }}>
-                      {slot.balance_due > 0 ? t("odash.today.dueAtVenue", { amount: formatPKR(slot.balance_due) }) : t("odash.today.fullyPaid")}
-                    </span>
-                  ) : null}
-                  {slot.status === "booked" && slot.booking_id ? (
-                    <div className="flex gap-1.5 mt-1 justify-end">
-                      <button
-                        disabled={busyBookingId === slot.booking_id}
-                        onClick={() => handleCheckIn(slot.booking_id as string)}
-                        className="px-2.5 py-1 rounded text-white text-[11px] font-semibold disabled:opacity-50"
-                        style={{ background: "#0E6274" }}
-                      >
-                        {t("odash.today.checkIn")}
-                      </button>
-                      <button
-                        disabled={busyBookingId === slot.booking_id}
-                        onClick={() => handleNoShow(slot.booking_id as string)}
-                        className="px-2.5 py-1 rounded border text-[11px] font-semibold disabled:opacity-50"
-                        style={{ borderColor: "#8C3823", color: "#8C3823" }}
-                      >
-                        {t("odash.today.noShow")}
-                      </button>
-                    </div>
-                  ) : slot.status === "completed" && slot.checked_in_at ? (
-                    <span className="text-[11px] font-semibold block" style={{ color: "#1F7A52" }}>
-                      {slot.checked_in_by ? t("odash.today.checkedInBy", { time: fmt.time(slot.checked_in_at), by: slot.checked_in_by }) : t("odash.today.checkedIn", { time: fmt.time(slot.checked_in_at) })}
-                    </span>
-                  ) : slot.status === "no_show" ? (
-                    <span className="text-[11px] font-semibold block" style={{ color: "#8C3823" }}>{t("odash.today.noShow")}</span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ))
-        )}
-      </div>
-
-      {recording ? (
-        <RecordPaymentSheet
-          bookingId={recording.bookingId}
-          playerLabel={recording.playerLabel}
-          balanceDue={recording.balanceDue}
-          onClose={() => setRecording(null)}
-          onRecorded={() => {
-            setRecording(null);
-            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
-          }}
-        />
-      ) : null}
+      <SlotsDialog open={slotsOpen} onClose={() => setSlotsOpen(false)} date={date} courts={effectiveCourts.map((c) => ({ id: c.id, name: c.name, sport: c.sport }))} />
+      <CompletionDialog row={dialogRow} onClose={() => setDialogRow(null)} onSave={(received, reason) => saveNo(dialogRow as OwnerBookingRow, received, reason)} />
+      <BookingDetail bookingId={detailId} onClose={() => setDetailId(null)} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-overview"] })} />
     </div>
   );
-}
-
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div className="rounded-xl p-4" style={{ background: warn ? "#FBF0DD" : "#F4F6F7" }}>
-      <p className="text-[11px] font-bold tracking-wider" style={{ color: warn ? "#9C5C0A" : "#8399A1" }}>{label.toUpperCase()}</p>
-      <p className="font-mono text-xl font-semibold mt-0.5" style={{ color: warn ? "#9C5C0A" : "#101C21" }}>{value}</p>
-    </div>
-  );
-}
-
-function statusLabel(t: TFunction, status: string): string {
-  switch (status) {
-    case "held": return t("odash.today.status.held");
-    case "available": return t("odash.today.status.available");
-    case "blocked": return t("odash.today.status.blocked");
-    case "completed": return t("odash.today.status.completed");
-    case "no_show": return t("odash.today.status.no_show");
-    default: return t("odash.today.status.default");
-  }
-}
-
-function statusSubtitle(t: TFunction, status: string): string {
-  switch (status) {
-    case "booked": return t("odash.today.sub.booked");
-    case "payment_submitted": return t("odash.today.sub.payment_submitted");
-    case "held": return t("odash.today.sub.held");
-    case "available": return t("odash.today.sub.available");
-    case "blocked": return t("odash.today.sub.blocked");
-    case "completed": return t("odash.today.sub.completed");
-    case "no_show": return t("odash.today.sub.no_show");
-    default: return "";
-  }
 }

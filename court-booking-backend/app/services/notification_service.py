@@ -339,6 +339,29 @@ class NotificationService:
             owner, "owner_new_booking", "New booking", f"New booking on {court_name} for {_when(starts_at, ends_at)}."
         )
 
+    async def notify_owner_refund_owed(
+        self,
+        *,
+        owner: User,
+        booking_id: uuid.UUID,
+        court_name: str,
+        starts_at: "datetime | str",
+        ends_at: "datetime | None" = None,
+        amount: float,
+        player_name: str | None = None,
+    ) -> None:
+        """Owner Overview (spec 5.3): a PLAYER cancelled a booking they had paid for, so a refund is now owed.
+        Push + best-effort WhatsApp (the generic template covers it outside the 24h window); the push data payload
+        carries reference_id = the booking id so a tap can open that booking."""
+        who = f"{player_name} " if player_name else "A player "
+        await self._send_push_and_whatsapp(
+            owner,
+            "refund_owed",
+            "Refund owed",
+            f"{who}cancelled {court_name} on {_when(starts_at, ends_at)}. Refund owed: {format_pkr(amount)}.",
+            reference_id=booking_id,
+        )
+
     async def notify_owner_daily_digest(self, *, owner: User, body: str) -> None:
         """WhatsApp only -- the digest never had a push tier, so this doesn't add one.
         Goes through send_smart like every other notification in this file (Section 29

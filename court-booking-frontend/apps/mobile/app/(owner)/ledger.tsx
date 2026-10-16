@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { shareCsv } from "@/lib/export-csv";
 import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
+import { OwnerTabBar } from "@/components/owner-tab-bar";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon, DownloadIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
@@ -72,7 +73,7 @@ export default function LedgerScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
+    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
       <View className="px-4.5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-3">
@@ -207,6 +208,7 @@ export default function LedgerScreen() {
           }}
         />
       ) : null}
+      <OwnerTabBar active="ledger" />
     </SafeAreaView>
   );
 }

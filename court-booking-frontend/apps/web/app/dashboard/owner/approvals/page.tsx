@@ -5,6 +5,7 @@ import { useOwnerCourtSports } from "@/lib/court-sports";
 import { courtLabel } from "@/components/court-label";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { approvalSummary } from "@court-booking/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -16,6 +17,11 @@ import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { BookingDetail } from "@/components/owner/booking-detail";
+import { FilterBanner, NayaChip, RowLinks } from "@/components/owner/queue-extras";
+import { parseQueueFilter } from "@/lib/queue-filter";
+import { isNaya } from "@/lib/owner-seen";
+import { useSeenSince } from "@/lib/use-owner-seen";
 
 // The English value is what is sent to the backend (and shown to the player); only the label on the button is translated.
 const REJECT_REASONS: { value: string; label: MessageKey }[] = [
@@ -35,10 +41,14 @@ export default function OwnerApprovalsPage() {
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState("");
+  const [detailId, setDetailId] = useState<string | null>(null);
+  // The Overview's Pending card links here with ?date= and ?courts= (same names on every page); "Sab dikhao" clears them.
+  const filter = parseQueueFilter(useSearchParams());
+  const since = useSeenSince("approvals", activeVenueId);
 
   const query = useQuery({
-    queryKey: ["owner-pending-approvals", activeVenueId],
-    queryFn: () => api.owners.pendingApprovals(activeVenueId),
+    queryKey: ["owner-pending-approvals", activeVenueId, filter.date ?? null, filter.courtIds.join(",")],
+    queryFn: () => api.owners.pendingApprovals(activeVenueId, { date: filter.date, courtIds: filter.courtIds }),
     // Was unconditional before -- fired once with activeVenueId still undefined (an unscoped
     // fetch across every venue the owner has) and again once it resolved. Gating on it, like
     // every other owner screen, avoids that flash and keeps this query's own isLoading
@@ -75,6 +85,7 @@ export default function OwnerApprovalsPage() {
       await api.payments.approve(current.payment_id, current.checks ? (amountValue ?? undefined) : undefined);
       await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
     } catch (e) {
       alert(friendlyErrorMessage(e, t));
     } finally {
@@ -95,6 +106,7 @@ export default function OwnerApprovalsPage() {
       resetRejectSheet();
       await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
     } catch (e) {
       alert(friendlyErrorMessage(e, t));
     } finally {
@@ -118,6 +130,8 @@ export default function OwnerApprovalsPage() {
         <h1 className="text-2xl font-bold">{t("odash.approvals.title")}</h1>
         <p className="text-owner-ink-faint text-sm">{list.length === 0 ? t("odash.approvals.none") : t("odash.approvals.count", { n: list.length })}</p>
       </div>
+
+      {filter.active && !query.isLoading && !venuesLoading ? <FilterBanner kind="approvals" count={list.length} /> : null}
 
       {venuesLoading || query.isLoading ? (
         <p className="p-10 text-center text-owner-ink-faint">{t("odash.approvals.loading")}</p>
@@ -153,11 +167,19 @@ export default function OwnerApprovalsPage() {
               <div className="w-11 h-11 rounded-full bg-owner-accent text-white flex items-center justify-center font-semibold">
                 {(current.player_name ?? "?").slice(0, 2).toUpperCase()}
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="font-bold">{current.player_name ?? t("odash.approvals.player")}</p>
                 {current.player_phone ? <p className="font-mono text-[12.5px] text-owner-ink-muted">{current.player_phone}</p> : null}
               </div>
+              {isNaya(current.submitted_at, since) ? <NayaChip /> : null}
             </div>
+            <RowLinks
+              bookingId={current.booking_id}
+              startsAt={current.starts_at}
+              filterDate={filter.date}
+              who={current.player_name ?? t("odash.approvals.player")}
+              onDetails={() => setDetailId(current.booking_id)}
+            />
             <div className="h-px bg-owner-border-light" />
             <Row label={t("odash.approvals.row.slot")} value={`${courtLabel(current.court_name, current.court_sport ?? sports.byName(current.court_name))} \u00b7 ${fmt.timeRange(current.starts_at, current.ends_at)}`} />
             <Row label={t("odash.approvals.row.advance")} value={`PKR ${formatPKR(current.expected_amount)}`} />
@@ -256,6 +278,17 @@ export default function OwnerApprovalsPage() {
           )}
         </>
       )}
+
+      {detailId ? (
+        <BookingDetail
+          bookingId={detailId}
+          onClose={() => setDetailId(null)}
+          onChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
+            void queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

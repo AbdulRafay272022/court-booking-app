@@ -2,6 +2,13 @@ import type {
   Booking,
   Growth,
   Ledger,
+  HistoryFilters,
+  CompletionInput,
+  OwnerBadges,
+  OwnerBookingDetail,
+  OwnerBookingRow,
+  OwnerBookingsPage,
+  OwnerOverview,
   OwnerDigest,
   OwnerRefund,
   OwnerToday,
@@ -22,6 +29,24 @@ export interface LedgerFilters {
   bookingStatus?: string;
 }
 
+function historyQuery(f: HistoryFilters): string {
+  const usp = new URLSearchParams();
+  const set = (k: string, v: string | number | undefined | null) => {
+    if (v !== undefined && v !== null && v !== "") usp.set(k, String(v));
+  };
+  set("venue_id", f.venueId);
+  set("date_from", f.dateFrom);
+  set("date_to", f.dateTo);
+  set("court_ids", f.courtIds?.join(",") || undefined);
+  for (const s of f.statuses ?? []) usp.append("statuses", s);
+  set("q", f.q?.trim());
+  set("page", f.page);
+  set("page_size", f.pageSize);
+  set("sort", f.sort);
+  const text = usp.toString();
+  return text ? `?${text}` : "";
+}
+
 export function createOwnersApi(client: ApiClient) {
   return {
     venues: () => client.request<Venue[]>("/owners/venues"),
@@ -36,8 +61,11 @@ export function createOwnersApi(client: ApiClient) {
     today: (params: { date?: string; venue_id?: string } = {}) =>
       client.request<OwnerToday>(`/owners/today${toQuery({ date_: params.date, venue_id: params.venue_id })}`),
 
-    pendingApprovals: (venueId?: string) =>
-      client.request<PendingApproval[]>(`/owners/pending-approvals${toQuery({ venue_id: venueId })}`),
+    /** `date` + `courtIds` (optional) narrow the list to one operating day / some courts, same rule as the Overview. */
+    pendingApprovals: (venueId?: string, filter: { date?: string; courtIds?: string[] } = {}) =>
+      client.request<PendingApproval[]>(
+        `/owners/pending-approvals${toQuery({ venue_id: venueId, date: filter.date, court_ids: filter.courtIds?.join(",") || undefined })}`,
+      ),
 
     ledger: (startDate: string, endDate: string, filters: LedgerFilters = {}) =>
       client.request<Ledger>(
@@ -63,12 +91,35 @@ export function createOwnersApi(client: ApiClient) {
         })}`,
       ),
 
+    /** Owner Overview (docs/owner-overview-contract.md). `courtIds` empty/undefined = all courts. */
+    overview: (params: { date?: string; venueId?: string; courtIds?: string[] } = {}) =>
+      client.request<OwnerOverview>(
+        `/owners/overview${toQuery({ date: params.date, venue_id: params.venueId, court_ids: params.courtIds?.join(",") || undefined })}`,
+      ),
+
+    bookingsHistory: (f: HistoryFilters) =>
+      client.request<OwnerBookingsPage>(`/owners/bookings-history${historyQuery(f)}`),
+
+    bookingsHistoryCsv: (f: HistoryFilters) =>
+      client.requestText(`/owners/bookings-history/export.csv${historyQuery(f)}`),
+
+    bookingDetail: (bookingId: string) =>
+      client.request<OwnerBookingDetail>(`/owners/bookings/${bookingId}/overview-detail`),
+
+    /** Booking completed (Haan / Nahi). Needs the record_payments permission. */
+    markCompletion: (bookingId: string, input: CompletionInput) =>
+      client.request<OwnerBookingRow>(`/owners/bookings/${bookingId}/completion`, { method: "POST", body: JSON.stringify(input) }),
+
+    badges: (venueId?: string) => client.request<OwnerBadges>(`/owners/badges${toQuery({ venue_id: venueId })}`),
+
     growth: (venueId?: string) =>
       client.request<Growth>(`/owners/growth${toQuery({ venue_id: venueId })}`),
 
     /** Section 32 Part 10: the owner's "Refunds to pay" screen. */
-    refunds: (venueId?: string) =>
-      client.request<OwnerRefund[]>(`/owners/refunds${toQuery({ venue_id: venueId })}`),
+    refunds: (venueId?: string, filter: { date?: string; courtIds?: string[] } = {}) =>
+      client.request<OwnerRefund[]>(
+        `/owners/refunds${toQuery({ venue_id: venueId, date: filter.date, court_ids: filter.courtIds?.join(",") || undefined })}`,
+      ),
 
     /** Records a refund the owner already sent OUTSIDE the app (JazzCash/bank) -- there is no
      * payment gateway here, this is purely a record with a reference and an optional screenshot.

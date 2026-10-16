@@ -22,6 +22,7 @@ from app.services.ai.usage import log_ai_usage
 from app.services.availability_service import GRID_MINUTES, MAX_BOOKING_MINUTES, AvailabilityService, min_slots
 from app.models.booking import Booking, BookingStatus
 from app.services import chat_guards, chat_templates, chat_validator, reply_text
+from app.services.chat_validator import canonical_money, mask_phones_in_text
 from app.services.booking_service import BookingService
 from app.services.chat_facts import PlatformFacts, facts_block, load_hours, load_platform_facts
 from app.services.chat_state import (
@@ -30,6 +31,9 @@ from app.services.chat_state import (
     Row,
     TOOL,
     ask_fields,
+    confirmable,
+    display_date,
+    display_time,
     fold_state,
     is_plain_affirmative,  # noqa: F401  (re-exported: app/api/webhooks.py imports it from here)
     missing_fields,
@@ -381,6 +385,15 @@ def _current_and_previous_text(messages: list[dict]) -> tuple[str, str]:
     return messages[latest_idx]["content"], previous
 
 
+# "is <court> available / free / khali ...?": the question `_direct_answer` may answer from code
+_AVAILABILITY_CUE_RE = re.compile(r"(?i)\b(?:available|availability|avail|free|vacant|open|khali|khaali|mil\s*sakta|mil\s*jaye|milega)\b")
+# another topic in the same message: not an availability / price question for the code to answer alone
+_OTHER_TOPIC_RE = re.compile(
+    r"(?i)\b(?:parking|park|light|lights|floodlight|washroom|toilet|shower|changing|cafe|food|wifi|water|equipment|racket|rackets|ball|balls|shoes|"
+    r"rent|refund|cancel|cancellation|payment|advance|discount|location|address|where|timing|timings|opening hours|coach|coaching|membership|package)\b"
+)
+
+
 @dataclass
 class ChatAction:
     type: str
@@ -398,6 +411,25 @@ class ChatResult:
     # `meta["state"]` (see chat_state.py: it is also re-derived from history, so a caller that does not store it loses nothing).
     state: dict | None = None
     kind: str | None = None  # which guard answered without the model (greeting, ask_sport, sport_unsupported, ...), None for a model reply
+    # Extra data for the stored reply row's `Message.meta` (the callers merge it in): `validator` = why a model draft was rejected or repaired
+    # and the draft itself (phone numbers masked), so the logs show exactly why a fallback happened.
+    meta: dict = field(default_factory=dict)
+
+
+@dataclass
+class _Settled:
+    """The player's exact slot, checked by CODE with check_availability (never from model text): the facts a code-built answer uses."""
+
+    court_id: str
+    court_name: str
+    venue_name: str | None
+    result: dict  # the check_availability tool result
+    range: dict  # its `requested_range`
+    available: bool
+
+    @property
+    def tool_text(self) -> str:
+        return _to_text(self.result)
 
 
 @dataclass
@@ -570,6 +602,12 @@ class AIChatService:
             logger.info("ai_chat.guard_reply", kind=decision.kind, intent=turn.intent)
             return self._template_result(decision, fold)
 
+        # 2b. the availability / price question about one exact slot is answered by CODE from the check_availability result of this turn
+        #     (court, venue, date label, time, duration, total) -- no model free text for these facts (the 2026-10-15 fallback storm)
+        direct = await self._direct_answer(user, fold, facts)
+        if direct is not None:
+            return direct
+
         # 3. the model, with the state and the real facts appended to its instructions
         venue = facts.venue(state.venue_id)
         if venue is not None:
@@ -592,6 +630,8 @@ class AIChatService:
         )
         retried = False
         held: dict | None = None  # the result of a hold_slot that succeeded this turn
+        rejected: list[dict] = []  # every draft the reply check rejected or repaired this turn (stored in the reply's meta.validator)
+        slot_cache: dict = {}  # the player's exact slot as checked by code, computed at most once per turn
 
         for _ in range(MAX_TOOL_ITERATIONS):
             reply = await provider.chat(system_prompt, messages, tools, model_tier)
@@ -616,19 +656,31 @@ class AIChatService:
                     logger.warning("ai_chat.reply_sanitized", before=text[:200])
                     text = fixed
                 text, actions = await self._drop_unbookable_actions(text, actions)
-                # 4. the reply safety check: regenerate once with a corrective instruction, then a safe localized template
+                # 4a. repair what code can repair (a price written another way or not in the tool results, a "shall I book it?" question with
+                #     no Yes/No proposal) from the player's exact slot as CODE checked it, instead of rejecting a correct draft
+                text, actions = await self._repair_draft(user, fold, facts, text, actions, tool_texts, rejected, slot_cache, tool_calls_made)
+                # 4b. the reply safety check: regenerate once with a corrective instruction, then a safe localized template
                 actions, issues, vctx = self._check_draft(text, actions, tool_texts, fold, facts, message)
                 if issues:
-                    logger.warning("ai_chat.draft_rejected", issues=[i.code for i in issues], draft=text[:200], retry=not retried)
+                    rejected.append(self._rejection(issues, text))
+                    logger.warning("ai_chat.draft_rejected", issues=[i.code for i in issues], draft=mask_phones_in_text(text)[:200], retry=not retried)
                     if not retried:
                         retried = True
                         actions = [a for a in actions if a.type not in ("confirm_booking", "decline")]
                         system_prompt += "\n\n" + chat_validator.corrective_instruction(issues, vctx)
                         continue
                     text, actions = self._safe_fallback(fold, facts, held), []
+                    outcome = "fallback"
+                else:
+                    outcome = "retry_ok" if retried else "repaired"
                 self._localize_actions(actions, state.language)
                 return ChatResult(
-                    reply=text, actions=actions, model=model_tier, tool_calls=tool_calls_made, state=self._final_state(fold, facts, text, actions)
+                    reply=text,
+                    actions=actions,
+                    model=model_tier,
+                    tool_calls=tool_calls_made,
+                    state=self._final_state(fold, facts, text, actions),
+                    meta=self._validator_meta(rejected, outcome) if rejected else {},
                 )
 
             assistant_content: list[dict] = []
@@ -728,6 +780,191 @@ class AIChatService:
             actions=actions,
         )
         return actions, chat_validator.validate(text, vctx), vctx
+
+    # --- answers and repairs built from CODE (fix for the 2026-10-15 fallback storm) ---------------------------------------------------
+    # The model's free text is never the source of the availability / price / proposal facts for the player's exact slot: code asks
+    # check_availability itself (through the same tool the model would call) and fills fixed localized templates from the result.
+
+    @staticmethod
+    def _rejection(issues: list, draft: str) -> dict:
+        return {"issues": [{"code": i.code, "detail": i.detail} for i in issues], "draft": mask_phones_in_text(draft or "")[:600]}
+
+    @staticmethod
+    def _validator_meta(rejected: list[dict], outcome: str) -> dict:
+        """What goes into the stored reply's `meta["validator"]`: the last rejection (issues + the draft), every attempt, and how the turn ended
+        (`fallback` = the safe template was sent, `retry_ok` = the corrective retry passed, `repaired` = code repaired the draft)."""
+        last = rejected[-1]
+        return {"validator": {"issues": last["issues"], "draft": last["draft"], "attempts": list(rejected), "outcome": outcome}}
+
+    async def _settle_slot(self, user: User, fold: FoldResult, facts: PlatformFacts) -> "_Settled | None":
+        """Ask check_availability about EXACTLY what the player said (court, date, start, length), or None when the state does not hold a complete,
+        player-sourced slot (then the model, with its gates, deals with the message as before)."""
+        state = fold.state
+        if state.ambiguous_hour is not None or not (state.date and state.start_time and state.duration_minutes):
+            return None
+        if missing_fields(state, facts, mode="booking") or not confirmable(state):
+            return None
+        court_id = state.court_id
+        if not court_id:
+            venue = facts.venue(state.venue_id)
+            courts = venue.courts_for(state.sport) if venue else []
+            court_id = courts[0].id if len(courts) == 1 else None
+        hit = facts.court(court_id) if court_id else None
+        if hit is None:
+            return None
+        venue_fact, court_fact = hit
+        args = {"court_id": court_id, "date": state.date, "start_time": state.start_time, "end_time": state.end_time}
+        if chat_guards.check_availability(state, facts, args) is not None:
+            return None
+        result = await self._execute_tool(user, "check_availability", args, [])
+        rr = result.get("requested_range") if isinstance(result, dict) else None
+        if not isinstance(rr, dict) or "error" in result:
+            return None
+        if not rr.get("available") and re.search(r"(?i)minimum|30-minute|clock times", str(rr.get("error") or "")):
+            return None  # a length the court cannot take is not "unavailable": the model explains it
+        return _Settled(
+            court_id=str(court_id), court_name=court_fact.name, venue_name=venue_fact.name, result=result, range=rr, available=bool(rr.get("available"))
+        )
+
+    async def _settled_once(self, user: User, fold: FoldResult, facts: PlatformFacts, cache: dict) -> "_Settled | None":
+        """`_settle_slot` at most once per turn."""
+        if "slot" not in cache:
+            cache["slot"] = await self._settle_slot(user, fold, facts)
+        return cache["slot"]
+
+    async def _code_proposal(self, user: User, settled: "_Settled", fold: FoldResult, facts: PlatformFacts) -> list[ChatAction] | None:
+        """The Yes/No proposal for the player's exact slot, from code. None when it may not be offered (every field must be player-sourced and
+        the slot exactly what they asked: `chat_guards.actions_allowed`; the venue must have AI booking)."""
+        state = fold.state
+        actions: list[ChatAction] = []
+        outcome = await self._execute_tool(
+            user,
+            "propose_booking_confirmation",
+            {"court_id": settled.court_id, "starts_at": settled.range["starts_at"], "duration_minutes": state.duration_minutes},
+            actions,
+        )
+        confirm = next((a for a in actions if a.type == "confirm_booking"), None)
+        if "error" in outcome or confirm is None or not chat_guards.actions_allowed(state, facts, confirm.data):
+            return None
+        return actions
+
+    @staticmethod
+    def _nearest_free(result: dict, state: ChatState) -> list[str]:
+        """Up to four free slots (from the tool result) nearest the time the player asked for, earliest first, as "6:00 AM to 7:00 AM (PKR 3,000)"."""
+        slots = result.get("slots") or []
+        try:
+            h, m = (int(x) for x in str(state.start_time).split(":"))
+            want = pkt_time_to_utc(date_cls.fromisoformat(str(state.date)), time(h, m))
+            nearest = sorted(slots, key=lambda sl: abs((datetime.fromisoformat(sl["starts_at"]) - want).total_seconds()))[:4]
+        except (ValueError, KeyError, TypeError):
+            nearest = slots[:4]
+        nearest.sort(key=lambda sl: sl.get("starts_at", ""))
+        return [f"{sl['label'].split(', ')[0]} ({sl['price_text']})" for sl in nearest if sl.get("label") and sl.get("price_text")]
+
+    def _unavailable_text(self, settled: "_Settled", state: ChatState) -> str:
+        return sanitize_reply(
+            chat_templates.render(
+                "slot_unavailable", state.language, court=settled.court_name, venue=settled.venue_name, date=display_date(state.date),
+                time=display_time(state.start_time), others=self._nearest_free(settled.result, state),
+            )
+        )
+
+    def _available_text(self, settled: "_Settled", state: ChatState, *, ask_name: bool, price_only: bool) -> str:
+        rr = settled.range
+        return sanitize_reply(
+            chat_templates.render(
+                "slot_available", state.language, court=settled.court_name, venue=settled.venue_name, label=rr["label"],
+                duration=chat_templates.duration_words(state.duration_minutes or 0, state.language), total=rr["total_price_text"],
+                ask_name=ask_name, price_only=price_only,
+            )
+        )
+
+    async def _direct_answer(self, user: User, fold: FoldResult, facts: PlatformFacts) -> ChatResult | None:
+        """The availability question about one exact slot ("Is Court 2 at Test Arena 1 available on Sat, 17 Oct at 9:00 PM for 2 hours?", the
+        first message the app sends when a player taps a slot) or the price of one, answered from the check_availability result by templates, plus
+        the Yes/No booking proposal when it may be offered. Anything else, or anything the code cannot settle, goes to the model as before."""
+        state, turn = fold.state, fold.turn
+        if _OTHER_TOPIC_RE.search(turn.text or ""):
+            return None  # the same message also asks about something else (parking, lights, ...): the model answers all of it
+        price = turn.intent == "price_question" and not turn.bargain
+        asking = turn.intent == "slot_request" and turn.question and not (turn.more_options or turn.complaint) and bool(_AVAILABILITY_CUE_RE.search(turn.text or ""))
+        if not (price or asking) or not {"date", "start_time"} <= turn.got:
+            return None
+        settled = await self._settle_slot(user, fold, facts)
+        if settled is None:
+            return None
+        tools = ["check_availability"]
+        actions: list[ChatAction] = []
+        if not settled.available:
+            text, kind = self._unavailable_text(settled, state), "slot_unavailable"
+        else:
+            proposal = await self._code_proposal(user, settled, fold, facts)
+            if proposal is None:
+                return None
+            tools.append("propose_booking_confirmation")
+            named = bool(tidy_player_name(user.name))
+            actions = proposal if named else []  # no name on the account: ask for it first (prompt rule 15), no Yes/No yet
+            text = self._available_text(settled, state, ask_name=not named, price_only=price)
+            kind = "price_quote" if price else "slot_available"
+        self._localize_actions(actions, state.language)
+        logger.info("ai_chat.code_answer", kind=kind, intent=turn.intent)
+        return ChatResult(reply=text, actions=actions, model=None, tool_calls=tools, state=self._final_state(fold, facts, text, actions), kind=kind)
+
+    async def _repair_draft(
+        self,
+        user: User,
+        fold: FoldResult,
+        facts: PlatformFacts,
+        text: str,
+        actions: list[ChatAction],
+        tool_texts: list[str],
+        rejected: list[dict],
+        cache: dict,
+        tool_calls: list[str],
+    ) -> tuple[str, list[ChatAction]]:
+        """Fix, from the player's exact slot as code checked it, the two things that used to send a correct draft to the fallback:
+        (1) a price the tool results do not literally contain (a total for a longer booking, "PKR 6000", "Rs 6,000", "6000/-"): the real quote is
+        added to the tool results and every price is written the way the tool writes it; (2) "Shall I book it?" with no Yes/No proposal: the
+        proposal is attached from code (or, when none may be offered, the question is removed or the unavailable answer sent). A draft code cannot
+        settle is left as it is for the validator."""
+        if not text.strip():
+            return text, actions
+        state = fold.state
+        mentioned = chat_validator._amounts(text)
+        if mentioned - chat_validator._amounts("\n".join(tool_texts)):
+            settled = await self._settled_once(user, fold, facts, cache)
+            if settled is not None and settled.available:
+                tool_texts.append(settled.tool_text)
+                if not mentioned - chat_validator._amounts("\n".join(tool_texts)):
+                    rejected.append(
+                        {
+                            "issues": [{"code": "unknown_fact", "detail": "price not literally in the tool results; matched the real quote"}],
+                            "draft": mask_phones_in_text(text)[:600],
+                        }
+                    )
+        if mentioned:
+            text = canonical_money(text, "\n".join(tool_texts))
+
+        if "confirm" not in ask_fields(text) or any(a.type == "confirm_booking" for a in actions):
+            return text, actions
+        note = {"issues": [{"code": "bad_proposal", "detail": "asked to confirm without a Yes/No proposal"}], "draft": mask_phones_in_text(text)[:600]}
+        settled = await self._settled_once(user, fold, facts, cache)
+        if settled is not None and settled.available:
+            proposal = await self._code_proposal(user, settled, fold, facts)
+            if proposal is not None:
+                rejected.append(note)
+                if not tidy_player_name(user.name):
+                    return self._available_text(settled, state, ask_name=True, price_only=False), []
+                tool_calls.append("propose_booking_confirmation")
+                return self._ensure_exact_slot_stated(text, proposal, state.language), proposal
+        elif settled is not None and fold.turn.intent in ("slot_request", "price_question"):
+            rejected.append(note)
+            return self._unavailable_text(settled, state), []
+        kept = [s for s in re.split(r"(?<=[.!?])\s+", text) if s and "confirm" not in ask_fields(s) and not re.search(r"(?i)yes or no|haan ya na", s)]
+        if kept:
+            rejected.append(note)
+            return " ".join(kept), actions
+        return text, actions
 
     def _safe_fallback(self, fold: FoldResult, facts: PlatformFacts, held: dict | None = None) -> str:
         """What is sent when even the second draft fails the check: the hold, if one was just made (the player must always be told), else the ONE

@@ -69,6 +69,7 @@ async def send_chat_message(
                         "tool_calls": result.tool_calls,
                         "actions": [a.__dict__ for a in result.actions],
                         **({"fallback": True} if outcome.failed else {}),
+                        **(getattr(result, "meta", None) or {}),  # why the reply check rejected or repaired a draft (meta.validator)
                     },
                 )
             )

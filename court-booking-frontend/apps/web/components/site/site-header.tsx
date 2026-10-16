@@ -10,6 +10,7 @@ import { homeForRole } from "@/lib/use-auth-helpers";
 import { useT } from "@/components/i18n/lang-provider";
 import { LanguageSwitch } from "@/components/i18n/language-switch";
 import { ProfileMenu, menuEntriesFor } from "./profile-menu";
+import { NotificationBell } from "./notification-bell";
 import type { MessageKey } from "@/lib/i18n";
 
 export const NAV_LINKS: readonly { href: string; labelKey: MessageKey }[] = [
@@ -128,6 +129,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
             <span className="inline-block h-11 w-24" aria-hidden="true" />
           ) : signedIn ? (
             <>
+              <NotificationBell tone="dark" />
               <Link href={dashboardHref} className={`khelo-navlink inline-flex min-h-11 items-center whitespace-nowrap px-2.5 text-[14px] font-bold min-[1200px]:px-3.5 max-[1024px]:hidden ${linkTone(dashboardHref)}`}>
                 {dashboardLabel}
               </Link>
@@ -153,7 +155,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
               </Link>
             </>
           )}
-          <Link href="/search" className={`${PILL} bg-khelo-orange font-extrabold text-khelo-ink max-[420px]:px-3.5 max-[420px]:text-[13px] max-[350px]:hidden`}>
+          <Link href="/search" className={`${PILL} bg-khelo-orange font-extrabold text-khelo-ink ${signedIn ? "max-[420px]:px-2.5 max-[420px]:text-[12px]" : "max-[420px]:px-3.5 max-[420px]:text-[13px]"} max-[350px]:hidden`}>
             {t("header.startPlaying")}
           </Link>
           <button
