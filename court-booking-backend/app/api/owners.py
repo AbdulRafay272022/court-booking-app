@@ -1,7 +1,8 @@
 import uuid
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy import select
 
 from app.api.payments import _payment_out
@@ -16,6 +17,14 @@ from app.models.venue import Venue
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
 from app.schemas.owner_dashboard import GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
+from app.schemas.owner_overview import (
+    CompletionIn,
+    OwnerBadgesOut,
+    OwnerBookingDetailOut,
+    OwnerBookingRowOut,
+    OwnerBookingsPageOut,
+    OwnerOverviewOut,
+)
 from app.schemas.payment import PaymentOut
 from app.schemas.venue import VenueOut
 from app.services.admin_service import AdminService
@@ -23,12 +32,36 @@ from app.services.booking_service import BookingService
 from app.services.growth_service import GrowthService
 from app.services.notification_service import NotificationService
 from app.services.owner_dashboard_service import OwnerDashboardService
+from app.services.owner_overview_service import HistoryFilter, OwnerOverviewService
 from app.services.staff_service import resolve_owner_context, staffed_venue_ids
 from app.services.venue_service import VenueService
 from app.utils.image import InvalidImageError, validate_image
 from app.utils.s3 import upload_private_proof
+from app.utils.timezone import pkt_today
 
 router = APIRouter(prefix="/owners", tags=["owners"])
+
+CourtIdsQuery = Annotated[list[str] | None, Query(description="Repeat the param or pass a comma list; empty = all courts")]
+
+
+def parse_id_list(values: list[str] | None) -> list[uuid.UUID] | None:
+    """`court_ids=a,b&court_ids=c` -> [a, b, c]; None/empty -> None (= all courts)."""
+    ids: list[uuid.UUID] = []
+    for raw in values or []:
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                ids.append(uuid.UUID(part))
+            except ValueError:
+                raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, f"Invalid court id: {part}") from None
+    return ids or None
+
+
+def parse_str_list(values: list[str] | None) -> list[str] | None:
+    out = [p.strip() for raw in values or [] for p in raw.split(",") if p.strip()]
+    return out or None
 
 MAX_REFUND_SCREENSHOT_BYTES = 10 * 1024 * 1024
 ALLOWED_REFUND_SCREENSHOT_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -109,11 +142,20 @@ async def owner_today(
 
 @router.get("/pending-approvals", response_model=list[PendingApprovalOut])
 async def owner_pending_approvals(
-    db: DbSession, settings: AppSettings, owner: RequireStaffCapable, venue_id: uuid.UUID | None = None
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    venue_id: uuid.UUID | None = None,
+    date_: Annotated[date | None, Query(alias="date")] = None,
+    court_ids: CourtIdsQuery = None,
+    booking_id: uuid.UUID | None = None,
 ) -> list[PendingApprovalOut]:
+    """Optional `date` (operating day, same rule as Overview), `court_ids` and `booking_id`; without them: unchanged."""
     eff_owner, eff_venue = await resolve_owner_context(db, owner, venue_id, "view_ledger")
     service = OwnerDashboardService(db, settings)
-    return await service.pending_approvals(eff_owner, venue_id=eff_venue)
+    return await service.pending_approvals(
+        eff_owner, venue_id=eff_venue, on_date=date_, court_ids=parse_id_list(court_ids), booking_id=booking_id
+    )
 
 
 @router.get("/ledger", response_model=LedgerOut)
@@ -170,14 +212,117 @@ async def owner_growth(
 
 @router.get("/refunds", response_model=list[OwnerRefundOut])
 async def owner_refunds(
-    db: DbSession, settings: AppSettings, owner: RequireStaffCapable, venue_id: uuid.UUID | None = None
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    venue_id: uuid.UUID | None = None,
+    date_: Annotated[date | None, Query(alias="date")] = None,
+    court_ids: CourtIdsQuery = None,
+    booking_id: uuid.UUID | None = None,
 ) -> list[OwnerRefundOut]:
     """Section 32 Part 10: the owner's "Refunds to pay" screen. Deliberately NOT
     gated by the refunds flag -- when refunds are turned off, already-owed refunds
     must stay visible (view-only); only the mark-refunded action is blocked."""
     eff_owner, eff_venue = await resolve_owner_context(db, owner, venue_id, "mark_refunds")
     service = OwnerDashboardService(db, settings)
-    return await service.refunds_owed(eff_owner, venue_id=eff_venue)
+    return await service.refunds_owed(
+        eff_owner, venue_id=eff_venue, on_date=date_, court_ids=parse_id_list(court_ids), booking_id=booking_id
+    )
+
+
+# --- Owner Overview / Bookings history (docs/owner-overview-contract.md) ----------------------------------------
+
+
+@router.get("/overview", response_model=OwnerOverviewOut)
+async def owner_overview(
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    date_: Annotated[date | None, Query(alias="date")] = None,
+    venue_id: uuid.UUID | None = None,
+    court_ids: CourtIdsQuery = None,
+) -> OwnerOverviewOut:
+    return await OwnerOverviewService(db, settings).overview(owner, date_, venue_id, parse_id_list(court_ids))
+
+
+def _history_filter(
+    date_from: date | None, date_to: date | None, court_ids, statuses, q: str | None, sort: str
+) -> HistoryFilter:
+    today = pkt_today()
+    return HistoryFilter(
+        date_from=date_from or today,
+        date_to=date_to or date_from or today,
+        court_ids=parse_id_list(court_ids),
+        statuses=parse_str_list(statuses),
+        q=q,
+        sort=sort,
+    )
+
+
+@router.get("/bookings-history", response_model=OwnerBookingsPageOut)
+async def owner_bookings_history(
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    venue_id: uuid.UUID | None = None,
+    court_ids: CourtIdsQuery = None,
+    statuses: Annotated[list[str] | None, Query()] = None,
+    q: str | None = Query(None, max_length=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    sort: str = "starts_at:desc",
+) -> OwnerBookingsPageOut:
+    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort)
+    return await OwnerOverviewService(db, settings).history(owner, venue_id, f, page, page_size)
+
+
+@router.get("/bookings-history/export.csv")
+async def owner_bookings_history_export(
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    venue_id: uuid.UUID | None = None,
+    court_ids: CourtIdsQuery = None,
+    statuses: Annotated[list[str] | None, Query()] = None,
+    q: str | None = Query(None, max_length=100),
+    sort: str = "starts_at:desc",
+) -> Response:
+    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort)
+    csv_text = await OwnerOverviewService(db, settings).history_csv(owner, venue_id, f)
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=bookings_{f.date_from}_{f.date_to}.csv"},
+    )
+
+
+@router.get("/bookings/{booking_id}/overview-detail", response_model=OwnerBookingDetailOut)
+async def owner_booking_overview_detail(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+) -> OwnerBookingDetailOut:
+    return await OwnerOverviewService(db, settings).detail(owner, booking_id)
+
+
+@router.post("/bookings/{booking_id}/completion", response_model=OwnerBookingRowOut)
+async def owner_booking_completion(
+    booking_id: uuid.UUID, payload: CompletionIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+) -> OwnerBookingRowOut:
+    """Booking completed (Haan / Nahi). Permission record_payments (owner always); deliberately NOT behind the
+    split_payments flag so it works for plain bookings."""
+    return await OwnerOverviewService(db, settings).mark_completion(
+        owner, booking_id, payload.result, payload.received_pkr, payload.reason
+    )
+
+
+@router.get("/badges", response_model=OwnerBadgesOut)
+async def owner_badges(
+    db: DbSession, settings: AppSettings, owner: RequireStaffCapable, venue_id: uuid.UUID | None = None
+) -> OwnerBadgesOut:
+    return await OwnerOverviewService(db, settings).badges(owner, venue_id)
 
 
 @router.post(

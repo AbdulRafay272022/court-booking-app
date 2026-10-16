@@ -1,5 +1,7 @@
 import uuid
 
+import structlog
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import (
@@ -32,6 +34,8 @@ from app.services.player_name import clean_player_name
 from app.services.slot_compat import LegacySlotUnits
 from app.services.venue_service import VenueService
 from app.services.waitlist_service import WaitlistService
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -152,6 +156,7 @@ async def cancel_booking(
 
     cancelled_by = CancelledBy.PLAYER if booking.player_id == user.id else CancelledBy.OWNER
     booking = await service.cancel_booking(booking, cancelled_by, payload.reason)
+    response = BookingResponse(booking=BookingOut.model_validate(booking))
 
     # cancel_booking is idempotent (a no-op on an already-cancelled
     # booking) -- skip re-notifying/re-waking the waitlist on a repeat call.
@@ -165,8 +170,30 @@ async def cancel_booking(
                 )
         waitlist_service = WaitlistService(db, settings)
         await waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
+        # Owner Overview (spec 5.3): a PLAYER cancelling a booking that was paid for means a refund is now owed, so
+        # tell the venue owner too. Strictly best effort: a notification problem must never fail the cancel.
+        if (
+            cancelled_by == CancelledBy.PLAYER
+            and float(booking.amount_paid or 0) > 0
+            and booking.status == BookingStatus.CANCELLED
+        ):
+            try:
+                venue = await db.get(Venue, court.venue_id)
+                venue_owner = await db.get(User, venue.owner_id) if venue is not None else None
+                if venue_owner is not None:
+                    await notifications.notify_owner_refund_owed(
+                        owner=venue_owner,
+                        booking_id=booking.id,
+                        court_name=court.name,
+                        starts_at=booking.starts_at,
+                        ends_at=booking.ends_at,
+                        amount=float(booking.amount_paid),
+                        player_name=booking.player_name or user.name,
+                    )
+            except Exception as exc:  # noqa: BLE001 -- see comment above
+                logger.warning("booking.cancel.owner_refund_notification_failed", error=type(exc).__name__)
 
-    return BookingResponse(booking=BookingOut.model_validate(booking))
+    return response
 
 
 @router.post("/{booking_id}/checkin", response_model=BookingResponse)
