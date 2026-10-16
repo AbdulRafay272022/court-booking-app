@@ -458,7 +458,8 @@ class OwnerDashboardService:
             running += entry.amount_pkr
             # Recognisable refund rows (no new enum value): a negative entry that is not a reversal of an
             # earlier entry is money paid back out -- a refund.
-            if entry.reverses_entry_id is not None:
+            # A "Booking completed" adjustment that lowers the total paid is a correction, not money paid back out.
+            if entry.reverses_entry_id is not None or (entry.note or "").startswith("Booking completed"):
                 entry_type, entry_label = "correction", "Correction"
             elif entry.amount_pkr < 0:
                 entry_type, entry_label = "refund", "Refund"
