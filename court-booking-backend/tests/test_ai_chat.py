@@ -489,8 +489,10 @@ from app.utils.timezone import pkt_time_to_utc, pkt_today
 
 
 def _future_day(weekday: int = 5) -> date:
-    """The next given weekday (Saturday by default) at least 4 days ahead, so every slot is in the future."""
-    d = pkt_today() + timedelta(days=4)
+    """The date the chat parser reads from the bare weekday word ("saturday"): the NEXT such day counting from today (today itself if it
+    is that day). It used to start 4 days ahead, which disagreed with the parser on most days of the week (the player said 'saturday',
+    the test expected the Saturday after) and made the end-to-end tests pass or fail depending on the day they ran."""
+    d = pkt_today()
     while d.weekday() != weekday:
         d += timedelta(days=1)
     return d
