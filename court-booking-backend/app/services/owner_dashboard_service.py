@@ -21,6 +21,7 @@ from app.models.venue import Venue
 from app.services.entitlement_service import EntitlementService, premium_required_error
 from app.services.availability_service import AvailabilityService
 from app.services.feature_flag_service import flag_on
+from app.services.overview_slots import operating_day_expr, starts_between_prefilter
 from app.services.payment_service import PaymentService, build_payment_checks
 from app.utils.timezone import pkt_date_of, pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
@@ -217,9 +218,34 @@ class OwnerDashboardService:
             ),
         )
 
-    async def pending_approvals(self, owner: User, venue_id: uuid.UUID | None = None) -> list[PendingApprovalOut]:
+    @staticmethod
+    def _overview_filters(
+        on_date: date | None, court_ids: list[uuid.UUID] | None, booking_id: uuid.UUID | None
+    ) -> list:
+        """The optional Owner Overview filters shared by pending approvals and refunds: the booking's OPERATING DAY (same
+        SQL rule as the Overview cards, so a card count and the page behind it match), the selected courts, one booking."""
+        conds: list = []
+        if on_date is not None:
+            lo, hi = starts_between_prefilter(on_date, on_date)
+            conds += [Booking.starts_at >= lo, Booking.starts_at < hi, operating_day_expr() == on_date]
+        if court_ids:
+            conds.append(Booking.court_id.in_(court_ids))
+        if booking_id is not None:
+            conds.append(Booking.id == booking_id)
+        return conds
+
+    async def pending_approvals(
+        self,
+        owner: User,
+        venue_id: uuid.UUID | None = None,
+        on_date: date | None = None,
+        court_ids: list[uuid.UUID] | None = None,
+        booking_id: uuid.UUID | None = None,
+    ) -> list[PendingApprovalOut]:
         courts = await self._owner_courts(owner, venue_id)
-        court_ids = [c.id for c in courts]
+        court_ids_all = [c.id for c in courts]
+        court_ids_filter = court_ids
+        court_ids = court_ids_all
         if not court_ids:
             return []
         court_names = {c.id: c.name for c in courts}
@@ -228,7 +254,11 @@ class OwnerDashboardService:
         result = await self.db.execute(
             select(Payment, Booking)
             .join(Booking, Booking.id == Payment.booking_id)
-            .where(Booking.court_id.in_(court_ids), Payment.review_verdict.is_(None))
+            .where(
+                Booking.court_id.in_(court_ids),
+                Payment.review_verdict.is_(None),
+                *self._overview_filters(on_date, court_ids_filter, booking_id),
+            )
             .order_by(Payment.created_at.asc())
         )
         rows = result.all()
@@ -278,7 +308,14 @@ class OwnerDashboardService:
             )
         return out
 
-    async def refunds_owed(self, owner: User, venue_id: uuid.UUID | None = None) -> list[OwnerRefundOut]:
+    async def refunds_owed(
+        self,
+        owner: User,
+        venue_id: uuid.UUID | None = None,
+        on_date: date | None = None,
+        court_ids: list[uuid.UUID] | None = None,
+        booking_id: uuid.UUID | None = None,
+    ) -> list[OwnerRefundOut]:
         """Section 32 Part 10's owner-facing "Refunds to pay" screen -- the
         owner's own venue(s) only, filtered to `refund_status == "owed"`.
         Deliberately does NOT go through `_owner_courts` (which filters to
@@ -292,8 +329,8 @@ class OwnerDashboardService:
                 raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.VENUE_NOT_FOUND, "Venue not found")
             query = query.where(Court.venue_id == venue_id)
         courts = (await self.db.execute(query)).scalars().all()
-        court_ids = [c.id for c in courts]
-        if not court_ids:
+        all_court_ids = [c.id for c in courts]
+        if not all_court_ids:
             return []
         court_names = {c.id: c.name for c in courts}
         court_sports = {c.id: c.sport for c in courts}
@@ -304,7 +341,11 @@ class OwnerDashboardService:
             .join(Court, Court.id == Booking.court_id)
             .join(Venue, Venue.id == Court.venue_id)
             .outerjoin(User, User.id == PaymentDispute.player_id)
-            .where(Court.id.in_(court_ids), PaymentDispute.refund_status == "owed")
+            .where(
+                Court.id.in_(all_court_ids),
+                PaymentDispute.refund_status == "owed",
+                *self._overview_filters(on_date, court_ids, booking_id),
+            )
             .order_by(PaymentDispute.created_at.asc())
         )
         now = datetime.now(timezone.utc)

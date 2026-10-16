@@ -95,6 +95,49 @@ class PaymentLedgerService:
         await self.db.refresh(entry)
         return entry
 
+    async def adjust_total_paid(
+        self,
+        booking_id: uuid.UUID,
+        *,
+        target_pkr: int,
+        recorded_by: User | None,
+        note_up: str,
+        note_down: str,
+    ) -> tuple[PaymentEntry | None, int, int]:
+        """Owner Overview "Booking completed": make the booking's TOTAL PAID exactly `target_pkr` by appending ONE
+        ledger entry for the difference -- a positive `cash_at_venue` entry when more was received than recorded, a
+        negative `other` correction when less (never edits or deletes a row). Returns (entry or None when nothing
+        had to change, paid_before, paid_after).
+
+        Deliberately separate from `record_entry`, whose guards (amount > 0, never past the balance) stay exactly as
+        they are for every other caller: here the caller has already validated 0 <= target <= price, and a downward
+        move is the whole point. Row-locks the booking (same race rule as `record_entry`), writes through
+        `recompute_payment_totals` (still the only writer of amount_paid/balance_due) and does NOT commit: the
+        caller commits together with its own audit row so the money and its audit trail land atomically."""
+        booking = await self.db.get(Booking, booking_id, with_for_update=True)
+        if booking is None:
+            raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.BOOKING_NOT_FOUND, "Booking not found")
+        paid_before = int(
+            await self.db.scalar(
+                select(func.coalesce(func.sum(PaymentEntry.amount_pkr), 0)).where(PaymentEntry.booking_id == booking.id)
+            )
+            or 0
+        )
+        delta = target_pkr - paid_before
+        if delta == 0:
+            return None, paid_before, paid_before
+        entry = PaymentEntry(
+            booking_id=booking.id,
+            amount_pkr=delta,
+            method=PaymentMethod.CASH_AT_VENUE if delta > 0 else PaymentMethod.OTHER,
+            recorded_by=recorded_by.id if recorded_by else None,
+            note=note_up if delta > 0 else note_down,
+        )
+        self.db.add(entry)
+        await self.db.flush()
+        await recompute_payment_totals(self.db, booking)
+        return entry, paid_before, target_pkr
+
     async def reverse_entry(self, entry_id: uuid.UUID, *, actor: User, reason: str) -> PaymentEntry:
         """A correction (Section 32 Part 5): never edits or deletes the original row -- inserts a new entry
         with the opposite amount, linked back via `reverses_entry_id`, and recomputes the booking's totals

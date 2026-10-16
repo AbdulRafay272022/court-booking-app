@@ -54,6 +54,7 @@ class ErrorCode:
     BOOKING_ALREADY_CANCELLED = "BOOKING_ALREADY_CANCELLED"
     INVALID_CHECKIN_CODE = "INVALID_CHECKIN_CODE"
     TOO_EARLY_FOR_NO_SHOW = "TOO_EARLY_FOR_NO_SHOW"  # Section 32 Part 9: owner manual no-show, before the grace window
+    COMPLETION_TOO_EARLY = "COMPLETION_TOO_EARLY"  # Owner Overview: "Booking completed" before the slot has ended
 
     # Reviews (Section 32 Part 6)
     ALREADY_REVIEWED = "ALREADY_REVIEWED"
