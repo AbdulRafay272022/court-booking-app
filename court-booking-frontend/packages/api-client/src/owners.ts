@@ -61,8 +61,11 @@ export function createOwnersApi(client: ApiClient) {
     today: (params: { date?: string; venue_id?: string } = {}) =>
       client.request<OwnerToday>(`/owners/today${toQuery({ date_: params.date, venue_id: params.venue_id })}`),
 
-    pendingApprovals: (venueId?: string) =>
-      client.request<PendingApproval[]>(`/owners/pending-approvals${toQuery({ venue_id: venueId })}`),
+    /** `date` + `courtIds` (optional) narrow the list to one operating day / some courts, same rule as the Overview. */
+    pendingApprovals: (venueId?: string, filter: { date?: string; courtIds?: string[] } = {}) =>
+      client.request<PendingApproval[]>(
+        `/owners/pending-approvals${toQuery({ venue_id: venueId, date: filter.date, court_ids: filter.courtIds?.join(",") || undefined })}`,
+      ),
 
     ledger: (startDate: string, endDate: string, filters: LedgerFilters = {}) =>
       client.request<Ledger>(
@@ -113,8 +116,10 @@ export function createOwnersApi(client: ApiClient) {
       client.request<Growth>(`/owners/growth${toQuery({ venue_id: venueId })}`),
 
     /** Section 32 Part 10: the owner's "Refunds to pay" screen. */
-    refunds: (venueId?: string) =>
-      client.request<OwnerRefund[]>(`/owners/refunds${toQuery({ venue_id: venueId })}`),
+    refunds: (venueId?: string, filter: { date?: string; courtIds?: string[] } = {}) =>
+      client.request<OwnerRefund[]>(
+        `/owners/refunds${toQuery({ venue_id: venueId, date: filter.date, court_ids: filter.courtIds?.join(",") || undefined })}`,
+      ),
 
     /** Records a refund the owner already sent OUTSIDE the app (JazzCash/bank) -- there is no
      * payment gateway here, this is purely a record with a reference and an optional screenshot.

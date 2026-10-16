@@ -36,3 +36,12 @@ Query params: `venue_id` (optional, as elsewhere), `court_ids` (repeat param or 
 
 ## Status keys (HistoryStatusKey) = what the Status column shows
 `booked`, `held` (awaiting payment), `awaiting_approval` (payment_submitted), `completed_yes` (Mukammal chip), `completed_no` (Adhoora chip), `checked_in`, `no_show`, `cancelled`, `refund_owed`, `refunded`, `expired` (held that timed out; cancelled by system with the expiry reason). A row has one `status_key` (primary: booked/held/awaiting_approval/no_show/cancelled/refund_owed/refunded/expired) plus chips `completion` and `checked_in`. Filters accept the composite names: `booked` (confirmed), `pending` (held + awaiting_approval), `cancelled`, `refund` (owed + refunded), `completed` (completion yes), `short_paid` (completion no), plus each raw key. Agent A reports the exact mapping from code states.
+
+## Extra backend additions (agent A)
+- `GET /owners/pending-approvals` and `GET /owners/refunds` gain OPTIONAL `date` (operating day, same rule as Overview) and `court_ids`; without them behaviour is unchanged. Their response rows must also carry `booking_id` (add if missing, additive) so the shared BookingDetail / History link works.
+- `PendingApproval` / `OwnerRefund` TS types: add `booking_id?: string` (optional in the type) if the backend field is added.
+
+## URL query names (web) -- every page agrees on these
+- Overview (`/dashboard/owner/today`) and Approvals / Refunds: `date=YYYY-MM-DD` (omitted = today), `courts=id1,id2` (omitted = all).
+- History (`/dashboard/bookings`): `from=YYYY-MM-DD&to=YYYY-MM-DD` (omitted = today), `courts=id1,id2`, `status=booked,pending` (comma list of HistoryStatusFilter), `q=text`, `page=N`, `sort=field:dir`, `booking=<uuid>` (opens the detail popup + highlights the row).
+- Detail popup is opened in-page from Overview/Approvals/Refunds with local state; "History mein dekho" navigates to `/dashboard/bookings?booking=<uuid>&from=<date>&to=<date>`.
