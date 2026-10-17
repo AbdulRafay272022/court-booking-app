@@ -143,10 +143,20 @@ class NotificationService:
         if reference_id is not None:
             data["reference_id"] = str(reference_id)
         for token in await self._active_tokens(user.id):
-            if await self._push(token, title, body, data) == PushOutcome.UNREGISTERED:
+            outcome = await self._push(token, title, body, data)
+            if outcome == PushOutcome.UNREGISTERED:
                 await self._deactivate_token(token)
+            # The log used to say "sent" for every attempt, whatever FCM/APNs answered, so a push that
+            # never left the server (no credentials, provider error, dead token) looked delivered.
+            # A test fake that returns nothing counts as sent (the real _push always returns an outcome).
+            ok = outcome is None or outcome == PushOutcome.SENT
             await self._log(
-                user_id=user.id, channel="push", event_type=event_type, reference_id=reference_id
+                user_id=user.id,
+                channel="push",
+                event_type=event_type,
+                reference_id=reference_id,
+                status_value="sent" if ok else "failed",
+                error_message=None if ok else f"push {outcome.value}",
             )
 
     async def _whatsapp_smart_best_effort(
