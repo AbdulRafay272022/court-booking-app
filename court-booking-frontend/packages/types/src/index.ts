@@ -12,6 +12,7 @@ export * from "./public-stats";
 export * from "./review";
 export * from "./owner";
 export * from "./owner-overview";
+export * from "./round2";
 export * from "./admin";
 export * from "./owner-billing";
 export * from "./feature-flag";

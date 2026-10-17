@@ -1,4 +1,4 @@
-import type { NotificationLogEntry, User } from "@court-booking/types";
+import type { NotificationFeedPage, NotificationLogEntry, User } from "@court-booking/types";
 import type { ApiClient } from "./client";
 
 export function createUsersApi(client: ApiClient) {
@@ -11,6 +11,10 @@ export function createUsersApi(client: ApiClient) {
 
     deleteFcmToken: (token: string) =>
       client.request<void>(`/users/me/fcm-token/${token}`, { method: "DELETE" }),
+
+    /** Round 2 (A6): readable, grouped notifications (sentence built client-side by notificationText). */
+    notificationsFeed: (page = 1, pageSize = 30) =>
+      client.request<NotificationFeedPage>(`/users/me/notifications/feed?page=${page}&page_size=${pageSize}`),
 
     notifications: (page = 1, pageSize = 20) =>
       client.request<NotificationLogEntry[]>(`/users/me/notifications?page=${page}&page_size=${pageSize}`),

@@ -157,6 +157,11 @@ export interface OwnerRefund {
   refunded_amount: number | null;
   /** Still owed after any partial refunds (refund_amount - refunded_amount). Show this as the amount to pay. */
   remaining_amount?: number;
+  /** Round 2 (A10): what the player actually paid in, the policy refund, and what was already sent back. */
+  player_sent?: number | null;
+  refund_due?: number;
+  already_refunded?: number;
+  reason_label_key?: string;
   refund_reference: string | null;
   refunded_at: string | null;
   created_at: string;
