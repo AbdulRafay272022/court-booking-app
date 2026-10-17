@@ -15,6 +15,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 import { OV, courtShort, dateTitle, historyParams } from "@/lib/overview";
 import { BellIcon } from "@/components/icons";
+import { BellBadge } from "@/components/bell-badge";
 import { ErrorState } from "@/components/error-state";
 import { PremiumNotices } from "@/components/premium-notices";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
@@ -98,6 +99,7 @@ export default function OwnerOverviewScreen() {
             style={{ backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.25)" }}
           >
             <BellIcon color="#FFFFFF" />
+            <BellBadge />
           </Pressable>
         </View>
       </SafeAreaView>

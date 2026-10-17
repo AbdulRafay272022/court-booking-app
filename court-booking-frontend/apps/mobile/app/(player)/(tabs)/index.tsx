@@ -5,6 +5,7 @@ import { router } from "expo-router";
 
 import { useAuthStore } from "@/lib/auth-store";
 import { BellIcon, SearchIcon } from "@/components/icons";
+import { BellBadge } from "@/components/bell-badge";
 import { Logo } from "@/components/auth/kit";
 import { SportChip } from "../_components";
 
@@ -24,6 +25,7 @@ export default function PlayerHomeScreen() {
               className="w-[38px] h-[38px] rounded-full bg-player-surface-2 items-center justify-center"
             >
               <BellIcon size={18} color="#141A1D" />
+              <BellBadge />
             </Pressable>
             <View className="w-[38px] h-[38px] rounded-full bg-player-ink items-center justify-center">
               <Text className="font-figtree-bold text-white text-sm">{initials}</Text>
