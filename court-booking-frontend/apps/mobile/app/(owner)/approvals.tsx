@@ -15,6 +15,8 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon, CheckIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { EmptyState } from "./_dashboard-components";
+import { BookingDetailSheet } from "@/components/booking-detail-sheet";
+import { BookingLinks } from "@/components/booking-links";
 
 const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks like a duplicate", "Other"];
 
@@ -25,6 +27,7 @@ export default function ApprovalsScreen() {
   const filterCourts = routeParams.courts ? routeParams.courts.split(",").filter(Boolean) : [];
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState("");
@@ -182,6 +185,7 @@ export default function ApprovalsScreen() {
             <Row label="Slot" value={`${courtLabel(current.court_name, current.court_sport ?? sportForCourtName(activeVenue?.courts, current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
             <Row label="Advance due" value={`PKR ${formatPKR(current.expected_amount)}`} />
             <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
+            <BookingLinks bookingId={current.booking_id} startsAt={current.starts_at} onDetails={() => setDetailId(current.booking_id)} />
           </View>
 
           {current.checks ? (
@@ -304,6 +308,7 @@ export default function ApprovalsScreen() {
           )}
         </View>
       ) : null}
+      {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
       <OwnerTabBar active="approvals" />
     </SafeAreaView>
   );

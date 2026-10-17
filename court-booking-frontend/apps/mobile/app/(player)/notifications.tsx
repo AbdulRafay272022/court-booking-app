@@ -3,7 +3,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
+import { useEffect } from "react";
 import { api } from "@/lib/api";
+import { useUnreadNotifications } from "@/lib/use-unread-notifications";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatRelativeTime, notificationLabel } from "@/lib/format";
@@ -13,6 +15,11 @@ import { EmptyState } from "./_components";
 export default function PlayerNotificationsScreen() {
   const query = useQuery({ queryKey: ["notifications"], queryFn: () => api.users.notifications(1, 50) });
   const items = query.data ?? [];
+  // Opening the screen counts as reading: clears the bell badge (and again when a poll brings newer rows in).
+  const { markAllRead } = useUnreadNotifications();
+  useEffect(() => {
+    markAllRead();
+  }, [markAllRead]);
 
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>

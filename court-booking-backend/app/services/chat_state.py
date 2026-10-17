@@ -559,10 +559,29 @@ def _resolve_hour(hour: int, minute: int, mer: str | None, part: str | None) -> 
     return None
 
 
-def extract_times(text: str, *, bare_ok: bool = False) -> TimeFound:
+# "Arena 1 ka", "Court 2 ki booking", "Court 3 ke liye": the digit belongs to the venue/court label, it is not "1 o'clock" (ka/ki/ke is also the
+# time suffix in "9 ka slot"). Only a number DIRECTLY after a court-like label word and DIRECTLY before ka/ki/ke is dropped; "8 baje ka match" and
+# "9 ka slot" (no label word in front of the number) are still times.
+_LABEL_NUMBER_RE = re.compile(
+    r"\b(?:courts?|arena|arenas|ground|grounds|club|venue|turf|pitch|field|net|nets|hall|complex|academy|stadium|zone|number|no)\s*#?\s*\d{1,2}(?=\s+(?:ka|ki|ke)\b)"
+)
+
+
+def strip_label_numbers(text: str, names: Iterable[str] = ()) -> str:
+    """Remove court/venue label numbers ("Arena 1" in "Arena 1 ka ...") before a time is read. `names` are the known venue/court names (facts):
+    one that ends in a digit and is followed by ka/ki/ke is removed too ("Padel Zone 4 ki ...", "Hub 7 ka ...")."""
+    out = _LABEL_NUMBER_RE.sub(" ", (text or "").lower())
+    for name in names:
+        n = _norm(name)
+        if n and n[-1].isdigit():
+            out = re.sub(rf"(?<![a-z0-9]){re.escape(n)}(?=\s+(?:ka|ki|ke)\b)", " ", out)
+    return out
+
+
+def extract_times(text: str, *, bare_ok: bool = False, names: Iterable[str] = ()) -> TimeFound:
     """Start (and end) time from free text. `text` should already have dates and durations removed. Hours said without a day-part
     stay ambiguous (AM/PM unknown) instead of being guessed."""
-    t = (text or "").lower()
+    t = strip_label_numbers(text, names)
     t = re.sub(r"\b\d{3,}\b", " ", t)  # prices ("3000"), never a clock time
     tokens = re.findall(r"[a-z']+", t)
     part = _daypart(tokens)
@@ -996,7 +1015,8 @@ def _apply_player(
     duration, rest = extract_duration(raw, bare_ok=pending == "duration")
     found_date, rest = extract_date(rest, today)
     rest = re.sub(r"(?i)\b(?:court|courts|number|no)\s*#?\s*[a-z0-9]{1,2}\b", " ", rest)  # "Court 2 ka slot" is not 2 o'clock
-    clock = extract_times(rest, bare_ok=pending in ("time", "ampm"))
+    known_names = [v.name for v in facts.venues] + [c.name for v in facts.venues for c in v.courts] if facts else []
+    clock = extract_times(rest, bare_ok=pending in ("time", "ampm"), names=known_names)
     if found_date is not None:
         if found_date.past:
             turn.past_date = True

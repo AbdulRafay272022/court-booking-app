@@ -13,6 +13,8 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { EmptyState } from "./_dashboard-components";
+import { BookingDetailSheet } from "@/components/booking-detail-sheet";
+import { BookingLinks } from "@/components/booking-links";
 import type { OwnerRefund } from "@court-booking/types";
 
 /** Section 32 Part 10: the owner's "Refunds to pay" screen. A refund here was always sent OUTSIDE
@@ -24,6 +26,7 @@ export default function RefundsScreen() {
   const filterCourts = routeParams.courts ? routeParams.courts.split(",").filter(Boolean) : [];
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["owner-refunds", activeVenueId, filterDate, filterCourts.join(",")],
@@ -79,12 +82,12 @@ export default function RefundsScreen() {
       ) : (
         <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 gap-3">
           {list.map((refund) => (
-            <Pressable
+            <View
               key={refund.id}
-              onPress={() => setOpenId(refund.id)}
-              className="bg-owner-surface border rounded-xl p-4 flex-row items-center justify-between gap-3"
+              className="bg-owner-surface border rounded-xl p-4 gap-3"
               style={{ borderColor: refund.is_overdue ? "#DDBAB1" : "#DCE3E6" }}
             >
+            <Pressable onPress={() => setOpenId(refund.id)} className="flex-row items-center justify-between gap-3">
               <View className="flex-1 gap-0.5">
                 <Text className="font-plex-bold text-owner-ink text-[14.5px]">
                   {refund.player_name ?? refund.player_phone ?? "Player"}
@@ -100,9 +103,12 @@ export default function RefundsScreen() {
               </View>
               <View className="items-end"><Text className="font-mono-bold text-owner-ink text-[15px]">PKR {formatPKR((refund.remaining_amount ?? refund.refund_amount - (refund.refunded_amount ?? 0)))}</Text>{(refund.refunded_amount ?? 0) > 0 ? <Text className="font-plex-medium text-owner-ink-faint text-[11px]">remaining of PKR {formatPKR(refund.refund_amount)}</Text> : null}</View>
             </Pressable>
+            <BookingLinks bookingId={refund.booking_id} startsAt={refund.starts_at} onDetails={() => setDetailId(refund.booking_id)} />
+            </View>
           ))}
         </ScrollView>
       )}
+      {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
       <OwnerTabBar active="refunds" />
     </SafeAreaView>
   );

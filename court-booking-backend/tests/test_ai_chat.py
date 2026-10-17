@@ -1,6 +1,9 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
+
+import sys
 
 import httpx
+import pytest
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -498,6 +501,77 @@ def _future_day(weekday: int = 5) -> date:
     return d
 
 
+# --- a frozen clock for the weekday-dependent end-to-end flows -----------------------------------------------------------------------
+# These flows book "Saturday 7 PM / 9 PM". Run on a Saturday evening the slot is already in the past, and a bare weekday word is read as the nearest
+# such day INCLUDING today, so the result depended on when the suite ran. `frozen_clock` pins "now" for every `app.*` module that reads it (every
+# `datetime.now(...)` and `app.utils.timezone.utc_now / pkt_today`), and the tests use the first Saturday strictly AFTER the frozen today with the
+# date spelled out in the message ("24 Oct"), so the outcome is the same at any instant. No production code is touched.
+FROZEN_INSTANTS = [
+    pytest.param(datetime(2026, 10, 14, 7, 0, tzinfo=timezone.utc), id="wed-noon-pkt"),  # Wed 14 Oct 12:00 PKT
+    pytest.param(datetime(2026, 10, 17, 18, 0, tzinfo=timezone.utc), id="sat-2300-pkt"),  # Sat 17 Oct 23:00 PKT: the 7/9 PM slots are past today
+    pytest.param(datetime(2026, 10, 17, 19, 30, tzinfo=timezone.utc), id="sun-0030-pkt"),  # Sun 18 Oct 00:30 PKT (still Saturday in UTC)
+]
+_MONTH_ABBR = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+
+@pytest.fixture
+def frozen_clock(request, monkeypatch):
+    instant = request.param
+    real = datetime
+
+    class _Meta(type):
+        def __instancecheck__(cls, obj):
+            return isinstance(obj, real)
+
+        def __getattr__(cls, name):
+            return getattr(real, name)
+
+        def __call__(cls, *args, **kwargs):
+            return real(*args, **kwargs)
+
+    class _FrozenDatetime(metaclass=_Meta):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz) if tz is not None else instant.replace(tzinfo=None)
+
+        @classmethod
+        def utcnow(cls):
+            return instant.replace(tzinfo=None)
+
+    for name, module in list(sys.modules.items()):
+        if (name == "app" or name.startswith("app.")) and getattr(module, "datetime", None) is real:
+            monkeypatch.setattr(module, "datetime", _FrozenDatetime)
+
+    # chat rows carry their own created_at (a database default = the REAL clock), and the conversation fold reads each row's date as "today":
+    # stamp new messages with the frozen instant (+1 s each, to keep their order) so they agree with the frozen clock
+    from sqlalchemy import event
+
+    from app.models.message import Message
+
+    ticks = {"n": 0}
+
+    def stamp(_mapper, _connection, target):
+        ticks["n"] += 1
+        target.created_at = instant + timedelta(seconds=ticks["n"])
+
+    event.listen(Message, "before_insert", stamp)
+    yield instant
+    event.remove(Message, "before_insert", stamp)
+
+
+def _next_saturday() -> date:
+    """The first Saturday strictly after today (PKT): always in the future, whatever hour the clock says."""
+    d = pkt_today() + timedelta(days=1)
+    while d.weekday() != 5:
+        d += timedelta(days=1)
+    return d
+
+
+def _on(day: date) -> str:
+    """The date the way a player types it ("24 oct"); read by the parser the same on every day of the week."""
+    return f"{day.day} {_MONTH_ABBR[day.month - 1]}"
+
+
 def _pkt(day: date, hh: int, mm: int = 0) -> datetime:
     """A Pakistan wall-clock time on `day` as a UTC instant (hh may be 24+ for 'the next morning')."""
     return pkt_time_to_utc(day, time(0, 0)) + timedelta(hours=hh, minutes=mm)
@@ -693,8 +767,9 @@ async def test_check_availability_judges_the_requested_range_by_its_start_date(
     assert (await _range(service, player, court, sat, "21:00", "23:00"))["available"] is True
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_assistant_books_9pm_to_12am_end_to_end_with_a_mocked_model(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     """The model's turn for "book 9 PM to 12 AM on Saturday": check_availability(start date, 21:00, 00:00) ->
     propose_booking_confirmation(starts_at/duration copied from requested_range) -> the Yes/No actions carry the
@@ -704,7 +779,7 @@ async def test_assistant_books_9pm_to_12am_end_to_end_with_a_mocked_model(
     _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100023",
                                       open_=time(16, 0), close=time(0, 0))
     player = await make_user("+923014100024", role=UserRole.PLAYER, name="Sara Ahmed")
-    sat = _future_day(5)
+    sat = _next_saturday()
     start = _pkt(sat, 21).isoformat()
     _mock_anthropic_sequence(
         monkeypatch,
@@ -714,7 +789,7 @@ async def test_assistant_books_9pm_to_12am_end_to_end_with_a_mocked_model(
             _text_response("9:00 PM to 12:00 AM, PKR 3,000. Shall I book it? Reply Yes or No"),
         ],
     )
-    result = await AIChatService(db_session, settings).process_message(user=player, message="9 pm to 12 am saturday", history=[])
+    result = await AIChatService(db_session, settings).process_message(user=player, message=f"9 pm to 12 am on {_on(sat)}", history=[])
     assert result.tool_calls == ["check_availability", "propose_booking_confirmation"]
     assert {k: result.actions[0].data[k] for k in ("court_id", "starts_at", "slot_count")} == {"court_id": str(court.id), "starts_at": start, "slot_count": 6}
 
@@ -861,19 +936,21 @@ async def _nameless_setup(make_user, make_venue, make_court, make_schedule, make
     return court, user
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_assistant_asks_a_nameless_player_for_a_name_once_before_proposing(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                          ("+923014300001", "+923014300002", "+923014300003"), monkeypatch)
     guest = await db_session.get(type(guest), guest.id)  # bound to the session, like the request's user
-    start = _pkt(_future_day(5), 19).isoformat()
+    sat = _next_saturday()
+    start = _pkt(sat, 19).isoformat()
     bodies = _capture_anthropic(monkeypatch, [
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response("What name should I put the booking under?"),
     ])
     service = AIChatService(db_session, get_settings())
-    first = "book 7pm saturday for 1 hour"  # Phase 3: the proposal needs the length from the player too
+    first = f"book 7pm on {_on(sat)} for 1 hour"  # Phase 3: the proposal needs the length from the player too
     result = await service.process_message(user=guest, message=first, history=[])
     assert result.actions == [] and "name" in result.reply.lower()  # no Yes/No yet: a name comes first
     assert "none on file" in bodies[0]["system"]  # the model is told the account has no name
@@ -909,16 +986,18 @@ async def test_assistant_asks_a_nameless_player_for_a_name_once_before_proposing
     assert other.name is None
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_name_question_is_never_repeated_and_a_named_account_is_never_asked(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                          ("+923014300011", "+923014300012", "+923014300013"), monkeypatch)
-    start = _pkt(_future_day(5), 19).isoformat()
+    sat = _next_saturday()
+    start = _pkt(sat, 19).isoformat()
     service = AIChatService(db_session, get_settings())
 
     # the question was already asked and the player brushed it off: propose WITHOUT a name goes straight through
-    history = [{"role": "user", "content": "book 7pm saturday for 1 hour"}, {"role": "assistant", "content": "What name should I put the booking under?"},
+    history = [{"role": "user", "content": f"book 7pm on {_on(sat)} for 1 hour"}, {"role": "assistant", "content": "What name should I put the booking under?"},
                {"role": "user", "content": "no need"}]
     _capture_anthropic(monkeypatch, [
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
@@ -934,7 +1013,7 @@ async def test_name_question_is_never_repeated_and_a_named_account_is_never_aske
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response("Court 1, 7 PM. Shall I book it?"),
     ])
-    result = await service.process_message(user=sara, message="book 7pm saturday for 1 hour", history=[])
+    result = await service.process_message(user=sara, message=f"book 7pm on {_on(sat)} for 1 hour", history=[])
     assert any(a.type == "confirm_booking" for a in result.actions)
     assert 'Player account name: "Sara Ahmed"' in bodies[0]["system"]
 
@@ -1054,8 +1133,9 @@ async def test_a_bare_yes_without_a_stated_slot_tells_the_model_to_restate_it_an
     assert "The player just replied" not in bodies[0]["system"]
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_whatsapp_name_then_exact_time_flow_end_to_end(
-    client, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, client, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     """A brand-new WhatsApp guest: asked for a name once, answers, gets the exact slot + Yes/No, a typed "yes" books it
     under that name and the name lands on the account. The model is mocked; everything else is the real path."""
@@ -1071,7 +1151,7 @@ async def test_whatsapp_name_then_exact_time_flow_end_to_end(
     monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_buttons", fake_send_buttons)
     court, _sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                          ("+923014300061", "+923014300062", "+923014300063"), monkeypatch)
-    day = _future_day(5)
+    day = _next_saturday()
     seven = _pkt(day, 19).isoformat()
     # the test client is itself an httpx.AsyncClient: only the model call may be intercepted
     real_post, calls = httpx.AsyncClient.post, {"n": 0}
@@ -1091,7 +1171,7 @@ async def test_whatsapp_name_then_exact_time_flow_end_to_end(
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
 
-    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-1", "book court 1 at 7pm saturday for 1 hour"))
+    await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-1", f"book court 1 at 7pm on {_on(day)} for 1 hour"))
     assert "name" in sent[-1]["body"].lower() and "Shall I book" not in sent[-1]["body"]
     await client.post("/api/v1/webhooks/whatsapp", json=_text_payload("923014300063", "wamid.flow-2", "Ali Raza"))
     assert "7:00 PM to 8:00 PM" in sent[-1]["body"] and "PKR 3,500" in sent[-1]["body"] and sent[-1]["buttons"]  # exact slot + buttons
