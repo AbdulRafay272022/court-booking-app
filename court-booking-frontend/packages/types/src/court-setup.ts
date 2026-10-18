@@ -33,6 +33,8 @@ export interface PricingRuleDraft {
   dayOfWeek: number[] | null;
   startTime: string | null; // "HH:MM"
   endTime: string | null;
+  /** The rule's saved advance_percentage (Venue Settings keeps it on save); unset for a new rule = 100. */
+  advancePercentage?: number;
 }
 
 /** Everything an owner sets for ONE court: how long a slot is, when it is open, and what it costs. The wizard and
@@ -117,7 +119,8 @@ export function buildPricingRules(setup: CourtSetup): PricingRuleInput[] {
       start_time: r.startTime ? toApiTime(r.startTime) : undefined,
       end_time: r.endTime ? toApiTime(r.endTime) : undefined,
       price_per_slot: Number(r.pricePerSlot),
-      advance_percentage: 100,
+      // keep a saved rule's own percentage (saving Venue Settings used to reset every rule to 100)
+      advance_percentage: r.advancePercentage ?? 100,
     }));
 }
 
@@ -146,6 +149,7 @@ export function courtSetupFromCourt(court: Pick<Court, "slot_minutes" | "schedul
             dayOfWeek: r.day_of_week,
             startTime: r.start_time ? shortTime(r.start_time) : null,
             endTime: r.end_time ? shortTime(r.end_time) : null,
+            advancePercentage: Number(r.advance_percentage),
           }))
         : [makePricingRule("All day")],
   };

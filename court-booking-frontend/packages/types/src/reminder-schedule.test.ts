@@ -26,7 +26,12 @@ test("Y = 30: one reminder at 10, warning at 25, cancel at 30", () => {
 
 test("Y smaller than the first reminder: no reminders, only the warning", () => {
   assert.deepEqual(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: 8 }), { reminders: [], finalWarning: 4, cancelAt: 8 });
+  // first reminder at the warning minute is dropped too
+  assert.deepEqual(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: 15 }), { reminders: [], finalWarning: 10, cancelAt: 15 });
   assert.deepEqual(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: 10 }), { reminders: [], finalWarning: 5, cancelAt: 10 });
+  assert.deepEqual(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: 5 }), { reminders: [], finalWarning: 2, cancelAt: 5 });
+  assert.deepEqual(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: 1 }).finalWarning, 1);
+  assert.deepEqual(reminderSchedule({ firstAfterMin: 1, everyMin: 5, maxReminders: 5, autoCancelMin: 9 }), { reminders: [1], finalWarning: 4, cancelAt: 9 });
 });
 
 test("Y = 0 / null = off", () => {
@@ -38,8 +43,8 @@ test("Y = 0 / null = off", () => {
 test("custom values and max", () => {
   assert.deepEqual(reminderSchedule({ firstAfterMin: 5, everyMin: 5, maxReminders: 3, autoCancelMin: null }).reminders, [5, 10, 15]);
   assert.deepEqual(reminderSchedule({ firstAfterMin: 15, everyMin: 20, maxReminders: 10, autoCancelMin: 60 }), {
-    // literal spec rule: only reminders at/after Y are dropped (a reminder may share a minute with the warning)
-    reminders: [15, 35, 55],
+    // a reminder at or after the final-warning minute is dropped
+    reminders: [15, 35],
     finalWarning: 55,
     cancelAt: 60,
   });

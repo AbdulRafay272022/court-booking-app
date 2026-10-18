@@ -5,8 +5,9 @@
  *
  * Rules (minutes after the payment screenshot arrived):
  * - reminders at first, first + every, first + 2*every, ... at most `maxReminders` of them;
- * - auto-cancel ON with Y minutes: drop every reminder at or after Y, add ONE final warning 5 minutes before Y
- *   (Y <= 10: at Y / 2), cancel at Y; the final warning does not count toward `maxReminders`;
+ * - auto-cancel ON with Y minutes: ONE final warning 5 minutes before Y (Y <= 10: at floor(Y / 2), at least 1), cancel
+ *   at Y; every reminder at or after the FINAL WARNING minute is dropped; the final warning does not count toward
+ *   `maxReminders`;
  * - Y null or 0 (or negative) = auto-cancel off: no final warning, no cancel.
  * Shifting a reminder that falls outside the venue's operating hours is the scheduler's job, not this preview.
  */
@@ -51,15 +52,15 @@ export function reminderSchedule(input: ReminderScheduleInput): ReminderSchedule
   const max = Math.max(0, Math.floor(Number(input.maxReminders) || 0));
   const y = input.autoCancelMin && input.autoCancelMin > 0 ? Number(input.autoCancelMin) : null;
 
+  const finalWarning = y === null ? null : y <= 10 ? Math.max(1, Math.floor(y / 2)) : y - 5;
   const reminders: number[] = [];
   for (let i = 0; i < max; i++) {
     const at = first + i * every;
-    if (y !== null && at >= y) break;
+    if (finalWarning !== null && at >= finalWarning) break;
     if (i > 0 && every <= 0) break; // a zero interval would repeat the same minute
     reminders.push(at);
   }
   if (y === null) return { reminders, finalWarning: null, cancelAt: null };
-  const finalWarning = y <= 10 ? y / 2 : y - 5;
   return { reminders, finalWarning, cancelAt: y };
 }
 

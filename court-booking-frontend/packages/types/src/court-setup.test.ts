@@ -10,6 +10,7 @@ import {
   buildSchedules,
   cloneCourtSetup,
   courtSetupFromCourt,
+  makePricingRule,
   courtSetupProblem,
   defaultCourtSetup,
 } from "./court-setup";
@@ -261,4 +262,18 @@ test("hiddenRates flags a rate that another rate always replaces (Court 2 as it 
   assert.ok(narrower.p && !narrower.q && !narrower.z);
   // a rate with no price is not saved, so it is ignored
   assert.deepEqual(hiddenRates({ pricingRules: [r("m", "Empty", null, "18:00", "23:00", ""), r("n", "All day", null, null, null, "3000")] }), {});
+});
+
+test("saving Venue Settings keeps each rule's own advance_percentage; a new rule gets 100", () => {
+  const court = {
+    slot_minutes: 60,
+    schedule_templates: [],
+    pricing_rules: [
+      { id: "1", name: "All day", priority: 0, day_of_week: null, start_time: null, end_time: null, price_per_slot: 3000, floodlight_surcharge: 0, advance_percentage: 50, is_active: true },
+      { id: "2", name: "Peak", priority: 1, day_of_week: null, start_time: "18:00:00", end_time: "23:00:00", price_per_slot: 4000, floodlight_surcharge: 0, advance_percentage: 25, is_active: true },
+    ],
+  };
+  const setup = courtSetupFromCourt(court as never);
+  setup.pricingRules.push({ ...makePricingRule("New"), pricePerSlot: "5000" });
+  assert.deepEqual(buildPricingRules(setup).map((r) => r.advance_percentage), [50, 25, 100]);
 });

@@ -142,7 +142,7 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
                 onClick={() => close(true)}
                 className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-[18px] text-khelo-muted focus-visible:outline-2 focus-visible:outline-khelo-orange sm:hidden"
               >
-                <span aria-hidden="true">{"✕"}</span>
+                <span aria-hidden="true">{"\u2715"}</span>
               </button>
             </div>
           </div>
@@ -200,7 +200,7 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
                     </p>
                   ) : n.popupEnabled && perm === "granted" ? (
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[13px] font-semibold text-khelo-success-text">{"✓ "}{t("notif.popup.on")}</p>
+                      <p className="text-[13px] font-semibold text-khelo-success-text">{"\u2713 "}{t("notif.popup.on")}</p>
                       <button type="button" onClick={n.disablePopups} className="min-h-11 cursor-pointer rounded-lg border border-khelo-border bg-white px-3 text-[13px] font-bold">
                         {rk("notif.popup.off")}
                       </button>
@@ -269,7 +269,7 @@ function Row({
         ) : null}
         <span className="text-[12px] text-khelo-muted-2" data-testid="notification-meta">
           {fmt.relative(item.created_at)}
-          {text.delivery ? ` · ${text.delivery}` : ""}
+          {text.delivery ? ` \u00b7 ${text.delivery}` : ""}
         </span>
       </span>
     </>

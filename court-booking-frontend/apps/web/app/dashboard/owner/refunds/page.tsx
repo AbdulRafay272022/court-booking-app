@@ -25,9 +25,6 @@ import { parseQueueFilter } from "@/lib/queue-filter";
 import { isNaya } from "@/lib/owner-seen";
 import { useSeenSince } from "@/lib/use-owner-seen";
 
-/** A refund row may carry the payment it came from (newer backends); without it there is no screenshot to show. */
-type RefundRow = OwnerRefund & { payment_id?: string | null };
-
 const TEAL = "#0E6274";
 const DANGER = "#A8432C";
 
@@ -86,7 +83,7 @@ export default function OwnerRefundsPage() {
     enabled: !!activeVenueId,
   });
 
-  const list = (query.data ?? []) as RefundRow[];
+  const list = query.data ?? [];
   const open = list.find((r) => r.id === openId) ?? null;
 
   return (
@@ -128,7 +125,7 @@ export default function OwnerRefundsPage() {
                     <StatusChip b={b} />
                   </p>
                   <p className="text-owner-ink-muted text-[13px]">
-                    {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))} · {fmt.when(refund.starts_at)}
+                    {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))}{" \u00b7 "}{fmt.when(refund.starts_at)}
                   </p>
                   {why ? <p className="text-owner-ink-faint text-[12.5px]">{why}</p> : null}
                   {refund.is_overdue ? (
