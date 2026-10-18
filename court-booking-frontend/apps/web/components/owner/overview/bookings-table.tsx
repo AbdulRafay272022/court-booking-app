@@ -218,7 +218,7 @@ function rowClick(onOpen: (id: string) => void, id: string) {
 function money(row: OwnerBookingRow) {
   const refund = row.kind === "refund";
   const cancelled = row.kind === "cancelled";
-  const dash = "–";
+  const dash = "\u2013";
   return {
     total: refund ? dash : row.total.toLocaleString("en-US"),
     advance: refund ? dash : row.advance.toLocaleString("en-US"),
@@ -299,11 +299,12 @@ export function BookingsTable(props: BookingsTableProps) {
                   </div>
                   {row.kind === "booked" ? (
                     <>
-                      <dl className="mt-3 grid grid-cols-4 gap-2 text-[13px]">
+                      <dl className="mt-3 grid grid-cols-3 gap-2 text-[13px]">
                         {[
                           [t("ovw.table.courtShort"), row.court_name, false],
                           [t("ovw.table.col.total"), m.total, false],
                           [t("ovw.table.col.advance"), m.advance, false],
+                          [t("ovw.table.col.paid"), m.paid, false],
                           [t("ovw.table.col.due"), m.due, row.due > 0],
                         ].map(([label, value, red]) => (
                           <div key={String(label)} className="min-w-0">
@@ -318,7 +319,7 @@ export function BookingsTable(props: BookingsTableProps) {
                     </>
                   ) : (
                     <p className="mt-3 text-[13px] text-khelo-muted">
-                      {row.court_name} {"·"} {row.kind === "refund" ? pkr(row.refund_amount ?? 0) : pkr(row.total_paid)}
+                      {row.court_name} {"\u00b7"} {row.kind === "refund" ? pkr(row.refund_amount ?? 0) : pkr(row.total_paid)}
                     </p>
                   )}
                 </article>
@@ -377,7 +378,7 @@ export function BookingsTable(props: BookingsTableProps) {
                       {row.kind === "booked" ? (
                         <CompletionSelect row={row} noPermission={noPermission} busy={busyBookingId === row.booking_id} onComplete={onComplete} />
                       ) : (
-                        <span className="text-khelo-muted">{"–"}</span>
+                        <span className="text-khelo-muted">{"\u2013"}</span>
                       )}
                     </td>
                   </tr>

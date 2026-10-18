@@ -6,7 +6,7 @@ import type { CompletionInput, CompletionResult, OwnerBookingRow } from "@court-
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR } from "@/lib/format";
+import { pkr } from "@/lib/overview-helpers";
 import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
 import { ModalShell } from "@/components/owner/modal-shell";
@@ -96,15 +96,15 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
         <dl className="grid grid-cols-3 gap-2 rounded-2xl bg-owner-bg px-4 py-3 text-[14px] text-owner-ink-muted" data-testid="ovw-cmp-summary">
           <div>
             <dt>{t("ovw.cmp.total")}</dt>
-            <dd className="font-bold text-owner-ink tabular-nums">{formatPKR(row.total)}</dd>
+            <dd className="font-bold text-owner-ink tabular-nums">{pkr(row.total)}</dd>
           </div>
           <div>
             <dt>{t("ovw.cmp.paid")}</dt>
-            <dd className="font-bold text-owner-ink tabular-nums">{formatPKR(row.total_paid)}</dd>
+            <dd className="font-bold text-owner-ink tabular-nums">{pkr(row.total_paid)}</dd>
           </div>
           <div>
             <dt>{t("ovw.cmp.due")}</dt>
-            <dd className="font-bold text-owner-ink tabular-nums">{formatPKR(due)}</dd>
+            <dd className="font-bold text-owner-ink tabular-nums">{pkr(due)}</dd>
           </div>
         </dl>
 
@@ -132,12 +132,12 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
                 data-testid="ovw-received-full"
                 className="min-h-12 px-4 rounded-xl border-[1.5px] border-owner-border bg-owner-surface text-[14px] font-bold text-owner-ink whitespace-nowrap"
               >
-                {t("ovw.cmp.fill", { due: formatPKR(due) })}
+                {t("ovw.cmp.fill", { due: pkr(due) })}
               </button>
             ) : null}
           </div>
           <p id={`${inputId}-hint`} className={`text-[13px] ${amountInvalid ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
-            {amountInvalid ? t("ovw.cmp.amountErr", { due: formatPKR(due) }) : t("ovw.cmp.amountHint", { due: formatPKR(due) })}
+            {amountInvalid ? t("ovw.cmp.amountErr", { due: pkr(due) }) : t("ovw.cmp.amountHint", { due: pkr(due) })}
           </p>
         </div>
 
@@ -152,8 +152,8 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
             >
               <InfoIcon warn={plan.outcome === "no"} />
               <span>
-                {plan.outcome === "no" ? t("ovw.cmp.previewDue", { due: formatPKR(plan.dueAfter) }) : t("ovw.cmp.previewFull")}
-                <span className="block font-normal">{t("ovw.cmp.previewPaid", { paid: formatPKR(plan.paidAfter) })}</span>
+                {plan.outcome === "no" ? t("ovw.cmp.previewDue", { due: pkr(plan.dueAfter) }) : t("ovw.cmp.previewFull")}
+                <span className="block font-normal">{t("ovw.cmp.previewPaid", { paid: pkr(plan.paidAfter) })}</span>
               </span>
             </div>
           ) : null}
@@ -171,7 +171,7 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
           />
           {reasonMissing && plan ? (
             <p role="alert" data-testid="ovw-reason-error" className="text-[13px] font-semibold text-owner-danger">
-              {t("ovw.cmp.reasonErr", { due: formatPKR(plan.dueAfter) })}
+              {t("ovw.cmp.reasonErr", { due: pkr(plan.dueAfter) })}
             </p>
           ) : null}
         </div>
