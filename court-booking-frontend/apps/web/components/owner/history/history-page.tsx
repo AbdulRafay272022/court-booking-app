@@ -70,7 +70,12 @@ export function HistoryPage() {
     return state.courts.filter((id) => ids.has(id));
   }, [courts, state.courts]);
 
-  const filtersKey = [activeVenueId, state.from, state.to, validCourts.join(","), state.status.join(","), state.q, state.page, state.size, formatSort(state.sort)];
+  // Round 2 (A2): `?booking=` only highlights (and narrows the list to) that booking; the popup opens from a row click alone.
+  const focusId = state.booking;
+  const reqPage = focusId ? 1 : state.page;
+  const reqSize = focusId ? 100 : state.size;
+  const [openId, setOpenId] = useState<string | null>(null);
+  const filtersKey = [activeVenueId, state.from, state.to, validCourts.join(","), state.status.join(","), state.q, reqPage, reqSize, formatSort(state.sort)];
   const filterArgs = {
     venueId: activeVenueId,
     dateFrom: state.from,
@@ -82,7 +87,7 @@ export function HistoryPage() {
   };
   const query = useQuery({
     queryKey: ["owner-bookings-history", ...filtersKey],
-    queryFn: () => api.owners.bookingsHistory({ ...filterArgs, page: state.page, pageSize: state.size }),
+    queryFn: () => api.owners.bookingsHistory({ ...filterArgs, page: reqPage, pageSize: reqSize }),
     enabled: !!activeVenueId,
     placeholderData: keepPreviousData,
   });
@@ -118,6 +123,13 @@ export function HistoryPage() {
     }
   }
 
+  const focusRows = focusId && data ? data.items.filter((r) => r.booking_id === focusId) : [];
+  const focused = focusRows.length > 0;
+  const shownRows = focused ? focusRows : (data?.items ?? []);
+  const clearFocusHref = (() => {
+    const qs = buildHistoryQuery({ ...state, booking: null, courts: [], status: [], q: "", page: 1 }, today);
+    return qs ? `${pathname}?${qs}` : pathname;
+  })();
   const filtersActive = state.courts.length > 0 || state.status.length > 0 || state.q !== "";
   const total = data?.total ?? 0;
   const pages = pageCount(total, state.size);
@@ -203,6 +215,24 @@ export function HistoryPage() {
         {flow.message?.text}
       </p>
 
+      {focusId && !loading ? (
+        <div data-testid="focus-banner" role="status" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-owner-accent-soft-border bg-owner-accent-soft px-4 py-2.5 text-[14px] font-semibold text-owner-ink">
+          <span className="inline-flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 5h16l-6 7v6l-4 2v-8z" />
+            </svg>
+            {focused ? t("hist.focus.banner") : t("hist.focus.missing")}
+          </span>
+          <Link
+            href={clearFocusHref}
+            data-testid="focus-clear"
+            className="inline-flex min-h-11 items-center font-bold text-owner-accent underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-owner-accent"
+          >
+            {t("hist.focus.clear")}
+          </Link>
+        </div>
+      ) : null}
+
       <section aria-label={t("hist.results")} className={`rounded-2xl border border-owner-border bg-owner-surface p-3 md:p-4 ${query.isPlaceholderData ? "opacity-60" : ""}`} aria-busy={loading || query.isPlaceholderData}>
         {loading ? (
           <BookingRowsSkeleton />
@@ -221,17 +251,19 @@ export function HistoryPage() {
         ) : (
           <>
             <BookingRowsTable
-              rows={data.items}
+              rows={shownRows}
               caption={t("hist.title")}
               showDate
               compactEarly
-              onOpen={(row) => update({ booking: row.booking_id }, false)}
+              onOpen={(row) => setOpenId(row.booking_id)}
               onPickCompletion={flow.pick}
               busyId={flow.busyId}
               highlightId={state.booking}
               sort={state.sort}
               onSort={(field) => update({ sort: nextSort(state.sort, field as SortField) })}
             />
+            {focused ? null : (
+            <>
             <dl data-testid="totals" aria-label={t("hist.totals.title")} className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-owner-bg p-4 text-[14px] md:grid-cols-4">
               <div>
                 <dt className="text-owner-ink-muted">{t("hist.totals.count")}</dt>
@@ -288,13 +320,15 @@ export function HistoryPage() {
                 </button>
               </div>
             </nav>
+            </>
+            )}
           </>
         )}
       </section>
 
       <BookingDetail
-        bookingId={state.booking}
-        onClose={() => update({ booking: null }, false)}
+        bookingId={openId}
+        onClose={() => setOpenId(null)}
         onChanged={() => {
           void query.refetch();
         }}

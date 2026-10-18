@@ -88,4 +88,7 @@ export const enHist: Record<keyof typeof ruHist, string> = {
   "hist.csv.error": "Could not download the CSV.",
   "hist.empty.title": "No bookings found",
   "hist.empty.text": "Try a different date range or filters.",
+  "hist.focus.banner": "Only this booking is shown",
+  "hist.focus.missing": "This booking was not found in this day's list",
+  "hist.focus.clear": "Remove filter",
 };

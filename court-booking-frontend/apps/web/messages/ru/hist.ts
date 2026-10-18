@@ -86,4 +86,7 @@ export const ruHist = {
   "hist.csv.error": "CSV download nahi ho saki.",
   "hist.empty.title": "Is waqt mein koi booking nahi",
   "hist.empty.text": "Tareekh ya filters badal kar dekhein.",
+  "hist.focus.banner": "Sirf ye booking dikhayi ja rahi hai",
+  "hist.focus.missing": "Ye booking is din ki list mein nahi mili",
+  "hist.focus.clear": "Filter hatayen",
 } as const;

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { OwnerBookingDetail, OwnerBookingRow } from "@court-booking/types";
@@ -16,6 +17,7 @@ import { StatusChip, isConfirmedBooked } from "@/components/owner/booking-table/
 import { useCompletionFlow } from "@/components/owner/completion-dialog";
 import { historyLinkForBooking } from "@/components/owner/history/filters";
 import { ModalShell } from "@/components/owner/modal-shell";
+import { ScreenshotThumb } from "@/components/media/screenshot-thumb";
 
 /** The ONE booking detail popup used by Overview, History, Approvals and Refunds (centered dialog from 768px, bottom sheet below). */
 export interface BookingDetailProps {
@@ -32,6 +34,29 @@ export function BookingDetail({ bookingId, onClose, onChanged }: BookingDetailPr
   if (!bookingId) return null;
   const id = nav && nav.base === bookingId ? nav.id : bookingId;
   return <DetailDialog key={id} bookingId={id} onClose={onClose} onChanged={onChanged} onOpenOther={(other) => setNav({ base: bookingId, id: other })} />;
+}
+
+/**
+ * Round 2 (A2): every link inside the popup that leaves it closes the popup FIRST, then navigates, so the page behind never
+ * re-opens it and focus/scroll lock are released before the route changes. A modified click (new tab) is left to the browser.
+ */
+function CloseThenGo({ href, onClose, className, testId, children }: { href: string; onClose: () => void; className: string; testId?: string; children: ReactNode }) {
+  const router = useRouter();
+  return (
+    <Link
+      href={href}
+      data-testid={testId}
+      className={className}
+      onClick={(e) => {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        onClose();
+        router.push(href);
+      }}
+    >
+      {children}
+    </Link>
+  );
 }
 
 const shortCodeOf = (id: string) => `KH-${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
@@ -178,19 +203,21 @@ function DetailDialog({
             </button>
           </div>
         ) : (
-          <DetailContent detail={detail} row={row} flow={flow} onOpenOther={onOpenOther} />
+          <DetailContent detail={detail} row={row} flow={flow} onOpenOther={onOpenOther} onClose={onClose} />
         )}
 
         <div className="mt-8 border-t border-owner-border-light pt-5">
           <p className="text-[14px] text-owner-ink-muted">{t("detail.privacy")}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             {row ? (
-              <Link
+              <CloseThenGo
                 href={historyLinkForBooking(row.booking_id, row.starts_at)}
-                className="inline-flex min-h-12 items-center rounded-xl border-2 border-owner-ink px-5 text-[15px] font-bold text-owner-ink"
+                onClose={onClose}
+                testId="detail-history"
+                className="inline-flex min-h-12 items-center rounded-xl border-2 border-owner-ink px-5 text-[15px] font-bold text-owner-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-owner-accent"
               >
                 {t("detail.history")}
-              </Link>
+              </CloseThenGo>
             ) : null}
             <button type="button" onClick={onClose} className="min-h-12 rounded-xl bg-khelo-orange px-6 text-[15px] font-bold text-khelo-ink">
               {t("detail.close")}
@@ -208,11 +235,13 @@ function DetailContent({
   row,
   flow,
   onOpenOther,
+  onClose,
 }: {
   detail: OwnerBookingDetail;
   row: OwnerBookingRow;
   flow: ReturnType<typeof useCompletionFlow>;
   onOpenOther: (id: string) => void;
+  onClose: () => void;
 }) {
   const t = useT();
   const fmt = useFmt();
@@ -347,12 +376,14 @@ function DetailContent({
                 {t("hist.row.original")}
               </button>
             ) : (
-              <Link
+              <CloseThenGo
                 href={historyLinkForBooking(row.booking_id, row.starts_at)}
-                className="inline-flex min-h-11 items-center rounded-xl bg-owner-border-light px-4 text-[14px] font-bold text-owner-ink"
+                onClose={onClose}
+                testId="detail-original"
+                className="inline-flex min-h-11 items-center rounded-xl bg-owner-border-light px-4 text-[14px] font-bold text-owner-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-owner-accent"
               >
                 {t("hist.row.original")}
-              </Link>
+              </CloseThenGo>
             )}
           </div>
         ) : null}
@@ -402,25 +433,9 @@ function DetailContent({
   );
 }
 
-/** The payment screenshot: nothing is fetched until it is asked for, the signed URL lives only in this component while the viewer is open. */
+/** The payment screenshot: the shared thumbnail (opens the zoomable Lightbox) plus the OCR amount chip. */
 function ScreenshotBox({ detail }: { detail: OwnerBookingDetail }) {
   const t = useT();
-  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
-  const [url, setUrl] = useState<string | null>(null);
-  const hasShot = !!detail.payment_id;
-
-  async function open() {
-    if (!detail.payment_id) return;
-    setState("loading");
-    try {
-      const res = await api.payments.proofUrl(detail.payment_id);
-      setUrl(res.url);
-      setState("idle");
-    } catch {
-      setState("error");
-    }
-  }
-
   const ocr = detail.ocr_verdict;
   const ocrText =
     ocr === "match"
@@ -441,27 +456,22 @@ function ScreenshotBox({ detail }: { detail: OwnerBookingDetail }) {
       <span id="d-shot">
         <SectionTitle>{t("detail.sec.shot")}</SectionTitle>
       </span>
-      {hasShot ? (
-        <button
-          type="button"
-          onClick={open}
-          disabled={state === "loading"}
-          className="mt-3 flex min-h-[10rem] w-full flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-owner-border bg-owner-bg px-4 text-center text-[15px] text-owner-ink-muted md:min-h-[13rem]"
-        >
-          <ShotIcon />
-          <span>{state === "loading" ? t("detail.shot.loading") : t("detail.shot.open")}</span>
-        </button>
+      {detail.payment_id ? (
+        <div className="mt-3">
+          <ScreenshotThumb paymentId={detail.payment_id} alt={t("detail.shot.alt")} />
+        </div>
       ) : (
-        <div className="mt-3 flex min-h-[10rem] w-full flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-owner-border bg-owner-bg px-4 text-center text-[15px] text-owner-ink-muted md:min-h-[13rem]">
+        <div className="mt-3 flex min-h-[6rem] w-full flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-owner-border bg-owner-bg px-4 text-center text-[15px] text-owner-ink-muted">
           <ShotIcon />
           <span>{t("detail.shot.none")}</span>
         </div>
       )}
-      <p role="alert" className={state === "error" ? "mt-2 text-[13.5px] font-semibold text-owner-danger" : "sr-only"}>
-        {state === "error" ? t("detail.shot.error") : ""}
-      </p>
-      {ocrText ? <p className={`mt-3 inline-flex rounded-full px-3 py-1.5 text-[13.5px] font-bold ${ocrTone}`}>{ocrText}</p> : null}
-      {url ? <Lightbox url={url} onClose={() => setUrl(null)} /> : null}
+      {ocrText ? (
+        <p className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13.5px] font-bold ${ocrTone}`}>
+          <span aria-hidden="true">{ocr === "match" ? "✓" : "!"}</span>
+          {ocrText}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -472,48 +482,5 @@ function ShotIcon() {
       <rect x="5" y="3" width="14" height="18" rx="2" />
       <path d="M9 8h6M9 12h6M9 16h4" />
     </svg>
-  );
-}
-
-const ZOOMS = [1, 1.5, 2, 3];
-
-function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
-  const t = useT();
-  const [zoom, setZoom] = useState(0);
-  const [failed, setFailed] = useState(false);
-  const btn = "flex h-11 min-w-11 items-center justify-center rounded-xl bg-owner-surface px-3 text-[18px] font-bold text-owner-ink";
-  return (
-    <ModalShell label={t("detail.shot.viewer")} onClose={onClose} fullscreen>
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-end gap-2 p-3">
-          <button type="button" className={btn} aria-label={t("detail.shot.zoomOut")} disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>
-            -
-          </button>
-          <button type="button" className={btn} aria-label={t("detail.shot.zoomIn")} disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))}>
-            +
-          </button>
-          <button type="button" className={`${btn} text-[14px]`} onClick={onClose}>
-            {t("detail.shot.closeViewer")}
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto p-3" tabIndex={0} aria-label={t("detail.shot.scroll")}>
-          {failed ? (
-            <p role="alert" className="mx-auto max-w-sm rounded-xl bg-owner-surface p-4 text-center text-[14px] font-semibold text-owner-danger">
-              {t("detail.shot.error")}
-            </p>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL, not an optimisable static asset
-            <img
-              src={url}
-              alt={t("detail.shot.alt")}
-              referrerPolicy="no-referrer"
-              onError={() => setFailed(true)}
-              style={{ width: `${ZOOMS[zoom] * 100}%`, maxWidth: zoom === 0 ? "100%" : "none" }}
-              className="mx-auto h-auto max-h-none select-none rounded-lg bg-white"
-            />
-          )}
-        </div>
-      </div>
-    </ModalShell>
   );
 }
