@@ -45,5 +45,8 @@ export const enRfd: Record<keyof typeof ruRfd, string> = {
   "rfd.reason.overpayment_excess": "The player sent more than the advance.",
   "rfd.reason.hold_expired": "The hold expired after a screenshot had arrived.",
   "rfd.reason.payment_cancelled_acknowledged": "The player cancelled; the money had arrived.",
+  "rfd.reason.cancelled_payment_received": "The player cancelled; the money had arrived.",
+  "rfd.reason.owner_cancelled_paid_booking": "You cancelled a paid booking.",
+  "rfd.reason.system_cancelled_paid_booking": "The system cancelled a paid booking.",
   "rfd.reason.generic": "Reason: {reason}",
 };

@@ -43,5 +43,8 @@ export const ruRfd = {
   "rfd.reason.overpayment_excess": "Player ne advance se zyada paise bheje.",
   "rfd.reason.hold_expired": "Booking ka waqt khatam ho gaya, screenshot aa chuka tha.",
   "rfd.reason.payment_cancelled_acknowledged": "Player ne cancel kiya, paisa aa gaya tha.",
+  "rfd.reason.cancelled_payment_received": "Player ne cancel kiya, paisa aa gaya tha.",
+  "rfd.reason.owner_cancelled_paid_booking": "Aap ne paid booking cancel ki.",
+  "rfd.reason.system_cancelled_paid_booking": "System ne paid booking cancel ki.",
   "rfd.reason.generic": "Refund ki wajah: {reason}",
 } as const;

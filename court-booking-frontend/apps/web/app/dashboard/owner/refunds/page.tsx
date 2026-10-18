@@ -56,11 +56,16 @@ function StatusChip({ b }: { b: RefundBreakdown }) {
 }
 
 function reasonText(t: TFunction, refund: OwnerRefund): string | null {
-  const key = refund.reason_label_key || refund.reason;
-  if (!key) return null;
-  const k = `rfd.reason.${key}` as MessageKey;
-  const translated = t(k);
-  return translated === k ? t("rfd.reason.generic", { reason: key.replace(/_/g, " ") }) : translated;
+  // The raw `reason` first (the dictionary keys are the backend reason names); `reason_label_key` arrives as a FULL key
+  // ("rfd.reason.overpayment"), so its prefix is stripped before it is tried.
+  const candidates = [refund.reason, refund.reason_label_key?.replace(/^rfd\.reason\./, "")].filter((c): c is string => !!c);
+  if (candidates.length === 0) return null;
+  for (const c of candidates) {
+    const k = `rfd.reason.${c}` as MessageKey;
+    const translated = t(k);
+    if (translated !== k) return translated;
+  }
+  return t("rfd.reason.generic", { reason: candidates[0].replace(/_/g, " ") });
 }
 
 /** Section 32 Part 10 + Round 2 A10: the owner's "Refunds to pay" screen. A refund here was always sent
@@ -182,7 +187,11 @@ export default function OwnerRefundsPage() {
       {open ? (
         <MarkRefundedDialog
           refund={open}
-          onClose={() => setOpenId(null)}
+          onClose={() => {
+            // Esc / outside click / Close after a successful save must not leave the row showing the old amount.
+            setOpenId(null);
+            void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
+          }}
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: ["owner-ledger"] });
             void queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
