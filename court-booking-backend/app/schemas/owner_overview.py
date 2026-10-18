@@ -112,6 +112,9 @@ class OwnerOverviewOut(BaseModel):
     bookings: OverviewBookingsOut
     money: OverviewMoneyOut
     rows: list[OwnerBookingRowOut]
+    # Owner Round 2 (A7): held (hold time not run out) + payment_submitted bookings for ANY date, venue + court
+    # filter applied, date ignored. `bookings.pending` above stays date-based.
+    pending_all: OverviewPendingOut | None = None
 
 
 class HistoryTotalsOut(BaseModel):
@@ -171,12 +174,17 @@ class OwnerBookingDetailOut(BaseModel):
     refund: DetailRefundOut | None
     completion: BookingCompletionOut | None
     timeline: list[BookingTimelineEventOut]
+    # Owner Round 2 (A4): for a walk-in, who added it ("owner" | "staff"), from the audit_log actor; else null.
+    channel_detail: str | None = None
 
 
 class CompletionIn(BaseModel):
     result: CompletionResult
     received_pkr: int | None = Field(default=None, ge=0)
     reason: str | None = Field(default=None, max_length=500)
+    # Owner Round 2 (A8): "how much of the balance was received now" -- added on top of what was already paid (never
+    # lowers total paid). When present, `received_pkr` is ignored.
+    received_now: int | None = Field(default=None, ge=0)
 
 
 class OwnerBadgesOut(BaseModel):

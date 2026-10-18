@@ -104,7 +104,12 @@ class BookingService:
         no_overlapping_live_bookings (see the Booking model) are what actually prevent
         double-booking -- the first for the same start time, the second for ANY overlap, which
         is what multi-slot bookings need. This commit either succeeds or raises IntegrityError
-        -- there is no separate locking step because none is needed."""
+        -- there is no separate locking step because none is needed.
+
+        Owner Round 2 (B1): a hold whose time has run out is free at read time, but the index/constraint above still
+        count it until the expiry job cancels it. So any expired hold overlapping the new booking is cancelled
+        (system, hold_expired) in the SAME transaction, just before the insert: either both commit or neither."""
+        released = await self._release_stale_holds(booking.court_id, booking.starts_at, booking.ends_at)
         self.db.add(booking)
         try:
             await self.db.commit()
@@ -118,6 +123,8 @@ class BookingService:
                 ) from exc
             raise
         await self.db.refresh(booking)
+        if released:
+            await self._notify_released_holds(released)
         if booking.player_id is not None:
             # A player who now holds the slot no longer needs to be told when it opens up.
             await self.db.execute(
@@ -131,6 +138,89 @@ class BookingService:
                 .values(is_active=False)
             )
             await self.db.commit()
+
+    _EXPIRED_HOLD_VALUES = dict(
+        status=BookingStatus.CANCELLED,
+        cancelled_by=CancelledBy.SYSTEM,
+        cancellation_reason="hold_expired",
+        held_until=None,
+        payment_deadline=None,
+    )
+
+    async def _release_stale_holds(
+        self, court_id: uuid.UUID, starts_at: datetime, ends_at: datetime
+    ) -> list[tuple[uuid.UUID, uuid.UUID | None, datetime, datetime]]:
+        """Cancel (not committed) every HELD booking on this court overlapping [starts_at, ends_at) whose hold time
+        has passed. Returns (id, player_id, starts_at, ends_at) of each released hold."""
+        result = await self.db.execute(
+            update(Booking)
+            .where(
+                Booking.court_id == court_id,
+                Booking.status == BookingStatus.HELD,
+                Booking.held_until.is_not(None),
+                Booking.held_until <= datetime.now(timezone.utc),
+                Booking.starts_at < ends_at,
+                Booking.ends_at > starts_at,
+            )
+            .values(**self._EXPIRED_HOLD_VALUES)
+            .returning(Booking.id, Booking.player_id, Booking.starts_at, Booking.ends_at)
+            .execution_options(synchronize_session=False)
+        )
+        released = [tuple(r) for r in result.all()]
+        for booking_id, player_id, _s, _e in released:
+            await self.audit.log(
+                actor_user_id=player_id,
+                actor_type="system",
+                action="booking.expired",
+                entity_type="booking",
+                entity_id=booking_id,
+                new_value={"status": BookingStatus.CANCELLED.value, "reason": "hold_expired", "released_for_new_booking": True},
+            )
+        return released
+
+    async def _notify_released_holds(self, released: list) -> None:
+        """Best effort: the player whose expired hold was just released gets the same "booking cancelled" message the
+        expiry job would have sent."""
+        from app.services.notification_service import NotificationService
+
+        try:
+            notifications = NotificationService(self.db, self.settings)
+            for booking_id, player_id, starts_at, ends_at in released:
+                booking = await self.db.get(Booking, booking_id)
+                player = await self.db.get(User, player_id) if player_id else None
+                court = await self.db.get(Court, booking.court_id) if booking is not None else None
+                if player is not None and court is not None:
+                    await notifications.notify_booking_cancelled(
+                        user=player, court_name=court.name, starts_at=starts_at, ends_at=ends_at, reference_id=booking_id
+                    )
+        except Exception:  # noqa: BLE001 -- the new booking already committed; a message problem must not fail it
+            logger.warning("booking_service.released_hold_notify_failed", exc_info=True)
+
+    async def expire_hold_now(self, booking: Booking) -> bool:
+        """Owner Round 2 (B1): move ONE hold whose time has passed to cancelled (system, hold_expired) right now,
+        the same transition the expiry job makes. Returns False if it was not (or no longer) an expired hold."""
+        ok = await self._atomic_transition(
+            booking,
+            from_statuses=(BookingStatus.HELD,),
+            to_status=BookingStatus.CANCELLED,
+            cancelled_by=CancelledBy.SYSTEM,
+            cancellation_reason="hold_expired",
+            held_until=None,
+            payment_deadline=None,
+        ) if booking.held_until is not None and booking.held_until <= datetime.now(timezone.utc) else False
+        if not ok:
+            return False
+        await self.audit.log(
+            actor_user_id=None,
+            actor_type="system",
+            action="booking.expired",
+            entity_type="booking",
+            entity_id=booking.id,
+            new_value={"status": booking.status.value},
+        )
+        await self.db.commit()
+        await self.db.refresh(booking)
+        return True
 
     async def create_hold(
         self,

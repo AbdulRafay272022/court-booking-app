@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
@@ -16,7 +16,7 @@ from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
-from app.schemas.owner_dashboard import GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
+from app.schemas.owner_dashboard import ApprovalsQueuePageOut, GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
 from app.schemas.owner_overview import (
     CompletionIn,
     OwnerBadgesOut,
@@ -31,7 +31,7 @@ from app.services.admin_service import AdminService
 from app.services.booking_service import BookingService
 from app.services.growth_service import GrowthService
 from app.services.notification_service import NotificationService
-from app.services.owner_dashboard_service import OwnerDashboardService
+from app.services.owner_dashboard_service import OwnerDashboardService, positive_entries_by_booking, refund_out
 from app.services.owner_overview_service import HistoryFilter, OwnerOverviewService
 from app.services.staff_service import resolve_owner_context, staffed_venue_ids
 from app.services.venue_service import VenueService
@@ -158,6 +158,26 @@ async def owner_pending_approvals(
     )
 
 
+@router.get("/approvals-queue", response_model=ApprovalsQueuePageOut)
+async def owner_approvals_queue(
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    venue_id: uuid.UUID | None = None,
+    date_: Annotated[date | None, Query(alias="date")] = None,
+    court_ids: CourtIdsQuery = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+) -> ApprovalsQueuePageOut:
+    """Owner Round 2 (A1/A5): every payment waiting for the owner, newest first, paginated; same scope, permission
+    and filters as /owners/pending-approvals (which stays unchanged for old app builds)."""
+    eff_owner, eff_venue = await resolve_owner_context(db, owner, venue_id, "view_ledger")
+    service = OwnerDashboardService(db, settings)
+    return await service.approvals_queue(
+        eff_owner, venue_id=eff_venue, on_date=date_, court_ids=parse_id_list(court_ids), page=page, page_size=page_size
+    )
+
+
 @router.get("/ledger", response_model=LedgerOut)
 async def owner_ledger(
     db: DbSession,
@@ -246,7 +266,13 @@ async def owner_overview(
 
 
 def _history_filter(
-    date_from: date | None, date_to: date | None, court_ids, statuses, q: str | None, sort: str
+    date_from: date | None,
+    date_to: date | None,
+    court_ids,
+    statuses,
+    q: str | None,
+    sort: str,
+    booking_id: uuid.UUID | None = None,
 ) -> HistoryFilter:
     today = pkt_today()
     return HistoryFilter(
@@ -256,6 +282,7 @@ def _history_filter(
         statuses=parse_str_list(statuses),
         q=q,
         sort=sort,
+        booking_id=booking_id,
     )
 
 
@@ -273,8 +300,10 @@ async def owner_bookings_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     sort: str = "starts_at:desc",
+    booking_id: uuid.UUID | None = None,
 ) -> OwnerBookingsPageOut:
-    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort)
+    """`booking_id` (Owner Round 2, A2): only that booking's rows, the date range ignored; same permissions."""
+    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort, booking_id)
     return await OwnerOverviewService(db, settings).history(owner, venue_id, f, page, page_size)
 
 
@@ -290,8 +319,9 @@ async def owner_bookings_history_export(
     statuses: Annotated[list[str] | None, Query()] = None,
     q: str | None = Query(None, max_length=100),
     sort: str = "starts_at:desc",
+    booking_id: uuid.UUID | None = None,
 ) -> Response:
-    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort)
+    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort, booking_id)
     csv_text = await OwnerOverviewService(db, settings).history_csv(owner, venue_id, f)
     return Response(
         content=csv_text,
@@ -314,7 +344,7 @@ async def owner_booking_completion(
     """Booking completed (Haan / Nahi). Permission record_payments (owner always); deliberately NOT behind the
     split_payments flag so it works for plain bookings."""
     return await OwnerOverviewService(db, settings).mark_completion(
-        owner, booking_id, payload.result, payload.received_pkr, payload.reason
+        owner, booking_id, payload.result, payload.received_pkr, payload.reason, received_now=payload.received_now
     )
 
 
@@ -382,23 +412,18 @@ async def owner_mark_refund_paid(
                 court_name=court.name if court else "",
                 amount=float(dispute.refunded_amount or 0) - already_refunded,
                 reference=reference,
+                reference_id=booking.id,
             )
 
-    return OwnerRefundOut(
-        id=dispute.id,
-        booking_id=booking.id,
-        court_name=court.name if court else "",
-        venue_name=venue.name if venue else "",
-        player_name=booking.player_name,
-        player_phone=booking.player_phone,
-        starts_at=booking.starts_at,
-        reason=dispute.reason,
-        refund_amount=float(dispute.refund_amount or 0),
-        refund_status=dispute.refund_status,
-        refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
-        remaining_amount=round(max(float(dispute.refund_amount or 0) - float(dispute.refunded_amount or 0), 0.0), 2),
-        refund_reference=dispute.refund_reference,
-        refunded_at=dispute.refunded_at,
-        created_at=dispute.created_at,
-        is_overdue=False,
+    await db.refresh(dispute)
+    payment = await db.get(Payment, dispute.payment_id)
+    positives = await positive_entries_by_booking(db, {booking.id})
+    out = refund_out(
+        dispute, booking, venue, None, payment, positives.get(booking.id, 0),
+        court_name=court.name if court else "", court_sport=court.sport if court else None,
+        now=datetime.now(timezone.utc), overdue_cutoff=timedelta(days=settings.REFUND_OVERDUE_DAYS),
     )
+    out.player_name = booking.player_name
+    out.player_phone = booking.player_phone
+    out.is_overdue = False
+    return out

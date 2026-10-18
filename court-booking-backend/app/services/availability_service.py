@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import AppError, ErrorCode
 from app.models.blackout import Blackout
 from app.models.booking import LIVE_BOOKING_STATUSES, Booking
+from app.services.live_bookings import live_claim
 from app.models.court import Court, CourtAdvanceType
 from app.models.pricing import PricingRule
 from app.models.schedule import ScheduleTemplate
@@ -326,7 +327,7 @@ class AvailabilityService:
         bookings_result = await self.db.execute(
             select(Booking).where(
                 Booking.court_id == court_id,
-                Booking.status.in_(LIVE_BOOKING_STATUSES),
+                live_claim(),
                 Booking.starts_at < window_end,
                 Booking.ends_at > window_start,
             )
@@ -477,7 +478,7 @@ class AvailabilityService:
             await self.db.execute(
                 select(Booking).where(
                     Booking.court_id.in_(court_ids),
-                    Booking.status.in_(LIVE_BOOKING_STATUSES),
+                    live_claim(),
                     Booking.starts_at < window_end,
                     Booking.ends_at > window_start,
                 )
@@ -551,7 +552,7 @@ class AvailabilityService:
             await self.db.execute(
                 select(Booking).where(
                     Booking.court_id.in_(court_ids),
-                    Booking.status.in_(LIVE_BOOKING_STATUSES),
+                    live_claim(),
                     Booking.starts_at < window_end,
                     Booking.ends_at > window_start,
                 )
@@ -763,7 +764,7 @@ class AvailabilityService:
         overlap = await self.db.execute(
             select(Booking).where(
                 Booking.court_id == court_id,
-                Booking.status.in_(LIVE_BOOKING_STATUSES),
+                live_claim(),
                 Booking.starts_at < ends_at,
                 Booking.ends_at > starts_at,
             )

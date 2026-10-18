@@ -162,6 +162,15 @@ class OwnerRefundOut(BaseModel):
     refunded_amount: float | None
     # Still owed after any partial refunds; the screens show this, not refund_amount, as the amount to pay.
     remaining_amount: float = 0.0
+    # Owner Round 2 (A10) breakdown: what the player really paid in for this booking (positive ledger entries, plus
+    # money that was never credited such as an overpayment excess; else the approved screenshot amount), the policy
+    # refund (= refund_amount), what was already sent back, and a dictionary key for the reason.
+    player_sent: float | None = None
+    # the payment whose screenshot belongs to this refund (for the thumbnail); null if none
+    payment_id: uuid.UUID | None = None
+    refund_due: float = 0.0
+    already_refunded: float = 0.0
+    reason_label_key: str = "rfd.reason.other"
     refund_reference: str | None
     refunded_at: datetime | None
     created_at: datetime

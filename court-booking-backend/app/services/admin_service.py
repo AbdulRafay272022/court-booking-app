@@ -349,7 +349,8 @@ class AdminService:
                 status.HTTP_400_BAD_REQUEST,
                 ErrorCode.REFUND_EXCEEDS_OWED_AMOUNT,
                 f"Cannot mark PKR {target_amount:,.2f} as refunded -- only PKR {remaining:,.2f} is still owed on this booking.",
-                details={"owed": remaining, "attempted": target_amount},
+                # `remaining`/`typed` (Owner Round 2, A10) alongside the original keys, for the refund dialog.
+                details={"owed": remaining, "attempted": target_amount, "remaining": remaining, "typed": target_amount},
             )
         # Money-correctness fix: a refund below what is still owed is a PARTIAL refund -- the dispute stays open
         # (refund_status stays "owed", resolved False) and `refunded_amount` accumulates, until the cumulative
@@ -390,7 +391,9 @@ class AdminService:
         # (the ledger is capped at the price), so there is nothing to subtract -- it is tracked on the dispute only.
         from app.services.payment_ledger_service import recompute_payment_totals
 
-        if target_amount > 0 and dispute.reason != "overpayment_excess":
+        from app.services.payment_ledger_service import UNCREDITED_REFUND_REASONS
+
+        if target_amount > 0 and dispute.reason not in UNCREDITED_REFUND_REASONS:
             booking = await self.db.get(Booking, dispute.booking_id, with_for_update=True)
             if booking is not None:
                 self.db.add(

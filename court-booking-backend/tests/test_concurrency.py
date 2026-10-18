@@ -225,7 +225,10 @@ async def test_concurrent_cancel_and_approve_only_one_wins(
         assert cancel_resp.status_code == 200, cancel_resp.text
         assert approve_resp.status_code in (200, 409), approve_resp.text
         if approve_resp.status_code == 409:
-            assert approve_resp.json()["error"]["code"] == "BOOKING_ALREADY_CANCELLED", approve_resp.text
+            # Owner Round 2 (A5): a cancel that wins -- checked up front or inside confirm_booking's guard -- is
+            # reported as BOOKING_NO_LONGER_PENDING with the card state (was BOOKING_ALREADY_CANCELLED).
+            assert approve_resp.json()["error"]["code"] == "BOOKING_NO_LONGER_PENDING", approve_resp.text
+            assert approve_resp.json()["error"]["details"]["state"] == "cancelled_by_player", approve_resp.text
         else:
             approve_won_count += 1
 

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
@@ -192,3 +193,22 @@ class SchedulesIn(BaseModel):
 
 class PricingRulesIn(BaseModel):
     rules: list[PricingRuleIn]
+
+
+class AdvanceDefaultRuleOut(BaseModel):
+    source: Literal["pricing_rule", "none"]
+    percentage: float | None
+    value_if_nothing_set: float
+
+
+class AdvanceExplainOut(BaseModel):
+    """Owner Round 2 (A11), docs/round2-contract.md."""
+
+    mode: Literal["default", "fixed", "percent"]
+    value: float | None
+    minimum: int | None
+    hourly_price: float | None
+    example_minutes: int
+    example_total: float
+    example_advance: float
+    default_rule: AdvanceDefaultRuleOut

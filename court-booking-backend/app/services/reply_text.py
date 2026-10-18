@@ -174,6 +174,19 @@ def no_pending_booking_message(lang: str) -> str:
     return "I don't see a pending booking waiting for payment. Hold a slot first, then send your payment screenshot here."
 
 
+def late_payment_proof_message(lang: str) -> str:
+    """Owner Round 2 (B1): the screenshot arrived after the hold time ran out (the screenshot is kept for the venue)."""
+    if _ru(lang):
+        return (
+            "Aap ki booking ka waqt khatam ho gaya tha, is liye slot chhor diya gaya. Aap ka screenshot venue ko bhej diya "
+            "gaya hai; woh check karke aap se rabta karenge (paisa pohncha ho to wapas kar denge)."
+        )
+    return (
+        "Your booking time ran out before this screenshot arrived, so the slot was released. We have sent your "
+        "screenshot to the venue; they will check it and contact you (a refund if the money reached them)."
+    )
+
+
 def image_download_failed_message(lang: str) -> str:
     if _ru(lang):
         return "Wo image download nahi ho saki, baraye meherbani dobara bhej dein."

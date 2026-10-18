@@ -601,15 +601,16 @@ async def _propose(service, player, court, start_utc: datetime, minutes: int):
     return res, actions
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_9pm_to_12am_is_one_booking_anchored_to_the_start_date_on_a_midnight_closing_court(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     """A court open 4 PM to 12 AM (close 00:00, closes_next_day), Saturday only. Saturday 9 PM for 3 hours ends at
     midnight; Sunday has NO schedule at all, and that must not matter."""
     _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                       "+923014100001", open_=time(16, 0), close=time(0, 0), days=[5])
     player = await make_user("+923014100002", role=UserRole.PLAYER)
-    sat = _future_day(5)
+    sat = _next_saturday()
     service = AIChatService(db_session, get_settings())
 
     labels = await _slot_labels(service, player, court, sat)
@@ -631,14 +632,15 @@ async def test_9pm_to_12am_is_one_booking_anchored_to_the_start_date_on_a_midnig
     assert (booking.starts_at, booking.ends_at) == (_pkt(sat, 21), _pkt(sat, 24))
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_1130pm_to_1230am_crosses_midnight_via_the_quote_hold_and_assistant_paths(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, client, make_auth_headers
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, client, make_auth_headers
 ):
     """Non-AI path too: quote and hold of 11:30 PM -> 12:30 AM, on a 3:30 PM-1:30 AM court (60-min grid on the half
     hour) and on two 24-hour courts (open == close). All are Saturday-schedule slots even though they end on Sunday."""
     player = await make_user("+923014100004", role=UserRole.PLAYER)
     headers = await make_auth_headers(player)
-    sat = _future_day(5)
+    sat = _next_saturday()
     service = AIChatService(db_session, get_settings())
 
     for phone, open_, close in (("+923014100003", time(15, 30), time(1, 30)), ("+923014100005", time(0, 0), time(0, 0)),
@@ -659,15 +661,16 @@ async def test_1130pm_to_1230am_crosses_midnight_via_the_quote_hold_and_assistan
         assert hold.status_code in (200, 201), (open_, close, hold.text)
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_12am_start_belongs_to_the_previous_schedule_day_on_an_overnight_court(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     """3 PM to 3 AM court: Sunday 12:00 AM is a SATURDAY slot. The assistant finds it when asked about Sunday (by start
     date), quotes it, and a Saturday blackout covering it blocks it (it is NOT governed by Sunday's schedule)."""
     _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100007",
                                       open_=time(15, 0), close=time(3, 0))
     player = await make_user("+923014100008", role=UserRole.PLAYER)
-    sat = _future_day(5)
+    sat = _next_saturday()
     sun = sat + timedelta(days=1)
     service = AIChatService(db_session, get_settings())
 
@@ -682,14 +685,15 @@ async def test_12am_start_belongs_to_the_previous_schedule_day_on_an_overnight_c
     assert "error" in blocked and actions == []  # Saturday's blackout reaches into Sunday's early hours
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_a_genuinely_booked_slot_still_rejects_a_midnight_crossing_booking(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100009",
                                       open_=time(16, 0), close=time(0, 0))
     player = await make_user("+923014100010", role=UserRole.PLAYER)
     other = await make_user("+923014100011", role=UserRole.PLAYER)
-    sat = _future_day(5)
+    sat = _next_saturday()
     service = AIChatService(db_session, get_settings())
     await service.booking_service.create_hold(other, court.id, _pkt(sat, 23), 2)  # 11 PM to 12 AM taken
 
@@ -700,15 +704,16 @@ async def test_a_genuinely_booked_slot_still_rejects_a_midnight_crossing_booking
     assert ok.get("ok") is True and ok["label"].startswith("9:00 PM to 11:00 PM, ")
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_midnight_crossing_booking_ignores_a_closed_or_blacked_out_next_day(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     """Overnight court open Saturday only (3 PM to 3 AM); Sunday has no schedule and a Sunday blackout (8 AM-8 PM)
     exists. 11:30 PM Saturday to 12:30 AM Sunday is still bookable: it belongs to Saturday's schedule."""
     _o, court = await _midnight_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923014100012",
                                       open_=time(15, 0), close=time(3, 0), days=[5], slot_minutes=30)
     player = await make_user("+923014100013", role=UserRole.PLAYER)
-    sat = _future_day(5)
+    sat = _next_saturday()
     sun = sat + timedelta(days=1)
     db_session.add(Blackout(court_id=court.id, starts_at=_pkt(sun, 8), ends_at=_pkt(sun, 20)))
     await db_session.commit()
@@ -728,8 +733,9 @@ async def _range(service, player, court, day: date, start: str, end: str | None)
     return (await service._execute_tool(player, "check_availability", args, []))["requested_range"]
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_check_availability_judges_the_requested_range_by_its_start_date(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     """The assistant hands check_availability the START date plus start_time/end_time and gets the real range back.
     An end at or before the start is the next morning, so "9 PM to 12 AM" on Saturday is Saturday's booking, and a
@@ -738,7 +744,7 @@ async def test_check_availability_judges_the_requested_range_by_its_start_date(
                                       open_=time(16, 0), close=time(0, 0), days=[5])
     player = await make_user("+923014100021", role=UserRole.PLAYER)
     other = await make_user("+923014100022", role=UserRole.PLAYER)
-    sat = _future_day(5)
+    sat = _next_saturday()
     service = AIChatService(db_session, get_settings())
 
     for start, end in (("21:00", "00:00"), ("9 PM", "12 AM"), ("21:00", "midnight")):
@@ -822,12 +828,13 @@ async def _name_court(make_user, make_venue, make_court, make_schedule, make_pri
     return court, player
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_a_name_given_in_chat_rides_on_the_proposal_and_the_hold_not_the_account_name(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     court, player = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200001", "+923014200002"))
     service = AIChatService(db_session, get_settings())
-    day = _future_day(5)
+    day = _next_saturday()
     start = _pkt(day, 19).isoformat()
 
     # "mera naam Ali hai" / "book for my friend Ali Khan" / sloppy spacing and punctuation from the model
@@ -845,13 +852,14 @@ async def test_a_name_given_in_chat_rides_on_the_proposal_and_the_hold_not_the_a
     assert booking.player_phone == player.phone  # the contact number is still the account's
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_no_name_given_keeps_the_account_name_and_a_whatsapp_guest_stays_nameless(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     court, player = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200003", "+923014200004"))
     guest = await make_user("+923014200005", role=UserRole.PLAYER)  # a WhatsApp-first guest: no name on the account
     service = AIChatService(db_session, get_settings())
-    day = _future_day(5)
+    day = _next_saturday()
 
     actions: list = []
     await service._execute_tool(player, "propose_booking_confirmation", {"court_id": str(court.id), "starts_at": _pkt(day, 19).isoformat()}, actions)
@@ -862,14 +870,15 @@ async def test_no_name_given_keeps_the_account_name_and_a_whatsapp_guest_stays_n
     assert {pid: name for pid, name in named} == {player.id: "Sara Ahmed", guest.id: None}
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_a_court_venue_sport_or_city_word_is_never_taken_as_the_players_name(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule
 ):
     """The model can lift "Court 1" or "Clifton Padel Club" out of "book Court 1 at Clifton Padel Club" and call it a
     name. Those are dropped (the account name is used); a real name that merely CONTAINS such a word is kept."""
     court, player = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200006", "+923014200007"))
     service = AIChatService(db_session, get_settings())
-    start = _pkt(_future_day(5), 19).isoformat()
+    start = _pkt(_next_saturday(), 19).isoformat()
     for bad in ("Court 1", "court", "Clifton Padel Club", "Clifton", "padel", "Futsal", "Karachi", "1234", "", "   ", None):
         actions: list = []
         await service._execute_tool(player, "propose_booking_confirmation",
@@ -882,8 +891,9 @@ async def test_a_court_venue_sport_or_city_word_is_never_taken_as_the_players_na
         assert actions[0].data["player_name"] == good
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_whatsapp_yes_books_under_the_name_the_player_gave(
-    client, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, client, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     """A WhatsApp-first guest says "mera naam Ali hai", the assistant proposes (name stored on the proposal's action), a
     typed "yes" and a later button tap both book under "Ali"; with no stored name the booking stays unnamed."""
@@ -892,7 +902,7 @@ async def test_whatsapp_yes_books_under_the_name_the_player_gave(
     _mock_whatsapp_send(monkeypatch)
     court, _p = await _name_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, ("+923014200008", "+923014200009"))
     guest = await make_user("+923014200010", role=UserRole.PLAYER)
-    day = _future_day(5)
+    day = _next_saturday()
     slot = lambda hh: _pkt(day, hh).isoformat()  # noqa: E731
     await _add_proposal(db_session, guest, court, slot(19), channel="whatsapp", player_name="Ali")
 
@@ -1018,18 +1028,19 @@ async def test_name_question_is_never_repeated_and_a_named_account_is_never_aske
     assert 'Player account name: "Sara Ahmed"' in bodies[0]["system"]
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_proposal_message_always_states_the_exact_slot_court_date_time_and_price(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                         ("+923014300021", "+923014300022", "+923014300023"), monkeypatch, name="Sara Ahmed")
-    day = _future_day(5)
+    day = _next_saturday()
     start = _pkt(day, 19).isoformat()
     _capture_anthropic(monkeypatch, [
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response("Shall I book it? Reply Yes or No"),  # the model never said WHICH slot
     ])
-    result = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday for 1 hour", history=[])
+    result = await AIChatService(db_session, get_settings()).process_message(user=sara, message=f"book 7pm on {_on(day)} for 1 hour", history=[])
     label = next(a for a in result.actions if a.type == "confirm_booking").data["label"]
     assert label.startswith("7:00 PM to 8:00 PM, ") and label in result.reply
     assert "Court 1" in result.reply and "PKR 3,500" in result.reply and result.reply.rstrip().endswith("Reply Yes or No")
@@ -1039,7 +1050,7 @@ async def test_proposal_message_always_states_the_exact_slot_court_date_time_and
         _tool_use_response("propose_booking_confirmation", {"court_id": str(court.id), "starts_at": start}),
         _text_response(f"Court 1, {label}, PKR 3,500. Shall I book it? Reply Yes or No"),
     ])
-    again = await AIChatService(db_session, get_settings()).process_message(user=sara, message="book 7pm saturday for 1 hour", history=[])
+    again = await AIChatService(db_session, get_settings()).process_message(user=sara, message=f"book 7pm on {_on(day)} for 1 hour", history=[])
     assert again.reply.count(label) == 1
 
 
@@ -1055,6 +1066,8 @@ async def _held(db_session, user):
     return (await db_session.execute(select(Booking).where(Booking.player_id == user.id))).scalars().all()
 
 
+# Not frozen: this test needs real message ages (a 45-minute-old proposal), which frozen_clock re-stamps. `_next_saturday()` is
+# always strictly in the future and no weekday word is parsed, so it does not depend on the day it runs.
 async def test_hold_slot_only_runs_for_the_exact_slot_the_previous_message_stated(
     db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
@@ -1062,7 +1075,7 @@ async def test_hold_slot_only_runs_for_the_exact_slot_the_previous_message_state
     a stale proposal (>30 min) re-confirms."""
     court, sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                         ("+923014300031", "+923014300032", "+923014300033"), monkeypatch, name="Sara Ahmed")
-    day = _future_day(5)
+    day = _next_saturday()
     seven, eight = _pkt(day, 19).isoformat(), _pkt(day, 20).isoformat()
 
     # (1) yes with NO proposal at all -> nothing is held. Phase 3: a bare "yes" with nothing pending is answered by the ack guard without
@@ -1095,24 +1108,26 @@ async def test_hold_slot_only_runs_for_the_exact_slot_the_previous_message_state
     assert [b.starts_at for b in held] == [_pkt(day, 19)]
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_a_name_given_before_the_proposal_survives_the_yes_into_the_hold(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                          ("+923014300041", "+923014300042", "+923014300043"), monkeypatch)
-    seven = _pkt(_future_day(5), 19).isoformat()
+    seven = _pkt(_next_saturday(), 19).isoformat()
     await _add_proposal(db_session, guest, court, seven, player_name="Ali")
     # the model forgets the name when it calls hold_slot; the proposal's stored name is used
     await _hold_via_model(db_session, monkeypatch, guest, court, seven)
     assert [b.player_name for b in await _held(db_session, guest)] == ["Ali"]
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_a_bare_yes_without_a_stated_slot_tells_the_model_to_restate_it_and_a_valid_one_to_book(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, sara = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                         ("+923014300051", "+923014300052", "+923014300053"), monkeypatch, name="Sara Ahmed")
-    seven = _pkt(_future_day(5), 19).isoformat()
+    seven = _pkt(_next_saturday(), 19).isoformat()
     service = AIChatService(db_session, get_settings())
 
     # the bot's last message asked "Shall I book it?" without ever stating which slot
