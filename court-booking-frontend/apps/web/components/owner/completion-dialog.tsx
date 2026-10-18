@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { ApiError } from "@court-booking/api-client";
-import type { CompletionResult, OwnerBookingRow } from "@court-booking/types";
+import type { CompletionInput, CompletionResult, OwnerBookingRow } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -10,39 +10,28 @@ import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
 import { ModalShell } from "@/components/owner/modal-shell";
+import { VoiceTextarea } from "@/components/voice/voice-textarea";
+import { canSaveCompletion, completionBody, planCompletion, validateReceivedNow } from "@/lib/overview-completion";
 
-/** Minimal shape of the browser speech recognition API (Chrome); not in the TS DOM lib. */
-interface SpeechRecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-type SpeechCtor = new () => SpeechRecognitionLike;
+type T = ReturnType<typeof useT>;
 
-function speechCtor(): SpeechCtor | null {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as { SpeechRecognition?: SpeechCtor; webkitSpeechRecognition?: SpeechCtor };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+/** Text for a failed completion call (also used by the Overview for its Haan errors). */
+export function completionErrorText(e: unknown, t: T): string {
+  if (e instanceof ApiError && e.code === "COMPLETION_TOO_EARLY") return t("ovw.complete.err.tooEarly");
+  if (e instanceof ApiError && (e.code as string) === "REASON_REQUIRED") return t("ovw.cmp.err.reasonRequired");
+  if (e instanceof ApiError && e.status === 403) return t("ovw.complete.err.forbidden");
+  return friendlyErrorMessage(e, t);
 }
 
-/** Integer 0..total or null. Pure so it can be tested. */
-export function parseReceived(value: string, total: number): number | null {
-  if (!/^\d+$/.test(value.trim())) return null;
-  const n = Number(value);
-  return n >= 0 && n <= total ? n : null;
-}
-
-/** Warning icon (colour is never the only signal). */
-function WarnIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+function InfoIcon({ warn }: { warn: boolean }) {
+  return warn ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true" className="shrink-0 mt-0.5">
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v6m0 3.5h.01" />
+    </svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 mt-0.5">
+      <path d="M5 12l5 5 9-10" />
     </svg>
   );
 }
@@ -52,198 +41,160 @@ export interface CompletionDialogProps {
   onClose: () => void;
   /** Called with the server's updated row after "Nahi" was saved. */
   onSaved: (row: OwnerBookingRow) => void;
+  /** Replaces the default POST (the Overview uses it for its instant row update and rollback). Must throw on failure. */
+  submit?: (input: CompletionInput) => Promise<OwnerBookingRow>;
 }
 
-/** "Booking adhoora?" popup: how much was actually received (0..total) and why. Shared by the detail popup and the tables. */
-export function CompletionDialog({ row, onClose, onSaved }: CompletionDialogProps) {
+/**
+ * "Booking adhoora?" (Round 2, A8): how much of the REMAINING due was received now (0..due, added to what was paid, never
+ * replacing it) and, only when money stays due, why. The one implementation for the Overview, History and the booking popup.
+ */
+export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDialogProps) {
   const t = useT();
   const fmt = useFmt();
   const titleId = useId();
-  const [received, setReceived] = useState(String(row.completion?.result === "no" ? row.completion.received_pkr : row.total_paid));
-  const [reason, setReason] = useState(row.completion?.reason ?? "");
+  const inputId = `${titleId}-amount`;
+  const [received, setReceived] = useState("0");
+  const [reason, setReason] = useState(row.completion?.result === "no" ? (row.completion.reason ?? "") : "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
 
-  const amount = parseReceived(received, row.total);
-  const due = amount === null ? null : row.total - amount;
-
-  // --- voice to text (web only, hidden where unsupported) ---
-  const [supported] = useState(() => speechCtor() !== null);
-  const [micLang, setMicLang] = useState<"ur-PK" | "en-PK">("ur-PK");
-  const [listening, setListening] = useState(false);
-  const [micError, setMicError] = useState(false);
-  const recRef = useRef<SpeechRecognitionLike | null>(null);
-  useEffect(() => () => recRef.current?.stop(), []);
-
-  function toggleMic() {
-    if (listening) {
-      recRef.current?.stop();
-      return;
-    }
-    const Ctor = speechCtor();
-    if (!Ctor) return;
-    setMicError(false);
-    const rec = new Ctor();
-    rec.lang = micLang;
-    rec.interimResults = false;
-    rec.continuous = false;
-    rec.onresult = (e) => {
-      let text = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) text += e.results[i][0].transcript;
-      if (text) setReason((prev) => (prev ? `${prev.trimEnd()} ${text.trim()}` : text.trim()));
-    };
-    rec.onerror = () => {
-      setMicError(true);
-      setListening(false);
-    };
-    rec.onend = () => setListening(false);
-    recRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      setMicError(true);
-    }
-  }
+  const due = Math.max(0, row.due);
+  const check = validateReceivedNow(received, due);
+  const plan = check.ok ? planCompletion(row, check.value) : null;
+  const amountInvalid = touched && !check.ok;
+  const reasonMissing = touched && plan !== null && !canSaveCompletion(plan, reason);
 
   async function save() {
     setTouched(true);
-    if (amount === null) return;
+    if (!check.ok || !plan || !canSaveCompletion(plan, reason) || saving) return;
     setSaving(true);
     setError(null);
+    const body = completionBody(row, check.value, reason);
     try {
-      const updated = await api.owners.markCompletion(row.booking_id, { result: "no", received_pkr: amount, reason: reason.trim() || undefined });
+      const updated = submit ? await submit(body) : await api.owners.markCompletion(row.booking_id, body);
       onSaved(updated);
     } catch (e) {
-      setError(e instanceof ApiError && e.code === "COMPLETION_TOO_EARLY" ? t("detail.err.tooEarly") : friendlyErrorMessage(e, t));
+      setError(completionErrorText(e, t));
       setSaving(false);
     }
   }
 
-  const amountInvalid = touched && amount === null;
-  const inputId = `${titleId}-amount`;
-  const reasonId = `${titleId}-reason`;
-
   return (
-    <ModalShell labelledBy={titleId} onClose={onClose} maxWidthClass="md:max-w-[520px]">
-      <div className="p-6 md:p-8 flex flex-col gap-5">
+    <ModalShell labelledBy={titleId} onClose={onClose} maxWidthClass="md:max-w-[540px]">
+      <div className="p-6 md:p-8 flex flex-col gap-5" data-testid="ovw-completion-dialog">
         <div>
           <h2 id={titleId} className="font-khelo-display text-[26px] font-extrabold leading-tight text-owner-ink">
-            {t("detail.cmp.title")}
+            {t("ovw.cmp.title")}
           </h2>
-          <p className="mt-1 text-[14px] text-owner-ink-muted">
-            {[row.player_name ?? t("detail.walkinPlayer"), row.court_name, fmt.timeRange(row.starts_at, row.ends_at), row.short_code].join(" · ")}
+          <p className="mt-1 text-[14px] text-owner-ink-muted break-words">
+            {[row.player_name ?? t("ovw.table.noName"), row.court_name, fmt.timeRange(row.starts_at, row.ends_at), row.short_code].join(" \u00b7 ")}
           </p>
         </div>
 
-        <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 rounded-2xl bg-owner-bg px-4 py-3 text-[14px] text-owner-ink-muted">
-          <span>
-            {t("detail.cmp.total")} <b className="text-owner-ink">{formatPKR(row.total)}</b>
-          </span>
-          <span>
-            {t("detail.cmp.paid")} <b className="text-owner-ink">{formatPKR(row.total_paid)}</b>
-          </span>
-          <span>
-            {t("detail.cmp.due")} <b className="text-owner-ink">{formatPKR(row.due)}</b>
-          </span>
-        </div>
+        <dl className="grid grid-cols-3 gap-2 rounded-2xl bg-owner-bg px-4 py-3 text-[14px] text-owner-ink-muted" data-testid="ovw-cmp-summary">
+          <div>
+            <dt>{t("ovw.cmp.total")}</dt>
+            <dd className="font-bold text-owner-ink tabular-nums">{formatPKR(row.total)}</dd>
+          </div>
+          <div>
+            <dt>{t("ovw.cmp.paid")}</dt>
+            <dd className="font-bold text-owner-ink tabular-nums">{formatPKR(row.total_paid)}</dd>
+          </div>
+          <div>
+            <dt>{t("ovw.cmp.due")}</dt>
+            <dd className="font-bold text-owner-ink tabular-nums">{formatPKR(due)}</dd>
+          </div>
+        </dl>
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor={inputId} className="text-[14px] font-bold text-owner-ink">
-            {t("detail.cmp.amount")}
+            {t("ovw.cmp.amount")}
           </label>
-          <input
-            id={inputId}
-            value={received}
-            onChange={(e) => setReceived(e.target.value.replace(/[^0-9]/g, ""))}
-            inputMode="numeric"
-            autoComplete="off"
-            aria-invalid={amountInvalid}
-            aria-describedby={`${inputId}-hint`}
-            className={`h-12 rounded-xl border bg-owner-surface px-4 text-[18px] text-owner-ink ${amountInvalid ? "border-owner-danger" : "border-owner-border"}`}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id={inputId}
+              data-testid="ovw-received"
+              value={received}
+              onChange={(e) => setReceived(e.target.value.replace(/[^0-9,]/g, ""))}
+              onFocus={(e) => e.currentTarget.select()}
+              inputMode="numeric"
+              autoComplete="off"
+              aria-invalid={amountInvalid}
+              aria-describedby={`${inputId}-hint`}
+              className={`h-12 min-w-0 flex-1 basis-40 rounded-xl border-[1.5px] bg-owner-surface px-4 text-[18px] text-owner-ink tabular-nums ${amountInvalid ? "border-owner-danger" : "border-owner-border"}`}
+            />
+            {due > 0 ? (
+              <button
+                type="button"
+                onClick={() => setReceived(String(due))}
+                data-testid="ovw-received-full"
+                className="min-h-12 px-4 rounded-xl border-[1.5px] border-owner-border bg-owner-surface text-[14px] font-bold text-owner-ink whitespace-nowrap"
+              >
+                {t("ovw.cmp.fill", { due: formatPKR(due) })}
+              </button>
+            ) : null}
+          </div>
           <p id={`${inputId}-hint`} className={`text-[13px] ${amountInvalid ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
-            {amountInvalid ? t("detail.cmp.amountErr", { total: formatPKR(row.total) }) : t("detail.cmp.amountHint", { total: formatPKR(row.total) })}
+            {amountInvalid ? t("ovw.cmp.amountErr", { due: formatPKR(due) }) : t("ovw.cmp.amountHint", { due: formatPKR(due) })}
           </p>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={reasonId} className="text-[14px] font-bold text-owner-ink">
-            {t("detail.cmp.reason")}
-          </label>
-          <textarea
-            id={reasonId}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            rows={3}
-            maxLength={500}
-            placeholder={t("detail.cmp.reasonPh")}
-            className="rounded-xl border border-owner-border bg-owner-surface px-4 py-3 text-[15px] text-owner-ink"
-          />
-          {supported ? (
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleMic}
-                aria-pressed={listening}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-owner-ink px-4 text-[14px] font-bold text-owner-ink"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                  <rect x="9" y="3" width="6" height="11" rx="3" />
-                  <path d="M5 11a7 7 0 0014 0M12 18v3" />
-                </svg>
-                {listening ? t("detail.cmp.micStop") : t("detail.cmp.mic")}
-              </button>
-              <div role="group" aria-label={t("detail.cmp.micLang")} className="inline-flex overflow-hidden rounded-xl border border-owner-border">
-                {(["ur-PK", "en-PK"] as const).map((l) => (
-                  <button
-                    key={l}
-                    type="button"
-                    aria-pressed={micLang === l}
-                    onClick={() => setMicLang(l)}
-                    className={`min-h-11 px-3 text-[13px] font-semibold ${micLang === l ? "bg-owner-accent text-white" : "bg-owner-surface text-owner-ink-muted"}`}
-                  >
-                    {l === "ur-PK" ? t("detail.cmp.micUr") : t("detail.cmp.micEn")}
-                  </button>
-                ))}
-              </div>
-              <span className="text-[12.5px] text-owner-ink-muted" role="status">
-                {listening ? t("detail.cmp.listening") : micError ? t("detail.cmp.micError") : t("detail.cmp.micHint")}
+        <div aria-live="polite" role="status">
+          {plan ? (
+            <div
+              data-testid="ovw-preview"
+              data-outcome={plan.outcome}
+              className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-semibold ${
+                plan.outcome === "no" ? "bg-owner-danger-soft text-owner-danger" : "bg-owner-success-soft text-owner-success-dark"
+              }`}
+            >
+              <InfoIcon warn={plan.outcome === "no"} />
+              <span>
+                {plan.outcome === "no" ? t("ovw.cmp.previewDue", { due: formatPKR(plan.dueAfter) }) : t("ovw.cmp.previewFull")}
+                <span className="block font-normal">{t("ovw.cmp.previewPaid", { paid: formatPKR(plan.paidAfter) })}</span>
               </span>
             </div>
-          ) : (
-            <p className="text-[12.5px] text-owner-ink-muted">{t("detail.cmp.noMic")}</p>
-          )}
+          ) : null}
         </div>
 
-        {due !== null ? (
-          <div
-            className={`flex items-start gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold ${due > 0 ? "bg-owner-danger-soft text-owner-danger" : "bg-owner-success-soft text-owner-success-dark"}`}
-          >
-            {due > 0 ? <WarnIcon /> : null}
-            <span>{due > 0 ? t("detail.cmp.warn", { due: formatPKR(due) }) : t("detail.cmp.warnFull")}</span>
-          </div>
-        ) : null}
+        <div className="flex flex-col gap-1.5">
+          <VoiceTextarea
+            id={`${titleId}-reason`}
+            label={plan && !plan.reasonRequired ? t("ovw.cmp.reasonOpt") : t("ovw.cmp.reasonReq")}
+            value={reason}
+            onChange={setReason}
+            required={!plan || plan.reasonRequired}
+            rows={3}
+            maxLength={500}
+          />
+          {reasonMissing && plan ? (
+            <p role="alert" data-testid="ovw-reason-error" className="text-[13px] font-semibold text-owner-danger">
+              {t("ovw.cmp.reasonErr", { due: formatPKR(plan.dueAfter) })}
+            </p>
+          ) : null}
+        </div>
 
-        <p role="alert" className={error ? "rounded-xl bg-owner-danger-soft px-4 py-3 text-[14px] font-semibold text-owner-danger" : "sr-only"}>
+        <p role="alert" data-testid="ovw-completion-error" className={error ? "rounded-xl bg-owner-danger-soft px-4 py-3 text-[14px] font-semibold text-owner-danger" : "sr-only"}>
           {error}
         </p>
 
         <div className="flex flex-wrap justify-end gap-3">
           <button type="button" onClick={onClose} className="min-h-12 rounded-xl border-2 border-owner-ink px-6 text-[15px] font-bold text-owner-ink">
-            {t("detail.cmp.cancel")}
+            {t("ovw.cmp.cancel")}
           </button>
           <button
             type="button"
             onClick={save}
             disabled={saving}
+            data-testid="ovw-completion-save"
             className="min-h-12 rounded-xl bg-khelo-orange px-6 text-[15px] font-bold text-khelo-ink disabled:opacity-60"
           >
-            {saving ? t("detail.cmp.saving") : t("detail.cmp.save")}
+            {saving ? t("ovw.cmp.saving") : plan?.outcome === "yes" ? t("ovw.cmp.saveFull") : t("ovw.cmp.save")}
           </button>
         </div>
-        <p className="text-[12.5px] text-owner-ink-muted">{t("detail.cmp.note")}</p>
+        <p className="text-[12.5px] text-owner-ink-muted">{t("ovw.cmp.note")}</p>
       </div>
     </ModalShell>
   );
@@ -278,22 +229,21 @@ export function useCompletionFlow(onDone: (row: OwnerBookingRow) => void): Compl
     api.owners
       .markCompletion(row.booking_id, { result: "yes" })
       .then((updated) => {
-        setMessage({ kind: "ok", text: t("detail.cmp.savedYes") });
+        setMessage({ kind: "ok", text: t("ovw.cmp.savedYes") });
         onDone(updated);
       })
-      .catch((e) => {
-        setMessage({ kind: "error", text: e instanceof ApiError && e.code === "COMPLETION_TOO_EARLY" ? t("detail.err.tooEarly") : friendlyErrorMessage(e, t) });
-      })
+      .catch((e) => setMessage({ kind: "error", text: completionErrorText(e, t) }))
       .finally(() => setBusyId(null));
   }
 
   const dialog = target ? (
     <CompletionDialog
+      key={target.booking_id}
       row={target}
       onClose={() => setTarget(null)}
       onSaved={(updated) => {
         setTarget(null);
-        setMessage({ kind: "ok", text: t("detail.cmp.savedNo") });
+        setMessage({ kind: "ok", text: updated.completion?.result === "yes" ? t("ovw.cmp.savedFull") : t("ovw.cmp.savedNo") });
         onDone(updated);
       }}
     />

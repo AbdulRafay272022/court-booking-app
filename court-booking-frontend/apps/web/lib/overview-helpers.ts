@@ -1,4 +1,5 @@
 // Pure helpers for the owner Overview (docs/owner-overview-spec.md section 2). No React, no network: unit-tested in overview-helpers.test.ts.
+import { addDays } from "@court-booking/types";
 import type { OwnerBookingRow, OwnerOverview, CompletionResult, HistoryStatusFilter } from "@court-booking/types";
 
 export type RowFilter = "all" | "booked" | "cancelled" | "refund";
@@ -41,8 +42,39 @@ export function historyHref(opts: { date: string; courts?: string; status?: Hist
   return `/dashboard/bookings${qs({ from: opts.date, to: opts.date, courts: opts.courts, status: opts.status, booking: opts.booking })}`;
 }
 
-export function approvalsHref(date: string, courts: string | undefined): string {
+/** Approvals; `date` undefined = every date (the "Sab dikhao" view). */
+export function approvalsHref(date: string | undefined, courts: string | undefined): string {
   return `/dashboard/owner/approvals${qs({ date, courts })}`;
+}
+
+/** How far back and ahead "any date" reaches on the History page (it always needs a from/to range). */
+export const ALL_DATES_SPAN_DAYS = 365;
+
+/** History with no practical date filter: a year back to a year ahead of `today`. */
+export function allDatesHistoryHref(today: string, opts: { courts?: string; status?: HistoryStatusFilter }): string {
+  return `/dashboard/bookings${qs({
+    from: addDays(today, -ALL_DATES_SPAN_DAYS),
+    to: addDays(today, ALL_DATES_SPAN_DAYS),
+    courts: opts.courts,
+    status: opts.status,
+  })}`;
+}
+
+/** The any-date pending numbers, or null when the backend is older and does not send them (never invented). */
+export function pendingAllOf(overview: Pick<OwnerOverview, "pending_all">): { count: number; approval: number; payment: number } | null {
+  const p = overview.pending_all;
+  if (!p || typeof p.count !== "number") return null;
+  return { count: p.count, approval: p.awaiting_approval ?? 0, payment: p.awaiting_payment ?? 0 };
+}
+
+/** Which slots the "Sab slots" popup shows. "free" includes the free slots that have already passed. */
+export type SlotFilter = "all" | "free" | "booked" | "pending" | "blocked";
+export const SLOT_FILTERS: readonly SlotFilter[] = ["all", "free", "booked", "pending", "blocked"];
+
+export function slotFilterMatches(view: "booked" | "pending" | "blocked" | "free" | "past", filter: SlotFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "free") return view === "free" || view === "past";
+  return view === filter;
 }
 
 export function rowMatchesFilter(row: OwnerBookingRow, filter: RowFilter): boolean {
@@ -66,6 +98,7 @@ export interface SlotSegment {
   percent: number;
 }
 
+/** Bar segments. Invariant (tested): the four counts add up to the total, so Total = Booked + Pending + Blocked + Free. */
 export function slotSegments(slots: Pick<OwnerOverview["slots"], "total" | "booked" | "pending" | "blocked" | "free">): SlotSegment[] {
   const total = slots.total > 0 ? slots.total : slots.booked + slots.pending + slots.blocked + slots.free;
   const make = (key: SlotSegment["key"], count: number): SlotSegment => ({ key, count, percent: total > 0 ? (count / total) * 100 : 0 });
@@ -80,18 +113,6 @@ export function topCourts<T extends { court_name: string }>(
 ): { top: T[]; rest: number } {
   const nonZero = items.filter((i) => pick(i) > 0).sort((a, b) => pick(b) - pick(a) || a.court_name.localeCompare(b.court_name));
   return { top: nonZero.slice(0, n), rest: Math.max(0, nonZero.length - n) };
-}
-
-export type ReceivedCheck = { ok: true; value: number } | { ok: false; error: "required" | "range" };
-
-/** "Kitna mila?" must be a whole number of PKR from 0 to the booking total. */
-export function validateReceived(raw: string, total: number): ReceivedCheck {
-  const cleaned = raw.replace(/[,\s]/g, "");
-  if (cleaned === "") return { ok: false, error: "required" };
-  if (!/^\d+$/.test(cleaned)) return { ok: false, error: "range" };
-  const value = Number(cleaned);
-  if (!Number.isSafeInteger(value) || value < 0 || value > total) return { ok: false, error: "range" };
-  return { ok: true, value };
 }
 
 export type RowTone = "green" | "red" | "refund" | "cancelled" | "none";

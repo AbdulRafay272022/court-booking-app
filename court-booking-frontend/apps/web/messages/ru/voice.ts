@@ -1,2 +1,21 @@
-// Roman Urdu copy (source of truth). Keys start with 'voice.'.
-export const ruVoice = {} as const;
+// Roman Urdu copy (source of truth). Keys start with 'voice.'. Owner side: polite "karein" register.
+export const ruVoice = {
+  "voice.mic": "Bol kar likhein",
+  "voice.stop": "Rokein",
+  "voice.micAria": "Mic: bol kar likhein",
+  "voice.stopAria": "Mic band karein",
+  "voice.listening": "Sun raha hoon... dobara dabayein to ruk jayega",
+  "voice.timerAria": "Record ka waqt {time}",
+  "voice.lang": "Bolne ki zubaan",
+  "voice.langUr": "Urdu",
+  "voice.langEn": "English",
+  "voice.hint": "Mic dabayein aur bolein. Text Roman Urdu mein likha jayega aur aap use badal sakte hain.",
+  "voice.interim": "Abhi suna ja raha hai",
+  "voice.started": "Mic chalu hai. Bolte rahein, dobara dabane tak sunta rahega.",
+  "voice.stopped": "Mic band ho gaya.",
+  "voice.unsupported": "Voice ke liye Chrome ya Edge istemal karein, ya keyboard ka mic",
+  "voice.denied": "Mic ki ijazat nahi mili. Address bar mein mic ke nishaan par dabayein, ijazat dein, phir dobara koshish karein.",
+  "voice.noMic": "Koi mic nahi mila. Mic lagayein ya keyboard ka mic istemal karein.",
+  "voice.network": "Voice ke liye internet chahiye. Connection check karke dobara koshish karein.",
+  "voice.failed": "Mic ruk gaya. Dobara dabayein ya type karein.",
+} as const;
