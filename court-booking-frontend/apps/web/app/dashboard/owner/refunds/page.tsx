@@ -90,20 +90,32 @@ export default function OwnerRefundsPage() {
 
   const list = query.data ?? [];
   const open = list.find((r) => r.id === openId) ?? null;
+  const loading = venuesLoading || query.isLoading;
+  // A staff member without the refunds permission gets 403 NOT_STAFF_PERMITTED: show ONE clear state (no count line, no
+  // "nothing owed", no retry button), since retrying cannot help.
+  const noPermission = query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED";
+  const showCount = !loading && !query.isError;
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6 min-w-0">
       <div>
         <h1 className="text-2xl font-bold">{t("odash.refunds.title")}</h1>
-        <p className="text-owner-ink-faint text-sm">
-          {list.length === 0 ? t("odash.refunds.none") : list.length === 1 ? t("odash.refunds.owed.one") : t("odash.refunds.owed.many", { n: list.length })}
-        </p>
+        {showCount ? (
+          <p data-testid="refunds-count" className="text-owner-ink-faint text-sm">
+            {list.length === 0 ? t("odash.refunds.none") : list.length === 1 ? t("odash.refunds.owed.one") : t("odash.refunds.owed.many", { n: list.length })}
+          </p>
+        ) : null}
       </div>
 
-      {filter.active && !query.isLoading && !venuesLoading ? <FilterBanner kind="refunds" count={list.length} /> : null}
+      {filter.active && showCount ? <FilterBanner kind="refunds" count={list.length} /> : null}
 
-      {venuesLoading || query.isLoading ? (
+      {loading ? (
         <p className="p-10 text-center text-owner-ink-faint">{t("odash.refunds.loading")}</p>
+      ) : noPermission ? (
+        <div data-testid="refunds-no-permission" role="status" className="bg-owner-surface border border-owner-border rounded-xl p-8 text-center flex flex-col gap-2">
+          <p className="font-bold text-owner-ink">{t("rfd.noPermission.title")}</p>
+          <p className="text-owner-ink-muted text-[14px]">{t("rfd.noPermission.body")}</p>
+        </div>
       ) : query.isError ? (
         <ErrorState message={friendlyErrorMessage(query.error, t)} onRetry={() => query.refetch()} tone="owner" />
       ) : list.length === 0 ? (

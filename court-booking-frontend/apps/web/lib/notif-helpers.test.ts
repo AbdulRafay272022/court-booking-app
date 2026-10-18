@@ -81,6 +81,13 @@ test("old endpoint: WhatsApp then SMS for one event = ONE item with both deliver
   assert.equal(out[1].kind, "slot_freed");
 });
 
+test("old endpoint: a late screenshot gets its own kind and opens Approvals", () => {
+  const out = legacyToFeed([e("1", "late_payment_proof", "2026-10-16T10:00:00Z", "b1")]);
+  assert.equal(out[0].kind, "late_payment");
+  assert.deepEqual(out[0].link, { kind: "approvals" });
+  assert.equal(feedRoute(out[0], "owner"), "/dashboard/owner/approvals");
+});
+
 test("group by Pakistan day: today, yesterday, older", () => {
   const now = new Date("2026-10-17T09:00:00Z").getTime(); // 2 PM PKT
   const g = groupByDay(

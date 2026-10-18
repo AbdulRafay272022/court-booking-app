@@ -6,6 +6,8 @@
  * Run against a PRODUCTION build served from a COPY of apps/web (never next dev):
  *   BASE_URL=http://localhost:3823 PLAYWRIGHT_PATH=... node e2e/round2-refunds-settings-bell-check.cjs
  * Covers en + ru at 360 / 768 / 1280.
+ * QA round 2 fixes: a staff member without the refunds permission (403 NOT_STAFF_PERMITTED) sees ONE clear state
+ * (no "Nothing owed right now" next to an error), and a late screenshot reads as its own bell item (kind late_payment).
  */
 const { loadPlaywright } = require("./smoke.cjs");
 
@@ -62,6 +64,11 @@ function feedItems() {
       params: { player_name: "Mujtaba Anwer", amount: 8000 }, link: { kind: "refunds" },
       deliveries: [{ channel: "whatsapp", status: "failed" }, { channel: "sms", status: "sent" }],
     },
+    {
+      id: "n4", event_type: "late_payment_proof", kind: "late_payment", created_at: iso(5),
+      params: { player_name: "Late Larki", court_name: "Futsal 1", starts_at: pktToday(21), amount: 2000 },
+      link: { kind: "approvals", booking_id: "b-late" }, deliveries: [{ channel: "push", status: "sent" }],
+    },
     { id: "n3", event_type: "weird_new_event", kind: "other", created_at: pktToday(12, 0, -5), params: {}, link: { kind: "none" }, deliveries: [] },
   ];
 }
@@ -91,6 +98,10 @@ const TEXT = {
     today: "Today",
     yesterday: "Yesterday",
     legacyTitle: "Update: Something brand new",
+    bellLate: "Screenshot arrived after the hold had expired",
+    bellLateContext: "Late Larki - Futsal 1 - Today 9 PM - PKR 2,000",
+    noPermTitle: "You don't have permission for this",
+    nothingOwed: "Nothing owed right now",
   },
   ru: {
     partial: "Hissa wapas",
@@ -111,6 +122,10 @@ const TEXT = {
     today: "Aaj",
     yesterday: "Kal",
     legacyTitle: "Update: Something brand new",
+    bellLate: "Screenshot hold khatam hone ke baad aaya",
+    bellLateContext: "Late Larki - Futsal 1 - Aaj 9 PM - PKR 2,000",
+    noPermTitle: "Aap ke paas is kaam ki ijazat nahi",
+    nothingOwed: "Abhi kuch dena nahi",
   },
 };
 
@@ -143,7 +158,10 @@ async function newCtx(browser, { width, lang, state }) {
     if (p === "/owners/venues") return json(route, [VENUE]);
     if (p === "/owners/badges") return json(route, { approvals: 1, refunds: 4 });
     if (p === "/owners/premium/notices") return json(route, []);
-    if (p === "/owners/refunds") return json(route, REFUNDS);
+    if (p === "/owners/refunds") {
+      if (state.refunds === "denied") return json(route, { error: { code: "NOT_STAFF_PERMITTED", message: "Your account isn't allowed to do this." } }, 403);
+      return json(route, REFUNDS);
+    }
     if (/^\/owners\/refunds\/[^/]+\/mark-refunded$/.test(p)) {
       state.markCalls.push(Date.now());
       await new Promise((r) => setTimeout(r, 300)); // slow enough for a double click to land while busy
@@ -282,6 +300,28 @@ async function refundsCheck(browser, width, lang, f) {
   await context.close();
 }
 
+async function refundsDeniedCheck(browser, width, lang, f) {
+  const T = TEXT[lang];
+  const errors = [];
+  const state = freshState();
+  state.refunds = "denied";
+  const context = await newCtx(browser, { width, lang, state });
+  const page = await openPage(context, "/dashboard/owner/refunds", errors);
+  const tag = `refunds-denied ${lang}@${width}`;
+  await page.locator('[data-testid="refunds-no-permission"]').waitFor({ timeout: 15000 }).catch(() => {});
+  const body = await page.locator("main").first().innerText().catch(() => page.locator("body").innerText());
+  if (!(await page.locator('[data-testid="refunds-no-permission"]').count())) f.push(`${tag}: no no-permission state`);
+  if (!body.includes(T.noPermTitle)) f.push(`${tag}: no "${T.noPermTitle}"`);
+  if (body.includes(T.nothingOwed)) f.push(`${tag}: still says "${T.nothingOwed}" next to the error`);
+  if (await page.locator('[data-testid="refunds-count"]').count()) f.push(`${tag}: count line shown`);
+  if (await page.locator('[data-testid="refund-row"]').count()) f.push(`${tag}: rows shown`);
+  if ((await page.locator("h1").count()) !== 1) f.push(`${tag}: one h1`);
+  if ((await overflow(page)) > 1) f.push(`${tag}: horizontal scroll: ${await overflowInfo(page)}`);
+  await page.screenshot({ path: `${SHOTS}/w3-refunds-denied-${lang}-${width}.png`, fullPage: true });
+  for (const e of errors) if (!/403/.test(e)) f.push(`${tag}: ${e}`);
+  await context.close();
+}
+
 async function advanceTestIds(card) {
   return card.evaluate((el) => [...el.querySelectorAll("[data-testid]")].map((x) => x.getAttribute("data-testid")).filter((x) => x.startsWith("adv")).sort());
 }
@@ -403,6 +443,8 @@ async function bellCheck(browser, width, lang, f) {
   if (!titles.some((x) => x.startsWith(T.bellTitle))) f.push(`${tag}: titles ${JSON.stringify(titles)}`);
   const ctxs = await panel.locator('[data-testid="notification-context"]').allInnerTexts();
   if (!ctxs.includes(T.bellContext)) f.push(`${tag}: contexts ${JSON.stringify(ctxs)}`);
+  if (!titles.some((x) => x.startsWith(T.bellLate))) f.push(`${tag}: no late-screenshot title (${JSON.stringify(titles)})`);
+  if (!ctxs.includes(T.bellLateContext)) f.push(`${tag}: late-screenshot context missing (${JSON.stringify(ctxs)})`);
   const metas = await panel.locator('[data-testid="notification-meta"]').allInnerTexts();
   if (!metas.some((m) => m.includes(T.bellDelivery))) f.push(`${tag}: no WhatsApp delivery line (${JSON.stringify(metas)})`);
   if (!metas.some((m) => m.includes(T.bellSms))) f.push(`${tag}: WhatsApp-then-SMS not one row (${JSON.stringify(metas)})`);
@@ -449,6 +491,7 @@ async function run() {
       const parity = {};
       const f = [];
       await refundsCheck(browser, width, lang, f);
+      await refundsDeniedCheck(browser, width, lang, f);
       await settingsCheck(browser, width, lang, f, parity);
       await wizardCheck(browser, width, lang, f, parity);
       if (parity.settings && parity.wizard && JSON.stringify(parity.settings) !== JSON.stringify(parity.wizard)) {

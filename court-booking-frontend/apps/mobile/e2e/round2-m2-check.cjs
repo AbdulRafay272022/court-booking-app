@@ -38,6 +38,9 @@ const feedItems = () => [
     link: { kind: "booking", booking_id: "b-77" }, deliveries: [{ channel: "push", status: "sent" }] },
   { id: "f3", event_type: "refund_owed", kind: "refund_owed", created_at: iso(-20),
     params: { player_name: "Mujtaba Anwer", court_name: "Padel 1", amount: 1500 }, link: { kind: "refunds" }, deliveries: [{ channel: "whatsapp", status: "failed" }, { channel: "sms", status: "sent" }] },
+  // QA round 2: a screenshot that arrived after the hold expired has its own kind (outside the 24 h unread window)
+  { id: "f5", event_type: "late_payment_proof", kind: "late_payment", created_at: iso(-30),
+    params: { player_name: "Late Larki", court_name: "Padel 1", amount: 2000 }, link: { kind: "approvals", booking_id: "b-late" }, deliveries: [{ channel: "push", status: "sent" }] },
   { id: "f4", event_type: "some_new_event", kind: "other", created_at: iso(-80), params: {}, link: { kind: "none" }, deliveries: [] },
 ];
 
@@ -222,7 +225,8 @@ const badgeText = async (page) => {
     const days = await page.getByTestId("notif-day").allInnerTexts();
     check("list: grouped by day (Aaj first)", days.length >= 2 && days[0].trim().toLowerCase() === "aaj", days.join(" | "));
     const rows = await page.getByTestId("notif-row").count();
-    check("list: all 4 items", rows === 4, String(rows));
+    check("list: all 5 items", rows === 5, String(rows));
+    check("list: late screenshot has its own sentence", /Screenshot hold khatam hone ke baad aaya/.test(body) && /Late Larki/.test(body));
     check("list: unread dots for the 3 new ones", (await page.getByTestId("notif-unread-dot").count()) === 3, String(await page.getByTestId("notif-unread-dot").count()));
     await page.screenshot({ path: "e2e/m2-notifications.png", fullPage: true });
     await page.getByRole("button", { name: "Sab parh liye" }).click();

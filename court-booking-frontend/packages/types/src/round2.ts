@@ -26,6 +26,7 @@ export type ApproveAcceptMode = "advance_only" | "full";
 
 export type NotificationKind =
   | "payment_waiting"
+  | "late_payment"
   | "payment_approved"
   | "payment_rejected"
   | "player_cancelled"

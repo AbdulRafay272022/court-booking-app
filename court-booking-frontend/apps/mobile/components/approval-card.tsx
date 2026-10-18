@@ -41,6 +41,7 @@ export function ApprovalCard({
   courtText,
   busy,
   error,
+  locked = false,
   onDetails,
   onApprove,
   onReject,
@@ -50,6 +51,8 @@ export function ApprovalCard({
   courtText: string;
   busy: boolean;
   error: string | null;
+  /** Staff without the approve permission (after a 403 NOT_STAFF_PERMITTED): no action buttons, one clear note. */
+  locked?: boolean;
   onDetails: () => void;
   onApprove: () => void;
   onReject: () => void;
@@ -95,7 +98,11 @@ export function ApprovalCard({
 
       {error ? <Text className="font-plex-medium text-owner-danger text-[12.5px]">{error}</Text> : null}
 
-      {grey ? (
+      {locked ? (
+        <View testID="approval-locked" className="rounded-xl px-3.5 py-3" style={{ backgroundColor: "#F1F3F4", borderWidth: 1, borderColor: "#D3DADD" }}>
+          <Text className="font-plex-semibold text-owner-ink text-[13px]">Aap ke paas is kaam ki ijazat nahi. Owner se ijazat mangein.</Text>
+        </View>
+      ) : grey ? (
         item.has_screenshot ? (
           <View className="gap-2">
             <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">Player ne screenshot bheja tha. Kya paisa aapke account mein aaya?</Text>

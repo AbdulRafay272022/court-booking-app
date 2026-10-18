@@ -59,7 +59,7 @@ function routeForNotification(data: Record<string, unknown> | undefined): void {
   const eventType = String(data.event_type ?? "");
   const referenceId = data.reference_id ? String(data.reference_id) : undefined;
 
-  if (eventType === "payment_submitted") {
+  if (eventType === "payment_submitted" || eventType === "late_payment_proof") {
     router.push("/(owner)/approvals");
   } else if ((eventType === "booking_confirmed" || eventType === "payment_rejected") && referenceId) {
     router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: referenceId } });

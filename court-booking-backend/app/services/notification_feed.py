@@ -48,7 +48,8 @@ EVENT_KINDS: dict[str, tuple[str, str, str, str]] = {
     "payment_submitted": ("payment_waiting", "payment_submitted", "booking", "approvals"),
     "payment_submitted_whatsapp": ("payment_waiting", "payment_submitted", "booking", "approvals"),
     "payment_submitted_sms": ("payment_waiting", "payment_submitted", "booking", "approvals"),
-    "late_payment_proof": ("payment_waiting", "late_payment_proof", "booking", "approvals"),
+    # a screenshot that arrived after the hold had already expired (B1): its own kind so the bell says so
+    "late_payment_proof": ("late_payment", "late_payment_proof", "booking", "approvals"),
     "owner_player_cancelled": ("player_cancelled", "owner_player_cancelled", "booking", "approvals"),
     "refund_owed": ("refund_owed", "refund_owed", "booking", "refunds"),
     "owner_new_booking": ("new_booking", "owner_new_booking", "booking", "booking"),
@@ -172,7 +173,7 @@ async def _resolve(db: AsyncSession, groups: list[_Group]) -> tuple[dict, dict, 
     booking_ids: set[uuid.UUID] = set()
     venue_ids: set[uuid.UUID] = set()
     waitlist_ids: set[uuid.UUID] = set()
-    payment_kinds = {"payment_waiting", "player_cancelled", "payment_rejected"}
+    payment_kinds = {"payment_waiting", "late_payment", "player_cancelled", "payment_rejected"}
     refund_kinds = {"refund_owed", "refund_sent"}
     need_payments: set[uuid.UUID] = set()
     need_refunds: set[uuid.UUID] = set()
@@ -264,7 +265,7 @@ def _params(kind: str, ref_type: str, ref: uuid.UUID | None, bookings, payments,
     p["starts_at"] = booking.starts_at
     p["ends_at"] = booking.ends_at
     amount: float | None = None
-    if kind in ("payment_waiting", "player_cancelled"):
+    if kind in ("payment_waiting", "late_payment", "player_cancelled"):
         pay = payments.get(ref)
         if pay is not None and pay.ocr_amount is not None:
             amount = float(pay.ocr_amount)

@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { refundBreakdown, type OwnerRefund } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -38,6 +39,10 @@ export default function RefundsScreen() {
 
   const list = query.data ?? [];
   const open = list.find((r) => r.id === openId) ?? null;
+  const loading = venuesLoading || query.isLoading;
+  // Staff without the refunds permission: 403 NOT_STAFF_PERMITTED -> ONE clear state (no count line, no retry).
+  const noPermission = query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED";
+  const showCount = !loading && !query.isError;
   const courtText = (r: OwnerRefund) => courtLabel(r.court_name, r.court_sport ?? sportForCourtName(activeVenue?.courts, r.court_name));
 
   return (
@@ -53,9 +58,11 @@ export default function RefundsScreen() {
         </Pressable>
         <View className="flex-1 gap-0.5">
           <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px]">Refunds to pay</Text>
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-            {list.length === 0 ? "Abhi koi refund baqi nahi" : `${list.length} refund${list.length === 1 ? "" : "s"} baqi`}
-          </Text>
+          {showCount ? (
+            <Text testID="refunds-count" className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+              {list.length === 0 ? "Abhi koi refund baqi nahi" : `${list.length} refund${list.length === 1 ? "" : "s"} baqi`}
+            </Text>
+          ) : null}
         </View>
       </View>
       {filterDate ? (
@@ -67,9 +74,16 @@ export default function RefundsScreen() {
         </View>
       ) : null}
 
-      {venuesLoading || query.isLoading ? (
+      {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#0E6274" />
+        </View>
+      ) : noPermission ? (
+        <View testID="refunds-no-permission" className="flex-1 items-center justify-center px-8 gap-2">
+          <Text className="font-plex-bold text-owner-ink text-[16px] text-center">Aap ke paas is kaam ki ijazat nahi</Text>
+          <Text className="font-plex-medium text-owner-ink-muted text-[13.5px] text-center">
+            Refunds dekhne aur paid mark karne ki ijazat owner deta hai. Owner se ijazat mangein.
+          </Text>
         </View>
       ) : query.isError ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />

@@ -148,6 +148,7 @@ export function feedRoute(item: Pick<NotificationFeedItem, "link" | "params">, r
 
 const LEGACY_KIND: Record<string, NotificationKind> = {
   payment_submitted: "payment_waiting",
+  late_payment_proof: "late_payment",
   payment_approved: "payment_approved",
   payment_rejected: "payment_rejected",
   refund_owed: "refund_owed",
@@ -165,6 +166,7 @@ const LEGACY_KIND: Record<string, NotificationKind> = {
 function legacyLink(eventType: string): NotificationFeedItem["link"] {
   switch (eventType) {
     case "payment_submitted":
+    case "late_payment_proof":
       return { kind: "approvals" };
     case "refund_owed":
     case "refund_paid":

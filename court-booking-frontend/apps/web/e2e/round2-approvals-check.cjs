@@ -6,6 +6,9 @@
  * Run against a PRODUCTION build served from a COPY of apps/web (never next dev):
  *   BASE_URL=http://localhost:3821 node e2e/round2-approvals-check.cjs
  * en + ru at 360 / 768 / 1280.
+ * QA round 2 fixes: the header splits the badge number ("5 approvals baqi (2 cancel/expire hue ...)"), a staff member
+ * without the approve permission sees "Aap ke paas is kaam ki ijazat nahi" (never "card is back / not your booking") and
+ * the cards lose their action buttons, and the detail shows the channel ("Zariya (booking kahan se shuru hui)").
  */
 const zlib = require("zlib");
 const { loadPlaywright } = require("./smoke.cjs");
@@ -170,7 +173,9 @@ async function run() {
       });
       await page.route("**/api/v1/owners/bookings/*/overview-detail", (r) => {
         const b = r.request().url().split("/bookings/")[1].split("/")[0];
-        r.fulfill(json({ row: DETAIL_ROW(b), booked_at: isoIn(-1), hold_expires_at: null, advance_required: 2000, payment_id: "p1", ocr_verdict: "match", ocr_amount: 2000, approval: null, cancellation: null, refund: null, completion: null, timeline: [] }));
+        // the p6 booking is a walk-in a STAFF member added (A4 channel label)
+        const walkin = b.endsWith("6") ? { source: "walkin" } : {};
+        r.fulfill(json({ row: { ...DETAIL_ROW(b), ...walkin }, channel_detail: b.endsWith("6") ? "staff" : null, booked_at: isoIn(-1), hold_expires_at: null, advance_required: 2000, payment_id: "p1", ocr_verdict: "match", ocr_amount: 2000, approval: null, cancellation: null, refund: null, completion: null, timeline: [] }));
       });
       await page.route("**/api/v1/owners/bookings-history?*", (r) => {
         const rows = [DETAIL_ROW("b0000000-0000-4000-8000-000000000006"), { ...DETAIL_ROW("b0000000-0000-4000-8000-000000000009"), player_name: "Someone Else", short_code: "KH-B0000009" }];
@@ -185,7 +190,10 @@ async function run() {
       check((await page.locator("h1").count()) === 1, `${tag}: one h1`);
       check((await order()).join(",") === "p1,p2,p3,p4,p5", `${tag}: first page newest first, got ${(await order()).join(",")}`);
       const countText = await page.getByTestId("appr-count").innerText();
-      check(/7/.test(countText), `${tag}: count shows 7 (${countText})`);
+      // badge = 7 = 5 waiting for approval + 2 grey cards (p3 cancelled, p4 expired) that only need "Theek hai"
+      check(/^5 /.test(countText), `${tag}: count shows 5 approvals (${countText})`);
+      const closedText = await page.getByTestId("appr-count-closed").innerText();
+      check(lang === "ru" ? /\(2 cancel\/expire hue, Theek hai dabayein\)/.test(closedText) : /\(2 cancelled\/expired, press OK\)/.test(closedText), `${tag}: grey count (${closedText})`);
       const whens = await page.$$eval("[data-testid=card-when]", (els) => els.map((e) => e.textContent));
       check(whens.length >= 3 && whens.every((w) => /\d:\d\d/.test(w)), `${tag}: every card has a time`);
       check(whens.some((w) => /24 Oct/.test(w)), `${tag}: a card shows the booking date "24 Oct" (${whens.join(" | ")})`);
@@ -303,6 +311,11 @@ async function run() {
       await page.locator("[data-card-id=p6] [data-testid=row-details]").click();
       const dlg = page.getByRole("dialog");
       await dlg.getByTestId("detail-history").waitFor();
+      const dlgText = await dlg.innerText();
+      check(
+        lang === "ru" ? /Zariya \(booking kahan se shuru hui\)/.test(dlgText) && /Staff ne add ki/.test(dlgText) : /Channel \(where the booking started\)/.test(dlgText) && /Added by staff/.test(dlgText),
+        `${tag}: detail shows the channel heading and "staff added" value`,
+      );
       await dlg.getByTestId("detail-history").click();
       await page.waitForURL(/\/dashboard\/bookings\?/);
       await page.getByTestId("focus-banner").waitFor();
@@ -326,6 +339,27 @@ async function run() {
 
       const realErrors = errors.filter((e) => !/ERR_CONNECTION_REFUSED|Failed to load resource/.test(e));
       check(realErrors.length === 0, `${tag}: console errors: ${realErrors.slice(0, 3).join(" | ")}`);
+
+      // Staff without approve permission: 403 NOT_STAFF_PERMITTED -> a clear "no permission" line, buttons replaced
+      server = freshItems();
+      await page.unroute("**/api/v1/payments/*/approve");
+      await page.unroute("**/api/v1/owners/payments/*/acknowledge");
+      const denied = (r) => r.fulfill(json({ error: { code: "NOT_STAFF_PERMITTED", message: "Your account isn't allowed to do this.", details: { permission: "approve_payments" } } }, 403));
+      await page.route("**/api/v1/payments/*/approve", denied);
+      await page.route("**/api/v1/owners/payments/*/acknowledge", denied);
+      await page.goto(`${BASE}/dashboard/owner/approvals`, { waitUntil: "networkidle" });
+      await page.waitForSelector("[data-card-id=p1] [data-testid=approve]");
+      await page.locator("[data-card-id=p1] [data-testid=approve]").click();
+      await page.getByTestId("approve-confirm").click();
+      await page.waitForFunction(() => /danger/.test(document.querySelector('[data-testid="appr-live"]')?.className || ""));
+      const live = await page.getByTestId("appr-live").innerText();
+      check(lang === "ru" ? /Aap ke paas is kaam ki ijazat nahi/.test(live) : /don't have permission/.test(live), `${tag}: no-permission text (${live})`);
+      check(!/card|wapas aa gaya|not your booking|aapki booking nahi/i.test(live), `${tag}: no "card is back / not your booking" (${live})`);
+      check((await page.locator("[data-card-id=p1][data-state=awaiting]").count()) === 1, `${tag}: refused card stays`);
+      check((await page.locator("[data-testid=approve], [data-testid=reject], [data-testid=ack-ok], [data-testid=ack-yes]").count()) === 0, `${tag}: action buttons hidden after the refusal`);
+      check((await page.locator("[data-testid=appr-no-permission]").count()) >= 5, `${tag}: every card shows the no-permission note`);
+      check((await overflow()) <= 1, `${tag}: no-permission state has no horizontal scroll`);
+      await page.screenshot({ path: `${SHOTS}/r2-appr-noperm-${tag}.png`, fullPage: true });
       await ctx.close();
       console.log(`${tag} done`);
     }

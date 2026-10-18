@@ -9,6 +9,8 @@ export const ruRfd = {
   "rfd.status.owed": "Wapas dena hai",
   "rfd.status.partial": "Hissa wapas",
   "rfd.status.done": "Poora wapas",
+  "rfd.noPermission.title": "Aap ke paas is kaam ki ijazat nahi",
+  "rfd.noPermission.body": "Refunds dekhne aur paid mark karne ki ijazat owner deta hai. Owner se ijazat mangein.",
   "rfd.row.remaining": "Baqi: PKR {amount}",
   "rfd.row.of": "PKR {total} mein se",
   "rfd.row.proofAlt": "{who} ki payment ka screenshot",

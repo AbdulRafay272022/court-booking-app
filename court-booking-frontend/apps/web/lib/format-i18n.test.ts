@@ -158,3 +158,15 @@ test("every validator message translates (en passes through, ru differs)", () =>
 test("fmt and validation keys exist in both dictionaries", () => {
   for (const k of Object.keys(ru).filter((x) => x.startsWith("fmt.") || x.startsWith("validation."))) assert.ok(k in en, k);
 });
+
+test("Zariya (channel) values per A4: app is 'App ya website', walk-ins say who added them", () => {
+  assert.equal(ru_.bookingSource("app"), "App ya website");
+  assert.equal(en_.bookingSource("app"), "App or website");
+  assert.equal(ru_.bookingSource("whatsapp"), "WhatsApp chat");
+  assert.equal(ru_.bookingSource("walkin", "owner"), "Owner ne khud add ki (walk-in)");
+  assert.equal(ru_.bookingSource("walkin", "staff"), "Staff ne add ki");
+  assert.equal(ru_.bookingSource("walkin", null), "Walk-in");
+  assert.equal(en_.bookingSource("walkin", "staff"), "Added by staff");
+  assert.equal(ru_.bookingSource("phone"), "Phone");
+  assert.equal(ru_.bookingSource("unknown_source"), null);
+});

@@ -11,6 +11,8 @@ export const enRfd: Record<keyof typeof ruRfd, string> = {
   "rfd.status.owed": "To refund",
   "rfd.status.partial": "Partly refunded",
   "rfd.status.done": "Fully refunded",
+  "rfd.noPermission.title": "You don't have permission for this",
+  "rfd.noPermission.body": "The owner decides who can see refunds and mark them paid. Ask the owner to allow it.",
   "rfd.row.remaining": "Left: PKR {amount}",
   "rfd.row.of": "of PKR {total}",
   "rfd.row.proofAlt": "Payment screenshot from {who}",

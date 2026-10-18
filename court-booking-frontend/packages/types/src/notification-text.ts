@@ -14,6 +14,10 @@ type Lang = TextLang;
 
 const TITLES: Record<Exclude<NotificationKind, "other">, Record<Lang, string>> = {
   payment_waiting: { ru: "Naya payment approval ke liye", en: "New payment waiting for approval" },
+  late_payment: {
+    ru: "Screenshot hold khatam hone ke baad aaya",
+    en: "Screenshot arrived after the hold had expired",
+  },
   payment_approved: { ru: "Payment manzoor ho gayi", en: "Payment approved" },
   payment_rejected: { ru: "Payment reject ho gayi", en: "Payment rejected" },
   player_cancelled: { ru: "Player ne booking cancel kar di", en: "Player cancelled the booking" },
@@ -56,7 +60,8 @@ const EVENT_TITLES: Record<string, Record<Lang, string>> = {
   hold_expiring: TITLES.hold_expiring,
   hold_expired: { ru: "Booking ka waqt khatam ho gaya", en: "Booking hold expired" },
   payment_review_expired: { ru: "Payment review ka waqt khatam ho gaya", en: "Payment review time ran out" },
-  payment_late: { ru: "Waqt ke baad screenshot aaya", en: "Screenshot arrived after the hold expired" },
+  payment_late: TITLES.late_payment,
+  late_payment_proof: TITLES.late_payment,
   approval_reminder: { ru: "Payment abhi tak approval ke intezar mein hai", en: "Payment still waiting for approval" },
   phone_changed: { ru: "Phone number badal gaya", en: "Phone number changed" },
 };

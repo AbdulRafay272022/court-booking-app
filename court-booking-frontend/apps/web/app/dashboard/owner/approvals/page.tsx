@@ -5,7 +5,7 @@ import { useId, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@court-booking/api-client";
-import type { ApprovalQueueItem, ApprovalState, ApproveAcceptMode } from "@court-booking/types";
+import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
@@ -38,7 +38,6 @@ import {
   overpaymentChoice,
   parseAmount,
   rejectReasonText,
-  remainingCount,
   stateFrom409,
   visibleIds,
 } from "./queue-helpers";
@@ -89,10 +88,14 @@ export default function OwnerApprovalsPage() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [live, setLive] = useState<Live>(null);
+  // A staff member without the approve permission gets 403 NOT_STAFF_PERMITTED (the client cannot know the permissions in
+  // advance: no endpoint returns them to staff). After the first refusal the action buttons are replaced by a clear note.
+  const [noPermission, setNoPermission] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const shown = visibleIds(serverIds, snapshot, hidden);
-  const left = remainingCount(total, serverIds, hidden);
+  // The badge number (left) = payments waiting for approval (awaiting) + grey cards that only need "Theek hai" (closed).
+  const { left, awaiting, closed } = approvalsHeaderCounts(total, serverItems, hidden, overrides);
 
   function openDialog(next: Dialog) {
     setSnapshot(shown);
@@ -146,6 +149,9 @@ export default function OwnerApprovalsPage() {
         setOverrides((o) => ({ ...o, [id]: stateFrom409(e.details) }));
         setLive({ kind: "ok", text: t("appr.live.nowClosed", { who }) });
         refreshRelated();
+      } else if (e instanceof ApiError && e.code === "NOT_STAFF_PERMITTED") {
+        setNoPermission(true);
+        setLive({ kind: "error", text: t("appr.live.noPermission") });
       } else {
         setLive({ kind: "error", text: t("appr.live.failed", { who, error: friendlyErrorMessage(e, t) }) });
       }
@@ -175,7 +181,7 @@ export default function OwnerApprovalsPage() {
   }
 
   const loading = venuesLoading || query.isLoading;
-  const countText = left === 0 ? t("appr.count.none") : left === 1 ? t("appr.count.one") : t("appr.count.many", { n: left });
+  const countText = awaiting === 0 ? t("appr.count.none") : awaiting === 1 ? t("appr.count.one") : t("appr.count.many", { n: awaiting });
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-8">
@@ -185,6 +191,12 @@ export default function OwnerApprovalsPage() {
         </h1>
         <p data-testid="appr-count" className="text-[15px] font-semibold text-owner-ink-muted">
           {loading ? "\u00a0" : countText}
+          {!loading && closed > 0 ? (
+            <span data-testid="appr-count-closed" className="font-medium">
+              {" "}
+              {t("appr.count.closed", { m: closed })}
+            </span>
+          ) : null}
         </p>
       </div>
 
@@ -220,11 +232,12 @@ export default function OwnerApprovalsPage() {
             return (
               <li key={id}>
                 {isClosedState(state) ? (
-                  <ClosedCard item={item} state={state} onAck={(money) => acknowledge(item, money)} />
+                  <ClosedCard item={item} state={state} locked={noPermission} onAck={(money) => acknowledge(item, money)} />
                 ) : (
                   <AwaitingCard
                     item={item}
                     naya={isNaya(item.submitted_at, since)}
+                    locked={noPermission}
                     onDetails={() => setDetailId(item.booking_id)}
                     onApprove={() => openDialog({ kind: "approve", item })}
                     onReject={() => openDialog({ kind: "reject", item })}
@@ -326,7 +339,33 @@ function Shot({ item, who }: { item: ApprovalQueueItem; who: string }) {
   return <ScreenshotThumb paymentId={item.payment_id} alt={t("appr.shotAlt", { who })} initialSrc={item.proof_url} />;
 }
 
-function AwaitingCard({ item, naya, onDetails, onApprove, onReject }: { item: ApprovalQueueItem; naya: boolean; onDetails: () => void; onApprove: () => void; onReject: () => void }) {
+function NoPermissionNote() {
+  const t = useT();
+  return (
+    <p data-testid="appr-no-permission" className="flex gap-2 rounded-xl border border-owner-border bg-owner-bg px-4 py-3 text-[14px] font-semibold text-owner-ink">
+      <span aria-hidden="true" className="font-extrabold">
+        !
+      </span>
+      {t("appr.noPermission")}
+    </p>
+  );
+}
+
+function AwaitingCard({
+  item,
+  naya,
+  locked,
+  onDetails,
+  onApprove,
+  onReject,
+}: {
+  item: ApprovalQueueItem;
+  naya: boolean;
+  locked: boolean;
+  onDetails: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
   const t = useT();
   const nameId = useId();
   const { who, court, when, sent } = useCardText(item);
@@ -395,31 +434,35 @@ function AwaitingCard({ item, naya, onDetails, onApprove, onReject }: { item: Ap
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-2.5">
-        <button
-          type="button"
-          data-testid="approve"
-          aria-label={t("appr.approveAria", { who })}
-          onClick={onApprove}
-          className={`min-h-12 flex-1 basis-40 rounded-xl bg-owner-success px-4 text-[15px] font-bold text-white ${focusRing}`}
-        >
-          {t("appr.approve")}
-        </button>
-        <button
-          type="button"
-          data-testid="reject"
-          aria-label={t("appr.rejectAria", { who })}
-          onClick={onReject}
-          className={`min-h-12 flex-1 basis-32 rounded-xl border border-owner-danger-soft-border md:flex-none px-4 text-[15px] font-bold text-owner-danger ${focusRing}`}
-        >
-          {t("appr.reject")}
-        </button>
-      </div>
+      {locked ? (
+        <NoPermissionNote />
+      ) : (
+        <div className="flex flex-wrap gap-2.5">
+          <button
+            type="button"
+            data-testid="approve"
+            aria-label={t("appr.approveAria", { who })}
+            onClick={onApprove}
+            className={`min-h-12 flex-1 basis-40 rounded-xl bg-owner-success px-4 text-[15px] font-bold text-white ${focusRing}`}
+          >
+            {t("appr.approve")}
+          </button>
+          <button
+            type="button"
+            data-testid="reject"
+            aria-label={t("appr.rejectAria", { who })}
+            onClick={onReject}
+            className={`min-h-12 flex-1 basis-32 rounded-xl border border-owner-danger-soft-border md:flex-none px-4 text-[15px] font-bold text-owner-danger ${focusRing}`}
+          >
+            {t("appr.reject")}
+          </button>
+        </div>
+      )}
     </article>
   );
 }
 
-function ClosedCard({ item, state, onAck }: { item: ApprovalQueueItem; state: ApprovalState; onAck: (moneyReceived: boolean) => void }) {
+function ClosedCard({ item, state, locked, onAck }: { item: ApprovalQueueItem; state: ApprovalState; locked: boolean; onAck: (moneyReceived: boolean) => void }) {
   const t = useT();
   const fmt = useFmt();
   const nameId = useId();
@@ -459,7 +502,12 @@ function ClosedCard({ item, state, onAck }: { item: ApprovalQueueItem; state: Ap
       </div>
       <p className="text-[14px] text-owner-ink">{t("appr.closed.text")}</p>
       {item.cancelled_at ? <p className="text-[13px] text-owner-ink-muted">{t("appr.closed.when", { when: fmt.when(item.cancelled_at) })}</p> : null}
-      {item.has_screenshot ? (
+      {locked ? (
+        <>
+          {item.has_screenshot ? <Shot item={item} who={who} /> : null}
+          <NoPermissionNote />
+        </>
+      ) : item.has_screenshot ? (
         <>
           <Shot item={item} who={who} />
           <p className="text-[14px] font-bold text-owner-ink">{t("appr.closed.ask")}</p>

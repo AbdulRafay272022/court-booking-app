@@ -72,3 +72,12 @@ test("notificationTarget maps link kinds to screens", () => {
   assert.deepEqual(notificationTarget({ ...base, link: { kind: "booking", booking_id: "b9" } }, "player"), { pathname: "/(player)/(tabs)/bookings" });
   assert.equal(notificationTarget({ ...base, link: { kind: "approvals" } }, "player"), null);
 });
+
+test("late screenshot (old endpoint) reads as a late screenshot and the feed kind opens Approvals", async () => {
+  const { notificationText } = await import("@court-booking/types");
+  const [item] = feedFromLog([e("1", "late_payment_proof", "2026-10-18T10:00:00Z", "b1")]);
+  assert.equal(notificationText(item, "ru").title, "Screenshot hold khatam hone ke baad aaya");
+  const feedItem = { ...item, kind: "late_payment" as const, link: { kind: "approvals" as const, booking_id: "b1" } };
+  assert.equal(notificationText(feedItem, "ru").title, "Screenshot hold khatam hone ke baad aaya");
+  assert.deepEqual(notificationTarget(feedItem, "owner"), { pathname: "/(owner)/approvals" });
+});

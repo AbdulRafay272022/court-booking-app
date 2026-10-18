@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, Share, Text, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BookingTimelineEvent, OwnerBookingDetail } from "@court-booking/types";
+import { CHANNEL_HEADING, bookingChannelLabel, type BookingTimelineEvent, type OwnerBookingDetail } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
@@ -46,7 +46,9 @@ function timelineDetail(e: BookingTimelineEvent): string {
 function Line({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
     <View className="flex-row items-start justify-between gap-4 py-2.5 border-b border-owner-border-light">
-      <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">{label}</Text>
+      <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]" style={{ maxWidth: "55%" }}>
+        {label}
+      </Text>
       <Text className="font-plex-semibold text-[13.5px] flex-1 text-right" style={{ color: valueColor ?? OV.ink }}>
         {value}
       </Text>
@@ -211,7 +213,7 @@ function DetailBody({
       <Line label="Slot" value={formatWhenRange(r.starts_at, r.ends_at)} />
       <Line label="Muddat" value={`${durationLabel(r.duration_minutes)}${slots}`} />
       <Line label="Booking kab hui" value={formatWhen(d.booked_at)} />
-      <Line label="Zariya" value={SOURCE_LABEL[r.source] ?? r.source} />
+      <Line label={CHANNEL_HEADING.ru} value={bookingChannelLabel(r.source, d.channel_detail, "ru") ?? SOURCE_LABEL[r.source] ?? r.source} />
       {d.hold_expires_at ? <Line label="Hold khatam" value={formatWhen(d.hold_expires_at)} /> : null}
 
       <SectionLabel>Paisa</SectionLabel>

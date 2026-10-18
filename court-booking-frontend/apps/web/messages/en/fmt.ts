@@ -36,8 +36,10 @@ export const enFmt = {
   "fmt.rel.min": "{n} min ago",
   "fmt.rel.hr": "{n} hr ago",
   "fmt.rel.day": "{n}d ago",
-  "fmt.source.app": "App",
-  "fmt.source.whatsapp": "WhatsApp",
+  "fmt.source.app": "App or website",
+  "fmt.source.whatsapp": "WhatsApp chat",
   "fmt.source.walkin": "Walk-in",
+  "fmt.source.walkin_owner": "Added by the owner (walk-in)",
+  "fmt.source.walkin_staff": "Added by staff",
   "fmt.source.phone": "Phone",
 } as const;

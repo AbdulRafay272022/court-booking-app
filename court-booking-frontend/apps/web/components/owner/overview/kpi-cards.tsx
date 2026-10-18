@@ -39,6 +39,19 @@ const SUB = "text-[13px] text-khelo-muted";
 const LEGEND_ITEM =
   "min-h-11 w-full sm:w-auto inline-flex items-center gap-2 rounded-xl border border-khelo-border bg-khelo-page px-3 text-[13px] font-semibold text-khelo-ink whitespace-nowrap hover:border-khelo-ink";
 
+/** A card title that may only break BEFORE a bracket: "Collected (ab tak mila)" becomes "Collected" + "(ab tak mila)", each
+ * kept on one line, so a narrow card shows two clean lines instead of a word split anywhere (QA round 2, 360 / 1280 px). */
+function TitleText({ text }: { text: string }) {
+  const i = text.indexOf(" (");
+  if (i <= 0) return <span className="whitespace-nowrap">{text}</span>;
+  return (
+    <>
+      <span className="whitespace-nowrap">{text.slice(0, i)}</span>{" "}
+      <span className="whitespace-nowrap">{text.slice(i + 1)}</span>
+    </>
+  );
+}
+
 /** A card whose title is a link stretched over the whole card; controls inside it sit above with `relative z-10`. */
 function CardTitleLink({ href, children, testId }: { href: string; children: ReactNode; testId?: string }) {
   return (
@@ -208,7 +221,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
         <div className={`${CARD} bg-khelo-warm-2 border-khelo-orange/50`} data-testid="kpi-pending">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <CardTitleLink href={approvalsHref(undefined, courts)} testId="kpi-pending-link">
-              <span className="text-khelo-orange-label">{t("ovw.kpi.pending")}</span>
+              <span className="text-khelo-orange-label whitespace-nowrap">{t("ovw.kpi.pending")}</span>
             </CardTitleLink>
             <span
               data-testid="kpi-pending-scope"
@@ -265,31 +278,31 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <div className={CARD} data-testid="kpi-bookings">
-          <CardTitleLink href={history("booked")}>{t("ovw.kpi.bookings")}</CardTitleLink>
+          <CardTitleLink href={history("booked")}><TitleText text={t("ovw.kpi.bookings")} /></CardTitleLink>
           <p className={`${BIG} text-4xl mt-2`}>{bookings.count}</p>
           <p className={`${SUB} mt-3`}>{t("ovw.kpi.bookingsSub", { n: slots.booked })}</p>
         </div>
 
         <div className={CARD} data-testid="kpi-cancelled">
-          <CardTitleLink href={history("cancelled")}>{t("ovw.kpi.cancelled")}</CardTitleLink>
+          <CardTitleLink href={history("cancelled")}><TitleText text={t("ovw.kpi.cancelled")} /></CardTitleLink>
           <p className={`${BIG} text-4xl mt-2`}>{bookings.cancelled}</p>
           <p className={`${SUB} mt-3`}>{t("ovw.kpi.cancelledSub")}</p>
         </div>
 
         <div className={CARD} data-testid="kpi-refunds">
-          <CardTitleLink href={history("refund")}>{t("ovw.kpi.refunds")}</CardTitleLink>
+          <CardTitleLink href={history("refund")}><TitleText text={t("ovw.kpi.refunds")} /></CardTitleLink>
           <p className={`${BIG} text-4xl mt-2`}>{bookings.refunds.count}</p>
           <p className={`${SUB} mt-3`}>{bookings.refunds.count > 0 ? pkr(bookings.refunds.amount) : t("ovw.kpi.refundsSub")}</p>
         </div>
 
         <div className={CARD} data-testid="kpi-collected">
-          <CardTitleLink href={history("booked")}>{t("ovw.kpi.collected")}</CardTitleLink>
+          <CardTitleLink href={history("booked")}><TitleText text={t("ovw.kpi.collected")} /></CardTitleLink>
           <p className={`${BIG} mt-2 text-2xl sm:text-3xl`}>{pkr(money.collected)}</p>
           <p className={`${SUB} mt-3`}>{t("ovw.kpi.collectedSub")}</p>
         </div>
 
         <div className={`${CARD} col-span-2 lg:col-span-1`} data-testid="kpi-due">
-          <CardTitleLink href={history("booked")}>{t("ovw.kpi.due")}</CardTitleLink>
+          <CardTitleLink href={history("booked")}><TitleText text={t("ovw.kpi.due")} /></CardTitleLink>
           <p className={`${BIG} mt-2 text-2xl sm:text-3xl`}>{pkr(money.due)}</p>
           <p className={`${SUB} mt-3`}>{t("ovw.kpi.dueSub", { n: money.due_bookings })}</p>
         </div>

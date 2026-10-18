@@ -144,6 +144,8 @@ export interface OwnerBookingDetail {
   refund: { amount: number; status: "owed" | "paid"; paid_at: string | null; reference: string | null } | null;
   completion: BookingCompletion | null;
   timeline: BookingTimelineEvent[];
+  /** Owner Round 2 (A4): for a walk-in, who added it ("owner" | "staff"); null/absent otherwise or when unknown. */
+  channel_detail?: string | null;
 }
 
 export interface CompletionInput {

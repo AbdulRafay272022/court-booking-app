@@ -3,7 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApprovalQueueItem, ApprovalState, ApproveAcceptMode } from "@court-booking/types";
+import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -38,6 +39,9 @@ export default function ApprovalsScreen() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Staff without the approve permission get 403 NOT_STAFF_PERMITTED; the app cannot know the permissions in advance (no
+  // endpoint returns them to staff), so after the first refusal the action buttons are replaced by a clear note.
+  const [noPermission, setNoPermission] = useState(false);
 
   const query = useInfiniteQuery({
     queryKey: ["owner-approvals-queue", activeVenueId, filterDate, filterCourts.join(",")],
@@ -63,7 +67,8 @@ export default function ApprovalsScreen() {
   }, [query.data]);
   const items = fetched.filter((it) => !removed.has(it.payment_id)).map((it) => (greyed[it.payment_id] ? { ...it, state: greyed[it.payment_id] } : it));
   const serverTotal = query.data?.pages[0]?.total ?? 0;
-  const left = Math.max(0, serverTotal - fetched.filter((it) => removed.has(it.payment_id)).length);
+  // The badge number = payments waiting for approval + grey cards that only need "Theek hai"; the header splits it.
+  const { awaiting, closed } = approvalsHeaderCounts(serverTotal, fetched, removed, greyed);
   const current = sheet ? items.find((it) => it.payment_id === sheet.id) ?? null : null;
 
   function refreshSide() {
@@ -91,6 +96,9 @@ export default function ApprovalsScreen() {
       if (state) {
         // The player cancelled meanwhile: grey in place, no error text, no reason asked.
         setGreyed((g) => ({ ...g, [id]: state }));
+        setSheet(null);
+      } else if (e instanceof ApiError && e.code === "NOT_STAFF_PERMITTED") {
+        setNoPermission(true);
         setSheet(null);
       } else if (sheet) {
         setSheetError(friendlyErrorMessage(e));
@@ -142,8 +150,13 @@ export default function ApprovalsScreen() {
         <View className="flex-1 gap-0.5">
           <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Payment review</Text>
           <Text testID="approvals-count" className="font-plex-bold text-owner-ink text-[17px] -tracking-[0.2px]" accessibilityRole="header">
-            {query.data ? `${left} approvals baqi` : "Approvals"}
+            {query.data ? `${awaiting} approvals baqi` : "Approvals"}
           </Text>
+          {query.data && closed > 0 ? (
+            <Text testID="approvals-count-closed" className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+              {`(${closed} cancel/expire hue, Theek hai dabayein)`}
+            </Text>
+          ) : null}
         </View>
       </View>
       {filterDate || filterCourts.length ? (
@@ -184,6 +197,7 @@ export default function ApprovalsScreen() {
               courtText={courtText(it)}
               busy={busyId === it.payment_id}
               error={errors[it.payment_id] || null}
+              locked={noPermission}
               onDetails={() => setDetailId(it.booking_id)}
               onApprove={() => {
                 setSheetError(null);

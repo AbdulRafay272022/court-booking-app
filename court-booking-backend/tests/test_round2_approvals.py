@@ -220,6 +220,58 @@ async def test_acknowledge_permission_matches_approve(world, client, db_session_
     assert (await client.post(url, headers=approver, json={"money_received": False})).status_code == 200
 
 
+async def test_staff_without_permission_gets_a_clear_permission_error(
+    world, client, db_session_factory, make_auth_headers, make_user, make_venue, make_court, make_schedule, make_pricing_rule
+):
+    """QA round 2: staff of THIS venue lacking approve_payments / mark_refunds get 403 NOT_STAFF_PERMITTED on approve,
+    reject, acknowledge and mark-refunded (not NOT_YOUR_BOOKING); staff of ANOTHER venue still get NOT_YOUR_BOOKING."""
+    owner, venue, court, player, oh, ph = await world("+92301116")
+    _b1, awaiting_pid = await held_and_submitted(client, court, ph, future_day(3), 10)
+    cancelled_bid, cancelled_pid = await held_and_submitted(client, court, ph, future_day(3), 12)
+    await _cancel(client, cancelled_bid, ph)
+    refund_booking = await add_booking(
+        db_session_factory, court, at(future_day(5), 18), status=BookingStatus.CANCELLED, player=player,
+        cancelled_by=CancelledBy.PLAYER, price=4500, paid=2000,
+    )
+    await add_dispute(db_session_factory, refund_booking, 2000)
+    rid = (await client.get(REFUNDS, headers=oh)).json()[0]["id"]
+
+    async def load_user(uid):
+        async with db_session_factory() as session:
+            return await session.get(User, uid)
+
+    _s, viewer = await make_staff(client, oh, venue, "+923011160101", ["view_ledger"], load_user, make_auth_headers)
+    other_owner, other_venue, _oc = await open_venue(
+        make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+92301116" + "09"
+    )
+    other_oh = await make_auth_headers(other_owner)
+    _s2, outsider = await make_staff(
+        client, other_oh, other_venue, "+923011160102", ["approve_payments", "mark_refunds", "view_ledger"],
+        load_user, make_auth_headers,
+    )
+
+    calls = [
+        ("post", f"/api/v1/payments/{awaiting_pid}/approve", {"json": {}}),
+        ("post", f"/api/v1/payments/{awaiting_pid}/reject", {"json": {"reason": "wrong account"}}),
+        ("post", f"/api/v1/owners/payments/{cancelled_pid}/acknowledge", {"json": {"money_received": False}}),
+        ("post", f"/api/v1/owners/refunds/{rid}/mark-refunded", {"data": {"reference": "JC-1"}}),
+    ]
+    for _method, url, kwargs in calls:
+        mine = await client.post(url, headers=viewer, **kwargs)
+        assert mine.status_code == 403, (url, mine.text)
+        assert mine.json()["error"]["code"] == "NOT_STAFF_PERMITTED", url
+        other = await client.post(url, headers=outsider, **kwargs)
+        assert other.status_code == 403, (url, other.text)
+        assert other.json()["error"]["code"] == "NOT_YOUR_BOOKING", url
+    # nothing changed
+    assert (await _payment(db_session_factory, awaiting_pid)).review_verdict is None
+    assert (await _payment(db_session_factory, cancelled_pid)).review_verdict is None
+    assert (await client.get(REFUNDS, headers=oh)).json()[0]["remaining_amount"] == 2000
+    # the refunds LIST for a staff member without mark_refunds is the same clear permission error
+    listed = await client.get(REFUNDS, headers=viewer)
+    assert listed.status_code == 403 and listed.json()["error"]["code"] == "NOT_STAFF_PERMITTED"
+
+
 async def _overpaid(db_session_factory, court, player, ocr=10000):
     b = await add_booking(
         db_session_factory, court, at(future_day(4), 19), status=BookingStatus.PAYMENT_SUBMITTED, player=player,

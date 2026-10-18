@@ -52,6 +52,21 @@ test("unknown kind -> title from event_type", () => {
   assert.equal(eventTypeTitle("payment_submitted_whatsapp", "en"), "New payment waiting for approval");
 });
 
+test("late screenshot has its own title with player, court, time and amount", () => {
+  const late = item({
+    kind: "late_payment",
+    event_type: "late_payment_proof",
+    params: { player_name: "Abbas Zafar", court_name: "Futsal 1", starts_at: "2026-10-17T16:00:00Z", amount: 2000 },
+  });
+  const ru = notificationText(late, "ru", NOW);
+  assert.equal(ru.title, "Screenshot hold khatam hone ke baad aaya");
+  assert.equal(ru.context, "Abbas Zafar - Futsal 1 - Aaj 9 PM - PKR 2,000");
+  assert.equal(notificationText(late, "en", NOW).title, "Screenshot arrived after the hold had expired");
+  assert.ok(NOTIFICATION_KINDS.includes("late_payment"));
+  // an older server that still sends kind "other" (or the old endpoint) gets the same title from the event type
+  assert.equal(eventTypeTitle("late_payment_proof", "ru"), "Screenshot hold khatam hone ke baad aaya");
+});
+
 test("venue kinds show venue name and reason", () => {
   const t = notificationText(item({ kind: "venue_changes", params: { venue_name: "Twin Courts", reason: "Photo chahiye" } }), "ru", NOW);
   assert.equal(t.context, "Twin Courts - Photo chahiye");

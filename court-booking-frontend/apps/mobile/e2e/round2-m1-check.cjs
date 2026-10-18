@@ -3,6 +3,9 @@
 // Run: PLAYWRIGHT_PATH=<...>/node_modules/playwright BASE=http://localhost:8084 node e2e/round2-m1-check.cjs
 // Expo web must be started with a DEAD api url (EXPO_PUBLIC_API_BASE_URL=http://localhost:9); every /api/v1/** call is
 // mocked with page.route, nothing reaches a real backend.
+// QA round 2 fixes: the header splits the badge ("3 approvals baqi" + "(2 cancel/expire hue, Theek hai dabayein)"), the
+// detail sheet shows "Zariya (booking kahan se shuru hui)" with "App ya website", and a staff member without permission
+// gets "Aap ke paas is kaam ki ijazat nahi" (Approvals: buttons replaced; Refunds: one clear state, no "nothing owed").
 const { chromium } = require(process.env.PLAYWRIGHT_PATH);
 const BASE = process.env.BASE || "http://localhost:8084";
 
@@ -92,6 +95,9 @@ async function setup(browser, state) {
     if (p === "/owners/approvals-queue") return json(state.queue(url));
     if (/^\/payments\/[^/]+\/proof-url$/.test(p)) return json({ url: "https://proof.test/good.png?fresh=1", expires_in: 300 });
     let m;
+    const denied = () => json({ error: { code: "NOT_STAFF_PERMITTED", message: "Your account isn't allowed to do this." } }, 403);
+    if (state.denyApprove && (/^\/payments\/[^/]+\/(approve|reject)$/.test(p) || /^\/owners\/payments\/[^/]+\/acknowledge$/.test(p))) return denied();
+    if (state.denyRefunds && p === "/owners/refunds") return denied();
     if ((m = /^\/payments\/([^/]+)\/(approve|reject)$/.exec(p))) {
       if (m[1] === "pE") return json({ error: { code: "BOOKING_NO_LONGER_PENDING", message: "no longer pending", details: { state: "cancelled_by_player" } } }, 409);
       state.done.add(m[1]);
@@ -190,7 +196,9 @@ function defaultState() {
     await waitFor(async () => (await page.locator('[data-testid="approval-card"]').count()) > 0);
     await page.waitForTimeout(800);
     await shot(page, "01-approvals");
-    check("A1 header shows N approvals baqi", (await page.getByTestId("approvals-count").first().innerText()).trim() === "5 approvals baqi", await page.getByTestId("approvals-count").first().innerText());
+    // badge 5 = 3 waiting for approval + 2 grey cards (cancelled / expired) that only need "Theek hai"
+    check("A1 header shows N approvals baqi", (await page.getByTestId("approvals-count").first().innerText()).trim() === "3 approvals baqi", await page.getByTestId("approvals-count").first().innerText());
+    check("QA header names the grey cards", (await page.getByTestId("approvals-count-closed").first().innerText()).trim() === "(2 cancel/expire hue, Theek hai dabayein)", await page.getByTestId("approvals-count-closed").first().innerText());
     const names = await page.locator('[data-testid="approval-card"], [data-testid="approval-card-grey"]').evaluateAll((els) => els.map((e) => e.innerText.split("\n").find((l) => /[A-Z][a-z]+ [A-Z]/.test(l))));
     check("A1 all cards, newest first", JSON.stringify(names) === JSON.stringify(["Ali Raza", "Bilal Khan", "Chaudhry Asif", "Danish Ali", "Ehsan Ullah"]), JSON.stringify(names));
     const whenA = await card(page, "Ali Raza").getByTestId("approval-when").innerText();
@@ -252,7 +260,7 @@ function defaultState() {
     await (await vis(page.getByRole("button", { name: "Approve karein" }))).click();
     await waitFor(async () => (await card(page, "Ali Raza").count()) === 0, 8000);
     check("A1 approve removes only that card", (await card(page, "Ali Raza").count()) === 0 && (await card(page, "Bilal Khan").count()) === 1 && (await card(page, "Ehsan Ullah").count()) === 1);
-    check("A1 header drops to 4", (await page.getByTestId("approvals-count").first().innerText()).trim() === "4 approvals baqi");
+    check("A1 header drops to 2", (await page.getByTestId("approvals-count").first().innerText()).trim() === "2 approvals baqi");
 
     // Overpayment on B: banner + two choices, default advance_only.
     await card(page, "Bilal Khan").getByRole("button", { name: "Approve" }).click();
@@ -307,6 +315,7 @@ function defaultState() {
     await waitFor(async () => (await page.getByTestId("screenshot-thumb").count()) > thumbsBefore, 8000);
     check("A3 thumbnail inside BookingDetailSheet", (await page.getByTestId("screenshot-thumb").count()) === thumbsBefore + 1 && (await page.getByText("Bara karke dekhein").count()) >= 1);
     check("A8 detail timeline shows 'Baqi se PKR 1,000 mila'", (await page.getByText("Baqi se PKR 1,000 mila").count()) >= 1);
+    check("A4 detail shows the channel heading + 'App ya website'", (await page.getByText("Zariya (booking kahan se shuru hui)").count()) >= 1 && (await page.getByText("App ya website").count()) >= 1 && (await page.getByText("App chat").count()) === 0);
     await (await vis(page.getByRole("button", { name: "History mein dekhein" }))).click();
     await page.waitForURL(/history/, { timeout: 15000 });
     await page.getByTestId("history-focus-banner").first().waitFor({ timeout: 15000 });
@@ -453,6 +462,32 @@ function defaultState() {
     await page.getByRole("button", { name: "Abbas Zafar refund" }).click();
     await page.getByTestId("refund-none").first().waitFor({ timeout: 8000 });
     check("A10 remaining 0 -> no form + why", (await page.getByText("Koi refund baqi nahi").count()) === 1 && (await page.getByLabel("Kitna wapas bheja, PKR").count()) === 0);
+    await ctx.close();
+  }
+
+  // ---------------- QA: staff without permission ----------------
+  {
+    const state = defaultState();
+    state.denyApprove = true;
+    state.denyRefunds = true;
+    const { ctx, page } = await setup(browser, state);
+    await page.goto(BASE + "/approvals", { waitUntil: "domcontentloaded", timeout: 240000 });
+    await page.getByTestId("approvals-count").first().waitFor({ timeout: 180000 });
+    await waitFor(async () => (await page.locator('[data-testid="approval-card"]').count()) > 0);
+    await card(page, "Ali Raza").getByRole("button", { name: "Approve" }).click();
+    await (await vis(page.getByRole("button", { name: "Approve karein" }))).click();
+    await waitFor(async () => (await page.getByTestId("approval-locked").count()) > 0, 8000);
+    await shot(page, "10-no-permission");
+    check("QA staff refusal: every card shows the no-permission note", (await page.getByTestId("approval-locked").count()) === 5);
+    check("QA staff refusal: Approve/Reject/Theek hai hidden", (await page.getByRole("button", { name: "Approve" }).count()) === 0 && (await page.getByRole("button", { name: "Theek hai" }).count()) === 0);
+    check("QA staff refusal text", (await page.getByText("Aap ke paas is kaam ki ijazat nahi. Owner se ijazat mangein.").count()) >= 1 && (await page.getByText(/not your booking|aapki booking nahi/i).count()) === 0);
+    check("QA refused card stays", (await card(page, "Ali Raza").count()) === 1);
+    await page.goto(BASE + "/refunds", { waitUntil: "domcontentloaded", timeout: 240000 });
+    await page.getByText("Refunds to pay").first().waitFor({ timeout: 180000 });
+    await waitFor(async () => (await page.getByTestId("refunds-no-permission").count()) > 0, 20000);
+    await shot(page, "11-refunds-no-permission");
+    check("QA refunds: one no-permission state", (await page.getByTestId("refunds-no-permission").count()) === 1 && (await page.getByText("Aap ke paas is kaam ki ijazat nahi").count()) >= 1);
+    check("QA refunds: no 'nothing owed' next to it", (await page.getByText("Abhi koi refund baqi nahi").count()) === 0 && (await page.getByText("Sab hisaab barabar").count()) === 0 && (await page.getByTestId("refunds-count").count()) === 0);
     await ctx.close();
   }
 

@@ -98,6 +98,12 @@ async def test_late_screenshot_is_kept_for_the_owner_and_refused_for_the_player(
     assert item["state"] == "expired" and item["has_screenshot"] is True
     rows = await log_rows(db_session_factory, owner.id, "late_payment_proof")
     assert len(rows) == 1 and rows[0].reference_id == b.id
+    # the bell names it a LATE screenshot (its own kind), linked to Approvals for that booking
+    feed = (await client.get("/api/v1/users/me/notifications/feed", headers=oh)).json()["items"]
+    late = [i for i in feed if i["event_type"] == "late_payment_proof"]
+    assert len(late) == 1 and late[0]["kind"] == "late_payment"
+    assert late[0]["link"] == {"kind": "approvals", "booking_id": str(b.id)}
+    assert late[0]["params"]["player_name"] == "First Player" and late[0]["params"]["amount"] is not None
     # sending it again does not duplicate anything
     again = await submit_proof(client, booking["id"], h1)
     assert again.status_code == 409

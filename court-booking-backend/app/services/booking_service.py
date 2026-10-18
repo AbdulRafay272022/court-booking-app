@@ -410,10 +410,20 @@ class BookingService:
                 # A STAFF user reaches a booking through the venue they staff, but
                 # only for an action they hold the permission for (Part 12).
                 if user.role == UserRole.STAFF and permission is not None:
-                    from app.services.staff_service import staff_can
+                    from app.services.staff_service import is_active_staff_of_venue, staff_can
 
                     if await staff_can(self.db, user.id, venue.id, permission):
                         return booking
+                    # Staff of THIS venue without the permission: say so clearly (QA
+                    # round 2) instead of "not your booking". Staff of another venue
+                    # still get NOT_YOUR_BOOKING below (nothing leaks about the booking).
+                    if await is_active_staff_of_venue(self.db, user.id, venue.id):
+                        raise AppError(
+                            status.HTTP_403_FORBIDDEN,
+                            ErrorCode.NOT_STAFF_PERMITTED,
+                            "Your account isn't allowed to do this.",
+                            details={"permission": permission},
+                        )
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
 
     async def cancel_booking(self, booking: Booking, cancelled_by: CancelledBy, reason: str | None) -> Booking:

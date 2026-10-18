@@ -265,7 +265,7 @@ function DetailContent({
               {fmt.duration(row.duration_minutes)} ({row.slot_count === 1 ? t("detail.slots.one") : t("detail.slots.many", { n: row.slot_count })})
             </Row>
             <Row label={t("detail.bookedAt")}>{fmt.when(detail.booked_at)}</Row>
-            <Row label={t("detail.source")}>{fmt.bookingSource(row.source) ?? "-"}</Row>
+            <Row label={t("detail.source")}>{fmt.bookingSource(row.source, detail.channel_detail) ?? "-"}</Row>
             {detail.hold_expires_at && row.status_key === "held" ? <Row label={t("detail.holdExpires")}>{fmt.when(detail.hold_expires_at)}</Row> : null}
           </dl>
         </section>
