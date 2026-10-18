@@ -558,7 +558,9 @@ class NotificationService:
         }.get(ocr_verdict, "")
         body = f"Payment received for {court_name} (PKR {amount:,.0f}). {verdict_note} Tap to approve.".strip()
         await self._send_push_tier(
-            owner, "payment_submitted", "Payment awaiting verification", body, reference_id=booking_id
+            owner, "payment_submitted", "Payment awaiting verification", body, reference_id=booking_id,
+            # Owner Round 2 (A6): an owner with no device token (web only) must still see this in the bell.
+            bell=True,
         )
 
     async def escalate_payment_submitted(
