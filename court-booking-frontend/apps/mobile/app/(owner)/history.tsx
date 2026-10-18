@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { HistoryStatusFilter } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 
@@ -57,8 +57,21 @@ export default function HistoryScreen() {
   const [text, setText] = useState(params.q ?? "");
   const [q, setQ] = useState(params.q ?? "");
   const [sheet, setSheet] = useState<null | "from" | "to" | "courts" | "status">(null);
-  const [detailId, setDetailId] = useState<string | null>(params.booking ?? null);
-  const [highlight] = useState<string | null>(params.booking ?? null);
+  // A2: a `booking` param scrolls to and highlights that card; it never opens a popup here.
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(params.booking ?? null);
+  const [focusOnly, setFocusOnly] = useState<boolean>(!!params.booking);
+  const scrollRef = useRef<ScrollView>(null);
+  const listY = useRef(0);
+  const cardY = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!params.booking) return;
+    setHighlight(params.booking);
+    setFocusOnly(true);
+    if (params.from) setFrom(params.from);
+    if (params.to || params.from) setTo(params.to ?? params.from ?? today);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.booking]);
   const preset = detectPreset(from, to);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -91,7 +104,27 @@ export default function HistoryScreen() {
     enabled: !!activeVenueId,
   });
 
-  const items = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
+  const allItems = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
+  // The focused booking may sit on a later page (or outside the range): its own detail row is the fallback.
+  const focusDetail = useQuery({
+    queryKey: ["owner-booking-detail", highlight],
+    queryFn: () => api.owners.bookingDetail(highlight as string),
+    enabled: !!highlight && focusOnly && !!query.data && !allItems.some((r) => r.booking_id === highlight),
+  });
+  const items = useMemo(() => {
+    if (!focusOnly || !highlight) return allItems;
+    const mine = allItems.filter((r) => r.booking_id === highlight);
+    if (mine.length) return mine;
+    return focusDetail.data ? [focusDetail.data.row] : [];
+  }, [allItems, focusOnly, highlight, focusDetail.data]);
+
+  function clearFocus() {
+    setFocusOnly(false);
+    setTimeout(() => {
+      const y = highlight ? cardY.current.get(highlight) : undefined;
+      if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, listY.current + y - 12), animated: true });
+    }, 150);
+  }
   const first = query.data?.pages[0];
   const forbidden = query.error instanceof ApiError && query.error.status === 403;
 
@@ -126,7 +159,15 @@ export default function HistoryScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-4 pt-4 pb-10 gap-3.5" keyboardShouldPersistTaps="handled">
+      {focusOnly && highlight ? (
+        <View testID="history-focus-banner" className="px-4 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
+          <Text className="flex-1 font-plex-semibold text-owner-ink text-[12.5px]">Sirf ye booking dikhayi ja rahi hai</Text>
+          <Pressable onPress={clearFocus} accessibilityRole="button" accessibilityLabel="Filter hatayen" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Filter hatayen</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      <ScrollView ref={scrollRef} className="flex-1" contentContainerClassName="px-4 pt-4 pb-10 gap-3.5" keyboardShouldPersistTaps="handled">
         <View className="flex-row flex-wrap gap-2">
           <Pill label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
           <Pill label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />
@@ -184,28 +225,35 @@ export default function HistoryScreen() {
           <Text className="font-plex-medium text-owner-danger text-[14px] py-6">Aapke paas bookings history dekhne ki ijazat nahi hai.</Text>
         ) : query.isError && !query.data ? (
           <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && !(focusOnly && focusDetail.isFetching) ? (
           <View className="py-12 items-center gap-1">
             <Text className="font-plex-bold text-owner-ink text-[16px]">Koi booking nahi mili</Text>
             <Text className="font-plex-medium text-owner-ink-faint text-[13px] text-center">Tareekh ya filter badal kar dekhein.</Text>
           </View>
         ) : (
-          <>
+          <View className="gap-3.5" onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
             {items.map((row) => (
-              <BookingCard
+              <View
                 key={`${row.booking_id}:${row.kind}:${row.status_key}`}
-                row={row}
-                highlighted={highlight === row.booking_id}
-                onOpen={() => setDetailId(row.booking_id)}
-                onOpenOriginal={() => row.original_booking_id && setDetailId(row.original_booking_id)}
-              />
+                testID={highlight === row.booking_id ? "history-highlighted" : undefined}
+                onLayout={(e) => {
+                  if (!cardY.current.has(row.booking_id) || row.kind === "booked") cardY.current.set(row.booking_id, e.nativeEvent.layout.y);
+                }}
+              >
+                <BookingCard
+                  row={row}
+                  highlighted={highlight === row.booking_id}
+                  onOpen={() => setDetailId(row.booking_id)}
+                  onOpenOriginal={() => row.original_booking_id && setDetailId(row.original_booking_id)}
+                />
+              </View>
             ))}
-            {query.hasNextPage ? (
+            {focusOnly && highlight ? null : query.hasNextPage ? (
               <OutlineButton label={query.isFetchingNextPage ? "Load ho raha hai" : "Aur dikhao"} onPress={() => query.fetchNextPage()} />
             ) : (
               <Text className="font-plex-medium text-owner-ink-faint text-[12.5px] text-center">{`${first?.total ?? items.length} mein se sab dikha diye`}</Text>
             )}
-          </>
+          </View>
         )}
       </ScrollView>
 

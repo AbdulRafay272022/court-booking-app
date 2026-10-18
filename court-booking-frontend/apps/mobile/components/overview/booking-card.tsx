@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { OwnerBookingRow } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
@@ -10,7 +10,8 @@ import { formatPKR, formatTimeRange } from "@/lib/format";
 import { OV, TONE_STYLE, courtNumber, durationLabel, rowTone, statusChipLabel } from "@/lib/overview";
 import { CheckIcon, ChevronDownIcon } from "@/components/icons";
 import { AlertCircleIcon } from "./icons";
-import { BottomSheet, OrangeButton, OutlineButton, SmallChip } from "./ui";
+import { BottomSheet, SmallChip } from "./ui";
+import { CompletionSheet } from "@/components/completion-sheet";
 
 function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
@@ -196,96 +197,7 @@ export function BookingCard({
           </View>
         </BottomSheet>
       ) : null}
-      {adhoora ? <AdhooraSheet row={row} onClose={() => setAdhoora(false)} onSaved={invalidate} /> : null}
+      {adhoora ? <CompletionSheet row={row} onClose={() => setAdhoora(false)} onSaved={invalidate} /> : null}
     </View>
-  );
-}
-
-/** "Booking adhoora?": Kitna mila + Wajah. The phone keyboard's own mic does the voice typing (no native module). */
-function AdhooraSheet({ row, onClose, onSaved }: { row: OwnerBookingRow; onClose: () => void; onSaved: () => void }) {
-  const [amount, setAmount] = useState(String(Math.round(row.total_paid)));
-  const [reason, setReason] = useState(row.completion?.reason ?? "");
-  const [error, setError] = useState<string | null>(null);
-  const cleaned = amount.replace(/[,\s]/g, "");
-  const received = /^\d+$/.test(cleaned) ? Number(cleaned) : null;
-  const valid = received !== null && received >= 0 && received <= row.total;
-  const dueAfter = valid ? row.total - (received as number) : null;
-
-  const save = useMutation({
-    mutationFn: () => api.owners.markCompletion(row.booking_id, { result: "no", received_pkr: received as number, reason: reason.trim() || undefined }),
-    onSuccess: () => {
-      onSaved();
-      onClose();
-    },
-    onError: (e) => setError(e instanceof ApiError && e.status === 403 ? "Aapke paas payments record karne ki ijazat nahi hai." : friendlyErrorMessage(e)),
-  });
-
-  return (
-    <BottomSheet
-      title="Booking adhoora?"
-      subtitle={`${row.player_name ?? "Player"} · ${row.court_name} · ${formatTimeRange(row.starts_at, row.ends_at)} · ${row.short_code}`}
-      onClose={onClose}
-      footer={
-        <View className="flex-row gap-3">
-          <OutlineButton flex label="Cancel" onPress={onClose} />
-          <OrangeButton flex label={save.isPending ? "Save ho raha hai" : "Save karein"} disabled={!valid || save.isPending} onPress={() => save.mutate()} />
-        </View>
-      }
-    >
-      <View className="flex-row justify-between rounded-2xl px-4 py-3.5" style={{ backgroundColor: "#F4F6F7" }}>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">
-          Total <Text className="font-plex-bold text-owner-ink">{formatPKR(row.total)}</Text>
-        </Text>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">
-          Advance <Text className="font-plex-bold text-owner-ink">{formatPKR(row.advance)}</Text>
-        </Text>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">
-          Baqi <Text className="font-plex-bold text-owner-ink">{formatPKR(row.due)}</Text>
-        </Text>
-      </View>
-
-      <Text className="font-plex-bold text-owner-ink text-[14px] mt-1">Kitna mila? (PKR)</Text>
-      <TextInput
-        value={amount}
-        onChangeText={(t) => {
-          setAmount(t);
-          setError(null);
-        }}
-        keyboardType="number-pad"
-        accessibilityLabel="Kitna mila, PKR"
-        className="rounded-xl px-4 font-plex-medium text-owner-ink text-[17px]"
-        style={{ minHeight: 52, borderWidth: 1.5, borderColor: valid || amount === "" ? OV.border : OV.red }}
-      />
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
-        {`0 se ${formatPKR(row.total)} ke darmiyan. Baqi due apne aap nikal aayega.`}
-      </Text>
-
-      <Text className="font-plex-bold text-owner-ink text-[14px] mt-1">Wajah</Text>
-      <TextInput
-        value={reason}
-        onChangeText={setReason}
-        multiline
-        textAlignVertical="top"
-        accessibilityLabel="Wajah"
-        placeholder="Customer ne kaha baqi paisa kal dega."
-        placeholderTextColor={OV.faint}
-        className="rounded-xl px-4 py-3 font-plex-medium text-owner-ink text-[15px]"
-        style={{ minHeight: 100, borderWidth: 1.5, borderColor: OV.border }}
-      />
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">Keyboard ke mic se bol kar likh sakte hain</Text>
-
-      {dueAfter !== null ? (
-        <View className="flex-row items-center gap-2 rounded-xl px-3.5 py-3" style={{ backgroundColor: OV.redBg }}>
-          <AlertCircleIcon size={18} />
-          <Text className="flex-1 font-plex-semibold text-[13.5px]" style={{ color: OV.red }}>
-            {`Save karne par row laal ho jayegi aur Due ${formatPKR(dueAfter)} rahega.`}
-          </Text>
-        </View>
-      ) : null}
-      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
-      <Text className="font-plex-medium text-owner-ink-faint text-[12px]">
-        Ye record ke saath save hoga (kis ne, kab). Baad mein badla bhi ja sakta hai.
-      </Text>
-    </BottomSheet>
   );
 }

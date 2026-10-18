@@ -30,10 +30,13 @@ export function SlotsSheet({
   date,
   courts,
   onClose,
+  onlyFree,
 }: {
   date: string;
   courts: { id: string; name: string }[];
   onClose: () => void;
+  /** Round 2 (A7): the Overview's "Free" legend opens this sheet showing only the free (upcoming) slots. */
+  onlyFree?: boolean;
 }) {
   const results = useQueries({
     queries: courts.map((c) => ({
@@ -44,9 +47,9 @@ export function SlotsSheet({
   const now = Date.now();
 
   return (
-    <BottomSheet title="Sab slots" subtitle={formatDayHeader(date)} onClose={onClose} tall>
+    <BottomSheet title={onlyFree ? "Khali slots" : "Sab slots"} subtitle={formatDayHeader(date)} onClose={onClose} tall>
       <View className="flex-row flex-wrap gap-x-3 gap-y-1.5 pb-1">
-        {LEGEND.map((l) => (
+        {LEGEND.filter((l) => !onlyFree || l.label === "Free").map((l) => (
           <View key={l.label} className="flex-row items-center gap-1.5">
             <View
               style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: l.bg, borderWidth: 1.5, borderColor: l.border, borderStyle: l.dashed ? "dashed" : "solid" }}
@@ -66,9 +69,11 @@ export function SlotsSheet({
               <Text className="font-plex-medium text-owner-danger text-[12.5px]">Slots load nahi ho sake.</Text>
             ) : r.data.slots.length === 0 ? (
               <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Is din band hai.</Text>
+            ) : onlyFree && !r.data.slots.some((s) => look(s, now).label === "Free") ? (
+              <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Koi khali slot nahi.</Text>
             ) : (
               <View className="flex-row flex-wrap gap-1.5">
-                {r.data.slots.map((s) => {
+                {r.data.slots.filter((s) => !onlyFree || look(s, now).label === "Free").map((s) => {
                   const l = look(s, now);
                   return (
                     <View
