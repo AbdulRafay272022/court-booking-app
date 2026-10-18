@@ -3,6 +3,7 @@ import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import Settings
+from app.services.whatsapp_service import mask_phone
 
 logger = structlog.get_logger(__name__)
 
@@ -18,7 +19,7 @@ class SMSService:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
     async def send_text(self, to_phone_number: str, body: str) -> dict:
         if not self.settings.SMS_API_URL or not self.settings.SMS_API_TOKEN:
-            logger.info("sms.send.skipped_no_token", to=to_phone_number)
+            logger.info("sms.send.skipped_no_token", to=mask_phone(to_phone_number))
             return {"status": "skipped"}
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(

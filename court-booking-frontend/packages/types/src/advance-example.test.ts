@@ -91,6 +91,6 @@ test("shared backend cases (fixtures/advance-cases.json)", (t) => {
   assert.ok(cases.length > 0, "fixture has cases");
   for (const c of cases) {
     const expected = c.expected ?? c.advance;
-    assert.equal(advanceFor(c.total, toRule(c)), expected, c.name ?? JSON.stringify(c));
+    assert.equal(advanceFor(c.total, toRule(c), (c as { units?: number }).units ?? 1), expected, c.name ?? JSON.stringify(c));
   }
 });

@@ -78,8 +78,11 @@ function rawAdvance(total: number, rule: AdvanceRule): number {
 
 /** The advance (PKR, 2 decimals) for one priced unit costing `total`. Never above `total`, never below the minimum
  * (unless the minimum is above the total, then the total). */
-export function advanceFor(total: number, rule: AdvanceRule): number {
-  return pyRound2(rawAdvance(total, rule));
+export function advanceFor(total: number, rule: AdvanceRule, units = 1): number {
+  // `units` = how many priced court units (`slot_minutes`) the booking spans: the backend applies the rule to one
+  // unit and multiplies, so a fixed amount and the minimum are charged per unit.
+  if (!units || units <= 1) return pyRound2(rawAdvance(total, rule));
+  return pyRound2(rawAdvance(total / units, rule) * units);
 }
 
 export interface AdvanceExampleResult {
