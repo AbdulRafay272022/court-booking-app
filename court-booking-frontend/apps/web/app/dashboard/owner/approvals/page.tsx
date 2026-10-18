@@ -184,7 +184,7 @@ export default function OwnerApprovalsPage() {
           {t("appr.title")}
         </h1>
         <p data-testid="appr-count" className="text-[15px] font-semibold text-owner-ink-muted">
-          {loading ? " " : countText}
+          {loading ? "\u00a0" : countText}
         </p>
       </div>
 
@@ -198,7 +198,7 @@ export default function OwnerApprovalsPage() {
       >
         {live ? (
           <>
-            <span aria-hidden="true">{live.kind === "error" ? "! " : "✓ "}</span>
+            <span aria-hidden="true">{live.kind === "error" ? "! " : "\u2713 "}</span>
             {live.text}
           </>
         ) : null}
@@ -293,7 +293,7 @@ function AmountChips({ item }: { item: ApprovalQueueItem }) {
       : chip.kind === "mismatch"
         ? "border-owner-danger-soft-border bg-owner-danger-soft text-owner-danger"
         : "border-owner-border bg-owner-bg text-owner-ink-muted";
-  const icon = chip.kind === "match" ? "✓" : chip.kind === "mismatch" ? "!" : "?";
+  const icon = chip.kind === "match" ? "\u2713" : chip.kind === "mismatch" ? "!" : "?";
   const text =
     chip.kind === "match"
       ? t("appr.amt.match", { amount: formatPKR(chip.amount) })
@@ -491,14 +491,14 @@ const CHECK_COLORS: Record<string, string> = {
   not_available: "#8399A1",
   not_configured: "#8399A1",
 };
-const CHECK_ICONS: Record<string, string> = { match: "✓", mismatch: "✕", warning: "!" };
+const CHECK_ICONS: Record<string, string> = { match: "\u2713", mismatch: "\u2715", warning: "!" };
 
 function CheckRow({ check }: { check: { verdict: string; text: string } }) {
   const color = CHECK_COLORS[check.verdict] ?? "#8399A1";
   return (
     <li className="flex items-start gap-2.5">
       <span aria-hidden="true" className="mt-0.5 w-4 shrink-0 text-center text-[13px] font-extrabold" style={{ color }}>
-        {CHECK_ICONS[check.verdict] ?? "–"}
+        {CHECK_ICONS[check.verdict] ?? "\u2013"}
       </span>
       <span className="flex-1 text-[13px] leading-[18px] text-owner-ink">{check.text}</span>
     </li>
@@ -511,7 +511,7 @@ function DialogSummary({ item }: { item: ApprovalQueueItem }) {
     <div className="rounded-xl bg-owner-bg px-4 py-3 text-[14px]">
       <p className="font-bold text-owner-ink">{who}</p>
       <p className="text-owner-ink-muted">
-        {court} {"·"} {when}
+        {court} {"\u00b7"} {when}
       </p>
     </div>
   );
@@ -677,7 +677,7 @@ function RejectDialog({ item, onCancel, onConfirm }: { item: ApprovalQueueItem; 
                   preset === r.value ? "border-owner-danger bg-owner-danger text-white" : "border-owner-border bg-owner-bg text-owner-ink"
                 }`}
               >
-                {preset === r.value ? <span aria-hidden="true">{"✓ "}</span> : null}
+                {preset === r.value ? <span aria-hidden="true">{"\u2713 "}</span> : null}
                 {t(r.label)}
               </button>
             ))}
