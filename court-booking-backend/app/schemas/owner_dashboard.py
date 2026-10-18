@@ -74,6 +74,28 @@ class PendingApprovalOut(BaseModel):
     checks: PaymentChecksOut  # Section 32 Part 7 -- the five plain-language checks
 
 
+class OverpaymentOut(BaseModel):
+    expected: int
+    ocr_amount: int
+    excess: int
+
+
+class ApprovalQueueItemOut(PendingApprovalOut):
+    """Owner Round 2 (A1/A5), docs/round2-contract.md: a PendingApprovalOut plus the card state."""
+
+    state: str  # "awaiting" | "cancelled_by_player" | "expired" | "cancelled_by_owner"
+    cancelled_at: datetime | None = None
+    has_screenshot: bool = False
+    overpayment: OverpaymentOut | None = None
+
+
+class ApprovalsQueuePageOut(BaseModel):
+    items: list[ApprovalQueueItemOut]
+    total: int
+    page: int
+    page_size: int
+
+
 class LedgerEntryOut(BaseModel):
     """One row per PAYMENT (Section 32 Part 5), not per booking -- a booking with an advance plus a
     balance payment is two rows here. A negative amount_pkr is an admin correction reversing an earlier

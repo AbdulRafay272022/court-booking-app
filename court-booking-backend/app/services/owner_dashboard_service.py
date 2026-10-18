@@ -22,7 +22,7 @@ from app.services.entitlement_service import EntitlementService, premium_require
 from app.services.availability_service import AvailabilityService
 from app.services.feature_flag_service import flag_on
 from app.services.overview_slots import operating_day_expr, starts_between_prefilter
-from app.services.payment_service import PaymentService, build_payment_checks
+from app.services.payment_service import PaymentService, approval_state, build_payment_checks, overpayment_of
 from app.utils.timezone import pkt_date_of, pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
     GrowthOut,
@@ -30,6 +30,8 @@ from app.schemas.owner_dashboard import (
     LedgerEntryOut,
     LedgerOut,
     LedgerSummaryOut,
+    ApprovalQueueItemOut,
+    ApprovalsQueuePageOut,
     PendingApprovalOut,
     TodayCourtOut,
     TodayOut,
@@ -42,6 +44,83 @@ from app.schemas.admin import OwnerRefundOut  # Section 32 Part 10: "Refunds to 
 OUTSTANDING_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED)
 
 REVENUE_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED)
+
+
+REFUND_REASON_KEYS = {
+    "player_cancelled_paid_booking": "rfd.reason.player_cancelled",
+    "owner_cancelled_paid_booking": "rfd.reason.owner_cancelled",
+    "system_cancelled_paid_booking": "rfd.reason.system_cancelled",
+    "overpayment_excess": "rfd.reason.overpayment",
+    "cancelled_payment_received": "rfd.reason.cancelled_payment_received",
+    "payment_review_expired": "rfd.reason.review_expired",
+    "payment_rejected": "rfd.reason.payment_rejected",
+}
+
+
+async def positive_entries_by_booking(db: AsyncSession, booking_ids: set[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Money the player paid in per booking: the sum of POSITIVE payment_entries (refunds paid out and corrections
+    are negative rows and are not counted). One grouped query."""
+    if not booking_ids:
+        return {}
+    result = await db.execute(
+        select(PaymentEntry.booking_id, func.coalesce(func.sum(PaymentEntry.amount_pkr), 0))
+        .where(PaymentEntry.booking_id.in_(booking_ids), PaymentEntry.amount_pkr > 0)
+        .group_by(PaymentEntry.booking_id)
+    )
+    return {bid: int(total) for bid, total in result.all()}
+
+
+def refund_out(
+    dispute: PaymentDispute,
+    booking: Booking,
+    venue: Venue | None,
+    player: User | None,
+    payment: Payment | None,
+    positive_total: int,
+    *,
+    court_name: str,
+    court_sport: str | None,
+    now: datetime,
+    overdue_cutoff: timedelta,
+) -> OwnerRefundOut:
+    """One owner Refunds row with the Round 2 (A10) breakdown. `player_sent`: positive ledger entries, plus this
+    dispute's own amount when that money was never credited (overpayment excess, a screenshot on a cancelled
+    booking); if the ledger holds nothing, the approved screenshot's amount; else null (unknown)."""
+    from app.services.payment_ledger_service import UNCREDITED_REFUND_REASONS
+
+    refund_due = float(dispute.refund_amount or 0)
+    already = float(dispute.refunded_amount or 0)
+    player_sent: float | None = float(positive_total) if positive_total > 0 else None
+    if dispute.reason in UNCREDITED_REFUND_REASONS:
+        player_sent = float(positive_total) + refund_due
+    elif player_sent is None and payment is not None and payment.review_verdict == "approved":
+        amount = payment.ocr_amount if payment.ocr_amount is not None else payment.amount_claimed
+        player_sent = float(amount) if amount is not None else None
+    return OwnerRefundOut(
+        id=dispute.id,
+        booking_id=booking.id,
+        court_name=court_name,
+        court_id=booking.court_id,
+        court_sport=court_sport,
+        venue_name=venue.name if venue else "",
+        # The name the booking was made under first (a friend's / a walk-in's), then the account's.
+        player_name=booking.player_name or (player.name if player else None),
+        player_phone=player.phone if player else booking.player_phone,
+        starts_at=booking.starts_at,
+        reason=dispute.reason,
+        refund_amount=refund_due,
+        refund_status=dispute.refund_status,
+        refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
+        remaining_amount=round(max(refund_due - already, 0.0), 2),
+        player_sent=player_sent,
+        refund_due=refund_due,
+        already_refunded=already,
+        reason_label_key=REFUND_REASON_KEYS.get(dispute.reason, "rfd.reason.other"),
+        refund_reference=dispute.refund_reference,
+        refunded_at=dispute.refunded_at,
+        created_at=dispute.created_at,
+        is_overdue=dispute.refund_status == "owed" and refund_due > already and now - dispute.created_at >= overdue_cutoff,
+    )
 
 
 class OwnerDashboardService:
@@ -262,6 +341,13 @@ class OwnerDashboardService:
             .order_by(Payment.created_at.asc())
         )
         rows = result.all()
+        return await self._approval_items(rows, courts)
+
+    async def _approval_items(self, rows, courts: list[Court], *, queue: bool = False) -> list:
+        """PendingApprovalOut (or, `queue=True`, ApprovalQueueItemOut) for (payment, booking) rows: a fixed number of
+        queries for the whole list."""
+        court_names = {c.id: c.name for c in courts}
+        court_sports = {c.id: c.sport for c in courts}
 
         # Section 32 Part 7: batch-resolve each booking's real account name
         # (not booking.player_name, which is only ever set for walk-ins) so
@@ -284,8 +370,20 @@ class OwnerDashboardService:
         out = []
         for payment, booking in rows:
             account_name = account_names.get(booking.player_id) or booking.player_name
+            extra = {}
+            model = PendingApprovalOut
+            if queue:
+                model = ApprovalQueueItemOut
+                state = approval_state(booking)
+                extra = dict(
+                    state=state,
+                    cancelled_at=booking.updated_at if booking.status == BookingStatus.CANCELLED else None,
+                    has_screenshot=bool(payment.proof_key),
+                    overpayment=overpayment_of(payment, booking),
+                )
             out.append(
-                PendingApprovalOut(
+                model(
+                    **extra,
                     payment_id=payment.id,
                     booking_id=booking.id,
                     court_name=court_names.get(booking.court_id, ""),
@@ -307,6 +405,48 @@ class OwnerDashboardService:
                 )
             )
         return out
+
+    async def approvals_queue(
+        self,
+        owner: User,
+        venue_id: uuid.UUID | None = None,
+        on_date: date | None = None,
+        court_ids: list[uuid.UUID] | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> ApprovalsQueuePageOut:
+        """Owner Round 2 (A1/A5): EVERY unreviewed payment of the owner's active courts, newest submission first,
+        server-paginated -- the same scope and filters as `pending_approvals` (so the badge `approvals` equals
+        `total`), each item carrying its card `state`. A payment whose booking the player cancelled / that expired
+        stays here (grey card) until the owner acknowledges it."""
+        page = max(1, page)
+        page_size = min(max(1, page_size), 100)
+        courts = await self._owner_courts(owner, venue_id)
+        if not courts:
+            return ApprovalsQueuePageOut(items=[], total=0, page=page, page_size=page_size)
+        where = [
+            Booking.court_id.in_([c.id for c in courts]),
+            Payment.review_verdict.is_(None),
+            *self._overview_filters(on_date, court_ids, None),
+        ]
+        total = int(
+            await self.db.scalar(
+                select(func.count(Payment.id)).join(Booking, Booking.id == Payment.booking_id).where(*where)
+            )
+            or 0
+        )
+        rows = (
+            await self.db.execute(
+                select(Payment, Booking)
+                .join(Booking, Booking.id == Payment.booking_id)
+                .where(*where)
+                .order_by(Payment.created_at.desc(), Payment.id.desc())
+                .limit(page_size)
+                .offset((page - 1) * page_size)
+            )
+        ).all()
+        items = await self._approval_items(rows, courts, queue=True)
+        return ApprovalsQueuePageOut(items=items, total=total, page=page, page_size=page_size)
 
     async def refunds_owed(
         self,
@@ -336,47 +476,34 @@ class OwnerDashboardService:
         court_sports = {c.id: c.sport for c in courts}
 
         result = await self.db.execute(
-            select(PaymentDispute, Booking, Venue, User)
+            select(PaymentDispute, Booking, Venue, User, Payment)
             .join(Booking, Booking.id == PaymentDispute.booking_id)
             .join(Court, Court.id == Booking.court_id)
             .join(Venue, Venue.id == Court.venue_id)
             .outerjoin(User, User.id == PaymentDispute.player_id)
+            .outerjoin(Payment, Payment.id == PaymentDispute.payment_id)
             .where(
                 Court.id.in_(all_court_ids),
                 PaymentDispute.refund_status == "owed",
+                # Owner Round 2 (A10): a 0-amount dispute (e.g. the audit trail every rejection leaves) is not a
+                # refund to pay; it stays in the table but never shows on the Refunds screen or its badge.
+                func.coalesce(PaymentDispute.refund_amount, 0) > 0,
                 *self._overview_filters(on_date, court_ids, booking_id),
             )
             .order_by(PaymentDispute.created_at.asc())
         )
+        rows = result.all()
+        positives = await positive_entries_by_booking(self.db, {row[1].id for row in rows})
         now = datetime.now(timezone.utc)
         overdue_cutoff = timedelta(days=self.settings.REFUND_OVERDUE_DAYS)
-        out = []
-        for dispute, booking, venue, player in result.all():
-            out.append(
-                OwnerRefundOut(
-                    id=dispute.id,
-                    booking_id=booking.id,
-                    court_name=court_names.get(booking.court_id, ""),
-                    court_id=booking.court_id,
-                    court_sport=court_sports.get(booking.court_id),
-                    venue_name=venue.name,
-                    # The name the booking was made under first (a friend's / a walk-in's), then the account's.
-                    player_name=booking.player_name or (player.name if player else None),
-                    player_phone=player.phone if player else booking.player_phone,
-                    starts_at=booking.starts_at,
-                    reason=dispute.reason,
-                    refund_amount=float(dispute.refund_amount or 0),
-                    refund_status=dispute.refund_status,
-                    refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
-                    remaining_amount=round(max(float(dispute.refund_amount or 0) - float(dispute.refunded_amount or 0), 0.0), 2),
-                    refund_reference=dispute.refund_reference,
-                    refunded_at=dispute.refunded_at,
-                    created_at=dispute.created_at,
-                    is_overdue=(dispute.refund_amount or 0) > (dispute.refunded_amount or 0)
-                    and now - dispute.created_at >= overdue_cutoff,
-                )
+        return [
+            refund_out(
+                dispute, booking, venue, player, payment, positives.get(booking.id, 0),
+                court_name=court_names.get(booking.court_id, ""), court_sport=court_sports.get(booking.court_id),
+                now=now, overdue_cutoff=overdue_cutoff,
             )
-        return out
+            for dispute, booking, venue, player, payment in rows
+        ]
 
     async def _sum_entries(self, court_ids: list[uuid.UUID], start_date: date, end_date: date) -> int:
         """Net PKR recorded (positive entries minus any reversals) for these courts, in a Pakistan-calendar

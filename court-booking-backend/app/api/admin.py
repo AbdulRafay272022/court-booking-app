@@ -152,13 +152,13 @@ async def _review_venue(
     if owner is not None:
         notifications = NotificationService(db, settings)
         if new_status == VenueStatus.APPROVED:
-            await notifications.notify_venue_approved(owner=owner, venue_name=venue.name)
+            await notifications.notify_venue_approved(owner=owner, venue_name=venue.name, venue_id=venue.id)
         elif new_status == VenueStatus.CHANGES_REQUESTED:
             await notifications.notify_venue_changes_requested(
-                owner=owner, venue_name=venue.name, reason=reason or ""
+                owner=owner, venue_name=venue.name, reason=reason or "", venue_id=venue.id
             )
         elif new_status == VenueStatus.REJECTED:
-            await notifications.notify_venue_rejected(owner=owner, venue_name=venue.name, reason=reason or "")
+            await notifications.notify_venue_rejected(owner=owner, venue_name=venue.name, reason=reason or "", venue_id=venue.id)
 
     return await venue_service.to_out(venue, requesting_user=admin)
 

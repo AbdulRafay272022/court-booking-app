@@ -18,6 +18,7 @@ from app.schemas.court import (
     CourtCreateIn,
     CourtDetailResponse,
     CourtOut,
+    AdvanceExplainOut,
     CourtUpdateIn,
     PricingRuleOut,
     PricingRulesIn,
@@ -26,6 +27,7 @@ from app.schemas.court import (
 )
 from app.schemas.venue import PhotoOrderIn
 from app.models.user import User
+from app.services.advance_explain import explain_advance
 from app.services.audit_service import AuditService
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
@@ -152,7 +154,8 @@ async def deactivate_court(court_id: uuid.UUID, db: DbSession, settings: AppSett
                 player = await db.get(User, booking.player_id)
                 if player is not None:
                     await notifications.notify_court_deactivated(
-                        user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
+                        user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
+                        reference_id=booking.id,
                     )
             await audit.log(
                 actor_user_id=owner.id,
@@ -293,3 +296,15 @@ async def add_blackout(
 async def list_blackouts(court_id: uuid.UUID, db: DbSession) -> list[BlackoutOut]:
     result = await db.execute(select(Blackout).where(Blackout.court_id == court_id))
     return [BlackoutOut.model_validate(b) for b in result.scalars().all()]
+
+
+@router.get("/courts/{court_id}/advance-explain", response_model=AdvanceExplainOut)
+async def court_advance_explain(
+    court_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+) -> AdvanceExplainOut:
+    """Owner Round 2 (A11): how this court's advance is worked out, with a live example priced from the court's real
+    rate, using the very function a player's quote uses (app/services/advance_explain.py). Read-only; owner or staff
+    of the venue."""
+    court = await _get_court(db, court_id)
+    await VenueService(db, settings).require_owned_venue(court.venue_id, owner, permission="edit_court_settings")
+    return AdvanceExplainOut(**await explain_advance(db, court_id))

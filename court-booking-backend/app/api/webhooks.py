@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import AppSettings, DbSession
-from app.models.booking import Booking, BookingSource, BookingStatus
+from app.models.booking import Booking, BookingSource, BookingStatus, CancelledBy
 from app.models.court import Court
 from app.models.message import Message
 from app.models.user import User
@@ -35,6 +35,7 @@ from app.services.reply_text import (
     held_where,
     hold_failed_message,
     image_download_failed_message,
+    late_payment_proof_message,
     no_pending_booking_message,
     payment_proof_reply,
 )
@@ -139,6 +140,25 @@ async def _most_recent_held_booking(db: DbSession, user: User) -> Booking | None
         select(Booking)
         .where(Booking.player_id == user.id, Booking.status == BookingStatus.HELD)
         .order_by(Booking.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _recently_expired_hold(db: DbSession, user: User) -> Booking | None:
+    """Owner Round 2 (B1): the player's most recent hold that the system released because its time ran out, within
+    the last 2 hours -- a screenshot sent for it now is a LATE proof (kept for the owner, player told), not lost."""
+    since = datetime.now(timezone.utc) - timedelta(hours=2)
+    result = await db.execute(
+        select(Booking)
+        .where(
+            Booking.player_id == user.id,
+            Booking.status == BookingStatus.CANCELLED,
+            Booking.cancelled_by == CancelledBy.SYSTEM,
+            Booking.cancellation_reason == "hold_expired",
+            Booking.updated_at >= since,
+        )
+        .order_by(Booking.updated_at.desc())
         .limit(1)
     )
     return result.scalar_one_or_none()
@@ -352,7 +372,7 @@ async def _handle_image(db: DbSession, settings: AppSettings, user: User, image_
     whatsapp = WhatsAppService(settings)
     phone = user.phone
     lang = await player_language(db, user.id, "whatsapp")
-    booking = await _most_recent_held_booking(db, user)
+    booking = await _most_recent_held_booking(db, user) or await _recently_expired_hold(db, user)
     if booking is None:
         await _reply_text(db, whatsapp, user, phone, no_pending_booking_message(lang))
         return
@@ -364,9 +384,15 @@ async def _handle_image(db: DbSession, settings: AppSettings, user: User, image_
 
     proof_bytes, content_type = media
     payment_service = PaymentService(db, settings)
-    payment = await payment_service.submit_payment(
-        booking, proof_bytes=proof_bytes, filename="whatsapp-proof.jpg", content_type=content_type or mime_type or "image/jpeg"
-    )
+    try:
+        payment = await payment_service.submit_payment(
+            booking, proof_bytes=proof_bytes, filename="whatsapp-proof.jpg", content_type=content_type or mime_type or "image/jpeg"
+        )
+    except AppError as exc:
+        if exc.code != ErrorCode.HOLD_EXPIRED:
+            raise
+        await _reply_text(db, whatsapp, user, phone, late_payment_proof_message(lang))
+        return
     await db.refresh(booking)
 
     if booking.status == BookingStatus.PAYMENT_SUBMITTED:

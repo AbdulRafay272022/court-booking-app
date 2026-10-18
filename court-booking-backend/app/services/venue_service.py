@@ -76,7 +76,7 @@ class VenueService:
         notifications = NotificationService(self.db, self.settings)
         admins_result = await self.db.execute(select(User).where(User.role == UserRole.ADMIN))
         for admin in admins_result.scalars().all():
-            await notifications.notify_venue_pending_review(user=admin, venue_name=venue.name)
+            await notifications.notify_venue_pending_review(user=admin, venue_name=venue.name, venue_id=venue.id)
 
     async def get_venue(self, venue_id: uuid.UUID) -> Venue:
         result = await self.db.execute(

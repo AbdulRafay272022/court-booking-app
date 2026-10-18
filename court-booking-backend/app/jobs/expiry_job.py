@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timedelta, timezone
 
 import structlog
@@ -34,7 +35,8 @@ async def expire_stale_bookings(session_factory: async_sessionmaker = AsyncSessi
             player = await db.get(User, booking.player_id) if booking.player_id else None
             if court and player:
                 await notifications.notify_booking_cancelled(
-                    user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
+                    user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
+                    reference_id=booking.id,
                 )
             # A payment-review timeout means the owner sat on it -- flag them too.
             if court and booking.cancellation_reason == "payment_review_expired":
@@ -42,13 +44,53 @@ async def expire_stale_bookings(session_factory: async_sessionmaker = AsyncSessi
                 owner = await db.get(User, venue.owner_id) if venue else None
                 if owner:
                     await notifications.notify_booking_cancelled(
-                        user=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
+                        user=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
+                        reference_id=booking.id,
                     )
             if court:
                 await waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
 
         logger.info("expiry_job.completed", expired_count=len(expired))
         return len(expired)
+
+
+HOLD_REMINDER_FRACTION = 2 / 3
+
+
+async def remind_expiring_holds(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
+    """Owner Round 2 (B1): ONE push reminder to a player whose unpaid hold has used 2/3 of its time (5 minutes left
+    of the default 15). Nothing reminded players before the hold expired until now. Deduped per booking through
+    notification_log (`hold_expiring`), so a repeated or late run never sends twice; a hold that already ran out is
+    not reminded (the expiry step releases it)."""
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    sent = 0
+    async with session_factory() as db:
+        notifications = NotificationService(db, settings)
+        result = await db.execute(
+            select(Booking).where(
+                Booking.status == BookingStatus.HELD,
+                Booking.held_until.is_not(None),
+                Booking.held_until > now,
+                Booking.player_id.is_not(None),
+            )
+        )
+        for booking in result.scalars().all():
+            remind_at = booking.created_at + (booking.held_until - booking.created_at) * HOLD_REMINDER_FRACTION
+            if now < remind_at:
+                continue
+            player = await db.get(User, booking.player_id)
+            court = await db.get(Court, booking.court_id)
+            if player is None or court is None:
+                continue
+            minutes_left = max(1, math.ceil((booking.held_until - now).total_seconds() / 60))
+            if await notifications.notify_hold_expiring(
+                user=player, court_name=court.name, booking_id=booking.id, minutes_left=minutes_left,
+                amount=float(booking.advance_amount),
+            ):
+                sent += 1
+    logger.info("hold_reminder_job.completed", sent=sent)
+    return sent
 
 
 async def mark_overdue_no_shows(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
@@ -179,6 +221,7 @@ async def run_expiry_job(session_factory: async_sessionmaker = AsyncSessionLocal
     errors on an already-processed booking; see the individual functions'
     docstrings for how each one achieves that."""
     expired = await expire_stale_bookings(session_factory)
+    hold_reminders = await remind_expiring_holds(session_factory)
     no_shows = await mark_overdue_no_shows(session_factory)
     escalated = await escalate_pending_payment_reviews(session_factory)
     waitlist_deactivated = await cleanup_waitlist(session_factory)
@@ -186,6 +229,7 @@ async def run_expiry_job(session_factory: async_sessionmaker = AsyncSessionLocal
 
     result = {
         "expired_bookings": expired,
+        "hold_reminders_sent": hold_reminders,
         "no_shows": no_shows,
         "escalations_sent": escalated,
         "waitlist_entries_deactivated": waitlist_deactivated,

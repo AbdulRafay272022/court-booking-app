@@ -80,7 +80,8 @@ async def hold_booking(
             owner = await db.get(User, venue.owner_id)
             if owner is not None:
                 await NotificationService(db, settings).notify_owner_new_booking(
-                    owner=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
+                    owner=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
+                    reference_id=booking.id,
                 )
 
     return BookingHoldResponse(booking=BookingOut.model_validate(booking), payment_instructions=payment_instructions)
@@ -153,6 +154,7 @@ async def cancel_booking(
     booking = await service.require_accessible_booking(booking_id, user, permission="cancel_booking")
     court = await db.get(Court, booking.court_id)
     was_already_cancelled = booking.status == BookingStatus.CANCELLED
+    was_awaiting_approval = booking.status == BookingStatus.PAYMENT_SUBMITTED
 
     cancelled_by = CancelledBy.PLAYER if booking.player_id == user.id else CancelledBy.OWNER
     booking = await service.cancel_booking(booking, cancelled_by, payload.reason)
@@ -166,10 +168,24 @@ async def cancel_booking(
             player = await db.get(User, booking.player_id)
             if player is not None:
                 await notifications.notify_booking_cancelled(
-                    user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at
+                    user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
+                    reference_id=booking.id,
                 )
         waitlist_service = WaitlistService(db, settings)
         await waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
+        # Owner Round 2 (A5): the player cancelled while the payment screenshot waited for approval -- a bell row for
+        # the owner (the approvals card turns grey on its own). Best effort, never fails the cancel.
+        if cancelled_by == CancelledBy.PLAYER and was_awaiting_approval and booking.status == BookingStatus.CANCELLED:
+            try:
+                venue = await db.get(Venue, court.venue_id)
+                venue_owner = await db.get(User, venue.owner_id) if venue is not None else None
+                if venue_owner is not None:
+                    await notifications.notify_owner_player_cancelled(
+                        owner=venue_owner, court_name=court.name, booking_id=booking.id,
+                        starts_at=booking.starts_at, ends_at=booking.ends_at,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("booking.cancel.owner_player_cancelled_notification_failed", error=type(exc).__name__)
         # Owner Overview (spec 5.3): a PLAYER cancelling a booking that was paid for means a refund is now owed, so
         # tell the venue owner too. Strictly best effort: a notification problem must never fail the cancel.
         if (

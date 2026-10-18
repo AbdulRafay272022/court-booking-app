@@ -90,6 +90,14 @@ class ErrorCode:
     REFUND_EXCEEDS_OWED_AMOUNT = "REFUND_EXCEEDS_OWED_AMOUNT"
     # Section 32 Part 5: a manually-recorded payment (or reversal) would push amount_paid past the booking's price.
     PAYMENT_EXCEEDS_BALANCE = "PAYMENT_EXCEEDS_BALANCE"
+    # Owner Round 2 (A5): approve/reject on a booking the player cancelled / that expired; details {state}
+    BOOKING_NO_LONGER_PENDING = "BOOKING_NO_LONGER_PENDING"
+    # Owner Round 2 (A5): acknowledge on a payment that is still awaiting a normal approve/reject
+    PAYMENT_STILL_PENDING = "PAYMENT_STILL_PENDING"
+    # Owner Round 2 (A8): "Nahi" completion leaving a balance due without a reason
+    REASON_REQUIRED = "REASON_REQUIRED"
+    # Owner Round 2 (B1): a payment screenshot sent after the hold already expired
+    HOLD_EXPIRED = "HOLD_EXPIRED"
 
     # Section 32 Part 12 (admin feature flags + staff)
     FEATURE_DISABLED = "FEATURE_DISABLED"  # an admin has globally turned this feature off

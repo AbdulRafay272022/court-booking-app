@@ -99,7 +99,8 @@ from app.services.overview_slots import (
     operating_day_expr,
     starts_between_prefilter,
 )
-from app.services.payment_ledger_service import PaymentLedgerService
+from app.services.live_bookings import hold_not_expired
+from app.services.payment_ledger_service import UNCREDITED_REFUND_REASONS, PaymentLedgerService
 from app.services.staff_service import resolve_owner_context, staffed_venue_ids
 from app.utils.timezone import pkt_today
 
@@ -171,6 +172,8 @@ class HistoryFilter:
     statuses: list[str] | None = None
     q: str | None = None
     sort: str = "starts_at:desc"
+    # Owner Round 2 (A2 focus mode): only this booking's rows (main + cancelled/refund), date range ignored.
+    booking_id: uuid.UUID | None = None
 
 
 class OwnerOverviewService:
@@ -223,7 +226,7 @@ class OwnerOverviewService:
     def _money_exprs(self):
         disp = self.disp
         remaining_owed = case(
-            (disp.c.reason == "overpayment_excess", 0),
+            (disp.c.reason.in_(UNCREDITED_REFUND_REASONS), 0),
             else_=func.greatest(func.coalesce(disp.c.refund_amount, 0) - func.coalesce(disp.c.refunded_amount, 0), 0),
         )
         collected = func.greatest(Booking.amount_paid - remaining_owed, 0)
@@ -434,6 +437,24 @@ class OwnerOverviewService:
             rows = await self._build_rows(records, now)
             per_court = await self._aggregates(cids, target_date, target_date, group_by_court=True)
 
+        pending_all = OverviewPendingOut(count=0, awaiting_approval=0, awaiting_payment=0)
+        if cids:
+            pa = (
+                await self.db.execute(
+                    select(
+                        func.count().filter(Booking.status == BookingStatus.PAYMENT_SUBMITTED),
+                        func.count().filter(Booking.status == BookingStatus.HELD),
+                    ).where(
+                        Booking.court_id.in_(cids),
+                        Booking.status.in_((BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED)),
+                        hold_not_expired(now),
+                    )
+                )
+            ).one()
+            pending_all = OverviewPendingOut(
+                count=int(pa[0]) + int(pa[1]), awaiting_approval=int(pa[0]), awaiting_payment=int(pa[1])
+            )
+
         def agg(cid: uuid.UUID, key: str) -> int | float:
             return per_court.get(cid, {}).get(key, 0)
 
@@ -482,6 +503,7 @@ class OwnerOverviewService:
                 due_bookings=int(total("due_bookings")),
             ),
             rows=rows,
+            pending_all=pending_all,
         )
 
     async def _aggregates(
@@ -498,7 +520,7 @@ class OwnerOverviewService:
                 func.count().filter(confirmed).label("confirmed"),
                 func.count().filter(and_(Booking.status == BookingStatus.CANCELLED, not_(_expired_cond()))).label("cancelled"),
                 func.count().filter(Booking.status == BookingStatus.PAYMENT_SUBMITTED).label("awaiting_approval"),
-                func.count().filter(Booking.status == BookingStatus.HELD).label("awaiting_payment"),
+                func.count().filter(and_(Booking.status == BookingStatus.HELD, hold_not_expired())).label("awaiting_payment"),
                 func.count().filter(refund_positive).label("refund_count"),
                 func.coalesce(func.sum(case((refund_positive, disp.c.refund_amount), else_=0)), 0).label("refund_amount"),
                 func.coalesce(func.sum(collected), 0).label("collected"),
@@ -563,9 +585,12 @@ class OwnerOverviewService:
         courts = await self.courts_in_scope(venue, f.court_ids, active_only=False)
         if not courts:
             return None
-        if f.date_to < f.date_from:
+        if f.booking_id is not None:
+            where = [Booking.court_id.in_([c.id for c in courts]), Booking.id == f.booking_id]
+        elif f.date_to < f.date_from:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "date_to must be >= date_from")
-        where = self._day_where(f.date_from, f.date_to, [c.id for c in courts])
+        else:
+            where = self._day_where(f.date_from, f.date_to, [c.id for c in courts])
         if f.q and f.q.strip():
             where.append(self._search_clause(f.q))
         sub = self._rows_subquery(where)
@@ -814,6 +839,13 @@ class OwnerOverviewService:
             events.append(BookingTimelineEventOut(at=booking.starts_at, kind="slot_started"))
         for a in completion_logs:
             value = a.new_value or {}
+            if int(value.get("received_now") or 0) > 0:
+                events.append(
+                    BookingTimelineEventOut(
+                        at=a.created_at, kind="balance_received", amount=float(value["received_now"]),
+                        actor_name=names.get(a.actor_id) if a.actor_id else None,
+                    )
+                )
             events.append(
                 BookingTimelineEventOut(
                     at=a.created_at, kind="completion_marked", amount=float(value.get("received_pkr") or 0),
@@ -838,12 +870,35 @@ class OwnerOverviewService:
             refund=refund,
             completion=completion,
             timeline=events,
+            channel_detail=await self._channel_detail(booking, audit_rows),
         )
+
+    async def _channel_detail(self, booking: Booking, audit_rows: list[AuditLog]) -> str | None:
+        """Owner Round 2 (A4): a walk-in has source "walkin" whoever added it; the `booking.walkin` audit row's actor
+        tells the venue owner ("owner") from a staff member ("staff"). None for any other source or no audit row."""
+        if booking.source.value != "walkin":
+            return None
+        log = next((a for a in audit_rows if a.action == "booking.walkin" and a.actor_id), None)
+        if log is None:
+            return None
+        court = await self.db.get(Court, booking.court_id)
+        venue = await self.db.get(Venue, court.venue_id) if court is not None else None
+        if venue is not None and log.actor_id == venue.owner_id:
+            return "owner"
+        actor = await self.db.get(User, log.actor_id)
+        return "staff" if actor is not None and actor.role == UserRole.STAFF else None
 
     # ------------------------------------------------------------------ Completion
 
     async def mark_completion(
-        self, actor: User, booking_id: uuid.UUID, result: str, received_pkr: int | None, reason: str | None
+        self,
+        actor: User,
+        booking_id: uuid.UUID,
+        result: str,
+        received_pkr: int | None,
+        reason: str | None,
+        *,
+        received_now: int | None = None,
     ) -> OwnerBookingRowOut:
         """"Booking completed": Haan (yes) = everything was received, Nahi (no) = only `received_pkr` was.
 
@@ -869,8 +924,33 @@ class OwnerOverviewService:
                 "You can mark this booking completed after the slot has ended",
             )
         price = int(round(float(booking.price)))
+        extra: dict = {}
         if result == "yes":
             target, reason = price, None
+        elif received_now is not None:
+            # Owner Round 2 (A8): "Baqi mein se kitna mila?" -- a POSITIVE amount on top of what was already paid.
+            paid = int(round(float(booking.amount_paid)))
+            due = max(price - paid, 0)
+            if received_now < 0 or received_now > due:
+                raise AppError(
+                    status.HTTP_400_BAD_REQUEST,
+                    ErrorCode.VALIDATION_ERROR,
+                    f"received_now must be between 0 and {due}",
+                    details={"max": due},
+                )
+            reason = (reason or "").strip() or None
+            remaining = due - received_now
+            if remaining > 0 and reason is None:
+                raise AppError(
+                    status.HTTP_400_BAD_REQUEST,
+                    ErrorCode.REASON_REQUIRED,
+                    "Please say why the balance was not received in full.",
+                    details={"remaining": remaining},
+                )
+            target = paid + received_now
+            if remaining == 0:
+                result, reason = "yes", None  # everything due was received: Mukammal
+            extra = {"received_now": received_now}
         else:
             if received_pkr is None:
                 raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "received_pkr is required")
@@ -904,7 +984,7 @@ class OwnerOverviewService:
                 if previous
                 else None
             ),
-            new_value={"result": result, "received_pkr": target, "reason": reason},
+            new_value={"result": result, "received_pkr": target, "reason": reason, **extra},
         )
         await self.db.commit()
         return await self._main_row(booking.id, datetime.now(timezone.utc))
@@ -951,7 +1031,11 @@ class OwnerOverviewService:
                     select(func.count(PaymentDispute.id))
                     .join(Booking, Booking.id == PaymentDispute.booking_id)
                     .join(Court, Court.id == Booking.court_id)
-                    .where(Court.venue_id.in_(refund_venues), PaymentDispute.refund_status == "owed")
+                    .where(
+                        Court.venue_id.in_(refund_venues),
+                        PaymentDispute.refund_status == "owed",
+                        func.coalesce(PaymentDispute.refund_amount, 0) > 0,  # same rule as GET /owners/refunds
+                    )
                 )
                 or 0
             )

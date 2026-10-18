@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.errors import AppError, ErrorCode
 from app.models.booking import LIVE_BOOKING_STATUSES, Booking
+from app.services.live_bookings import live_claim
 from app.models.court import Court
 from app.models.user import User
 from app.models.venue import Venue
@@ -50,7 +51,7 @@ class WaitlistService:
                 Booking.court_id == court_id,
                 Booking.starts_at == slot_starts_at,
                 Booking.player_id == user.id,
-                Booking.status.in_(LIVE_BOOKING_STATUSES),
+                live_claim(),
             )
         )
         if own_live is not None:
@@ -164,7 +165,7 @@ class WaitlistService:
             player = await self.db.get(User, entry.player_id)
             if player is not None:
                 await self.notifications.notify_waitlist_slot_available(
-                    user=player, court_name=court.name, starts_at=entry.slot_starts_at
+                    user=player, court_name=court.name, starts_at=entry.slot_starts_at, reference_id=entry.id
                 )
                 notified += 1
         await self.db.commit()
@@ -195,7 +196,7 @@ class WaitlistService:
                     # Overlap, not equality: a multi-slot booking that STARTED earlier still covers this slot.
                     Booking.starts_at < stale.slot_starts_at + timedelta(minutes=GRID_MINUTES),
                     Booking.ends_at > stale.slot_starts_at,
-                    Booking.status.in_(LIVE_BOOKING_STATUSES),
+                    live_claim(),
                 )
             )
             stale.is_active = False
