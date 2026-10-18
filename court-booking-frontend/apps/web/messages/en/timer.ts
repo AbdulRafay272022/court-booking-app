@@ -12,6 +12,7 @@ export const enTimer: Record<keyof typeof ruTimer, string> = {
   "timer.warning": "Careful: the player may really have sent the money. After an auto-cancel you will need to handle the refund yourself.",
   "timer.previewLabel": "What will happen",
   "timer.comingSoon": "Saving these settings is coming soon; for now these defaults are in use.",
+  "timer.fixFirst": "Fix the error above to see when the reminders will go out.",
   "timer.reset": "Back to defaults",
   "timer.advanced": "Advanced",
   "timer.advancedHint": "Change these only if you need to; the defaults are fine.",

@@ -113,7 +113,11 @@ export function PaymentRemindersCard() {
 
         <div aria-live="polite" data-testid="timer-preview" className="rounded-xl border border-owner-border bg-owner-bg px-4 py-3 text-[13.5px] flex flex-col gap-1">
           <span className="text-[11px] font-bold uppercase tracking-[0.11em] text-owner-ink-faint">{t("timer.previewLabel")}</span>
-          {preview ? <span className="font-medium text-owner-ink" data-testid="timer-preview-text">{preview}</span> : null}
+          {preview ? (
+            <span className="font-medium text-owner-ink" data-testid="timer-preview-text">{preview}</span>
+          ) : (
+            <span className="text-owner-ink-muted">{t("timer.fixFirst")}</span>
+          )}
           {warnings.map((w) => (
             <span key={w} className="text-owner-ink-muted">
               {w}
@@ -124,7 +128,6 @@ export function PaymentRemindersCard() {
 
         <div className="flex flex-wrap items-center gap-3">
           <p data-testid="timer-coming-soon" className="flex-1 basis-64 text-[12.5px] font-medium text-owner-ink-muted">
-            <span aria-hidden="true">i </span>
             {t("timer.comingSoon")}
           </p>
           <button

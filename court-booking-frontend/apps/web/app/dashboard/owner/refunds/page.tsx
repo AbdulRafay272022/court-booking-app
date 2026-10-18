@@ -256,7 +256,6 @@ function MarkRefundedDialog({
   // the "more than owed" message is shown at once (it is the confusing case); the others after a touch
   const showAmountError = amountMessage !== null && (touched.amount || amountProblem === "exceeds");
   const showRefError = !referenceOk && touched.reference;
-  const canSubmit = amountProblem === null && referenceOk && !busy; // aria hint only: a click still validates and explains
 
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -344,7 +343,7 @@ function MarkRefundedDialog({
           <dl className="text-[13.5px]">
             {row(t("rfd.breakdown.playerSent"), b.playerSent === null ? t("rfd.breakdown.unknown") : `PKR ${formatPKR(b.playerSent)}`, false, "bd-player-sent")}
             {row(t("rfd.breakdown.refundDue"), `PKR ${formatPKR(b.refundDue)}`, false, "bd-refund-due")}
-            {row(t("rfd.breakdown.already"), `PKR ${formatPKR(b.alreadyRefunded)}`, false, "bd-already")}
+            {row(t("rfd.breakdown.already"), `PKR ${formatPKR(b.alreadyRefunded + (done ? done.amount : 0))}`, false, "bd-already")}
             {row(t("rfd.breakdown.remaining"), `PKR ${formatPKR(done ? done.left : maxOwed)}`, true, "bd-remaining")}
           </dl>
         </section>
@@ -497,7 +496,6 @@ function MarkRefundedDialog({
               <button
                 type="submit"
                 disabled={busy}
-                aria-disabled={!canSubmit}
                 data-testid="refund-submit"
                 className="flex-1 basis-32 h-12 rounded-xl text-white font-semibold disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]"
                 style={{ background: TEAL }}

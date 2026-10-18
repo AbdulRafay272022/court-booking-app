@@ -10,6 +10,7 @@ export const ruTimer = {
   "timer.warning": "Dhyan dein: ho sakta hai player ne asal mein paisa bheja ho. Auto-cancel ke baad aap ko refund khud dekhna hoga.",
   "timer.previewLabel": "Aisa hoga",
   "timer.comingSoon": "Ye settings save karne ka option jald aa raha hai; abhi ye default chal rahe hain.",
+  "timer.fixFirst": "Upar wali ghalti theek karein, phir yahan dikhega ke reminders kab jayenge.",
   "timer.reset": "Default par wapas",
   "timer.advanced": "Advanced",
   "timer.advancedHint": "Zaroorat ho to badlein; warna default theek hain.",
