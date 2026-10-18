@@ -4,14 +4,14 @@ ONE pure function decides when the owner is reminded about a payment screenshot 
 approval, when the final "this booking will be cancelled in 5 minutes" warning goes out, and when the
 booking is auto-cancelled. The web/mobile Settings preview uses the TypeScript twin
 (`packages/types/src/reminder-schedule.ts`); both are checked against the same cases in
-`packages/types/src/fixtures/reminder-schedule-cases.json` (tests/test_reminder_schedule.py), so the
+`packages/types/src/fixtures/reminder-schedule-cases.json` (tests/test_round2_fixtures.py), so the
 preview line and the real scheduler can never disagree.
 
 Rules (docs/round2-spec.md B1):
 - Reminders at `first_after_min`, then every `every_min`, at most `max_reminders` of them (0 = reminders off).
 - Auto-cancel OFF (`auto_cancel_min` None or 0): no final warning, no cancel.
 - Auto-cancel ON with Y minutes: reminders at or after Y are dropped; ONE final warning 5 minutes before Y
-  (Y - 5), or at half of Y (floor, whole minutes) when Y <= 10; the final warning does not count toward
+  (Y - 5), or at half of Y (floor, whole minutes, minimum 1) when Y <= 10; the final warning does not count toward
   `max_reminders`. A reminder that would land at or after the final warning is dropped too (it would say
   the same thing a moment before the warning).
 - All values are whole minutes after the payment screenshot was submitted.
@@ -38,7 +38,7 @@ def reminder_schedule(
     cancel_at = auto_cancel_min if auto_cancel_min else None
     final_warning: int | None = None
     if cancel_at is not None:
-        final_warning = cancel_at // 2 if cancel_at <= SMALL_AUTO_CANCEL_MIN else cancel_at - FINAL_WARNING_LEAD_MIN
+        final_warning = max(1, cancel_at // 2) if cancel_at <= SMALL_AUTO_CANCEL_MIN else cancel_at - FINAL_WARNING_LEAD_MIN
 
     reminders: list[int] = []
     step = max(1, int(every_min))

@@ -131,6 +131,23 @@
     }
   },
   {
+    "name": "custom: first 15, every 20, Y=60 -> 15, 35 (55 is the warning)",
+    "input": {
+      "first": 15,
+      "every": 20,
+      "max": 5,
+      "autoCancel": 60
+    },
+    "expected": {
+      "reminders": [
+        15,
+        35
+      ],
+      "finalWarning": 55,
+      "cancelAt": 60
+    }
+  },
+  {
     "name": "Y smaller than first reminder: only the final warning",
     "input": {
       "first": 10,
@@ -172,6 +189,36 @@
       ],
       "finalWarning": 3,
       "cancelAt": 7
+    }
+  },
+  {
+    "name": "Y=5: final warning at floor(5/2) = 2",
+    "input": {
+      "first": 1,
+      "every": 1,
+      "max": 5,
+      "autoCancel": 5
+    },
+    "expected": {
+      "reminders": [
+        1
+      ],
+      "finalWarning": 2,
+      "cancelAt": 5
+    }
+  },
+  {
+    "name": "Y=1: final warning minimum 1",
+    "input": {
+      "first": 1,
+      "every": 1,
+      "max": 5,
+      "autoCancel": 1
+    },
+    "expected": {
+      "reminders": [],
+      "finalWarning": 1,
+      "cancelAt": 1
     }
   },
   {

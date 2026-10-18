@@ -166,6 +166,7 @@ async def test_acknowledge_with_money_queues_a_refund_for_the_screenshot_amount(
     assert r["id"] == dispute_id and r["reason"] == "cancelled_payment_received"
     assert r["refund_due"] == 10000 and r["remaining_amount"] == 10000 and r["already_refunded"] == 0
     assert r["player_sent"] == 10000 and r["reason_label_key"] == "rfd.reason.cancelled_payment_received"
+    assert r["payment_id"] == payment_id
     assert (await client.get(BADGES, headers=oh)).json() == {"approvals": 0, "refunds": 1}
     assert len(await log_rows(db_session_factory, player.id)) == before  # acknowledge never messages the player
 

@@ -113,6 +113,7 @@ def refund_out(
         refunded_amount=float(dispute.refunded_amount) if dispute.refunded_amount is not None else None,
         remaining_amount=round(max(refund_due - already, 0.0), 2),
         player_sent=player_sent,
+        payment_id=dispute.payment_id,
         refund_due=refund_due,
         already_refunded=already,
         reason_label_key=REFUND_REASON_KEYS.get(dispute.reason, "rfd.reason.other"),
