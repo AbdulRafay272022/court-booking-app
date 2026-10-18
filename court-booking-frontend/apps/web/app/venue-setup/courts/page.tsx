@@ -14,6 +14,10 @@ import { PrimaryButton, SecondaryButton, SectionLabel, Stepper } from "@/compone
 import { CourtSetupFields } from "@/components/setup/court-setup-fields";
 import { CourtBasicsFields } from "@/components/setup/court-basics-fields";
 import { CourtTabs } from "@/components/setup/court-tabs";
+import { AdvanceRuleFields } from "@/components/setup/advance-rule-fields";
+import { advanceDraftErrors, basePriceFromDrafts } from "@/components/setup/advance-preview";
+import { advanceApiFields, useAdvanceDraftStore } from "@/components/setup/advance-draft-store";
+import { PaymentRemindersCard } from "@/components/setup/payment-reminders-card";
 
 /** Has the owner filled anything into this court beyond what a fresh tab starts with? Decides whether deleting its tab
  * asks for confirmation. A fresh tab is "Court N", the default sport, and the default hours and prices. */
@@ -36,6 +40,7 @@ export default function VenueCourtsPage() {
   const fmt = useFmt();
   const queryClient = useQueryClient();
   const store = useVenueSetupStore();
+  const advance = useAdvanceDraftStore();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Section 31 Part 2: the saved draft pointed at a venue/court that no longer exists (or isn't
@@ -56,7 +61,12 @@ export default function VenueCourtsPage() {
   // Each court is valid on its own: a name, usable hours (closing at/before opening, e.g. 06:00 -> 02:00, used to reach the
   // API, 500, and surface as "Can't reach the server"), and a price.
   const courtProblems = store.courts.map((c) => (c.name.trim() ? courtSetupProblem(c) : t("setup.courts.needName")));
-  const isValid = store.courts.length > 0 && courtProblems.every((p) => p === null);
+  // Round 2 A11: a typed advance must be usable (percentage 0-100, amounts 0 or more) before the courts are sent.
+  const advanceOk = store.courts.every((_, i) => {
+    const e = advanceDraftErrors(advance.get(i));
+    return !e.value && !e.minimum;
+  });
+  const isValid = store.courts.length > 0 && courtProblems.every((p) => p === null) && advanceOk;
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -118,12 +128,19 @@ export default function VenueCourtsPage() {
             sport: court.sport,
             slot_minutes: court.slotMinutes,
             is_indoor: !!court.isIndoor,
+            ...advanceApiFields(advance.get(i)),
           });
           courtId = created.id;
           store.setCreatedCourtId(i, courtId);
         } else {
           // created by an earlier attempt: bring it up to date with whatever the owner has edited since
-          await api.courts.update(courtId, { name: court.name, sport: court.sport, slot_minutes: court.slotMinutes, is_indoor: !!court.isIndoor });
+          await api.courts.update(courtId, {
+            name: court.name,
+            sport: court.sport,
+            slot_minutes: court.slotMinutes,
+            is_indoor: !!court.isIndoor,
+            ...advanceApiFields(advance.get(i)),
+          });
         }
         // each court gets ITS OWN hours and prices
         await api.courts.setSchedule(courtId, buildSchedules(court));
@@ -131,6 +148,7 @@ export default function VenueCourtsPage() {
       }
 
       store.reset();
+      advance.reset();
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       router.replace(`/venue-setup/status?venueId=${venueId}`);
     } catch (e) {
@@ -162,6 +180,7 @@ export default function VenueCourtsPage() {
         active={active}
         onSelect={setActiveTab}
         onAdd={() => {
+          advance.copyTo(store.courts.length - 1, store.courts.length);
           store.addCourt();
           setActiveTab(store.courts.length); // the new tab is appended, so it sits at the old length
         }}
@@ -170,6 +189,7 @@ export default function VenueCourtsPage() {
           const court = store.courts[active];
           if (courtHasData(court, active) && !window.confirm(t("setup.courts.confirmDelete", { name: court.name }))) return;
           store.removeCourt(active);
+          advance.remove(active);
           setActiveTab(Math.max(0, active - 1));
         }}
       />
@@ -186,6 +206,13 @@ export default function VenueCourtsPage() {
               note={index > 0 ? t("setup.courts.copyNote") : undefined}
             />
             <CourtSetupFields value={court} onChange={(patch) => store.updateCourt(index, patch)} />
+            <AdvanceRuleFields
+              {...advance.get(index)}
+              onChange={(patch) => advance.update(index, patch)}
+              unitPrice={basePriceFromDrafts(court.pricingRules)}
+              unitMinutes={court.slotMinutes}
+              defaultPercentage={null}
+            />
           </div>
         ) : null,
       )}
@@ -205,6 +232,7 @@ export default function VenueCourtsPage() {
             type="button"
             onClick={() => {
               store.reset();
+              advance.reset();
               setStaleDraft(false);
               router.replace("/venue-setup/register");
             }}
@@ -220,6 +248,17 @@ export default function VenueCourtsPage() {
           {t("setup.courts.sendFailed", { error })}
         </p>
       ) : null}
+
+      {/* Round 2 B1: same reminders card as Venue Settings (parity), tucked under "Advanced" with today's defaults. */}
+      <details className="group rounded-2xl border border-owner-border bg-owner-surface" data-testid="wizard-advanced">
+        <summary className="cursor-pointer list-none min-h-11 px-5 py-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]">
+          <span className="text-[14.5px] font-bold text-owner-ink">{t("timer.advanced")}</span>
+          <span className="text-[12.5px] text-owner-ink-faint">{t("timer.advancedHint")}</span>
+        </summary>
+        <div className="px-2 pb-2 sm:px-3 sm:pb-3">
+          <PaymentRemindersCard />
+        </div>
+      </details>
 
       <p className="text-[13px] font-medium text-owner-ink-faint">{t("setup.courts.reviewNote")}</p>
       <div className="flex flex-col-reverse gap-3 sm:flex-row">

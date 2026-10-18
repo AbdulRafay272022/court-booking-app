@@ -1,5 +1,5 @@
 // Expo-web e2e for the owner follow-ups: Approvals/Refunds Details + History links, and the bell unread badge.
-// Run: PLAYWRIGHT_PATH=<...>/node_modules/playwright node e2e/followups-check.cjs   (Expo web on :8083 with a DEAD api url)
+// Run: PLAYWRIGHT_PATH=<...>/node_modules/playwright node e2e/followups-check.cjs   (Expo web on :8083 or BASE, with a DEAD api url)
 // All /api/v1/** traffic is mocked via page.route; nothing reaches a real backend.
 const { chromium } = require(process.env.PLAYWRIGHT_PATH);
 const BASE = process.env.BASE || "http://localhost:8083";
@@ -59,6 +59,7 @@ async function setup(browser, state) {
     }
     if (p === "/owners/badges") return json({ approvals: 1, refunds: 1 });
     if (p === "/owners/pending-approvals") return json([approval]);
+    if (p === "/owners/approvals-queue") return json({ items: [{ ...approval, submitted_at: iso(-0.1), checks: null, state: "awaiting", cancelled_at: null, has_screenshot: false, overpayment: null }], total: 1, page: 1, page_size: 50 });
     if (p === "/owners/refunds") return json([refund]);
     if (p === "/owners/bookings-history") return json({ items: [histRow], total: 1, page: 1, page_size: 20, totals: { count: 1, total: 3000, collected: 1500, due: 1500 } });
     if (/^\/owners\/bookings\/.+\/overview-detail$/.test(p)) return json(detail());
@@ -93,19 +94,19 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.goto(BASE + "/approvals", { waitUntil: "domcontentloaded", timeout: 240000 });
     await page.getByText("Payment review").first().waitFor({ timeout: 180000 });
     await page.getByRole("button", { name: "Details" }).waitFor({ timeout: 30000 });
-    check("approvals: Details + History link shown", (await page.getByRole("link", { name: "History mein dekho" }).count()) === 1);
+    check("approvals: Details + History link shown", (await page.getByRole("link", { name: "History mein dekhein" }).count()) === 1);
     check("approvals: approve/reject still there", (await page.getByText("Approve", { exact: true }).count()) === 1 && (await page.getByText("Reject", { exact: true }).count()) === 1);
     await page.getByRole("button", { name: "Details" }).click();
     await page.getByText("KH-0000004D").first().waitFor({ timeout: 15000 });
     check("approvals: Details opens the booking sheet", reqs.some((r) => /bookings\/b-77\/overview-detail/.test(r.p)));
     await page.getByText("Band karein").first().click();
     await page.waitForTimeout(500);
-    await page.getByRole("link", { name: "History mein dekho" }).click();
+    await page.getByRole("link", { name: "History mein dekhein" }).click();
     await page.waitForURL(/history/, { timeout: 15000 });
-    await page.getByText("Band karein").first().waitFor({ timeout: 15000 });
+    await page.getByTestId("history-highlighted").first().waitFor({ timeout: 15000 });
     const h = reqs.filter((r) => r.p === "/owners/bookings-history").pop();
     check("approvals: History opens with the booking's date range", h && h.q.includes("from=" + SLOT_DAY) && h.q.includes("to=" + SLOT_DAY), h && h.q);
-    check("approvals: booking opened on History", /b-77/.test(page.url()) && (await page.getByText("KH-0000004D").count()) >= 1);
+    check("approvals: booking highlighted on History (no popup)", /b-77/.test(page.url()) && (await page.getByText("Sirf ye booking dikhayi ja rahi hai").count()) >= 1 && (await page.getByText("Band karein").count()) === 0);
     await ctx.close();
   }
 
@@ -121,14 +122,14 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.getByText("Band karein").first().click();
     await page.waitForTimeout(500);
     await page.getByText("Usman Tariq").first().click();
-    check("refunds: tapping the card still opens the refund form", (await page.getByText("Confirm refunded").count()) === 1);
+    check("refunds: tapping the card still opens the refund form", (await page.getByText("Refund record karein").count()) === 1);
     await page.getByText("Cancel", { exact: true }).first().click();
-    await page.getByRole("link", { name: "History mein dekho" }).click();
+    await page.getByRole("link", { name: "History mein dekhein" }).click();
     await page.waitForURL(/history/, { timeout: 15000 });
-    await page.getByText("Band karein").first().waitFor({ timeout: 15000 });
+    await page.getByTestId("history-highlighted").first().waitFor({ timeout: 15000 });
     const h = reqs.filter((r) => r.p === "/owners/bookings-history").pop();
     check("refunds: History opens with the booking's date range", h && h.q.includes("from=" + SLOT_DAY) && h.q.includes("to=" + SLOT_DAY), h && h.q);
-    check("refunds: booking opened on History", /b-77/.test(page.url()) && (await page.getByText("KH-0000004D").count()) >= 1);
+    check("refunds: booking highlighted on History (no popup)", /b-77/.test(page.url()) && (await page.getByText("Sirf ye booking dikhayi ja rahi hai").count()) >= 1 && (await page.getByText("Band karein").count()) === 0);
     await ctx.close();
   }
 

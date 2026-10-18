@@ -9,7 +9,7 @@ from app.models.payment_entry import PaymentEntry
 from app.models.user import User
 from app.models.venue import Venue
 from app.schemas.booking import BookingOut
-from app.schemas.payment import PaymentApproveIn, PaymentOut, PaymentRejectIn, PaymentSubmitResponse, ProofUrlOut
+from app.schemas.payment import AcknowledgeIn, AcknowledgeOut, PaymentApproveIn, PaymentOut, PaymentRejectIn, PaymentSubmitResponse, ProofUrlOut
 from app.schemas.payment_entry import PaymentEntryIn, PaymentEntryOut, PaymentEntryResponse, PaymentEntryReverseIn
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
@@ -98,6 +98,7 @@ async def submit_payment_proof(
                 starts_at=booking.starts_at,
                 ends_at=booking.ends_at,
                 amount_paid=float(booking.amount_paid),
+                reference_id=booking.id,
             )
 
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
@@ -117,9 +118,14 @@ async def approve_payment(
     booking = await booking_service.require_accessible_booking(
         payment.booking_id, owner, permission="approve_payments"
     )
+    payment_service.require_awaiting(payment, booking)
 
     payment = await payment_service.approve_payment(
-        payment, booking, owner, amount_pkr=payload.amount_pkr if payload else None
+        payment,
+        booking,
+        owner,
+        amount_pkr=payload.amount_pkr if payload else None,
+        accept_mode=payload.accept_mode if payload else None,
     )
     await db.refresh(booking)
 
@@ -134,6 +140,7 @@ async def approve_payment(
             starts_at=booking.starts_at,
             ends_at=booking.ends_at,
             amount_paid=float(booking.amount_paid),
+            reference_id=booking.id,
         )
 
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
@@ -149,6 +156,13 @@ async def reject_payment(
     booking = await booking_service.require_accessible_booking(
         payment.booking_id, owner, permission="approve_payments"
     )
+    # Owner Round 2 (A5): a cancelled/expired booking gets 409 BOOKING_NO_LONGER_PENDING before any reason check, and
+    # the player is never messaged. A reason is still required for a normal (awaiting) rejection.
+    payment_service.require_awaiting(payment, booking)
+    if payload.reason is None:
+        raise AppError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR, "A reason is required to reject a payment"
+        )
 
     payment = await payment_service.reject_payment(payment, booking, owner, payload.reason)
     await db.refresh(booking)
@@ -157,10 +171,26 @@ async def reject_payment(
     player = await db.get(User, booking.player_id) if booking.player_id else None
     if court is not None and player is not None:
         await NotificationService(db, settings).notify_payment_rejected(
-            user=player, court_name=court.name, reason=payload.reason
+            user=player, court_name=court.name, reason=payload.reason, reference_id=booking.id
         )
 
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
+
+
+@router.post("/owners/payments/{payment_id}/acknowledge", response_model=AcknowledgeOut)
+async def acknowledge_cancelled_payment(
+    payment_id: uuid.UUID, payload: AcknowledgeIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+) -> AcknowledgeOut:
+    """Owner Round 2 (A5): "Theek hai" on a payment whose booking the player cancelled / that expired. Same
+    permission as approve (owner, or staff with approve_payments). Never messages the player."""
+    payment_service = PaymentService(db, settings)
+    payment = await payment_service.get_payment(payment_id)
+    booking_service = BookingService(db, settings)
+    booking = await booking_service.require_accessible_booking(
+        payment.booking_id, owner, permission="approve_payments"
+    )
+    dispute = await payment_service.acknowledge_payment(payment, booking, owner, money_received=payload.money_received)
+    return AcknowledgeOut(ok=True, refund_dispute_id=dispute.id if dispute is not None else None)
 
 
 @router.get("/payments/{payment_id}/proof-url", response_model=ProofUrlOut)

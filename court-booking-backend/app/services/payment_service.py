@@ -26,6 +26,7 @@ from app.services.audit_service import AuditService
 from app.services.booking_service import BookingService, recompute_reliability
 from app.services.entitlement_service import EntitlementService
 from app.services.feature_flag_service import flag_on
+from app.services.payment_ledger_service import UNCREDITED_REFUND_REASONS  # noqa: F401 (re-exported)
 from app.services.waitlist_service import WaitlistService
 from app.utils.encryption import decrypt_json
 from app.utils.image import perceptual_hash
@@ -88,6 +89,50 @@ def default_credit_amount(payment: Payment, booking: Booking) -> int:
     if payment.ocr_amount is not None and float(payment.ocr_amount) > 0:
         return int(round(float(payment.ocr_amount)))
     return int(round(float(booking.advance_amount)))
+
+
+
+# The approvals-queue state of an unreviewed payment, from its booking (docs/round2-contract.md A1/A5).
+AWAITING_STATES = (BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED)
+
+
+def approval_state(booking: Booking) -> str:
+    """"awaiting" (the owner can approve/reject) | "cancelled_by_player" | "cancelled_by_owner" | "expired".
+    A booking that left the pending states any other way (system cancel, or confirmed/completed through another
+    path while this proof stayed unreviewed) is "expired": the proof can only be acknowledged now."""
+    if booking.status in AWAITING_STATES:
+        return "awaiting"
+    if booking.status == BookingStatus.CANCELLED:
+        if booking.cancelled_by == CancelledBy.PLAYER:
+            return "cancelled_by_player"
+        if booking.cancelled_by == CancelledBy.OWNER:
+            return "cancelled_by_owner"
+    return "expired"
+
+
+def is_expired_hold(booking: Booking) -> bool:
+    return (
+        booking.status == BookingStatus.CANCELLED
+        and booking.cancelled_by == CancelledBy.SYSTEM
+        and booking.cancellation_reason == "hold_expired"
+    )
+
+
+LATE_PROOF_MESSAGE = (
+    "Your booking time ran out before this screenshot arrived, so the slot was released. "
+    "We have sent your screenshot to the venue; they will check it and contact you (a refund if the money reached them)."
+)
+
+
+def overpayment_of(payment: Payment, booking: Booking) -> dict | None:
+    """{expected, ocr_amount, excess} when the screenshot shows more than the expected advance, else None."""
+    if payment.ocr_amount is None:
+        return None
+    expected = int(round(float(booking.advance_amount)))
+    ocr = int(round(float(payment.ocr_amount)))
+    if ocr <= expected:
+        return None
+    return {"expected": expected, "ocr_amount": ocr, "excess": ocr - expected}
 
 
 def build_payment_summary(payment: Payment, booking: Booking) -> tuple[str, str, int, int, int, int]:
@@ -396,6 +441,18 @@ class PaymentService:
     async def submit_payment(
         self, booking: Booking, *, proof_bytes: bytes, filename: str, content_type: str
     ) -> Payment:
+        # Owner Round 2 (B1): the hold time is enforced the moment it runs out, not when the expiry job next runs.
+        if (
+            booking.status == BookingStatus.HELD
+            and booking.held_until is not None
+            and booking.held_until <= datetime.now(timezone.utc)
+        ):
+            if await self.booking_service.expire_hold_now(booking):
+                court = await self.db.get(Court, booking.court_id)
+                if court is not None:
+                    await self.waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
+        if is_expired_hold(booking):
+            await self._record_late_proof(booking, proof_bytes=proof_bytes, filename=filename, content_type=content_type)
         if booking.status != BookingStatus.HELD:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -485,6 +542,92 @@ class PaymentService:
         await self.db.commit()
         await self.db.refresh(payment)
         return payment
+
+    async def _record_late_proof(
+        self, booking: Booking, *, proof_bytes: bytes, filename: str, content_type: str
+    ) -> None:
+        """Owner Round 2 (B1): a payment screenshot for a hold that already expired is never silently lost. It is
+        stored as an unreviewed payment on the (cancelled) booking -- so it shows in the owner's approvals queue as
+        an "expired" card the owner can acknowledge ("money received -> refund") -- the owner gets a bell row
+        (`late_payment_proof`), and the player gets a clear 409 HOLD_EXPIRED. Always raises."""
+        existing = await self.db.scalar(
+            select(Payment).where(Payment.booking_id == booking.id, Payment.review_verdict.is_(None)).limit(1)
+        )
+        payment = existing
+        if existing is None:
+            expected_amount = float(booking.advance_amount)
+            proof_key = await upload_private_proof(proof_bytes, filename, content_type)
+            extraction = await self._extract_payment_proof(
+                proof_bytes,
+                content_type,
+                expected_amount,
+                entitled=await self.entitlements.court_entitled(booking.court_id, "ocr_verification"),
+            )
+            ocr_amount = extraction.amount
+            if ocr_amount is None:
+                ocr_verdict = "unreadable"
+            elif expected_amount > 0 and (
+                abs(float(ocr_amount) - expected_amount) / expected_amount * 100
+                <= self.settings.OCR_MATCH_TOLERANCE_PERCENT
+            ):
+                ocr_verdict = "match"
+            else:
+                ocr_verdict = "mismatch"
+            payment = Payment(
+                booking_id=booking.id,
+                proof_key=proof_key,
+                proof_hash=perceptual_hash(proof_bytes),
+                amount_claimed=expected_amount,
+                ocr_amount=ocr_amount,
+                ocr_ref=extraction.reference,
+                ocr_timestamp=self._parse_ocr_timestamp(extraction.timestamp),
+                ocr_verdict=ocr_verdict,
+                ocr_confidence=extraction.confidence,
+                ocr_raw=extraction.raw_response,
+                ocr_payer_name=extraction.payer_name,
+                ocr_bank=extraction.bank_name,
+                ocr_receiver=extraction.receiver_name,
+                ocr_flags=extraction.flags or None,
+                time_check_verdict="after_timer",
+            )
+            self.db.add(payment)
+            try:
+                await self.db.flush()
+            except IntegrityError:
+                await self.db.rollback()
+                payment = await self.db.scalar(
+                    select(Payment).where(Payment.booking_id == booking.id, Payment.review_verdict.is_(None)).limit(1)
+                )
+            else:
+                await self.audit.log(
+                    actor_user_id=booking.player_id,
+                    actor_type="player",
+                    action="payment.late_submitted",
+                    entity_type="payment",
+                    entity_id=payment.id,
+                    new_value={"booking_id": str(booking.id), "ocr_verdict": ocr_verdict},
+                )
+                await self.db.commit()
+
+                from app.services.notification_service import NotificationService
+
+                court = await self.db.get(Court, booking.court_id)
+                venue = await self.db.get(Venue, court.venue_id) if court is not None else None
+                owner = await self.db.get(User, venue.owner_id) if venue is not None else None
+                if owner is not None:
+                    try:
+                        await NotificationService(self.db, self.settings).notify_owner_late_payment_proof(
+                            owner=owner, court_name=court.name, booking_id=booking.id,
+                            starts_at=booking.starts_at, ends_at=booking.ends_at,
+                        )
+                    except Exception:  # noqa: BLE001 -- the stored proof is what matters; never lose it to a send error
+                        logger.warning("payment_service.late_proof_notify_failed", booking_id=str(booking.id), exc_info=True)
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            ErrorCode.HOLD_EXPIRED,
+            LATE_PROOF_MESSAGE,
+            details={"booking_id": str(booking.id), "payment_id": str(payment.id) if payment else None},
+        )
 
     async def _venue_scoped_stats(self, player_id: uuid.UUID, venue_id: uuid.UUID) -> tuple[int, int]:
         """(booking_count, rejection_count) for this player at this venue only
@@ -619,8 +762,90 @@ class PaymentService:
         await self.db.refresh(payment)
         return True
 
+    @staticmethod
+    def _no_longer_pending(booking: Booking) -> AppError:
+        state = approval_state(booking)
+        return AppError(
+            status.HTTP_409_CONFLICT,
+            ErrorCode.BOOKING_NO_LONGER_PENDING,
+            "This booking is no longer waiting for approval"
+            + (" -- the player cancelled it." if state == "cancelled_by_player" else "."),
+            details={"state": state},
+        )
+
+    def require_awaiting(self, payment: Payment, booking: Booking) -> None:
+        """Owner Round 2 (A5): approve/reject on an unreviewed payment whose booking was cancelled or expired gets a
+        clear 409 BOOKING_NO_LONGER_PENDING {state} up front (no reason asked, nobody messaged). An already-reviewed
+        payment falls through to the claim's own PAYMENT_ALREADY_REVIEWED."""
+        if payment.review_verdict is None and approval_state(booking) != "awaiting":
+            raise self._no_longer_pending(booking)
+
+    async def acknowledge_payment(
+        self, payment: Payment, booking: Booking, actor: User, *, money_received: bool
+    ) -> PaymentDispute | None:
+        """Owner Round 2 (A5): the owner/staff saw the grey "player cancelled / expired" card and pressed "Theek hai".
+        The payment leaves the queue and the badge (verdict "acknowledged", reviewed_by/at), audit_log
+        `payment.cancelled_acknowledged`. `money_received=True` ("Paisa aa gaya - Refund banayein") queues a refund
+        owed in payment_disputes -- the same table and Refunds screen as every other refund -- for the amount the
+        screenshot showed (`ocr_amount` when OCR read one, else `amount_claimed`, the advance the player was asked
+        for). That money was never credited to the ledger, so its reason `cancelled_payment_received` is one of
+        UNCREDITED_REFUND_REASONS (no negative entry when it is paid out). The player is never messaged here."""
+        if payment.review_verdict is None and approval_state(booking) == "awaiting":
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.PAYMENT_STILL_PENDING,
+                "This payment is still waiting for approval -- approve or reject it instead.",
+                details={"state": "awaiting"},
+            )
+        claimed = await self._claim_review(
+            payment, "acknowledged", reviewed_by=actor.id, reviewed_at=datetime.now(timezone.utc)
+        )
+        if not claimed:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.PAYMENT_ALREADY_REVIEWED,
+                "This payment was already reviewed by another request",
+            )
+        dispute = None
+        amount = 0.0
+        if money_received:
+            if payment.ocr_amount is not None and float(payment.ocr_amount) > 0:
+                amount = float(payment.ocr_amount)
+            else:
+                amount = float(payment.amount_claimed or 0)
+            dispute = PaymentDispute(
+                booking_id=booking.id,
+                payment_id=payment.id,
+                player_id=booking.player_id,
+                reason="cancelled_payment_received",
+                refund_amount=round(amount, 2),
+            )
+            self.db.add(dispute)
+            await self.db.flush()
+        await self.audit.log(
+            actor_user_id=actor.id,
+            actor_type=actor.role.value,
+            action="payment.cancelled_acknowledged",
+            entity_type="payment",
+            entity_id=payment.id,
+            new_value={
+                "booking_id": str(booking.id),
+                "state": approval_state(booking),
+                "money_received": money_received,
+                "refund_amount": amount if money_received else None,
+                "refund_dispute_id": str(dispute.id) if dispute is not None else None,
+            },
+        )
+        await self.db.commit()
+        return dispute
+
     async def approve_payment(
-        self, payment: Payment, booking: Booking, approved_by: User, amount_pkr: int | None = None
+        self,
+        payment: Payment,
+        booking: Booking,
+        approved_by: User,
+        amount_pkr: int | None = None,
+        accept_mode: str | None = None,
     ) -> Payment:
         """No upfront `if booking.status != PAYMENT_SUBMITTED` / `if
         payment.review_verdict is not None` pre-check here on purpose: a
@@ -650,9 +875,44 @@ class PaymentService:
         # Credit the amount the owner confirmed, defaulting to what the screenshot showed (else the expected
         # advance) -- never blindly the advance (money-correctness fix).
         credit = amount_pkr if amount_pkr is not None else default_credit_amount(payment, booking)
-        await self.booking_service.confirm_booking(
-            booking, recorded_by=approved_by, amount_pkr=credit, payment=payment
-        )
+        # Owner Round 2 (A10.3): accept_mode "advance_only" credits only the expected advance and queues the rest as
+        # an `overpayment_excess` refund owed (existing columns). "full"/None = the behaviour above: everything up to
+        # the price is credited, only money above the price becomes a refund (inside confirm_booking).
+        advance_excess = 0
+        if accept_mode == "advance_only":
+            expected = int(round(float(booking.advance_amount)))
+            if credit > expected:
+                advance_excess = credit - expected
+                credit = expected
+        try:
+            await self.booking_service.confirm_booking(
+                booking, recorded_by=approved_by, amount_pkr=credit, payment=payment
+            )
+        except AppError as exc:
+            if exc.code != ErrorCode.BOOKING_ALREADY_CANCELLED:
+                raise
+            # Lost a race with a cancel: undo the claimed verdict and say clearly what happened.
+            await self.db.rollback()
+            await self.db.refresh(booking)
+            raise self._no_longer_pending(booking) from exc
+        if advance_excess > 0:
+            self.db.add(
+                PaymentDispute(
+                    booking_id=booking.id,
+                    payment_id=payment.id,
+                    player_id=booking.player_id,
+                    reason="overpayment_excess",
+                    refund_amount=advance_excess,
+                )
+            )
+            await self.audit.log(
+                actor_user_id=approved_by.id,
+                actor_type="owner",
+                action="payment.overpayment_queued",
+                entity_type="payment",
+                entity_id=payment.id,
+                new_value={"accept_mode": accept_mode, "credited": credit, "refund_owed": advance_excess},
+            )
         await self.db.commit()
         await self.db.refresh(payment)
         return payment

@@ -1,0 +1,271 @@
+[
+  {
+    "name": "spec example: defaults, auto-cancel off",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 5,
+      "autoCancel": null
+    },
+    "expected": {
+      "reminders": [
+        10,
+        40,
+        70,
+        100,
+        130
+      ],
+      "finalWarning": null,
+      "cancelAt": null
+    }
+  },
+  {
+    "name": "auto-cancel 0 means off",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 5,
+      "autoCancel": 0
+    },
+    "expected": {
+      "reminders": [
+        10,
+        40,
+        70,
+        100,
+        130
+      ],
+      "finalWarning": null,
+      "cancelAt": null
+    }
+  },
+  {
+    "name": "spec example Y=30: reminder 10, warning 25, cancel 30",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 5,
+      "autoCancel": 30
+    },
+    "expected": {
+      "reminders": [
+        10
+      ],
+      "finalWarning": 25,
+      "cancelAt": 30
+    }
+  },
+  {
+    "name": "spec example Y=120 defaults: 10,40,70,100 + warning 115",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 5,
+      "autoCancel": 120
+    },
+    "expected": {
+      "reminders": [
+        10,
+        40,
+        70,
+        100
+      ],
+      "finalWarning": 115,
+      "cancelAt": 120
+    }
+  },
+  {
+    "name": "Y=240 defaults: max 5 reminders, warning not counted",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 5,
+      "autoCancel": 240
+    },
+    "expected": {
+      "reminders": [
+        10,
+        40,
+        70,
+        100,
+        130
+      ],
+      "finalWarning": 235,
+      "cancelAt": 240
+    }
+  },
+  {
+    "name": "custom: first 5, every 5, max 3, off",
+    "input": {
+      "first": 5,
+      "every": 5,
+      "max": 3,
+      "autoCancel": null
+    },
+    "expected": {
+      "reminders": [
+        5,
+        10,
+        15
+      ],
+      "finalWarning": null,
+      "cancelAt": null
+    }
+  },
+  {
+    "name": "custom: first 15, every 15, max 10, Y=60 drops reminders at/after warning 55",
+    "input": {
+      "first": 15,
+      "every": 15,
+      "max": 10,
+      "autoCancel": 60
+    },
+    "expected": {
+      "reminders": [
+        15,
+        30,
+        45
+      ],
+      "finalWarning": 55,
+      "cancelAt": 60
+    }
+  },
+  {
+    "name": "custom: first 15, every 20, Y=60 -> 15, 35 (55 is the warning)",
+    "input": {
+      "first": 15,
+      "every": 20,
+      "max": 5,
+      "autoCancel": 60
+    },
+    "expected": {
+      "reminders": [
+        15,
+        35
+      ],
+      "finalWarning": 55,
+      "cancelAt": 60
+    }
+  },
+  {
+    "name": "Y smaller than first reminder: only the final warning",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 5,
+      "autoCancel": 8
+    },
+    "expected": {
+      "reminders": [],
+      "finalWarning": 4,
+      "cancelAt": 8
+    }
+  },
+  {
+    "name": "Y=10: final warning at half of Y",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 5,
+      "autoCancel": 10
+    },
+    "expected": {
+      "reminders": [],
+      "finalWarning": 5,
+      "cancelAt": 10
+    }
+  },
+  {
+    "name": "Y=7: final warning at floor(7/2)",
+    "input": {
+      "first": 2,
+      "every": 5,
+      "max": 5,
+      "autoCancel": 7
+    },
+    "expected": {
+      "reminders": [
+        2
+      ],
+      "finalWarning": 3,
+      "cancelAt": 7
+    }
+  },
+  {
+    "name": "Y=5: final warning at floor(5/2) = 2",
+    "input": {
+      "first": 1,
+      "every": 1,
+      "max": 5,
+      "autoCancel": 5
+    },
+    "expected": {
+      "reminders": [
+        1
+      ],
+      "finalWarning": 2,
+      "cancelAt": 5
+    }
+  },
+  {
+    "name": "Y=1: final warning minimum 1",
+    "input": {
+      "first": 1,
+      "every": 1,
+      "max": 5,
+      "autoCancel": 1
+    },
+    "expected": {
+      "reminders": [],
+      "finalWarning": 1,
+      "cancelAt": 1
+    }
+  },
+  {
+    "name": "Y=11: final warning 5 before",
+    "input": {
+      "first": 2,
+      "every": 3,
+      "max": 5,
+      "autoCancel": 11
+    },
+    "expected": {
+      "reminders": [
+        2,
+        5
+      ],
+      "finalWarning": 6,
+      "cancelAt": 11
+    }
+  },
+  {
+    "name": "reminders off (max 0) with auto-cancel",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 0,
+      "autoCancel": 60
+    },
+    "expected": {
+      "reminders": [],
+      "finalWarning": 55,
+      "cancelAt": 60
+    }
+  },
+  {
+    "name": "max 1",
+    "input": {
+      "first": 10,
+      "every": 30,
+      "max": 1,
+      "autoCancel": null
+    },
+    "expected": {
+      "reminders": [
+        10
+      ],
+      "finalWarning": null,
+      "cancelAt": null
+    }
+  }
+]

@@ -7,14 +7,36 @@ import { buildPricingRules, buildSchedules, courtSetupProblem } from "@court-boo
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { isCourtPristine, useVenueSetupStore } from "@/lib/venue-setup-store";
+import { isCourtPristine, useVenueSetupStore, type CourtDraft } from "@/lib/venue-setup-store";
 import { confirmAction } from "@/lib/confirm";
 import { findSport } from "@/lib/sport";
 import { CourtSetupFields } from "@/components/court-setup-fields";
 import { CourtIdentityFields } from "@/components/court-identity-fields";
 import { CourtTabs } from "@/components/court-tabs";
 import { courtLabel } from "@/components/court-label";
+import {
+  ADVANCE_DRAFT_DEFAULTS,
+  AdvanceSettings,
+  advanceDraftProblem,
+  advanceDraftToInput,
+  advancePriceFromSetup,
+  type AdvanceDraft,
+} from "@/components/advance-settings";
+import { RemindersCard } from "@/components/reminders-card";
 import { PrimaryButton, SecondaryButton } from "./_components";
+
+/** A wizard court plus its A11 advance rule. The persisted draft store (lib/venue-setup-store.ts) spreads whatever fields a
+ * court carries, so the advance fields ride along in the saved draft; a court from an older draft simply has none
+ * (= the shared defaults, Default from pricing). */
+type CourtWithAdvance = CourtDraft & Partial<AdvanceDraft>;
+function advanceOf(c: CourtDraft): AdvanceDraft {
+  const a = c as CourtWithAdvance;
+  return {
+    advanceType: a.advanceType ?? ADVANCE_DRAFT_DEFAULTS.advanceType,
+    advanceValue: a.advanceValue ?? ADVANCE_DRAFT_DEFAULTS.advanceValue,
+    advanceMinimum: a.advanceMinimum ?? ADVANCE_DRAFT_DEFAULTS.advanceMinimum,
+  };
+}
 
 export default function VenueCourtsScreen() {
   const store = useVenueSetupStore();
@@ -23,6 +45,7 @@ export default function VenueCourtsScreen() {
   // ours). Shown as a recovery panel with a next step, not as a bare error alert.
   const [staleDraft, setStaleDraft] = useState(false);
   const [selected, setSelected] = useState(0);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const tabIndex = Math.min(selected, store.courts.length - 1);
 
   // A court whose sport isn't one the venue offers (e.g. the default "Padel" on a Futsal-only venue) starts on the venue's
@@ -38,7 +61,7 @@ export default function VenueCourtsScreen() {
   // Each court is valid on its own: a name, usable hours (closing at/before opening, e.g. 06:00 -> 02:00, used to reach the
   // API, 500, and surface as a "network" error), and a price.
   const courtProblems = store.courts.map((c, i) => {
-    const p = c.name.trim() ? courtSetupProblem(c) : "Give this court a name.";
+    const p = c.name.trim() ? (courtSetupProblem(c) ?? advanceDraftProblem(advanceOf(c))) : "Give this court a name.";
     return p ? `Court ${i + 1}: ${p}` : null;
   });
   const firstProblem = courtProblems.find((p) => p !== null) ?? null;
@@ -109,12 +132,19 @@ export default function VenueCourtsScreen() {
             sport: court.sport,
             slot_minutes: court.slotMinutes,
             is_indoor: court.isIndoor,
+            ...advanceDraftToInput(advanceOf(court)),
           });
           courtId = created.id;
           store.setCreatedCourtId(i, courtId);
         } else {
           // Already created by an earlier attempt: bring it up to date with any edits made since (PATCH, never a re-create).
-          await api.courts.update(courtId, { name: court.name, sport: court.sport, slot_minutes: court.slotMinutes, is_indoor: court.isIndoor });
+          await api.courts.update(courtId, {
+            name: court.name,
+            sport: court.sport,
+            slot_minutes: court.slotMinutes,
+            is_indoor: court.isIndoor,
+            ...advanceDraftToInput(advanceOf(court)),
+          });
         }
         // each court gets ITS OWN hours and prices
         await api.courts.setSchedule(courtId, buildSchedules(court));
@@ -171,6 +201,13 @@ export default function VenueCourtsScreen() {
               onChange={(patch) => store.updateCourt(tabIndex, patch)}
             />
             <CourtSetupFields value={store.courts[tabIndex]} onChange={(patch) => store.updateCourt(tabIndex, patch)} />
+            {/* A11: the same editor and defaults as Venue Settings; the court does not exist yet, so the default line is
+                computed from the price typed above (pricing rules are created with advance_percentage 100). */}
+            <AdvanceSettings
+              value={advanceOf(store.courts[tabIndex])}
+              onChange={(patch) => store.updateCourt(tabIndex, patch as Partial<CourtDraft>)}
+              price={advancePriceFromSetup(store.courts[tabIndex])}
+            />
             {courtProblems[tabIndex] ? (
               <Text className="font-plex-medium text-owner-warn text-[12.5px]">{courtProblems[tabIndex]}</Text>
             ) : null}
@@ -201,6 +238,22 @@ export default function VenueCourtsScreen() {
             ) : null}
           </View>
         ) : null}
+
+        {/* B1 preview under "Advanced" (same card as Venue Settings, pre-filled with today's values, not saved yet). */}
+        <View className="gap-3">
+          <Pressable
+            onPress={() => setAdvancedOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: advancedOpen }}
+            accessibilityLabel="Advanced"
+            className="flex-row items-center justify-between rounded-[10px] border border-owner-border bg-owner-surface px-4"
+            style={{ minHeight: 48 }}
+          >
+            <Text className="font-plex-semibold text-owner-ink text-[14.5px]">Advanced</Text>
+            <Text className="font-plex-semibold text-owner-accent text-[13px]">{advancedOpen ? "Chhupayein" : "Dikhayein"}</Text>
+          </Pressable>
+          {advancedOpen ? <RemindersCard /> : null}
+        </View>
 
         {staleDraft ? (
           <View className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border px-4 py-3 gap-3">

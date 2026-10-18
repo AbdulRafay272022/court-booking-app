@@ -30,6 +30,7 @@ from app.models.booking import Booking, BookingStatus
 from app.models.court import Court
 from app.models.schedule import ScheduleTemplate
 from app.services.availability_service import AvailabilityService
+from app.services.live_bookings import hold_not_expired
 from app.utils.schedule import schedule_window
 from app.utils.timezone import PKT_OFFSET
 
@@ -167,6 +168,7 @@ async def count_slots(
                 select(Booking).where(
                     Booking.court_id.in_(templates.keys()),
                     Booking.status.in_(CONFIRMED_STATUSES + PENDING_STATUSES),
+                    hold_not_expired(now),  # Owner Round 2 (B1): an expired hold is free at read time
                     Booking.starts_at < window_end,
                     Booking.ends_at > window_start,
                 )

@@ -12,11 +12,16 @@ export function createPaymentsApi(client: ApiClient) {
   return {
     /** `amountPkr` = the amount the owner confirms the player really paid; omitted = the screenshot amount
      * (else the expected advance). The ledger credits at most the booking price; any excess is queued as a refund. */
-    approve: (paymentId: string, amountPkr?: number) =>
-      client.request<PaymentProofOut>(`/payments/${paymentId}/approve`, {
+    approve: (paymentId: string, amountPkr?: number, acceptMode?: "advance_only" | "full") => {
+      const body: Record<string, unknown> = {};
+      if (amountPkr !== undefined) body.amount_pkr = amountPkr;
+      // Round 2 (A10.3): what to do with money above the expected advance.
+      if (acceptMode !== undefined) body.accept_mode = acceptMode;
+      return client.request<PaymentProofOut>(`/payments/${paymentId}/approve`, {
         method: "POST",
-        ...(amountPkr !== undefined ? { body: JSON.stringify({ amount_pkr: amountPkr }) } : {}),
-      }),
+        ...(Object.keys(body).length ? { body: JSON.stringify(body) } : {}),
+      });
+    },
 
     reject: (paymentId: string, reason: string) =>
       client.request<PaymentProofOut>(`/payments/${paymentId}/reject`, {

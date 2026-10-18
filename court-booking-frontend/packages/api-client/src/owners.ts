@@ -9,6 +9,9 @@ import type {
   OwnerBookingRow,
   OwnerBookingsPage,
   OwnerOverview,
+  ApprovalsQueuePage,
+  AcknowledgeResult,
+  AdvanceExplain,
   OwnerDigest,
   OwnerRefund,
   OwnerToday,
@@ -111,6 +114,22 @@ export function createOwnersApi(client: ApiClient) {
       client.request<OwnerBookingRow>(`/owners/bookings/${bookingId}/completion`, { method: "POST", body: JSON.stringify(input) }),
 
     badges: (venueId?: string) => client.request<OwnerBadges>(`/owners/badges${toQuery({ venue_id: venueId })}`),
+
+    /** Round 2 (A1/A5): every payment awaiting review, newest first, with cancelled-by-player cards. */
+    approvalsQueue: (params: { venueId?: string; date?: string; courtIds?: string[]; page?: number; pageSize?: number } = {}) =>
+      client.request<ApprovalsQueuePage>(
+        `/owners/approvals-queue${toQuery({ venue_id: params.venueId, date: params.date, court_ids: params.courtIds?.join(",") || undefined, page: params.page, page_size: params.pageSize })}`,
+      ),
+
+    /** Round 2 (A5): "Theek hai" on a card whose booking the player cancelled. */
+    acknowledgeCancelled: (paymentId: string, moneyReceived: boolean) =>
+      client.request<AcknowledgeResult>(`/owners/payments/${paymentId}/acknowledge`, {
+        method: "POST",
+        body: JSON.stringify({ money_received: moneyReceived }),
+      }),
+
+    /** Round 2 (A11): how this court's advance works, with a live example. */
+    advanceExplain: (courtId: string) => client.request<AdvanceExplain>(`/courts/${courtId}/advance-explain`),
 
     growth: (venueId?: string) =>
       client.request<Growth>(`/owners/growth${toQuery({ venue_id: venueId })}`),

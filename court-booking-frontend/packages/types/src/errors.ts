@@ -51,6 +51,15 @@ export type ErrorCode =
   | "PREMIUM_FEATURE_REQUIRED"
   | "REFUND_ALREADY_MARKED"
   | "REFUND_EXCEEDS_OWED_AMOUNT"
+  | "PAYMENT_EXCEEDS_BALANCE"
+  | "COMPLETION_TOO_EARLY"
+  // Owner Round 2
+  | "BOOKING_NO_LONGER_PENDING"
+  | "PAYMENT_STILL_PENDING"
+  | "REASON_REQUIRED"
+  | "HOLD_EXPIRED"
+  // Section 32 Part 12: a staff member of this venue without the permission for this action
+  | "NOT_STAFF_PERMITTED"
   | "RATE_LIMITED"
   | "FORBIDDEN"
   | "VALIDATION_ERROR"

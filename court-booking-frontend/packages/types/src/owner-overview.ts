@@ -96,6 +96,8 @@ export interface OwnerOverview {
     by_court: { court_id: string; court_name: string; count: number }[];
   };
   money: { collected: number; due: number; due_bookings: number };
+  /** Round 2 (A7): held + payment_submitted for ANY date (venue + court filter). Optional for an older backend. */
+  pending_all?: import("./round2").PendingAll;
   rows: OwnerBookingRow[];
 }
 
@@ -142,10 +144,14 @@ export interface OwnerBookingDetail {
   refund: { amount: number; status: "owed" | "paid"; paid_at: string | null; reference: string | null } | null;
   completion: BookingCompletion | null;
   timeline: BookingTimelineEvent[];
+  /** Owner Round 2 (A4): for a walk-in, who added it ("owner" | "staff"); null/absent otherwise or when unknown. */
+  channel_detail?: string | null;
 }
 
 export interface CompletionInput {
   result: CompletionResult;
+  /** Round 2 (A8): the amount received NOW out of the remaining due; when set, received_pkr is ignored. */
+  received_now?: number;
   received_pkr?: number;
   reason?: string;
 }

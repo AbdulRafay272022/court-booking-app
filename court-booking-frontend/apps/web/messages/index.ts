@@ -25,6 +25,12 @@ import { ruOvw } from "./ru/ovw";
 import { ruHist } from "./ru/hist";
 import { ruNotif } from "./ru/notif";
 import { ruDetail } from "./ru/detail";
+import { ruAppr } from "./ru/appr";
+import { ruMedia } from "./ru/media";
+import { ruVoice } from "./ru/voice";
+import { ruRfd } from "./ru/rfd";
+import { ruAdv } from "./ru/adv";
+import { ruTimer } from "./ru/timer";
 import { enCommon } from "./en/common";
 import { enHeader } from "./en/header";
 import { enFooter } from "./en/footer";
@@ -49,8 +55,14 @@ import { enOvw } from "./en/ovw";
 import { enHist } from "./en/hist";
 import { enNotif } from "./en/notif";
 import { enDetail } from "./en/detail";
+import { enAppr } from "./en/appr";
+import { enMedia } from "./en/media";
+import { enVoice } from "./en/voice";
+import { enRfd } from "./en/rfd";
+import { enAdv } from "./en/adv";
+import { enTimer } from "./en/timer";
 
-export const NAMESPACES = ["common", "header", "footer", "home", "features", "owners", "about", "blog", "contact", "auth", "search", "venue", "bookings", "account", "errors", "setup", "fmt", "validation", "play", "odash", "ovw", "hist", "notif", "detail"] as const;
+export const NAMESPACES = ["common", "header", "footer", "home", "features", "owners", "about", "blog", "contact", "auth", "search", "venue", "bookings", "account", "errors", "setup", "fmt", "validation", "play", "odash", "ovw", "hist", "notif", "detail", "appr", "media", "voice", "rfd", "adv", "timer"] as const;
 
 export const ru = {
   ...ruCommon,
@@ -77,6 +89,12 @@ export const ru = {
   ...ruHist,
   ...ruNotif,
   ...ruDetail,
+  ...ruAppr,
+  ...ruMedia,
+  ...ruVoice,
+  ...ruRfd,
+  ...ruAdv,
+  ...ruTimer,
 } as const;
 
 export type MessageKey = keyof typeof ru;
@@ -106,6 +124,12 @@ export const en: Record<MessageKey, string> = {
   ...enHist,
   ...enNotif,
   ...enDetail,
+  ...enAppr,
+  ...enMedia,
+  ...enVoice,
+  ...enRfd,
+  ...enAdv,
+  ...enTimer,
 };
 
 export const DICTIONARIES: Record<"ru" | "en", Record<MessageKey, string>> = { ru, en };

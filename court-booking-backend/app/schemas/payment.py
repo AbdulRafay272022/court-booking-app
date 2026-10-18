@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -7,7 +8,18 @@ from app.schemas.booking import BookingOut
 
 
 class PaymentRejectIn(BaseModel):
-    reason: str
+    # Optional in the schema only so a reject on a cancelled/expired booking reaches the 409 BOOKING_NO_LONGER_PENDING
+    # check (Owner Round 2, A5); a normal rejection without a reason is still refused (422) by the endpoint.
+    reason: str | None = None
+
+
+class AcknowledgeIn(BaseModel):
+    money_received: bool
+
+
+class AcknowledgeOut(BaseModel):
+    ok: bool = True
+    refund_dispute_id: uuid.UUID | None = None
 
 
 class PaymentApproveIn(BaseModel):
@@ -15,6 +27,9 @@ class PaymentApproveIn(BaseModel):
     really paid; omitted = the screenshot amount (else the expected advance)."""
 
     amount_pkr: int | None = Field(default=None, gt=0)
+    # Owner Round 2 (A10.3): "advance_only" = credit only the expected advance, the rest becomes a refund owed
+    # (overpayment_excess); "full" / omitted = today's behaviour (credit up to the price).
+    accept_mode: Literal["advance_only", "full"] | None = None
 
 
 class PaymentOut(BaseModel):

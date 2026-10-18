@@ -97,13 +97,14 @@ async function run() {
       const dlg = page.getByRole("dialog").first();
       await dlg.waitFor();
       check((await dlg.getByText("KH-3B9A41D7").count()) > 0, `${tag}: detail short code`);
-      check(/booking=/.test(page.url()), `${tag}: booking in URL`);
+      // Round 2 (A2): a row click opens the popup without writing ?booking= (that link only highlights).
+      check(!/booking=/.test(page.url()), `${tag}: row click does not put booking in URL`);
       for (let i = 0; i < 25; i++) await page.keyboard.press("Tab");
       check(await page.evaluate(() => !!document.activeElement.closest('[role="dialog"]')), `${tag}: focus stays in dialog`);
       await page.screenshot({ path: `${SHOTS}/detail-${tag}.png` });
       await page.keyboard.press("Escape");
       await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
-      check(!/booking=/.test(page.url()), `${tag}: Escape closes and clears URL`);
+      check(!/booking=/.test(page.url()), `${tag}: Escape closes, URL unchanged`);
 
       // completion popup from the dropdown
       const sel = page.locator("select[aria-label]").first();

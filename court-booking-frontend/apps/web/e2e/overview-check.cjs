@@ -132,6 +132,8 @@ function overviewOf(state, courtIds) {
       by_court: COURTS.map((c) => ({ court_id: c.id, court_name: c.name, count: 2 })),
     },
     money: { collected: 31500, due: 12000, due_bookings: 5 },
+    // Round 2 (A7): pending for ANY date; `state.noPendingAll` simulates an older backend that does not send it
+    ...(state.noPendingAll ? {} : { pending_all: { count: 7, awaiting_approval: 4, awaiting_payment: 3 } }),
     rows,
   };
 }
@@ -191,11 +193,19 @@ async function mockApi(page, state, opts = {}) {
         state.fail = null;
         return json(route, f.status, { error: { code: f.code, message: f.code } });
       }
+      if (state.delayMs) await new Promise((r) => setTimeout(r, state.delayMs));
       const row = state.rows.find((r) => r.booking_id === m[1] && r.kind === "booked");
-      const received = body.result === "yes" ? row.total : body.received_pkr;
+      // Round 2 contract (A8): received_now is added to what was paid; equal to the due -> stored as "yes"
+      let received;
+      let result = body.result;
+      if (body.result === "yes") received = row.total;
+      else if (typeof body.received_now === "number") {
+        received = row.total_paid + body.received_now;
+        if (received >= row.total) result = "yes";
+      } else received = body.received_pkr;
       row.total_paid = received;
       row.due = row.total - received;
-      row.completion = { result: body.result, received_pkr: received, reason: body.reason || null, marked_at: new Date().toISOString(), marked_by_name: "Owner One" };
+      row.completion = { result, received_pkr: received, reason: body.reason || null, marked_at: new Date().toISOString(), marked_by_name: "Owner One" };
       return json(route, 200, row);
     }
     m = /^\/courts\/([^/]+)\/availability$/.exec(p);
@@ -234,7 +244,7 @@ async function noHScroll(page, label) {
 
 const T = {
   en: { seeSlots: "See all slots", more: /\+\d+ more/, yes: "Yes", incomplete: "Incomplete", complete: "Complete", empty: "No bookings on this day", allCourts: "All courts (8)", original: "View original booking", tooSoon: "After the slot ends", today: "Today", tomorrow: "Tomorrow" },
-  ru: { seeSlots: "Sab slots dekho", more: /\+\d+ aur/, yes: "Haan", incomplete: "Adhoora", complete: "Mukammal", empty: "Is din koi booking nahi", allCourts: "Sab courts (8)", original: "Original booking dekhein", tooSoon: "Slot khatam hone ke baad", today: "Aaj", tomorrow: "Kal" },
+  ru: { seeSlots: "Sab slots dekhein", more: /\+\d+ aur/, yes: "Haan", incomplete: "Adhoora", complete: "Mukammal", empty: "Is din koi booking nahi", allCourts: "Sab courts (8)", original: "Original booking dekhein", tooSoon: "Slot khatam hone ke baad", today: "Aaj", tomorrow: "Kal" },
 };
 
 async function runOne(browser, width, lang) {
@@ -257,14 +267,15 @@ async function runOne(browser, width, lang) {
     if (!narrow) ok((await page.locator("thead th").count()) === 8, `${tag}: 8 table columns`);
     ok(await page.getByText(L.allCourts).first().isVisible(), `${tag}: "${L.allCourts}" label`);
     ok((await page.locator('[data-testid="kpi-total"]').innerText()).includes("96"), `${tag}: total slots 96`);
-    ok((await page.locator('[data-testid="kpi-pending"]').innerText()).includes("4"), `${tag}: pending 4`);
+    ok((await page.locator('[data-testid="kpi-pending-n"]').innerText()).trim() === "7", `${tag}: pending (any date) 7`);
+    ok((await page.locator('[data-testid="kpi-free"], [data-testid="kpi-booked"]').count()) === 0, `${tag}: no Free / Booked slot cards`);
     ok((await page.locator('[data-testid="kpi-refunds"]').innerText()).includes("PKR 4,500"), `${tag}: refunds amount`);
     ok((await page.locator('[data-testid="kpi-collected"]').innerText()).includes("PKR 31,500"), `${tag}: collected`);
     ok((await page.locator('[data-testid="kpi-due"]').innerText()).includes("PKR 12,000"), `${tag}: due`);
     const pendingHref = await page.locator('[data-testid="kpi-pending-link"]').getAttribute("href");
-    ok(pendingHref === `/dashboard/owner/approvals?date=${today}`, `${tag}: pending card href (${pendingHref})`);
+    ok(pendingHref === "/dashboard/owner/approvals", `${tag}: pending card href, no date (${pendingHref})`);
     const payHref = await page.locator('[data-testid="kpi-pay-waiting"]').getAttribute("href");
-    ok(payHref === `/dashboard/bookings?from=${today}&to=${today}&status=held`, `${tag}: payment waiting href (${payHref})`);
+    ok(payHref === `/dashboard/bookings?from=${addDays(today, -365)}&to=${addDays(today, 365)}&status=held`, `${tag}: payment waiting href, any date (${payHref})`);
     ok((await page.locator('[data-testid="ovw-history-link"]').getAttribute("href")) === `/dashboard/bookings?from=${today}&to=${today}`, `${tag}: history button href`);
     const addHref = await page.locator('[data-testid="ovw-add-booking"]').getAttribute("href");
     ok(addHref === "/dashboard/owner/walkin", `${tag}: add booking href`);
@@ -338,16 +349,16 @@ async function runOne(browser, width, lang) {
     ok((await cd.locator('[data-testid="ovw-received"]').getAttribute("aria-invalid")) === "true", `${tag}: out-of-range amount rejected`);
     ok(state.calls.filter((c) => c.id === "b6").length === 0, `${tag}: nothing posted for a bad amount`);
     await cd.locator('[data-testid="ovw-received"]').fill("1,000");
-    await cd.locator('[data-testid="ovw-reason"]').fill("customer ne kaha kal dega");
-    const micThere = (await cd.locator('[data-testid="ovw-mic"]').count()) === 1;
+    await cd.locator("textarea").fill("customer ne kaha kal dega");
+    const micThere = (await cd.locator('[data-testid="voice-mic"]').count()) === 1;
     const micSupported = await page.evaluate(() => "webkitSpeechRecognition" in window || "SpeechRecognition" in window);
     ok(micThere === micSupported, `${tag}: mic shown only when speech recognition exists (shown=${micThere}, supported=${micSupported})`);
-    ok((await cd.locator('[data-testid="ovw-preview"]').innerText()).includes("PKR 3,500"), `${tag}: preview shows the due that will remain`);
+    ok((await cd.locator('[data-testid="ovw-preview"]').innerText()).includes("PKR 1,500"), `${tag}: preview shows the due that will remain (2,500 - 1,000)`);
     await noHScroll(page, `${tag} nahi dialog`);
     await page.screenshot({ path: path.join(SHOT_DIR, `nahi-${tag}.png`) });
     await cd.locator('[data-testid="ovw-completion-save"]').click();
     await cd.waitFor({ state: "detached" });
-    ok(state.calls.some((c) => c.id === "b6" && c.body.result === "no" && c.body.received_pkr === 1000 && /kal dega/.test(c.body.reason)), `${tag}: Nahi posts amount and reason`);
+    ok(state.calls.some((c) => c.id === "b6" && c.body.result === "no" && c.body.received_now === 1000 && /kal dega/.test(c.body.reason)), `${tag}: Nahi posts received_now and reason`);
     await page.waitForTimeout(400);
     ok((await imran.getAttribute("data-tone")) === "red", `${tag}: Nahi turns the row red`);
     ok(await imran.getByText(L.incomplete, { exact: true }).first().isVisible(), `${tag}: Adhoora chip`);
@@ -431,18 +442,23 @@ async function runOne(browser, width, lang) {
   }
 }
 
-(async () => {
-  let pw;
-  try {
-    pw = loadPlaywright();
-  } catch (e) {
-    console.error(e.message);
-    process.exit(2);
-  }
-  const browser = await pw.chromium.launch();
-  for (const lang of LANGS) for (const width of WIDTHS) await runOne(browser, width, lang);
-  await browser.close();
-  console.log(`${checks} checks, ${failures.length} failure(s). Screenshots: ${SHOT_DIR}`);
-  for (const f of failures) console.log("FAIL " + f);
-  process.exit(failures.length ? 1 : 0);
-})();
+// the fixture and mocks are shared with e2e/round2-overview-check.cjs
+module.exports = { API, COURTS, VENUE, USER, pktToday, addDays, newState, overviewOf, slotsOf, mockApi, newPage };
+
+if (require.main === module) {
+  (async () => {
+    let pw;
+    try {
+      pw = loadPlaywright();
+    } catch (e) {
+      console.error(e.message);
+      process.exit(2);
+    }
+    const browser = await pw.chromium.launch();
+    for (const lang of LANGS) for (const width of WIDTHS) await runOne(browser, width, lang);
+    await browser.close();
+    console.log(`${checks} checks, ${failures.length} failure(s). Screenshots: ${SHOT_DIR}`);
+    for (const f of failures) console.log("FAIL " + f);
+    process.exit(failures.length ? 1 : 0);
+  })();
+}

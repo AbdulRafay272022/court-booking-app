@@ -14,6 +14,7 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useAuthStore } from "@/lib/auth-store";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 import { OV, courtShort, dateTitle, historyParams } from "@/lib/overview";
+import { allDatesRange } from "@/lib/round2-format";
 import { BellIcon } from "@/components/icons";
 import { BellBadge } from "@/components/bell-badge";
 import { ErrorState } from "@/components/error-state";
@@ -34,7 +35,7 @@ export default function OwnerOverviewScreen() {
   const isOwner = useAuthStore((s) => s.user?.role) === "owner";
   const [date, setDate] = useState(pktDateString());
   const [courtIds, setCourtIds] = useState<string[]>([]);
-  const [sheet, setSheet] = useState<null | "date" | "courts" | "slots" | "booked-courts">(null);
+  const [sheet, setSheet] = useState<null | "date" | "courts" | "slots" | "free" | "booked-courts">(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -83,7 +84,16 @@ export default function OwnerOverviewScreen() {
     setTimeout(() => setHighlight(null), 2400);
   }
 
-  const topCourt = data ? [...data.slots.by_court].sort((a, b) => b.booked - a.booked)[0] : undefined;
+  const courtsByBooked = data ? [...data.slots.by_court].sort((a, b) => b.booked - a.booked) : [];
+  // Round 2 (A7): pending for ANY date; an older backend without pending_all falls back to this day's numbers.
+  const pendingAll = data?.pending_all
+    ? { ...data.pending_all, allDays: true }
+    : {
+        count: data?.bookings.pending.count ?? 0,
+        awaiting_approval: data?.bookings.pending.awaiting_approval ?? 0,
+        awaiting_payment: data?.bookings.pending.awaiting_payment ?? 0,
+        allDays: false,
+      };
   const slotCourts = (courtIds.length ? allCourts.filter((c) => courtIds.includes(c.id)) : allCourts).map((c) => ({ id: c.id, name: c.name }));
 
   return (
@@ -110,7 +120,7 @@ export default function OwnerOverviewScreen() {
             Overview
           </Text>
           <Text className="font-plex-medium text-owner-ink-muted text-[14px]">
-            {`${formatDayHeader(date)} · ${activeVenue?.name ?? "Your venue"}`}
+            {`${formatDayHeader(date)} \u00B7 ${activeVenue?.name ?? "Your venue"}`}
           </Text>
         </View>
 
@@ -165,15 +175,14 @@ export default function OwnerOverviewScreen() {
           <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
         ) : data ? (
           <>
-            {/* Total slots */}
-            <View className="rounded-2xl bg-owner-surface p-4 gap-3" style={{ borderWidth: 1.5, borderColor: OV.border }}>
+            {/* Round 2 (A7) top row: Total slots, then Pending bookings (any date, orange). */}
+            <View testID="total-slots-card" className="rounded-2xl bg-owner-surface p-4 gap-3" style={{ borderWidth: 1.5, borderColor: OV.border }}>
               <View className="flex-row items-center justify-between">
                 <Text className="font-plex-semibold text-owner-ink-muted text-[13.5px]">Total slots</Text>
                 <Pressable
                   onPress={() => setSheet("slots")}
                   accessibilityRole="button"
-                  className="px-3 rounded-full justify-center"
-                  style={{ minHeight: 40, backgroundColor: "#EDF1F2" }}
+                  style={{ minHeight: 40, paddingHorizontal: 12, borderRadius: 20, justifyContent: "center", backgroundColor: "#EDF1F2" }}
                 >
                   <Text className="font-plex-semibold text-owner-ink text-[12.5px]">Sab slots dekho</Text>
                 </Pressable>
@@ -185,45 +194,67 @@ export default function OwnerOverviewScreen() {
                 )}
                 {data.slots.free > 0 && data.slots.total > 0 ? <View style={{ flex: data.slots.free }} /> : null}
               </View>
-              <View className="flex-row flex-wrap gap-x-3 gap-y-1">
-                {[
-                  ["Booked", data.slots.booked, OV.bar.booked],
-                  ["Pending", data.slots.pending, OV.bar.pending],
-                  ["Blocked", data.slots.blocked, OV.bar.blocked],
-                  ["Khali", data.slots.free, "#9FC9C2"],
-                ].map(([label, n, color]) => (
-                  <View key={label as string} className="flex-row items-center gap-1.5">
-                    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: color as string }} />
-                    <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{`${label} ${n}`}</Text>
-                  </View>
-                ))}
+              <View className="flex-row flex-wrap gap-2">
+                <LegendButton label={`Booked ${data.slots.booked}`} color={OV.bar.booked} onPress={() => goHistory("booked")} />
+                <LegendButton
+                  label={`Pending ${data.slots.pending}`}
+                  sub="Is din ke slots"
+                  color={OV.bar.pending}
+                  onPress={() => router.push({ pathname: "/(owner)/approvals", params: { date, ...(courtIds.length ? { courts: courtIds.join(",") } : {}) } })}
+                />
+                <LegendButton label={`Blocked ${data.slots.blocked}`} color={OV.bar.blocked} onPress={() => setSheet("slots")} />
+                <LegendButton label={`Free ${data.slots.free}`} color="#9FC9C2" onPress={() => setSheet("free")} />
               </View>
+              <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+                {`Khali: ${data.slots.free_upcoming} aane wale - ${data.slots.free_past} guzre hue`}
+              </Text>
+              {courtsByBooked.length > 0 ? (
+                <View className="flex-row flex-wrap gap-1.5">
+                  {courtsByBooked.slice(0, 2).map((c) => (
+                    <SmallChip key={c.court_id} label={`${courtShort(c.court_name)}: ${c.booked}/${c.total} booked`} bg="#EDF1F2" fg={OV.ink} />
+                  ))}
+                  {courtsByBooked.length > 2 ? (
+                    <SmallChip label={`+${courtsByBooked.length - 2} aur`} bg="#EDF1F2" fg={OV.ink} onPress={() => setSheet("booked-courts")} />
+                  ) : null}
+                </View>
+              ) : null}
             </View>
 
-            <View className="flex-row gap-3">
-              <KpiCard
-                label="Booked slots"
-                onPress={() => goHistory("booked")}
-                footer={
-                  topCourt && topCourt.booked > 0 ? (
-                    <View className="flex-row flex-wrap gap-1.5">
-                      <SmallChip label={`${courtShort(topCourt.court_name)} · ${topCourt.booked}`} bg="#EDF1F2" fg={OV.ink} />
-                      {data.slots.by_court.length > 1 ? (
-                        <SmallChip label={`+${data.slots.by_court.length - 1} aur`} bg="#EDF1F2" fg={OV.ink} onPress={() => setSheet("booked-courts")} />
-                      ) : null}
-                    </View>
-                  ) : null
-                }
+            <View testID="pending-all-card" className="rounded-2xl overflow-hidden" style={{ backgroundColor: "#FFF1E8", borderWidth: 1.5, borderColor: "#F6C9AE" }}>
+              <Pressable
+                onPress={() => router.push({ pathname: "/(owner)/approvals", params: courtIds.length ? { courts: courtIds.join(",") } : {} })}
+                accessibilityRole="button"
+                accessibilityLabel={`Pending bookings ${pendingAll.count}`}
+                style={{ padding: 16, gap: 4 }}
               >
-                <Big>{data.slots.booked}</Big>
-              </KpiCard>
-              <KpiCard label="Khali slots" onPress={() => setSheet("slots")}>
-                <Big>{data.slots.free}</Big>
-                <Sub>{`aane wale ${data.slots.free_upcoming} · guzre ${data.slots.free_past}`}</Sub>
-              </KpiCard>
+                <View className="flex-row items-center justify-between">
+                  <Text className="font-plex-semibold text-[13.5px]" style={{ color: OV.amberDark }}>
+                    Pending bookings
+                  </Text>
+                  <Text className="font-plex-semibold text-[12px]" style={{ color: OV.amberDark }}>
+                    {pendingAll.allDays ? "Sab dino ki" : "Is din ki"}
+                  </Text>
+                </View>
+                <Text className="font-mono-semibold text-owner-ink text-[30px] leading-[34px]">{pendingAll.count}</Text>
+                <Text className="font-plex-semibold text-[13px] underline" style={{ color: OV.amberDark }}>
+                  {`Approval (${pendingAll.awaiting_approval})`}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const r = allDatesRange();
+                  router.push({ pathname: "/(owner)/history", params: historyParams(r.from, courtIds, "held", { to: r.to }) });
+                }}
+                accessibilityRole="button"
+                style={{ minHeight: 44, paddingHorizontal: 16, paddingBottom: 8, justifyContent: "center" }}
+              >
+                <Text className="font-plex-semibold text-[13px] underline" style={{ color: OV.amberDark }}>
+                  {`Payment ke intezar (${pendingAll.awaiting_payment})`}
+                </Text>
+              </Pressable>
             </View>
 
-            <View className="flex-row gap-3">
+            <View className="flex-row flex-wrap gap-3">
               <KpiCard label="Bookings" onPress={() => goHistory("booked")}>
                 <Big>{data.bookings.count}</Big>
                 <Sub>{`${data.slots.booked} slots mein`}</Sub>
@@ -231,42 +262,10 @@ export default function OwnerOverviewScreen() {
               <KpiCard label="Cancelled" onPress={() => goHistory("cancelled")}>
                 <Big>{data.bookings.cancelled}</Big>
               </KpiCard>
-            </View>
-
-            <View className="flex-row gap-3">
               <KpiCard label="Refunds" onPress={() => goHistory("refund")}>
                 <Big>{data.bookings.refunds.count}</Big>
                 <Sub>{`PKR ${formatPKR(data.bookings.refunds.amount)}`}</Sub>
               </KpiCard>
-              <View className="flex-1 rounded-2xl overflow-hidden" style={{ backgroundColor: "#FFF1E8", borderWidth: 1.5, borderColor: "#F6C9AE" }}>
-                <Pressable
-                  onPress={() => router.push({ pathname: "/(owner)/approvals", params: { date, ...(courtIds.length ? { courts: courtIds.join(",") } : {}) } })}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Pending ${data.bookings.pending.count}`}
-                  className="p-4 gap-1.5"
-                >
-                  <Text className="font-plex-semibold text-[13.5px]" style={{ color: OV.amberDark }}>
-                    Pending
-                  </Text>
-                  <Text className="font-mono-semibold text-owner-ink text-[30px] leading-[34px]">{data.bookings.pending.count}</Text>
-                  <Text className="font-plex-medium text-[12.5px]" style={{ color: OV.amberDark }}>
-                    {`approval ${data.bookings.pending.awaiting_approval}`}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => goHistory("held")}
-                  accessibilityRole="button"
-                  className="px-4 justify-center"
-                  style={{ minHeight: 44 }}
-                >
-                  <Text className="font-plex-semibold text-[12.5px] underline" style={{ color: OV.amberDark }}>
-                    {`Payment ke intezar (${data.bookings.pending.awaiting_payment})`}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View className="flex-row gap-3">
               <KpiCard label="Collected" onPress={() => goHistory("booked")}>
                 <Money>{`PKR ${formatPKR(data.money.collected)}`}</Money>
               </KpiCard>
@@ -334,7 +333,7 @@ export default function OwnerOverviewScreen() {
           }}
         />
       ) : null}
-      {sheet === "slots" ? <SlotsSheet date={date} courts={slotCourts} onClose={() => setSheet(null)} /> : null}
+      {sheet === "slots" || sheet === "free" ? <SlotsSheet date={date} courts={slotCourts} onlyFree={sheet === "free"} onClose={() => setSheet(null)} /> : null}
       {sheet === "booked-courts" && data ? (
         <BottomSheet title="Booked slots, court ke hisaab se" subtitle={formatDayHeader(date)} onClose={() => setSheet(null)}>
           {[...data.slots.by_court]
@@ -363,16 +362,33 @@ export default function OwnerOverviewScreen() {
   );
 }
 
-function KpiCard({ label, onPress, children, footer }: { label: string; onPress: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
-  // The footer sits OUTSIDE the card's Pressable: a button inside a button is invalid on web.
+function KpiCard({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
+  // Two per row (the fifth spans the row): flexBasis keeps the wrap grid even on a 390px phone.
   return (
-    <View className="flex-1 rounded-2xl bg-owner-surface" style={{ borderWidth: 1.5, borderColor: OV.border }}>
+    <View className="rounded-2xl bg-owner-surface" style={{ borderWidth: 1.5, borderColor: OV.border, flexBasis: "45%", flexGrow: 1 }}>
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} className="p-4 gap-1.5">
         <Text className="font-plex-semibold text-owner-ink-muted text-[13.5px]">{label}</Text>
         {children}
       </Pressable>
-      {footer ? <View className="px-4 pb-4 -mt-1">{footer}</View> : null}
     </View>
+  );
+}
+
+/** A legend entry that is also a 44px button (colour dot + text, so colour is never the only signal). */
+function LegendButton({ label, sub, color, onPress }: { label: string; sub?: string; color: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={sub ? `${label}, ${sub}` : label}
+      style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.5, borderColor: OV.border, backgroundColor: "#FFFFFF" }}
+    >
+      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
+      <View>
+        <Text className="font-plex-semibold text-owner-ink text-[13px]">{label}</Text>
+        {sub ? <Text className="font-plex-medium text-owner-ink-faint text-[10.5px]">{sub}</Text> : null}
+      </View>
+    </Pressable>
   );
 }
 

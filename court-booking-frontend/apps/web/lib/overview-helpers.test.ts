@@ -16,7 +16,9 @@ import {
   rowTone,
   slotSegments,
   topCourts,
-  validateReceived,
+  allDatesHistoryHref,
+  pendingAllOf,
+  slotFilterMatches,
 } from "./overview-helpers";
 
 function row(over: Partial<OwnerBookingRow>): OwnerBookingRow {
@@ -45,6 +47,30 @@ test("links to other pages carry the day and courts", () => {
   assert.equal(historyHref({ date: "2026-10-16", courts: "a", status: "refund" }), "/dashboard/bookings?from=2026-10-16&to=2026-10-16&courts=a&status=refund");
   assert.equal(historyHref({ date: "2026-10-16" }), "/dashboard/bookings?from=2026-10-16&to=2026-10-16");
   assert.equal(approvalsHref("2026-10-16", undefined), "/dashboard/owner/approvals?date=2026-10-16");
+  assert.equal(approvalsHref(undefined, undefined), "/dashboard/owner/approvals");
+  assert.equal(approvalsHref(undefined, "a,b"), "/dashboard/owner/approvals?courts=a,b");
+  assert.equal(
+    allDatesHistoryHref("2026-10-16", { status: "held" }),
+    "/dashboard/bookings?from=2025-10-16&to=2027-10-16&status=held",
+  );
+  assert.equal(
+    allDatesHistoryHref("2026-10-16", { status: "held", courts: "c1" }),
+    "/dashboard/bookings?from=2025-10-16&to=2027-10-16&courts=c1&status=held",
+  );
+});
+
+test("any-date pending numbers are read, never invented", () => {
+  assert.deepEqual(pendingAllOf({ pending_all: { count: 7, awaiting_approval: 4, awaiting_payment: 3 } }), { count: 7, approval: 4, payment: 3 });
+  assert.equal(pendingAllOf({}), null);
+  assert.equal(pendingAllOf({ pending_all: undefined }), null);
+});
+
+test("slots popup filter", () => {
+  assert.equal(slotFilterMatches("past", "free"), true);
+  assert.equal(slotFilterMatches("free", "free"), true);
+  assert.equal(slotFilterMatches("booked", "free"), false);
+  assert.equal(slotFilterMatches("blocked", "blocked"), true);
+  assert.equal(slotFilterMatches("pending", "all"), true);
 });
 
 test("filter pills and counts", () => {
@@ -54,8 +80,9 @@ test("filter pills and counts", () => {
   assert.equal(filterRows(rows, "all").length, 4);
 });
 
-test("slot bar adds up to 100", () => {
+test("slot bar adds up to 100 and Total = Booked + Pending + Blocked + Free", () => {
   const segs = slotSegments({ total: 96, booked: 38, pending: 6, blocked: 4, free: 48 });
+  assert.deepEqual(segs.map((x) => x.key), ["booked", "pending", "blocked", "free"]);
   assert.equal(segs.reduce((s, x) => s + x.count, 0), 96);
   assert.ok(Math.abs(segs.reduce((s, x) => s + x.percent, 0) - 100) < 1e-9);
   assert.deepEqual(slotSegments({ total: 0, booked: 0, pending: 0, blocked: 0, free: 0 }).map((s) => s.percent), [0, 0, 0, 0]);
@@ -69,17 +96,6 @@ test("top courts and the +N aur remainder", () => {
   const { top, rest } = topCourts(items, (i) => i.n, 2);
   assert.deepEqual(top.map((t) => t.court_name), ["Court 1", "Court 2"]);
   assert.equal(rest, 2);
-});
-
-test("received amount validation", () => {
-  assert.deepEqual(validateReceived("2,000", 4500), { ok: true, value: 2000 });
-  assert.deepEqual(validateReceived("0", 4500), { ok: true, value: 0 });
-  assert.deepEqual(validateReceived("4500", 4500), { ok: true, value: 4500 });
-  assert.deepEqual(validateReceived("", 4500), { ok: false, error: "required" });
-  assert.deepEqual(validateReceived("4501", 4500), { ok: false, error: "range" });
-  assert.deepEqual(validateReceived("-1", 4500), { ok: false, error: "range" });
-  assert.deepEqual(validateReceived("12.5", 4500), { ok: false, error: "range" });
-  assert.deepEqual(validateReceived("abc", 4500), { ok: false, error: "range" });
 });
 
 test("completion changes the row", () => {

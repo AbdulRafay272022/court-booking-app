@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "r
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
-import { useT } from "@/components/i18n/lang-provider";
-import type { MessageKey } from "@/lib/i18n";
-import { dedupeEntries, effectiveReadAt, eventSuffix, newArrivals, newestMs, unreadCount, type LogEntry, type NotifRole } from "@/lib/notif-helpers";
+import { ApiError } from "@court-booking/api-client";
+import { notificationText, type NotificationFeedItem } from "@court-booking/types";
+import { useLang, useT } from "@/components/i18n/lang-provider";
+import { effectiveReadAt, legacyToFeed, newArrivals, newestMs, unreadCount, type NotifRole } from "@/lib/notif-helpers";
 
 const POLL_MS = 15_000;
 
@@ -14,7 +15,24 @@ const POLL_MS = 15_000;
 // Announce each notification id once per page, whichever instance sees it first.
 const announced = new Set<string>();
 const LIST_SIZE = 30;
-const SHOWN = 20;
+const SHOWN = 30;
+
+// Round 2 (A6): an older backend has no /users/me/notifications/feed. Remember a 404/405 for this page so every poll
+// goes straight to the old log endpoint (rows folded + titled from event_type, never "New notification").
+let feedMissing = false;
+
+async function loadFeed(): Promise<{ items: NotificationFeedItem[]; source: "feed" | "legacy" }> {
+  if (!feedMissing) {
+    try {
+      const page = await api.users.notificationsFeed(1, LIST_SIZE);
+      return { items: page.items ?? [], source: "feed" };
+    } catch (e) {
+      if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 405)) throw e;
+      feedMissing = true;
+    }
+  }
+  return { items: legacyToFeed(await api.users.notifications(1, LIST_SIZE)), source: "legacy" };
+}
 
 // ---- tiny localStorage-backed store (read state, popup choice, sound choice), one set of keys per user id ----
 const listeners = new Set<() => void>();
@@ -86,6 +104,7 @@ export function currentPermission(): PopupState {
  * and the opt-in browser popup + sound. Read state lives in this browser, keyed by user id (there is no server read flag). */
 export function useNotifications() {
   const t = useT();
+  const lang = useLang();
   const user = useAuthStore((s) => s.user);
   const status = useAuthStore((s) => s.status);
   const userId = status === "signedIn" ? user?.id : undefined;
@@ -99,14 +118,14 @@ export function useNotifications() {
   const soundStored = useStored(soundKey);
 
   const query = useQuery({
-    queryKey: ["my-notifications", userId],
-    queryFn: () => api.users.notifications(1, LIST_SIZE),
+    queryKey: ["my-notifications-feed", userId],
+    queryFn: loadFeed,
     enabled: !!userId,
     refetchInterval: POLL_MS, // TanStack pauses interval refetching while the tab is hidden (refetchIntervalInBackground defaults to false)
     refetchOnWindowFocus: true,
   });
 
-  const items = useMemo<LogEntry[]>(() => dedupeEntries(query.data ?? []).slice(0, SHOWN), [query.data]);
+  const items = useMemo<NotificationFeedItem[]>(() => (query.data?.items ?? []).slice(0, SHOWN), [query.data]);
   // "now" only matters when nothing was ever marked read (24 h window); it is stable per data load
   const dataUpdatedAt = query.dataUpdatedAt;
   const readAt = useMemo(() => effectiveReadAt(readStored, dataUpdatedAt || 0), [readStored, dataUpdatedAt]);
@@ -125,7 +144,7 @@ export function useNotifications() {
   useEffect(() => {
     if (!userId || !query.data) return;
     if (seen.current.user !== userId) seen.current = { user: userId, newest: null };
-    const all = dedupeEntries(query.data);
+    const all = query.data.items;
     const fresh = newArrivals(all, seen.current.newest).filter((e) => !announced.has(e.id));
     seen.current.newest = Math.max(seen.current.newest ?? 0, newestMs(all));
     if (fresh.length === 0) return;
@@ -133,14 +152,15 @@ export function useNotifications() {
     if (popupEnabled && currentPermission() === "granted") {
       for (const e of fresh.slice(0, 3)) {
         try {
-          new Notification(t(`notif.event.${eventSuffix(e.event_type)}` as MessageKey), { body: t("notif.popup.body"), tag: e.id });
+          const text = notificationText(e, lang);
+          new Notification(text.title, { body: text.context || t("notif.popup.body"), tag: e.id });
         } catch {
           // some browsers (Android Chrome) only allow notifications via a service worker: no popup there
         }
       }
     }
     if (soundOn) playBeep();
-  }, [query.data, userId, popupEnabled, soundOn, t]);
+  }, [query.data, userId, popupEnabled, soundOn, t, lang]);
 
   /** Click handler: asks the browser for permission (only ever called from the explicit button) and remembers the choice. */
   const enablePopups = useCallback(async (): Promise<PopupState> => {
@@ -172,6 +192,9 @@ export function useNotifications() {
     signedIn: !!userId,
     role,
     items,
+    source: query.data?.source ?? null,
+    /** When the list was fetched: "today"/"yesterday" headings are relative to it (stable per load, no impure render). */
+    fetchedAt: dataUpdatedAt,
     unread,
     readAt,
     isLoading: query.isLoading,

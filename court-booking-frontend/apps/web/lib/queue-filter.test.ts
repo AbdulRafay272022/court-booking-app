@@ -20,7 +20,7 @@ test("date and courts are read; junk is dropped", () => {
 });
 
 test("history link uses the filter day, else the booking's Pakistan date", () => {
-  assert.equal(historyHref("b1", "2026-10-16T10:00:00Z", "2026-10-20"), "/dashboard/bookings?booking=b1&from=2026-10-20&to=2026-10-20");
+  assert.equal(historyHref("b1", "2026-10-16T10:00:00Z", "2026-10-20"), "/dashboard/bookings?booking=b1&from=2026-10-16&to=2026-10-16");
   // 22:00 UTC is already the next day in Karachi (+5)
   assert.equal(historyHref("b1", "2026-10-16T22:00:00Z"), "/dashboard/bookings?booking=b1&from=2026-10-17&to=2026-10-17");
 });

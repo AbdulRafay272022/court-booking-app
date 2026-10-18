@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { ActivityIndicator, Dimensions, Image, Modal, Platform, Pressable, ScrollView, Share, Text, View } from "react-native";
-import { router } from "expo-router";
+import { ActivityIndicator, Platform, Pressable, Share, Text, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BookingTimelineEvent, OwnerBookingDetail } from "@court-booking/types";
+import { CHANNEL_HEADING, bookingChannelLabel, type BookingTimelineEvent, type OwnerBookingDetail } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime, formatWhen, formatWhenRange, pktDateString } from "@/lib/format";
+import { formatPKR, formatTime, formatWhen, formatWhenRange } from "@/lib/format";
 import { OV, SOURCE_LABEL, durationLabel, statusChipLabel } from "@/lib/overview";
 import { CheckIcon } from "@/components/icons";
-import { AlertCircleIcon, CloseIcon, CopyIcon } from "@/components/overview/icons";
+import { AlertCircleIcon, CopyIcon } from "@/components/overview/icons";
+import { openInHistory } from "@/components/booking-links";
+import { ScreenshotThumb } from "@/components/screenshot-viewer";
 import { RecordPaymentSheet } from "@/components/record-payment-sheet";
 import { BottomSheet, OrangeButton, OutlineButton, SmallChip } from "@/components/overview/ui";
 
@@ -28,20 +29,26 @@ const TIMELINE_LABEL: Record<string, string> = {
   slot_started: "Slot chala",
   completion_marked: "Booking completed mark hui",
   expired: "Hold khatam ho gaya",
+  balance_received: "Baqi se paisa mila",
 };
 
 function timelineText(e: BookingTimelineEvent): string {
+  // Round 2 (A8): "Baqi se PKR X mila" (who/when is in the detail line and the time).
+  if (e.kind === "balance_received" && e.amount != null) return `Baqi se PKR ${formatPKR(e.amount)} mila`;
   return TIMELINE_LABEL[e.kind] ?? e.kind.replace(/_/g, " ");
 }
 
 function timelineDetail(e: BookingTimelineEvent): string {
-  return [e.amount != null ? `PKR ${formatPKR(e.amount)}` : null, e.actor_name, e.note].filter(Boolean).join(" · ");
+  const amount = e.amount != null && e.kind !== "balance_received" ? `PKR ${formatPKR(e.amount)}` : null;
+  return [amount, e.actor_name, e.note].filter(Boolean).join(" - ");
 }
 
 function Line({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
     <View className="flex-row items-start justify-between gap-4 py-2.5 border-b border-owner-border-light">
-      <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">{label}</Text>
+      <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]" style={{ maxWidth: "55%" }}>
+        {label}
+      </Text>
       <Text className="font-plex-semibold text-[13.5px] flex-1 text-right" style={{ color: valueColor ?? OV.ink }}>
         {value}
       </Text>
@@ -82,7 +89,6 @@ export function BookingDetailSheet({
     placeholderData: undefined,
   });
   const [copyNote, setCopyNote] = useState<string | null>(null);
-  const [proofOpen, setProofOpen] = useState(false);
   const d = query.data;
   const forbidden = query.error instanceof ApiError && query.error.status === 403;
 
@@ -115,13 +121,11 @@ export function BookingDetailSheet({
           d={d}
           copyNote={copyNote}
           onCopy={copyId}
-          onProof={() => setProofOpen(true)}
           onOpenBooking={onOpenBooking}
           hideHistoryLink={hideHistoryLink}
           onClose={onClose}
         />
       )}
-      {proofOpen && d?.payment_id ? <ProofModal paymentId={d.payment_id} onClose={() => setProofOpen(false)} /> : null}
     </BottomSheet>
   );
 }
@@ -130,7 +134,6 @@ function DetailBody({
   d,
   copyNote,
   onCopy,
-  onProof,
   onOpenBooking,
   hideHistoryLink,
   onClose,
@@ -138,7 +141,6 @@ function DetailBody({
   d: OwnerBookingDetail;
   copyNote: string | null;
   onCopy: () => void;
-  onProof: () => void;
   onOpenBooking: (id: string) => void;
   hideHistoryLink?: boolean;
   onClose: () => void;
@@ -211,7 +213,7 @@ function DetailBody({
       <Line label="Slot" value={formatWhenRange(r.starts_at, r.ends_at)} />
       <Line label="Muddat" value={`${durationLabel(r.duration_minutes)}${slots}`} />
       <Line label="Booking kab hui" value={formatWhen(d.booked_at)} />
-      <Line label="Zariya" value={SOURCE_LABEL[r.source] ?? r.source} />
+      <Line label={CHANNEL_HEADING.ru} value={bookingChannelLabel(r.source, d.channel_detail, "ru") ?? SOURCE_LABEL[r.source] ?? r.source} />
       {d.hold_expires_at ? <Line label="Hold khatam" value={formatWhen(d.hold_expires_at)} /> : null}
 
       <SectionLabel>Paisa</SectionLabel>
@@ -229,14 +231,7 @@ function DetailBody({
       {d.payment_id ? (
         <>
           <SectionLabel>Payment screenshot</SectionLabel>
-          <Pressable
-            onPress={onProof}
-            accessibilityRole="button"
-            className="items-center justify-center rounded-2xl bg-owner-bg"
-            style={{ minHeight: 88, borderWidth: 1.5, borderStyle: "dashed", borderColor: OV.faint }}
-          >
-            <Text className="font-plex-medium text-owner-ink-muted text-[13px]">Screenshot yahan dikhega (dabane par bara)</Text>
-          </Pressable>
+          <ScreenshotThumb paymentId={d.payment_id} alt={`${r.player_name ?? "Player"} ka screenshot`} />
           {d.ocr_verdict ? (
             <View className="flex-row mt-1">
               <SmallChip
@@ -254,7 +249,7 @@ function DetailBody({
           <SectionLabel>Approval</SectionLabel>
           <Line
             label={d.approval.verdict === "approved" ? "Approve hui" : "Reject hui"}
-            value={[d.approval.auto ? "Khud ba khud" : d.approval.by_name, d.approval.at ? formatWhen(d.approval.at) : null].filter(Boolean).join(" · ")}
+            value={[d.approval.auto ? "Khud ba khud" : d.approval.by_name, d.approval.at ? formatWhen(d.approval.at) : null].filter(Boolean).join(" \u00B7 ")}
           />
           {d.approval.reason ? <Line label="Wajah" value={d.approval.reason} /> : null}
         </>
@@ -267,7 +262,7 @@ function DetailBody({
             label="Cancel kisne kiya"
             value={[{ player: "Player", owner: "Owner", system: "System" }[d.cancellation.by], d.cancellation.at ? formatWhen(d.cancellation.at) : null]
               .filter(Boolean)
-              .join(" · ")}
+              .join(" \u00B7 ")}
           />
           {d.cancellation.reason ? <Line label="Wajah" value={d.cancellation.reason} /> : null}
         </>
@@ -278,7 +273,7 @@ function DetailBody({
           <SectionLabel>Booking completed</SectionLabel>
           <Line
             label={completion.result === "yes" ? "Mukammal" : "Adhoora"}
-            value={[completion.marked_by_name, formatWhen(completion.marked_at)].filter(Boolean).join(" · ")}
+            value={[completion.marked_by_name, formatWhen(completion.marked_at)].filter(Boolean).join(" \u00B7 ")}
           />
           <Line label="Kitna mila" value={`PKR ${formatPKR(completion.received_pkr)}`} />
           {completion.reason ? <Line label="Wajah" value={completion.reason} /> : null}
@@ -295,7 +290,7 @@ function DetailBody({
                 <View className="flex-1">
                   <Text className="font-plex-semibold text-owner-ink text-[13.5px]">
                     {formatTime(e.at)}
-                    <Text className="font-plex-medium">{` · ${timelineText(e)}`}</Text>
+                    <Text className="font-plex-medium">{` \u00B7 ${timelineText(e)}`}</Text>
                   </Text>
                   {timelineDetail(e) ? (
                     <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">{timelineDetail(e)}</Text>
@@ -352,59 +347,11 @@ function DetailBody({
           <OutlineButton
             flex
             label="History mein dekhein"
-            onPress={() => {
-              const day = pktDateString(r.starts_at);
-              onClose();
-              router.push({ pathname: "/(owner)/history", params: { from: day, to: day, booking: r.booking_id } });
-            }}
+            onPress={() => openInHistory(r.booking_id, r.starts_at, onClose)}
           />
         ) : null}
         <OrangeButton flex label="Band karein" onPress={onClose} />
       </View>
     </View>
-  );
-}
-
-/** The payment screenshot via the existing short-lived signed URL. The URL lives only in component state while open. */
-function ProofModal({ paymentId, onClose }: { paymentId: string; onClose: () => void }) {
-  const query = useQuery({
-    queryKey: ["owner-proof-url", paymentId],
-    queryFn: () => api.payments.proofUrl(paymentId),
-    gcTime: 0,
-    staleTime: 0,
-  });
-  const { width, height } = Dimensions.get("window");
-  return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1" style={{ backgroundColor: "rgba(0,0,0,0.92)" }}>
-        <Pressable
-          onPress={onClose}
-          accessibilityLabel="Close"
-          accessibilityRole="button"
-          className="absolute right-4 top-12 z-10 w-11 h-11 rounded-xl items-center justify-center"
-          style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
-        >
-          <CloseIcon color="#FFFFFF" />
-        </Pressable>
-        {query.isLoading ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator color="#FFFFFF" />
-          </View>
-        ) : query.isError || !query.data ? (
-          <View className="flex-1 items-center justify-center px-8">
-            <Text className="font-plex-medium text-white text-[14px] text-center">{friendlyErrorMessage(query.error)}</Text>
-          </View>
-        ) : (
-          <ScrollView
-            maximumZoomScale={4}
-            minimumZoomScale={1}
-            centerContent
-            contentContainerStyle={{ alignItems: "center", justifyContent: "center", minHeight: height }}
-          >
-            <Image source={{ uri: query.data.url }} style={{ width, height: height * 0.8 }} resizeMode="contain" accessibilityLabel="Payment screenshot" />
-          </ScrollView>
-        )}
-      </View>
-    </Modal>
   );
 }

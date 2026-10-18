@@ -1,4 +1,5 @@
 import {
+  bookingChannelKey,
   CITY_OPTIONS,
   WEEKDAY_LONG,
   WEEKDAY_SHORT,
@@ -95,7 +96,8 @@ export interface Fmt {
   validation(message: string): string;
   /** Added in Phase 4 (shared). */
   /** Where a booking came from: App, WhatsApp, Walk-in, Phone (null for unknown). */
-  bookingSource(source: string | null | undefined): string | null;
+  /** The "Zariya" value: where a booking started; for a walk-in, who added it (`channelDetail` "owner" | "staff"). */
+  bookingSource(source: string | null | undefined, channelDetail?: string | null): string | null;
   /** The self check-in window message for a booking start (see `selfCheckinWindow`). */
   checkinWindow(startsAt: Instant): ReturnType<typeof selfCheckinWindow>;
   /** `count` date tabs from today with weekday / month names in the current language. */
@@ -198,9 +200,10 @@ export function makeFmt(lang: Lang): Fmt {
       return has(key) ? t(key) : v.replace(/^./, (c) => c.toUpperCase());
     },
     validation: (m) => translateValidation(lang, m),
-    bookingSource: (s) => {
-      const key = `fmt.source.${s}`;
-      return s && has(key) ? t(key) : null;
+    bookingSource: (s, channelDetail) => {
+      const suffix = bookingChannelKey(s, channelDetail);
+      const key = `fmt.source.${suffix}`;
+      return suffix && has(key) ? t(key) : null;
     },
     checkinWindow: (startsAt) => selfCheckinWindow(startsAt, now(), lang),
     dayTabs: (count) => pktDayTabs(count, now(), lang),

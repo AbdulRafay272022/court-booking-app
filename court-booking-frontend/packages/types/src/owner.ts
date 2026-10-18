@@ -37,6 +37,42 @@ export function bookingSourceLabel(source: string | null | undefined): string | 
   }
 }
 
+/**
+ * Owner Round 2 (A4, QA): the "Zariya" (channel) line in a booking's detail. `source` is where the booking started;
+ * `channelDetail` ("owner" | "staff", only for walk-ins, from the audit log) says who added a walk-in. "app" covers both
+ * the in-app chat and the website: the database cannot tell them apart, so it is never called "App chat".
+ * Mobile uses this directly (Roman Urdu); the web reads the same wording from its dictionaries (`fmt.channel.*`).
+ */
+export const CHANNEL_HEADING: Record<"ru" | "en", string> = {
+  ru: "Zariya (booking kahan se shuru hui)",
+  en: "Channel (where the booking started)",
+};
+
+const CHANNEL_TEXT: Record<string, Record<"ru" | "en", string>> = {
+  whatsapp: { ru: "WhatsApp chat", en: "WhatsApp chat" },
+  app: { ru: "App ya website", en: "App or website" },
+  walkin_owner: { ru: "Owner ne khud add ki (walk-in)", en: "Added by the owner (walk-in)" },
+  walkin_staff: { ru: "Staff ne add ki", en: "Added by staff" },
+  walkin: { ru: "Walk-in", en: "Walk-in" },
+  phone: { ru: "Phone", en: "Phone" },
+};
+
+/** The dictionary suffix for a booking's channel: "whatsapp" | "app" | "walkin_owner" | "walkin_staff" | "walkin" | "phone";
+ * null for an unknown/missing source (never guessed). */
+export function bookingChannelKey(source: string | null | undefined, channelDetail?: string | null): string | null {
+  if (source === "walkin") {
+    if (channelDetail === "owner") return "walkin_owner";
+    if (channelDetail === "staff") return "walkin_staff";
+    return "walkin";
+  }
+  return source && CHANNEL_TEXT[source] ? source : null;
+}
+
+export function bookingChannelLabel(source: string | null | undefined, channelDetail?: string | null, lang: "ru" | "en" = "en"): string | null {
+  const key = bookingChannelKey(source, channelDetail);
+  return key ? CHANNEL_TEXT[key][lang] : null;
+}
+
 export interface TodayCourt {
   court_id: string;
   name: string;
@@ -157,6 +193,13 @@ export interface OwnerRefund {
   refunded_amount: number | null;
   /** Still owed after any partial refunds (refund_amount - refunded_amount). Show this as the amount to pay. */
   remaining_amount?: number;
+  /** Round 2 (A10): what the player actually paid in, the policy refund, and what was already sent back. */
+  player_sent?: number | null;
+  refund_due?: number;
+  already_refunded?: number;
+  reason_label_key?: string;
+  /** Round 2: the payment this refund came from (a screenshot thumb is shown when present). */
+  payment_id?: string | null;
   refund_reference: string | null;
   refunded_at: string | null;
   created_at: string;

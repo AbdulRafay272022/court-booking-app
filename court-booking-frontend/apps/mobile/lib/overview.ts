@@ -75,7 +75,9 @@ export const TONE_STYLE: Record<Tone, { bg: string; border: string }> = {
   neutral: { bg: "#FFFFFF", border: OV.border },
 };
 
-export const SOURCE_LABEL: Record<string, string> = { app: "App chat", whatsapp: "WhatsApp", walkin: "Walk-in", phone: "Phone" };
+/** Channel labels (A4). "app" covers the in-app chat AND the website (they cannot be told apart), so never "App chat".
+ * The detail sheet uses `bookingChannelLabel` (packages/types) so a walk-in also says who added it. */
+export const SOURCE_LABEL: Record<string, string> = { app: "App ya website", whatsapp: "WhatsApp chat", walkin: "Walk-in", phone: "Phone" };
 
 export function dateTitle(date: string): string {
   return date === pktDateString() ? "Aaj" : "Is din";

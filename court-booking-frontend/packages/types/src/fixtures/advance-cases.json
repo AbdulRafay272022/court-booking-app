@@ -1,0 +1,236 @@
+[
+  {
+    "name": "nothing set: pricing rule default 100 percent",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "default",
+      "value": null,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 4000.0
+  },
+  {
+    "name": "pricing-rule percentage 50",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "default",
+      "value": null,
+      "minimum": null,
+      "defaultPercentage": 50
+    },
+    "expected": 2000.0
+  },
+  {
+    "name": "pricing-rule percentage 0 (pay at venue)",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "default",
+      "value": null,
+      "minimum": null,
+      "defaultPercentage": 0
+    },
+    "expected": 0.0
+  },
+  {
+    "name": "default percentage with a minimum above it",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "default",
+      "value": null,
+      "minimum": 2500,
+      "defaultPercentage": 50
+    },
+    "expected": 2500.0
+  },
+  {
+    "name": "fixed amount",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "fixed",
+      "value": 1500,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 1500.0
+  },
+  {
+    "name": "fixed above total is capped at the total",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "fixed",
+      "value": 5000,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 4000.0
+  },
+  {
+    "name": "fixed with a minimum above it",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "fixed",
+      "value": 1000,
+      "minimum": 1800,
+      "defaultPercentage": 100
+    },
+    "expected": 1800.0
+  },
+  {
+    "name": "percent 50",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 50,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 2000.0
+  },
+  {
+    "name": "percent with minimum above the percentage",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 30,
+      "minimum": 2000,
+      "defaultPercentage": 100
+    },
+    "expected": 2000.0
+  },
+  {
+    "name": "percent with minimum below the percentage",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 50,
+      "minimum": 1000,
+      "defaultPercentage": 100
+    },
+    "expected": 2000.0
+  },
+  {
+    "name": "minimum above total is capped at the total",
+    "total": 4000,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 10,
+      "minimum": 5000,
+      "defaultPercentage": 100
+    },
+    "expected": 4000.0
+  },
+  {
+    "name": "rounding to 2 decimals (paisa), not whole rupees",
+    "total": 1999,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 33.33,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 666.27
+  },
+  {
+    "name": "rounding: odd total at 50 percent",
+    "total": 2555,
+    "units": 1,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 50,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 1277.5
+  },
+  {
+    "name": "multi-slot 2 hours at percent 50",
+    "total": 8000,
+    "units": 2,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 50,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 4000.0
+  },
+  {
+    "name": "multi-slot 2 hours fixed is charged per court slot unit",
+    "total": 8000,
+    "units": 2,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "fixed",
+      "value": 1000,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 2000.0
+  },
+  {
+    "name": "multi-slot 2 hours: minimum applies per court slot unit",
+    "total": 8000,
+    "units": 2,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "percent",
+      "value": 25,
+      "minimum": 1500,
+      "defaultPercentage": 100
+    },
+    "expected": 3000.0
+  },
+  {
+    "name": "multi-slot 3 hours nothing set",
+    "total": 9000,
+    "units": 3,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "default",
+      "value": null,
+      "minimum": null,
+      "defaultPercentage": 100
+    },
+    "expected": 9000.0
+  },
+  {
+    "name": "multi-slot 1.5 hours (3 cells) at default 50",
+    "total": 6000,
+    "units": 1.5,
+    "slot_minutes": 60,
+    "rule": {
+      "mode": "default",
+      "value": null,
+      "minimum": null,
+      "defaultPercentage": 50
+    },
+    "expected": 3000.0
+  }
+]

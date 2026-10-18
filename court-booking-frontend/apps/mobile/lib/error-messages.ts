@@ -49,6 +49,13 @@ const MESSAGES: Record<string, string> = {
   PREMIUM_FEATURE_REQUIRED: "This is a premium feature. Switch it on under Premium to use it.",
   REFUND_ALREADY_MARKED: "This refund has already been marked as paid.",
   REFUND_EXCEEDS_OWED_AMOUNT: "That's more than what's owed on this booking.",
+  // Owner Round 2 (owner side: Roman Urdu, polite "karein"; HOLD_EXPIRED is the player's: "karo")
+  COMPLETION_TOO_EARLY: "Slot abhi khatam nahi hua. Khel khatam hone ke baad mukammal mark karein.",
+  BOOKING_NO_LONGER_PENDING: "Yeh booking ab approval ke intezar mein nahi (cancel ya expire ho chuki hai). Card par Theek hai dabayein.",
+  PAYMENT_STILL_PENDING: "Yeh payment abhi approval ke intezar mein hai. Approve ya Reject karein.",
+  REASON_REQUIRED: "Baqi paisa reh gaya hai, is liye wajah likhna zaroori hai.",
+  HOLD_EXPIRED: "Is booking ka waqt khatam ho gaya, slot ab aapke liye hold nahi. Owner ko screenshot mil gaya hai, woh aap se rabta karega.",
+  NOT_STAFF_PERMITTED: "Aap ke paas is kaam ki ijazat nahi. Owner se ijazat mangein.",
   RATE_LIMITED: "You're doing that too much — please slow down a little.",
   FORBIDDEN: "You don't have permission to do that.",
   VALIDATION_ERROR: "Some of the details entered aren't valid.",

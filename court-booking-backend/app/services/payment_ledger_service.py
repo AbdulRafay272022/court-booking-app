@@ -10,6 +10,12 @@ from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 
+# Refund reasons whose money was NEVER credited to the payment_entries ledger: paying them out must not write a
+# negative ledger entry, and Overview's "collected" must not net them out. `overpayment_excess` = money above what
+# was credited at approval; `cancelled_payment_received` = a screenshot on a booking the player cancelled / that
+# expired, acknowledged by the owner as "money received" (Owner Round 2, A5).
+UNCREDITED_REFUND_REASONS = ("overpayment_excess", "cancelled_payment_received")
+
 
 async def recompute_payment_totals(db: AsyncSession, booking: Booking) -> None:
     """The one place `bookings.amount_paid`/`balance_due` are ever written (Section 32 Part 5's own rule:

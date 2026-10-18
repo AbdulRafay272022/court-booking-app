@@ -8,6 +8,8 @@ import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import { courtLabel } from "@/components/court-label";
 import type { MessageKey } from "@/lib/i18n";
+import { SLOT_FILTERS, slotFilterMatches } from "@/lib/overview-helpers";
+import type { SlotFilter } from "@/lib/overview-helpers";
 import { Modal } from "./overlay";
 import type { CourtOption } from "./court-select";
 
@@ -47,17 +49,21 @@ function ViewIcon({ view }: { view: SlotView }) {
   );
 }
 
-/** "Sab slots dekho": every slot of the chosen day, grouped by court, with a status legend. Loads only while open. */
+/** "Sab slots dekhein": every slot of the chosen day, grouped by court, with a status legend and a filter. Loads only while open. */
 export function SlotsDialog({
   open,
   onClose,
   date,
   courts,
+  filter,
+  onFilter,
 }: {
   open: boolean;
   onClose: () => void;
   date: string;
   courts: CourtOption[];
+  filter: SlotFilter;
+  onFilter: (f: SlotFilter) => void;
 }) {
   const t = useT();
   const fmt = useFmt();
@@ -89,6 +95,23 @@ export function SlotsDialog({
         ))}
       </ul>
 
+      <div role="group" aria-label={t("ovw.slots.filter")} className="mb-4 flex flex-wrap gap-2" data-testid="ovw-slots-filter">
+        {SLOT_FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            aria-pressed={filter === f}
+            onClick={() => onFilter(f)}
+            data-testid={`ovw-slots-filter-${f}`}
+            className={`min-h-11 px-4 rounded-full text-[13px] font-bold whitespace-nowrap border-[1.5px] ${
+              filter === f ? "bg-khelo-ink text-white border-khelo-ink" : "bg-khelo-surface text-khelo-ink border-khelo-border"
+            }`}
+          >
+            {f === "all" ? t("ovw.slots.filterAll") : f === "free" ? t("ovw.slots.filterFree") : t(`ovw.slots.${f}` as MessageKey)}
+          </button>
+        ))}
+      </div>
+
       <div aria-live="polite" role="status">
         {anyLoading ? <p className="text-sm text-khelo-muted py-4">{t("ovw.slots.loading")}</p> : null}
         {failed > 0 ? (
@@ -104,8 +127,9 @@ export function SlotsDialog({
       <div className="flex flex-col gap-5">
         {courts.map((court, i) => {
           const slots = results[i]?.data?.slots ?? [];
-          const regular = slots.filter((s) => !s.after_midnight);
-          const late = slots.filter((s) => s.after_midnight);
+          const shown = slots.filter((s) => slotFilterMatches(slotView(s, nowMs), filter));
+          const regular = shown.filter((s) => !s.after_midnight);
+          const late = shown.filter((s) => s.after_midnight);
           const renderSlot = (s: Slot) => {
             const v = slotView(s, nowMs);
             return (
@@ -124,10 +148,14 @@ export function SlotsDialog({
             <section key={court.id} aria-label={courtLabel(court.name, court.sport)} data-testid="ovw-slots-court">
               <h3 className="flex items-baseline justify-between gap-3 mb-2 font-bold text-[15px] text-khelo-ink">
                 {courtLabel(court.name, court.sport)}
-                {slots.length > 0 ? <span className="text-[13px] font-semibold text-khelo-muted">{t("ovw.slots.courtCount", { n: slots.length })}</span> : null}
+                {slots.length > 0 ? <span className="text-[13px] font-semibold text-khelo-muted">{t("ovw.slots.courtCount", { n: shown.length })}</span> : null}
               </h3>
               {slots.length === 0 && results[i] && !results[i].isLoading && !results[i].isError ? (
                 <p className="text-sm text-khelo-muted">{t("ovw.slots.noSlots")}</p>
+              ) : slots.length > 0 && shown.length === 0 ? (
+                <p className="text-sm text-khelo-muted" data-testid="ovw-slots-filter-empty">
+                  {t("ovw.slots.filterEmpty")}
+                </p>
               ) : (
                 <>
                   <ul className="flex flex-wrap gap-1.5">{regular.map(renderSlot)}</ul>

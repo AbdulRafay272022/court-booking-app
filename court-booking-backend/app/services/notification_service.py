@@ -130,10 +130,21 @@ class NotificationService:
         await self.db.commit()
 
     async def _send_push_tier(
-        self, user: User, event_type: str, title: str, body: str, *, reference_id: uuid.UUID | None = None
+        self,
+        user: User,
+        event_type: str,
+        title: str,
+        body: str,
+        *,
+        reference_id: uuid.UUID | None = None,
+        bell: bool = False,
     ) -> None:
         """Tier 1: push only. The `data` payload is what the mobile app's tap handler
-        deep-links from (apps/mobile/app/_layout.tsx, `routeForNotification`)."""
+        deep-links from (apps/mobile/app/_layout.tsx, `routeForNotification`).
+
+        `bell=True` (Owner Round 2 events): when the user has no device token, still write ONE `in_app` row so the
+        event shows in the bell (GET /users/me/notifications/feed) and dedupes via has_sent -- otherwise a push-only
+        event to a web-only user left no trace at all."""
         # Admin global kill switch (Section 32 Part 12): suppress the notification
         # side effect entirely; the booking/payment logic that triggered it is
         # unaffected. OTP delivery does NOT come through here, so it's unaffected.
@@ -142,7 +153,10 @@ class NotificationService:
         data = {"event_type": event_type}
         if reference_id is not None:
             data["reference_id"] = str(reference_id)
-        for token in await self._active_tokens(user.id):
+        tokens = await self._active_tokens(user.id)
+        if bell and not tokens:
+            await self._log(user_id=user.id, channel="in_app", event_type=event_type, reference_id=reference_id)
+        for token in tokens:
             outcome = await self._push(token, title, body, data)
             if outcome == PushOutcome.UNREGISTERED:
                 await self._deactivate_token(token)
@@ -233,7 +247,13 @@ class NotificationService:
     # -- Tier 1 --------------------------------------------------------
 
     async def notify_waitlist_slot_available(
-        self, *, user: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+        self,
+        *,
+        user: User,
+        court_name: str,
+        starts_at: "datetime | str",
+        ends_at: "datetime | None" = None,
+        reference_id: uuid.UUID | None = None,
     ) -> None:
         # Deliberately makes the race explicit rather than implying an
         # exclusive hold or a protected place in line -- every matching
@@ -247,6 +267,7 @@ class NotificationService:
             "Slot available",
             f"A slot just opened up at {court_name} on {_when(starts_at, ends_at)} -- book fast, other "
             "waitlisted players were notified too.",
+            reference_id=reference_id,
         )
 
     async def notify_booking_reminder(
@@ -273,6 +294,7 @@ class NotificationService:
         amount_paid: float | None = None,
         ends_at: "datetime | None" = None,
         venue_name: str = "",
+        reference_id: uuid.UUID | None = None,
     ) -> None:
         # The WhatsApp template lays out venue / date / time as separate lines. They used to be sent
         # as ["court", "", <iso>, "", paid], i.e. a blank venue, a UTC ISO string as the date and a
@@ -288,10 +310,17 @@ class NotificationService:
             "Booking confirmed",
             f"Your booking for {court_name} on {_when(starts_at, ends_at)} is confirmed. See you on court!",
             template_params=[court_name, venue_name, date_text, time_text, f"{amount_paid:,.0f}" if amount_paid else ""],
+            reference_id=reference_id,
         )
 
     async def notify_booking_cancelled(
-        self, *, user: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+        self,
+        *,
+        user: User,
+        court_name: str,
+        starts_at: "datetime | str",
+        ends_at: "datetime | None" = None,
+        reference_id: uuid.UUID | None = None,
     ) -> None:
         await self._send_push_and_whatsapp(
             user,
@@ -299,10 +328,17 @@ class NotificationService:
             "Booking cancelled",
             f"Your booking for {court_name} on {_when(starts_at, ends_at)} was cancelled.",
             template_params=[court_name, _when(starts_at, ends_at)],
+            reference_id=reference_id,
         )
 
     async def notify_court_deactivated(
-        self, *, user: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+        self,
+        *,
+        user: User,
+        court_name: str,
+        starts_at: "datetime | str",
+        ends_at: "datetime | None" = None,
+        reference_id: uuid.UUID | None = None,
     ) -> None:
         """A court with a live future booking on it was deactivated -- the
         booking itself is deliberately NOT auto-cancelled (see
@@ -318,18 +354,24 @@ class NotificationService:
             f"Heads up: {court_name} was marked unavailable by the venue. Your booking on "
             f"{_when(starts_at, ends_at)} is still on file -- the venue will follow up with you directly.",
             template_params=[court_name, _when(starts_at, ends_at)],
+            reference_id=reference_id,
         )
 
-    async def notify_payment_rejected(self, *, user: User, court_name: str, reason: str) -> None:
+    async def notify_payment_rejected(
+        self, *, user: User, court_name: str, reason: str, reference_id: uuid.UUID | None = None
+    ) -> None:
         await self._send_push_and_whatsapp(
             user,
             "payment_rejected",
             "Payment rejected",
             f"Payment rejected: {reason}. Your slot has been released.",
             template_params=[court_name, reason],
+            reference_id=reference_id,
         )
 
-    async def notify_refund_paid(self, *, user: User, court_name: str, amount: float, reference: str) -> None:
+    async def notify_refund_paid(
+        self, *, user: User, court_name: str, amount: float, reference: str, reference_id: uuid.UUID | None = None
+    ) -> None:
         """Section 32 Part 10: the venue owner marked a manual (outside-the-app)
         refund as sent. This is a record of what the owner reported, not proof
         the transfer actually landed -- same trust model as the rest of this
@@ -340,14 +382,72 @@ class NotificationService:
             "Refund sent",
             f"The venue for {court_name} recorded a refund of {format_pkr(amount)} (ref: {reference}).",
             template_params=[court_name, format_pkr(amount), reference],
+            reference_id=reference_id,
         )
 
     async def notify_owner_new_booking(
-        self, *, owner: User, court_name: str, starts_at: "datetime | str", ends_at: "datetime | None" = None
+        self,
+        *,
+        owner: User,
+        court_name: str,
+        starts_at: "datetime | str",
+        ends_at: "datetime | None" = None,
+        reference_id: uuid.UUID | None = None,
     ) -> None:
         await self._send_push_and_whatsapp(
-            owner, "owner_new_booking", "New booking", f"New booking on {court_name} for {_when(starts_at, ends_at)}."
+            owner,
+            "owner_new_booking",
+            "New booking",
+            f"New booking on {court_name} for {_when(starts_at, ends_at)}.",
+            reference_id=reference_id,
         )
+
+    async def notify_owner_player_cancelled(
+        self, *, owner: User, court_name: str, booking_id: uuid.UUID, starts_at: datetime, ends_at: datetime | None = None
+    ) -> None:
+        """Owner Round 2 (A5): the player cancelled while their payment screenshot was waiting for approval. Push only
+        (a bell row); the approvals card turns grey on its own."""
+        await self._send_push_tier(
+            owner,
+            "owner_player_cancelled",
+            "Player cancelled",
+            f"The player cancelled {court_name} on {_when(starts_at, ends_at)} while the payment was waiting for approval.",
+            reference_id=booking_id,
+            bell=True,
+        )
+
+    async def notify_owner_late_payment_proof(
+        self, *, owner: User, court_name: str, booking_id: uuid.UUID, starts_at: datetime, ends_at: datetime | None = None
+    ) -> None:
+        """Owner Round 2 (B1): a payment screenshot arrived after the hold had expired. Push only (a bell row); the
+        screenshot is in the approvals queue as an expired card."""
+        await self._send_push_tier(
+            owner,
+            "late_payment_proof",
+            "Late payment screenshot",
+            f"A payment screenshot for {court_name} on {_when(starts_at, ends_at)} arrived after the hold expired. "
+            "Please check it in Approvals.",
+            reference_id=booking_id,
+            bell=True,
+        )
+
+    async def notify_hold_expiring(
+        self, *, user: User, court_name: str, booking_id: uuid.UUID, minutes_left: int, amount: float
+    ) -> bool:
+        """Owner Round 2 (B1): one reminder to the player before their unpaid hold runs out (sent by the expiry job at
+        2/3 of the hold time). Push only, deduped per booking via notification_log. Returns True when sent now."""
+        if await self.has_sent(user.id, "hold_expiring", booking_id):
+            return False
+        await self._send_push_tier(
+            user,
+            "hold_expiring",
+            "Your slot is about to be released",
+            f"Send your payment of {format_pkr(amount)} for {court_name} within {minutes_left} minutes, "
+            "or the slot will be released.",
+            reference_id=booking_id,
+            bell=True,
+        )
+        return True
 
     async def notify_owner_refund_owed(
         self,
@@ -398,39 +498,47 @@ class NotificationService:
             template_name=template_used,
         )
 
-    async def notify_venue_pending_review(self, *, user: User, venue_name: str) -> None:
+    async def notify_venue_pending_review(self, *, user: User, venue_name: str, venue_id: uuid.UUID | None = None) -> None:
         await self._send_push_and_whatsapp(
             user,
             "venue_pending_review",
             "New venue pending review",
             f'"{venue_name}" was just submitted and needs approval.',
+            reference_id=venue_id,
         )
 
-    async def notify_venue_approved(self, *, owner: User, venue_name: str) -> None:
+    async def notify_venue_approved(self, *, owner: User, venue_name: str, venue_id: uuid.UUID | None = None) -> None:
         await self._send_push_and_whatsapp(
             owner,
             "venue_approved",
             "Venue approved",
             f'Your venue "{venue_name}" has been approved! \U0001f389',
             template_params=[venue_name],
+            reference_id=venue_id,
         )
 
-    async def notify_venue_changes_requested(self, *, owner: User, venue_name: str, reason: str) -> None:
+    async def notify_venue_changes_requested(
+        self, *, owner: User, venue_name: str, reason: str, venue_id: uuid.UUID | None = None
+    ) -> None:
         await self._send_push_and_whatsapp(
             owner,
             "venue_changes_requested",
             "Changes requested",
             f'Changes were requested for "{venue_name}": {reason}',
             template_params=[venue_name, reason],
+            reference_id=venue_id,
         )
 
-    async def notify_venue_rejected(self, *, owner: User, venue_name: str, reason: str) -> None:
+    async def notify_venue_rejected(
+        self, *, owner: User, venue_name: str, reason: str, venue_id: uuid.UUID | None = None
+    ) -> None:
         await self._send_push_and_whatsapp(
             owner,
             "venue_rejected",
             "Venue rejected",
             f'Your venue "{venue_name}" was rejected: {reason}',
             template_params=[venue_name, reason],
+            reference_id=venue_id,
         )
 
     # -- payment_submitted escalation ladder (push -> WhatsApp -> SMS) ---
@@ -450,7 +558,9 @@ class NotificationService:
         }.get(ocr_verdict, "")
         body = f"Payment received for {court_name} (PKR {amount:,.0f}). {verdict_note} Tap to approve.".strip()
         await self._send_push_tier(
-            owner, "payment_submitted", "Payment awaiting verification", body, reference_id=booking_id
+            owner, "payment_submitted", "Payment awaiting verification", body, reference_id=booking_id,
+            # Owner Round 2 (A6): an owner with no device token (web only) must still see this in the bell.
+            bell=True,
         )
 
     async def escalate_payment_submitted(
@@ -496,15 +606,27 @@ class NotificationService:
         if minutes_elapsed >= self.settings.ESCALATION_SMS_MINUTES and not await self.has_sent(
             owner.id, "payment_submitted_sms", booking_id
         ):
-            await self.sms.send_text(owner.phone, body)
+            # Owner Round 2: log what really happened. SMSService no-ops with {"status": "skipped"} when no provider is
+            # configured (production today), and a provider error used to escape; both were logged as "sent".
+            sms_status, sms_error = "sent", None
+            try:
+                result = await self.sms.send_text(owner.phone, body)
+                if isinstance(result, dict) and result.get("status") == "skipped":
+                    sms_status, sms_error = "skipped", "sms provider not configured"
+            except Exception as exc:  # noqa: BLE001 -- a failed SMS must never break the expiry job
+                sms_status, sms_error = "failed", f"{type(exc).__name__}: {str(exc)[:200]}"
+                logger.warning("notification.sms_failed", event_type="payment_submitted_sms", error=type(exc).__name__)
             await self._log(
                 user_id=owner.id,
                 channel="sms",
                 event_type="payment_submitted_sms",
                 reference_id=booking_id,
                 cost_category="sms",
+                status_value=sms_status,
+                error_message=sms_error,
             )
-            fired.append("sms")
+            if sms_status == "sent":
+                fired.append("sms")
 
         return fired
 

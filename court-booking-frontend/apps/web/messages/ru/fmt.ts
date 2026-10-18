@@ -36,8 +36,10 @@ export const ruFmt = {
   "fmt.rel.min": "{n} minute pehle",
   "fmt.rel.hr": "{n} ghante pehle",
   "fmt.rel.day": "{n} din pehle",
-  "fmt.source.app": "App",
-  "fmt.source.whatsapp": "WhatsApp",
+  "fmt.source.app": "App ya website",
+  "fmt.source.whatsapp": "WhatsApp chat",
   "fmt.source.walkin": "Walk-in",
+  "fmt.source.walkin_owner": "Owner ne khud add ki (walk-in)",
+  "fmt.source.walkin_staff": "Staff ne add ki",
   "fmt.source.phone": "Phone",
 } as const;

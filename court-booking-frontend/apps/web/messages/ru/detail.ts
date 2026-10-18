@@ -28,7 +28,7 @@ export const ruDetail = {
   "detail.slots.one": "1 slot",
   "detail.slots.many": "{n} slots",
   "detail.bookedAt": "Booking kab hui",
-  "detail.source": "Zariya",
+  "detail.source": "Zariya (booking kahan se shuru hui)",
   "detail.holdExpires": "Hold khatam hoga",
   "detail.total": "Total amount",
   "detail.advance": "Advance zaroori tha",

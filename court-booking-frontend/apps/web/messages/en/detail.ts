@@ -30,7 +30,7 @@ export const enDetail: Record<keyof typeof ruDetail, string> = {
   "detail.slots.one": "1 slot",
   "detail.slots.many": "{n} slots",
   "detail.bookedAt": "Booked at",
-  "detail.source": "Channel",
+  "detail.source": "Channel (where the booking started)",
   "detail.holdExpires": "Hold expires",
   "detail.total": "Total amount",
   "detail.advance": "Advance required",

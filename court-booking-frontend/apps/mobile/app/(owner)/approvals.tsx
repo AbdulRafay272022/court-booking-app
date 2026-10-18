@@ -1,345 +1,247 @@
-import { useState } from "react";
-import { courtLabel, sportForCourtName } from "@/components/court-label";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { approvalSummary } from "@court-booking/types";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDayHeader, formatPKR, formatTimeRange } from "@/lib/format";
+import { formatDayHeader } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
-import { OwnerTabBar } from "@/components/owner-tab-bar";
+import { noLongerPendingState } from "@/lib/round2-format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { ChevronLeftIcon, CheckIcon } from "@/components/icons";
+import { courtLabel, sportForCourtName } from "@/components/court-label";
+import { OwnerTabBar } from "@/components/owner-tab-bar";
+import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
-import { EmptyState } from "./_dashboard-components";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
-import { BookingLinks } from "@/components/booking-links";
+import { ApprovalCard, ApproveSheet, RejectSheet } from "@/components/approval-card";
+import { EmptyState } from "./_dashboard-components";
 
-const REJECT_REASONS = ["Amount doesn't match", "Screenshot unreadable", "Looks like a duplicate", "Other"];
+const PAGE_SIZE = 50;
 
+/** Round 2 (A1/A5): every payment waiting for review as a list, newest first. Acting on a card removes only that card;
+ * a card whose booking the player cancelled turns grey in place with "Theek hai". */
 export default function ApprovalsScreen() {
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
   const filterDate = routeParams.date || undefined;
   const filterCourts = routeParams.courts ? routeParams.courts.split(",").filter(Boolean) : [];
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [detailId, setDetailId] = useState<string | null>(null);
-  const [rejecting, setRejecting] = useState(false);
-  const [rejectReason, setRejectReason] = useState<string | null>(null);
-  const [rejectNote, setRejectNote] = useState("");
 
-  const query = useQuery({
-    queryKey: ["owner-pending-approvals", activeVenueId, filterDate, filterCourts.join(",")],
-    queryFn: () => api.owners.pendingApprovals(activeVenueId, { date: filterDate, courtIds: filterCourts }),
-    // Was unconditional before -- fired once with activeVenueId still undefined (an unscoped
-    // fetch across every venue the owner has) and again once it resolved. Gating on it, like
-    // every other owner screen, avoids that flash and keeps this query's own isLoading
-    // meaningful once combined with venuesLoading below (Section 29 Part A).
+  const [removed, setRemoved] = useState<Set<string>>(() => new Set());
+  const [greyed, setGreyed] = useState<Record<string, ApprovalState>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [sheet, setSheet] = useState<{ kind: "approve" | "reject"; id: string } | null>(null);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Staff without the approve permission get 403 NOT_STAFF_PERMITTED; the app cannot know the permissions in advance (no
+  // endpoint returns them to staff), so after the first refusal the action buttons are replaced by a clear note.
+  const [noPermission, setNoPermission] = useState(false);
+
+  const query = useInfiniteQuery({
+    queryKey: ["owner-approvals-queue", activeVenueId, filterDate, filterCourts.join(",")],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      api.owners.approvalsQueue({ venueId: activeVenueId, date: filterDate, courtIds: filterCourts, page: pageParam, pageSize: PAGE_SIZE }),
+    getNextPageParam: (last) => (last.page * last.page_size < last.total ? last.page + 1 : undefined),
     enabled: !!activeVenueId,
-    refetchInterval: (query) => pollInterval(query, 15_000),
+    refetchInterval: (q) => pollInterval(q, 15_000),
   });
 
-  const list = query.data ?? [];
-  const current = list[0];
+  const fetched = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ApprovalQueueItem[] = [];
+    for (const p of query.data?.pages ?? []) {
+      for (const it of p.items) {
+        if (seen.has(it.payment_id)) continue;
+        seen.add(it.payment_id);
+        out.push(it);
+      }
+    }
+    return out;
+  }, [query.data]);
+  const items = fetched.filter((it) => !removed.has(it.payment_id)).map((it) => (greyed[it.payment_id] ? { ...it, state: greyed[it.payment_id] } : it));
+  const serverTotal = query.data?.pages[0]?.total ?? 0;
+  // The badge number = payments waiting for approval + grey cards that only need "Theek hai"; the header splits it.
+  const { awaiting, closed } = approvalsHeaderCounts(serverTotal, fetched, removed, greyed);
+  const current = sheet ? items.find((it) => it.payment_id === sheet.id) ?? null : null;
 
-  // Money-correctness: the owner confirms how much the player really paid. Pre-filled with the screenshot
-  // amount (else the expected one); editing it re-labels the card and is what gets credited on Approve.
-  const [amountEdit, setAmountEdit] = useState<{ paymentId: string; text: string } | null>(null);
-  const defaultAmount = current?.checks?.paid_amount ?? current?.expected_amount ?? 0;
-  const amountText = amountEdit && amountEdit.paymentId === current?.payment_id ? amountEdit.text : String(defaultAmount);
-  const amountValue = /^\d+$/.test(amountText.trim()) ? Number(amountText.trim()) : null;
-  const summary = current?.checks && amountValue !== null && amountValue > 0 ? approvalSummary(current.checks, amountValue) : null;
-
-  function resetRejectSheet() {
-    setRejecting(false);
-    setRejectReason(null);
-    setRejectNote("");
+  function refreshSide() {
+    queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
+    queryClient.invalidateQueries({ queryKey: ["owner-overview"] });
+    queryClient.invalidateQueries({ queryKey: ["owner-history"] });
   }
 
-  async function handleApprove() {
-    if (!current) return;
-    if (current.checks && (amountValue === null || amountValue <= 0)) {
-      Alert.alert("Enter the amount", "Enter the amount the player actually paid (whole PKR).");
-      return;
-    }
-    setBusy(true);
+  function drop(id: string) {
+    setRemoved((prev) => new Set(prev).add(id));
+    refreshSide();
+    // The card is already gone; the queue refetch just catches up (the others stay where they are).
+    queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+  }
+
+  async function act(id: string, fn: () => Promise<unknown>, onDone: () => void) {
+    setBusyId(id);
+    setSheetError(null);
+    setErrors((e) => ({ ...e, [id]: "" }));
     try {
-      await api.payments.approve(current.payment_id, current.checks ? (amountValue ?? undefined) : undefined);
-      await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
-      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+      await fn();
+      onDone();
     } catch (e) {
-      Alert.alert("Couldn't approve", friendlyErrorMessage(e));
+      const state = noLongerPendingState(e);
+      if (state) {
+        // The player cancelled meanwhile: grey in place, no error text, no reason asked.
+        setGreyed((g) => ({ ...g, [id]: state }));
+        setSheet(null);
+      } else if (e instanceof ApiError && e.code === "NOT_STAFF_PERMITTED") {
+        setNoPermission(true);
+        setSheet(null);
+      } else if (sheet) {
+        setSheetError(friendlyErrorMessage(e));
+      } else {
+        setErrors((er) => ({ ...er, [id]: friendlyErrorMessage(e) }));
+      }
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   }
 
-  async function submitReject() {
-    if (!current) return;
-    const reason = rejectReason === "Other" ? rejectNote.trim() : rejectReason;
-    if (!reason) {
-      Alert.alert("Pick a reason", "Choose a reason (or write one) before rejecting.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await api.payments.reject(current.payment_id, reason);
-      resetRejectSheet();
-      await queryClient.invalidateQueries({ queryKey: ["owner-pending-approvals"] });
-      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
-    } catch (e) {
-      Alert.alert("Couldn't reject", friendlyErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+  function approve(item: ApprovalQueueItem, amount: number | undefined, mode: ApproveAcceptMode | undefined) {
+    act(item.payment_id, () => api.payments.approve(item.payment_id, amount, mode), () => {
+      setSheet(null);
+      drop(item.payment_id);
+    });
   }
 
-  const verdict = current?.ocr_verdict ?? null;
-  const verdictTone =
-    verdict === "match" ? "match" : verdict === "mismatch" ? "mismatch" : "unreadable";
+  function reject(item: ApprovalQueueItem, reason: string) {
+    act(item.payment_id, () => api.payments.reject(item.payment_id, reason), () => {
+      setSheet(null);
+      drop(item.payment_id);
+    });
+  }
+
+  function acknowledge(item: ApprovalQueueItem, moneyReceived: boolean) {
+    act(item.payment_id, () => api.owners.acknowledgeCancelled(item.payment_id, moneyReceived), () => {
+      drop(item.payment_id);
+      if (moneyReceived) {
+        queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
+        setNotice(`${item.player_name ?? "Player"} ka refund Refunds mein add ho gaya.`);
+      }
+    });
+  }
+
+  const courtText = (it: ApprovalQueueItem) => courtLabel(it.court_name, it.court_sport ?? sportForCourtName(activeVenue?.courts, it.court_name));
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
       <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
+        <Pressable
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(owner)/today"))}
+          accessibilityLabel="Back"
+          accessibilityRole="button"
+          className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center"
+        >
           <ChevronLeftIcon />
         </Pressable>
         <View className="flex-1 gap-0.5">
-          <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px]">Payment review</Text>
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-            {list.length === 0 ? "Nothing waiting" : `1 of ${list.length} waiting`}
+          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Payment review</Text>
+          <Text testID="approvals-count" className="font-plex-bold text-owner-ink text-[17px] -tracking-[0.2px]" accessibilityRole="header">
+            {query.data ? `${awaiting} approvals baqi` : "Approvals"}
           </Text>
+          {query.data && closed > 0 ? (
+            <Text testID="approvals-count-closed" className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+              {`(${closed} cancel/expire hue, Theek hai dabayein)`}
+            </Text>
+          ) : null}
         </View>
       </View>
-      {filterDate ? (
+      {filterDate || filterCourts.length ? (
         <View className="px-4.5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
-          <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">{`Filter: ${formatDayHeader(filterDate)}${filterCourts.length ? ` · ${filterCourts.length} court(s)` : ""}`}</Text>
+          <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">
+            {`Filter: ${filterDate ? formatDayHeader(filterDate) : "Sab din"}${filterCourts.length ? ` - ${filterCourts.length} court(s)` : ""}`}
+          </Text>
           <Pressable onPress={() => router.setParams({ date: undefined, courts: undefined })} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
             <Text className="font-plex-bold text-owner-accent text-[13px] underline">Sab dikhao</Text>
           </Pressable>
         </View>
       ) : null}
-
+      {notice ? (
+        <View className="px-4.5 py-2.5 flex-row items-center justify-between gap-3" style={{ backgroundColor: "#E4F0EA" }}>
+          <Text className="flex-1 font-plex-semibold text-[12.5px]" style={{ color: "#14563A" }}>
+            {notice}
+          </Text>
+          <Pressable onPress={() => router.push("/(owner)/refunds")} accessibilityRole="link" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Refunds</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {venuesLoading || query.isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#0E6274" />
         </View>
-      ) : query.isError && list.length === 0 ? (
+      ) : query.isError && !query.data ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
-      ) : !current ? (
-        <EmptyState title="All caught up" subtitle="No payment screenshots are waiting for review right now." />
+      ) : items.length === 0 ? (
+        <EmptyState title="Sab ho gaya" subtitle="Abhi koi payment approval ke liye nahi hai." />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 gap-3.5">
-          <View
-            className="rounded-xl p-4 flex-row items-center gap-3.5"
-            style={{
-              backgroundColor: verdictTone === "match" ? "#E4F0EA" : verdictTone === "mismatch" ? "#F8E5E0" : "#EFF2F3",
-              borderWidth: 1,
-              borderColor: verdictTone === "match" ? "#A9CFBD" : verdictTone === "mismatch" ? "#DDBAB1" : "#DCE3E6",
-            }}
-          >
-            <View
-              className="w-[38px] h-[38px] rounded-full items-center justify-center"
-              style={{ backgroundColor: verdictTone === "match" ? "#1F7A52" : verdictTone === "mismatch" ? "#8C3823" : "#8399A1" }}
+        <ScrollView className="flex-1" contentContainerClassName="px-4 pt-4 pb-8 gap-3.5">
+          {items.map((it) => (
+            <ApprovalCard
+              key={it.payment_id}
+              item={it}
+              courtText={courtText(it)}
+              busy={busyId === it.payment_id}
+              error={errors[it.payment_id] || null}
+              locked={noPermission}
+              onDetails={() => setDetailId(it.booking_id)}
+              onApprove={() => {
+                setSheetError(null);
+                setSheet({ kind: "approve", id: it.payment_id });
+              }}
+              onReject={() => {
+                setSheetError(null);
+                setSheet({ kind: "reject", id: it.payment_id });
+              }}
+              onAcknowledge={(money) => acknowledge(it, money)}
+            />
+          ))}
+          {query.hasNextPage ? (
+            <Pressable
+              onPress={() => query.fetchNextPage()}
+              accessibilityRole="button"
+              style={{ minHeight: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "#101C21", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" }}
             >
-              <CheckIcon size={19} strokeWidth={2.6} />
-            </View>
-            <View className="flex-1 gap-0.5">
-              <Text
-                className="font-plex-bold text-[14.5px]"
-                style={{ color: verdictTone === "match" ? "#14563A" : verdictTone === "mismatch" ? "#8C3823" : "#5B7079" }}
-              >
-                {verdictTone === "match" ? "Amount matches" : verdictTone === "mismatch" ? "Amount mismatch" : "Couldn't read the screenshot"}
-              </Text>
-              <Text
-                className="font-plex-medium text-[12.5px]"
-                style={{ color: verdictTone === "match" ? "#3D7A5E" : verdictTone === "mismatch" ? "#8C3823" : "#5B7079" }}
-              >
-                {current.ocr_amount != null
-                  ? `We read PKR ${formatPKR(current.ocr_amount)} · expected PKR ${formatPKR(current.expected_amount)}`
-                  : `Expected PKR ${formatPKR(current.expected_amount)} — verify the screenshot manually`}
-              </Text>
-            </View>
-          </View>
-
-          <View className="bg-owner-surface border border-owner-border rounded-xl p-4.5 gap-3.5">
-            <View className="flex-row items-center gap-3">
-              <View className="w-11 h-11 rounded-full bg-owner-accent items-center justify-center">
-                <Text className="font-plex-semibold text-white text-[15px]">
-                  {(current.player_name ?? "?").slice(0, 2).toUpperCase()}
-                </Text>
-              </View>
-              <View className="flex-1 gap-0.5">
-                <Text className="font-plex-bold text-owner-ink text-[15.5px]">{current.player_name ?? "Player"}</Text>
-                {current.player_phone ? (
-                  <Text className="font-mono-medium text-owner-ink-muted text-[12.5px]">{current.player_phone}</Text>
-                ) : null}
-              </View>
-            </View>
-            <View className="h-px bg-owner-border-light" />
-            <Row label="Slot" value={`${courtLabel(current.court_name, current.court_sport ?? sportForCourtName(activeVenue?.courts, current.court_name))} · ${formatTimeRange(current.starts_at, current.ends_at)}`} />
-            <Row label="Advance due" value={`PKR ${formatPKR(current.expected_amount)}`} />
-            <Row label="Submitted" value={`${current.minutes_since_submission.toFixed(0)} min ago`} />
-            <BookingLinks bookingId={current.booking_id} startsAt={current.starts_at} onDetails={() => setDetailId(current.booking_id)} />
-          </View>
-
-          {current.checks ? (
-            <View className="bg-owner-surface border border-owner-border rounded-xl p-4.5 gap-3">
-              <Text className="font-plex-bold text-owner-ink text-[13.5px]">Checks</Text>
-              <CheckRow check={current.checks.name} />
-              <CheckRow check={current.checks.amount} />
-              <View className="gap-2 rounded-lg border border-owner-border p-3">
-                <Text className="font-plex-semibold text-owner-ink text-[13px]">Amount received (PKR)</Text>
-                <TextInput
-                  value={amountText}
-                  onChangeText={(text) => setAmountEdit({ paymentId: current.payment_id, text })}
-                  keyboardType="number-pad"
-                  className="font-mono-medium"
-                  style={{ height: 44, paddingHorizontal: 13, borderRadius: 9, borderWidth: 1, borderColor: "#DCE3E6", fontSize: 14 }}
-                />
-                {summary ? (
-                  <>
-                    <Text
-                      className="font-plex-bold text-[14px]"
-                      style={{ color: summary.status === "paid_in_full" ? "#14563A" : summary.status === "overpaid" ? "#8A5A00" : "#8C3823" }}
-                    >
-                      {summary.text}
-                    </Text>
-                    <Text className="font-mono-medium text-owner-ink-muted text-[12.5px]">
-                      Total PKR {formatPKR(summary.totalAfter + summary.balanceAfter)}. Paid after approval PKR {formatPKR(summary.totalAfter)}. Balance due at the venue: PKR {formatPKR(summary.balanceAfter)}.
-                    </Text>
-                    {summary.excess > 0 ? (
-                      <Text className="font-plex-medium text-[12.5px]" style={{ color: "#8A5A00" }}>
-                        PKR {formatPKR(summary.excess)} is more than the booking price. Only the price is recorded; the excess will be added to Refunds to pay.
-                      </Text>
-                    ) : null}
-                  </>
-                ) : null}
-              </View>
-              <CheckRow check={current.checks.time} />
-              <CheckRow check={current.checks.bank} />
-              <CheckRow check={current.checks.duplicate} />
-            </View>
+              <Text className="font-plex-semibold text-owner-ink text-[14px]">{query.isFetchingNextPage ? "Load ho raha hai" : "Aur dikhao"}</Text>
+            </Pressable>
           ) : null}
-
-          {current.proof_url ? (
-            <View className="bg-owner-surface border border-owner-border rounded-xl p-3.5">
-              <Image source={{ uri: current.proof_url }} style={{ width: "100%", height: 260, borderRadius: 8 }} resizeMode="contain" />
-            </View>
-          ) : (
-            <View className="bg-owner-surface border border-owner-border rounded-xl p-4.5">
-              <Text className="font-plex-medium text-owner-ink-faint text-[13px]">No screenshot on file for this payment.</Text>
-            </View>
-          )}
         </ScrollView>
       )}
 
-      {current ? (
-        <View className="px-4.5 pt-3.5 pb-6 bg-owner-surface border-t border-owner-border">
-          {rejecting ? (
-            <View className="gap-3">
-              <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">Why are you rejecting this?</Text>
-              <View className="flex-row flex-wrap gap-2">
-                {REJECT_REASONS.map((r) => (
-                  <Pressable
-                    key={r}
-                    onPress={() => setRejectReason(r)}
-                    className="px-3.5 py-2.5 rounded-lg"
-                    style={{ backgroundColor: rejectReason === r ? "#8C3823" : "#F4F6F7" }}
-                  >
-                    <Text
-                      className="font-plex-semibold text-[13px]"
-                      style={{ color: rejectReason === r ? "#FFFFFF" : "#5B7079" }}
-                    >
-                      {r}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-              {rejectReason === "Other" ? (
-                <TextInput
-                  value={rejectNote}
-                  onChangeText={setRejectNote}
-                  placeholder="Describe the issue"
-                  className="font-plex-medium"
-                  style={{ height: 46, paddingHorizontal: 13, borderRadius: 9, borderWidth: 1, borderColor: "#DCE3E6", fontSize: 14 }}
-                />
-              ) : null}
-              <View className="flex-row gap-2.5">
-                <Pressable onPress={resetRejectSheet} className="flex-1 h-12 rounded-[11px] border border-owner-border items-center justify-center">
-                  <Text className="font-plex-semibold text-owner-ink-muted text-[14.5px]">Cancel</Text>
-                </Pressable>
-                <Pressable
-                  onPress={submitReject}
-                  disabled={busy}
-                  className="flex-1 h-12 rounded-[11px] items-center justify-center"
-                  style={{ backgroundColor: "#8C3823", opacity: busy ? 0.6 : 1 }}
-                >
-                  <Text className="font-plex-semibold text-white text-[14.5px]">Confirm reject</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : (
-            <View className="flex-row gap-2.5">
-              <Pressable
-                onPress={handleApprove}
-                disabled={busy}
-                className="flex-1 h-[52px] rounded-[11px] items-center justify-center"
-                style={{ backgroundColor: "#1F7A52", opacity: busy ? 0.6 : 1 }}
-              >
-                <Text className="font-plex-semibold text-white text-[15.5px]">Approve</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setRejecting(true)}
-                disabled={busy}
-                className="w-[104px] h-[52px] rounded-[11px] items-center justify-center border"
-                style={{ borderColor: "#DDBAB1" }}
-              >
-                <Text className="font-plex-semibold text-[15px]" style={{ color: "#A8432C" }}>
-                  Reject
-                </Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
+      {sheet?.kind === "approve" && current && current.state === "awaiting" ? (
+        <ApproveSheet
+          item={current}
+          busy={busyId === current.payment_id}
+          error={sheetError}
+          onClose={() => setSheet(null)}
+          onConfirm={(amount, mode) => approve(current, amount, mode)}
+        />
+      ) : null}
+      {sheet?.kind === "reject" && current && current.state === "awaiting" ? (
+        <RejectSheet
+          item={current}
+          busy={busyId === current.payment_id}
+          error={sheetError}
+          onClose={() => setSheet(null)}
+          onConfirm={(reason) => reject(current, reason)}
+        />
       ) : null}
       {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
       <OwnerTabBar active="approvals" />
     </SafeAreaView>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-row items-center justify-between">
-      <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">{label}</Text>
-      <Text className="font-mono-semibold text-owner-ink text-[13.5px]">{value}</Text>
-    </View>
-  );
-}
-
-/** Section 32 Part 7 -- tick/warning/cross colors for the five plain-
- * language checks. "not_available"/"not_configured" are neutral (grey),
- * never a failure color -- they mean "nothing to compare," not "bad." */
-const CHECK_COLORS: Record<string, string> = {
-  match: "#1F7A52",
-  mismatch: "#A8432C",
-  warning: "#B8860B",
-  not_available: "#8399A1",
-  not_configured: "#8399A1",
-};
-
-function CheckRow({ check }: { check: { verdict: string; text: string } }) {
-  const color = CHECK_COLORS[check.verdict] ?? "#8399A1";
-  return (
-    <View className="flex-row items-start gap-2.5">
-      <View className="w-2 h-2 rounded-full mt-1.5" style={{ backgroundColor: color }} />
-      <Text className="flex-1 font-plex-medium text-owner-ink text-[13px] leading-[18px]">{check.text}</Text>
-    </View>
   );
 }

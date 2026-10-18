@@ -1,11 +1,12 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 
 from app.dependencies import CurrentUser, DbSession, PageParams
 from app.models.fcm_token import FCMToken
 from app.models.notification import NotificationLog
 from app.schemas.auth import FCMTokenRegisterIn, UserOut
-from app.schemas.notification import NotificationLogOut
+from app.schemas.notification import NotificationFeedPageOut, NotificationLogOut
+from app.services.notification_feed import notification_feed
 from app.utils.s3 import public_url, upload_public_photo
 
 router = APIRouter(prefix="/users/me", tags=["users"])
@@ -75,3 +76,13 @@ async def list_my_notifications(db: DbSession, user: CurrentUser, page: PagePara
         .limit(page.page_size)
     )
     return [NotificationLogOut.model_validate(n) for n in result.scalars().all()]
+
+
+@router.get("/notifications/feed", response_model=NotificationFeedPageOut, response_model_exclude_none=True)
+async def my_notification_feed(
+    db: DbSession, user: CurrentUser, page: int = Query(1, ge=1), page_size: int = Query(30, ge=1, le=100)
+) -> NotificationFeedPageOut:
+    """Owner Round 2 (A6): the readable bell. Same rows as /users/me/notifications (which stays for old builds),
+    grouped per event (one item for WhatsApp + SMS of the same escalation), with a normalized `kind`, params
+    resolved in bulk from reference_id, a link and the delivery channels. See app/services/notification_feed.py."""
+    return NotificationFeedPageOut(**await notification_feed(db, user.id, page, page_size))

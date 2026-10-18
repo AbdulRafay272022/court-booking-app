@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@court-booking/api-client";
-import type { CompletionResult, OwnerBookingRow, OwnerOverview } from "@court-booking/types";
+import type { CompletionInput, CompletionResult, OwnerBookingRow, OwnerOverview } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { pollInterval } from "@/lib/polling";
@@ -16,7 +16,7 @@ import { useFmt } from "@/lib/use-fmt";
 import { ErrorState } from "@/components/error-state";
 import { BookingDetail } from "@/components/owner/booking-detail";
 import { BookingsTable } from "@/components/owner/overview/bookings-table";
-import { CompletionDialog } from "@/components/owner/overview/completion-dialog";
+import { CompletionDialog, completionErrorText } from "@/components/owner/overview/completion-dialog";
 import { CourtSelect } from "@/components/owner/overview/court-select";
 import { DateSelect } from "@/components/owner/overview/date-select";
 import { KpiCards } from "@/components/owner/overview/kpi-cards";
@@ -33,7 +33,8 @@ import {
   rowDomId,
   rowMatchesFilter,
 } from "@/lib/overview-helpers";
-import type { RowFilter } from "@/lib/overview-helpers";
+import type { RowFilter, SlotFilter } from "@/lib/overview-helpers";
+import { applyReceivedNow } from "@/lib/overview-completion";
 
 export default function OwnerOverviewPage() {
   // useSearchParams needs a Suspense boundary above it
@@ -53,15 +54,14 @@ function OverviewSkeleton() {
   return (
     <div role="status" aria-busy="true" data-testid="ovw-skeleton" className="flex flex-col gap-4">
       <span className="sr-only">{t("ovw.state.loading")}</span>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <Skeleton className="col-span-2 h-44" />
-        <Skeleton className="h-44" />
-        <Skeleton className="h-44" />
-        {Array.from({ length: 4 }, (_, i) => (
-          <Skeleton key={i} className="h-36" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <Skeleton className="md:col-span-2 h-56" />
+        <Skeleton className="h-56" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
+        {Array.from({ length: 5 }, (_, i) => (
+          <Skeleton key={i} className={`h-36 ${i === 4 ? "col-span-2 lg:col-span-1" : ""}`} />
         ))}
-        <Skeleton className="lg:col-span-2 h-32" />
-        <Skeleton className="lg:col-span-2 h-32" />
       </div>
       <Skeleton className="h-72" />
     </div>
@@ -93,6 +93,7 @@ function OverviewScreen() {
 
   const [filter, setFilter] = useState<RowFilter>("all");
   const [slotsOpen, setSlotsOpen] = useState(false);
+  const [slotsFilter, setSlotsFilter] = useState<SlotFilter>("all");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [dialogRow, setDialogRow] = useState<OwnerBookingRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -119,12 +120,8 @@ function OverviewScreen() {
   const data = overviewQuery.data;
 
   function completionError(e: unknown): string {
-    if (e instanceof ApiError && e.code === "COMPLETION_TOO_EARLY") return t("ovw.complete.err.tooEarly");
-    if (e instanceof ApiError && e.status === 403) {
-      setNoPermission(true);
-      return t("ovw.complete.err.forbidden");
-    }
-    return friendlyErrorMessage(e, t);
+    if (e instanceof ApiError && e.status === 403) setNoPermission(true);
+    return completionErrorText(e, t);
   }
 
   function applyServerRow(row: OwnerBookingRow) {
@@ -156,15 +153,25 @@ function OverviewScreen() {
     }
   }
 
-  async function saveNo(row: OwnerBookingRow, receivedPkr: number, reason: string): Promise<string | null> {
+  /** "Nahi": the row changes at once (paid += received now, due -= received now), the server's row replaces it, a failure rolls it back. */
+  async function submitNo(row: OwnerBookingRow, body: CompletionInput): Promise<OwnerBookingRow> {
+    await queryClient.cancelQueries({ queryKey });
+    const previous = queryClient.getQueryData<OwnerOverview>(queryKey);
+    queryClient.setQueryData<OwnerOverview>(queryKey, (prev) => (prev ? patchOverviewRow(prev, applyReceivedNow(row, body.received_now ?? 0, body.reason ?? "")) : prev));
     try {
-      const updated = await api.owners.markCompletion(row.booking_id, { result: "no", received_pkr: receivedPkr, reason: reason || undefined });
+      const updated = await api.owners.markCompletion(row.booking_id, body);
       applyServerRow(updated);
-      setDialogRow(null);
-      return null;
+      return updated;
     } catch (e) {
-      return completionError(e);
+      queryClient.setQueryData(queryKey, previous);
+      if (e instanceof ApiError && e.status === 403) setNoPermission(true);
+      throw e;
     }
+  }
+
+  function openSlots(f: SlotFilter) {
+    setSlotsFilter(f);
+    setSlotsOpen(true);
   }
 
   function jumpToOriginal(row: OwnerBookingRow) {
@@ -186,7 +193,7 @@ function OverviewScreen() {
   }
 
   const loading = venuesLoading || overviewQuery.isLoading || (!!activeVenueId && courts.length > 0 && !data && !overviewQuery.isError);
-  const subtitle = [fmt.dateString(date), activeVenue?.name].filter(Boolean).join(" · ");
+  const subtitle = [fmt.dateString(date), activeVenue?.name].filter(Boolean).join(" \u00b7 ");
 
   return (
     <div className="px-4 py-6 sm:px-8 sm:py-8 flex flex-col gap-5 md:gap-6 max-w-[1240px] [&_*:focus-visible]:outline-2 [&_*:focus-visible]:outline-offset-2 [&_*:focus-visible]:outline-khelo-teal">
@@ -273,7 +280,7 @@ function OverviewScreen() {
         </div>
       ) : data ? (
         <>
-          <KpiCards overview={data} date={date} courts={courtsValue} onOpenSlots={() => setSlotsOpen(true)} />
+          <KpiCards overview={data} date={date} today={today} courts={courtsValue} onOpenSlots={openSlots} />
           <BookingsTable
             rows={data.rows}
             filter={filter}
@@ -290,8 +297,26 @@ function OverviewScreen() {
         </>
       ) : null}
 
-      <SlotsDialog open={slotsOpen} onClose={() => setSlotsOpen(false)} date={date} courts={effectiveCourts.map((c) => ({ id: c.id, name: c.name, sport: c.sport }))} />
-      <CompletionDialog row={dialogRow} onClose={() => setDialogRow(null)} onSave={(received, reason) => saveNo(dialogRow as OwnerBookingRow, received, reason)} />
+      <SlotsDialog
+        open={slotsOpen}
+        onClose={() => setSlotsOpen(false)}
+        date={date}
+        courts={effectiveCourts.map((c) => ({ id: c.id, name: c.name, sport: c.sport }))}
+        filter={slotsFilter}
+        onFilter={setSlotsFilter}
+      />
+      {dialogRow ? (
+        <CompletionDialog
+          key={dialogRow.booking_id}
+          row={dialogRow}
+          onClose={() => setDialogRow(null)}
+          onSaved={() => {
+            setDialogRow(null);
+            setMessage(null);
+          }}
+          submit={(body) => submitNo(dialogRow, body)}
+        />
+      ) : null}
       <BookingDetail bookingId={detailId} onClose={() => setDetailId(null)} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-overview"] })} />
     </div>
   );
