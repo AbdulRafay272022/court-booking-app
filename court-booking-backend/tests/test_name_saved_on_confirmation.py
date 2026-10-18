@@ -7,6 +7,7 @@ the model-driven hold_slot tool, and the in-app Yes button (POST /bookings/hold 
 only when users.name is empty, never overwrite, never a friend's name, never a court/venue/sport/city word."""
 from datetime import time, timedelta
 
+import pytest
 from sqlalchemy import delete, select
 
 from app.config import get_settings
@@ -15,7 +16,9 @@ from app.models.user import User, UserRole
 from app.services.ai_chat_service import AIChatService
 from tests.test_ai_chat import (
     _add_proposal,
-    _future_day,
+    FROZEN_INSTANTS,
+    _next_saturday,
+    frozen_clock,  # noqa: F401 -- the fixture, used by name
     _hold_via_model,
     _nameless_setup,
     _pkt,
@@ -29,13 +32,14 @@ async def _name_of(db_session, user) -> str | None:
 
 # ---- the proposal alone never saves -----------------------------------------------------------------------------
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_a_proposal_alone_records_the_intent_but_does_not_touch_the_account(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                          ("+923017000001", "+923017000002", "+923017000003"), monkeypatch)
     guest = await db_session.get(User, guest.id)
-    start = _pkt(_future_day(5), 19).isoformat()
+    start = _pkt(_next_saturday(), 19).isoformat()
     actions: list = []
     await AIChatService(db_session, get_settings())._execute_tool(
         guest, "propose_booking_confirmation",
@@ -116,13 +120,14 @@ async def test_whatsapp_yes_button_saves_the_name_and_never_overwrites_or_saves_
 
 # ---- the model-driven hold_slot path ----------------------------------------------------------------------------
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_model_driven_hold_saves_the_name_from_the_confirmed_proposal_only_when_the_hold_is_created(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                          ("+923017000031", "+923017000032", "+923017000033"), monkeypatch)
     guest = await db_session.get(User, guest.id)  # bound to the session, like the request's user
-    seven = _pkt(_future_day(5), 19).isoformat()
+    seven = _pkt(_next_saturday(), 19).isoformat()
     await _add_proposal(db_session, guest, court, seven, player_name="Ali", name_is_players_own=True)
     assert await _name_of(db_session, guest) is None  # proposal only
 
@@ -132,13 +137,14 @@ async def test_model_driven_hold_saves_the_name_from_the_confirmed_proposal_only
     assert await _name_of(db_session, guest) == "Ali"
 
 
+@pytest.mark.parametrize("frozen_clock", FROZEN_INSTANTS, indirect=True)
 async def test_model_driven_hold_with_a_friend_name_or_a_refused_hold_saves_nothing(
-    db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
+    frozen_clock, db_session, make_user, make_venue, make_court, make_schedule, make_pricing_rule, monkeypatch
 ):
     court, guest = await _nameless_setup(make_user, make_venue, make_court, make_schedule, make_pricing_rule,
                                          ("+923017000041", "+923017000042", "+923017000043"), monkeypatch)
     guest = await db_session.get(User, guest.id)  # bound to the session, like the request's user
-    day = _future_day(5)
+    day = _next_saturday()
     seven, eight = _pkt(day, 19).isoformat(), _pkt(day, 20).isoformat()
 
     # a friend's name (flag false/absent)
