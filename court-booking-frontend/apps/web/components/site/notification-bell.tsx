@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useT } from "@/components/i18n/lang-provider";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { notificationText, type NotificationFeedItem } from "@court-booking/types";
+import { useLang, useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
 import { capCount } from "@/lib/owner-seen";
-import { eventSuffix, ms, routeForEvent, type LogEntry } from "@/lib/notif-helpers";
+import { feedRoute, groupByDay, ms, type NotifRole } from "@/lib/notif-helpers";
 import { currentPermission, useNotifications, type PopupState } from "@/lib/use-notifications";
 
 function BellIcon() {
@@ -20,12 +22,15 @@ function BellIcon() {
 
 /**
  * The notifications bell, shown to every signed-in role (player, owner, staff, admin). A button with an unread badge ("9+" cap) opens a
- * dropdown with the latest notifications (from GET /users/me/notifications, polled every 15 s while the tab is visible), "mark all as read"
+ * dropdown with the latest notifications (Round 2: GET /users/me/notifications/feed, one readable sentence + context + delivery per
+ * item, grouped by day; an older backend falls back to the plain log), polled every 15 s while the tab is visible, "mark all as read"
  * (kept in this browser, per user), and the opt-in browser popup + sound. `tone="dark"` is for the dark site header, `"light"` for the owner shell.
  * Keyboard: Enter / Space opens, Esc closes and returns focus to the bell, leaving the dropdown with Tab closes it.
  */
 export function NotificationBell({ tone = "dark", className = "" }: { tone?: "dark" | "light"; className?: string }) {
   const t = useT();
+  const fmt = useFmt();
+  const router = useRouter();
   const n = useNotifications();
   const panelId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -156,11 +161,31 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
           ) : n.items.length === 0 ? (
             <p className="px-4 py-8 text-center text-[14px] text-khelo-muted">{t("notif.bell.empty")}</p>
           ) : (
-            <ul aria-label={t("notif.bell.listLabel")} className="m-0 list-none p-0">
-              {n.items.map((e) => (
-                <Row key={e.id} entry={e} unread={ms(e.created_at) > n.readAt} role={n.role} onNavigate={() => close(false)} />
-              ))}
-            </ul>
+            <div aria-label={t("notif.bell.listLabel")} role="group">
+              {groupByDay(n.items, n.fetchedAt).map((g) => {
+                const heading = g.kind === "today" ? t("notif.bell.today") : g.kind === "yesterday" ? t("notif.bell.yesterday") : fmt.dateString(g.day);
+                return (
+                  <section key={g.day} aria-label={heading} data-testid="notification-day">
+                    <h3 className="sticky top-0 z-[1] m-0 bg-khelo-page px-4 py-1.5 text-[11.5px] font-extrabold uppercase tracking-wide text-khelo-muted-2">{heading}</h3>
+                    <ul className="m-0 list-none p-0">
+                      {g.items.map((e) => (
+                        <Row
+                          key={e.id}
+                          item={e}
+                          unread={ms(e.created_at) > n.readAt}
+                          role={n.role}
+                          onNavigate={(href) => {
+                            // close the dropdown FIRST, then navigate (A2)
+                            close(false);
+                            router.push(href);
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
           )}
 
           {(
@@ -168,6 +193,7 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
               {perm !== "unsupported" ? (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[12px] font-bold uppercase tracking-wide text-khelo-muted-2">{t("notif.popup.heading")}</p>
+                  <p className="text-[12.5px] leading-5 text-khelo-muted" data-testid="notification-popup-explain">{rk("notif.popup.explain")}</p>
                   {perm === "denied" ? (
                     <p className="text-[13px] leading-5 text-khelo-muted" data-testid="notification-denied">
                       {rk("notif.popup.denied")}
@@ -212,33 +238,55 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
   );
 }
 
-function Row({ entry, unread, role, onNavigate }: { entry: LogEntry; unread: boolean; role: Parameters<typeof routeForEvent>[1]; onNavigate: () => void }) {
+function Row({
+  item,
+  unread,
+  role,
+  onNavigate,
+}: {
+  item: NotificationFeedItem;
+  unread: boolean;
+  role: NotifRole;
+  onNavigate: (href: string) => void;
+}) {
   const t = useT();
+  const lang = useLang();
   const fmt = useFmt();
-  const title = t(`notif.event.${eventSuffix(entry.event_type)}` as MessageKey);
-  const channelKey = `notif.channel.${entry.channel}` as MessageKey;
-  const channel = ["push", "whatsapp", "sms"].includes(entry.channel) ? t(channelKey) : "";
-  const href = routeForEvent(entry.event_type, role);
+  const text = notificationText(item, lang);
+  const href = feedRoute(item, role);
   const body = (
     <>
-      <span aria-hidden="true" className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${unread ? "bg-khelo-orange" : "bg-transparent"}`} />
+      <span aria-hidden="true" data-testid={unread ? "notification-unread-dot" : undefined} className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${unread ? "bg-khelo-orange" : "bg-transparent"}`} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={`text-[14px] leading-5 ${unread ? "font-bold" : "font-semibold"}`}>
-          {title}
+        <span className={`text-[14px] leading-5 ${unread ? "font-bold" : "font-semibold"}`} data-testid="notification-title">
+          {text.title}
           {unread ? <span className="ml-2 inline-block rounded-full bg-khelo-warm px-2 py-0.5 align-middle text-[11px] font-extrabold text-khelo-orange-label">{t("notif.bell.new")}</span> : null}
         </span>
-        <span className="text-[12.5px] text-khelo-muted-2">
-          {fmt.relative(entry.created_at)}
-          {channel ? ` · ${channel}` : ""}
+        {text.context ? (
+          <span className="text-[13px] leading-5 text-khelo-ink [overflow-wrap:anywhere]" data-testid="notification-context">
+            {text.context}
+          </span>
+        ) : null}
+        <span className="text-[12px] text-khelo-muted-2" data-testid="notification-meta">
+          {fmt.relative(item.created_at)}
+          {text.delivery ? ` · ${text.delivery}` : ""}
         </span>
       </span>
     </>
   );
   const cls = "flex min-h-14 items-start gap-3 border-b border-khelo-divider px-4 py-3";
   return (
-    <li>
+    <li data-testid="notification-row">
       {href ? (
-        <Link href={href} onClick={onNavigate} className={`${cls} hover:bg-khelo-page focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-khelo-orange`}>
+        <Link
+          href={href}
+          onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // new tab / window: leave it to the browser
+            e.preventDefault();
+            onNavigate(href);
+          }}
+          className={`${cls} hover:bg-khelo-page focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-khelo-orange`}
+        >
           {body}
         </Link>
       ) : (

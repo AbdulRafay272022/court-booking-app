@@ -1,2 +1,30 @@
-// Roman Urdu copy (source of truth). Keys start with 'adv.'.
-export const ruAdv = {} as const;
+// Roman Urdu copy (source of truth). Keys start with 'adv.'. Owner-facing: "karein".
+export const ruAdv = {
+  "adv.title": "Advance payment",
+  "adv.question": "Slot hold karne ke liye player abhi kitne paise de?",
+  "adv.option.default": "Default (pricing se)",
+  "adv.option.fixed": "Fixed raqam",
+  "adv.option.percent": "Percentage",
+  "adv.help.default": "Aap ke price rule ka advance percentage lagega (aam taur par 100%, yani poori raqam abhi).",
+  "adv.help.fixed": "Har booking par aik muqarrar raqam (PKR) abhi, baqi venue par.",
+  "adv.help.percent": "Total ka kuch hissa abhi, jaise 50%; baqi venue par.",
+  "adv.field.amount": "Advance raqam (PKR)",
+  "adv.field.percent": "Total ka percentage (%)",
+  "adv.field.minimum": "Kam az kam advance (PKR, optional)",
+  "adv.field.minimumHint": "Khali chhorein agar koi had nahi. Percentage is se kam bane to ye raqam li jayegi.",
+  "adv.err.percent": "Percentage 0 se 100 ke beech likhein.",
+  "adv.err.amount": "Advance raqam likhein (0 ya zyada).",
+  "adv.err.minimum": "Kam az kam advance 0 ya zyada likhein.",
+  "adv.example.label": "Misaal",
+  "adv.example.line": "Court ka {duration} ka rate PKR {total} - {rule} -> player abhi PKR {advance} dega",
+  "adv.example.balance": "Baqi PKR {balance} venue par.",
+  "adv.example.noPrice": "Price daalne ke baad yahan misaal dikhegi.",
+  "adv.example.rule.default": "default {pct}%",
+  "adv.example.rule.percent": "{pct}%",
+  "adv.example.rule.fixed": "fixed PKR {amount}",
+  "adv.example.rule.min": "(kam az kam PKR {amount})",
+  "adv.example.capped": "Advance kabhi total se zyada nahi hota.",
+  "adv.default.line": "Agar aap kuch set na karein: player abhi PKR {amount} dega ({pct}%, price rule se).",
+  "adv.default.noPrice": "Agar aap kuch set na karein: player poori raqam ({pct}%) abhi dega. Price daalne ke baad raqam yahan dikhegi.",
+  "adv.multi": "Lambi booking (jaise 2 ghante) mein advance usi hisaab se barhta hai.",
+} as const;

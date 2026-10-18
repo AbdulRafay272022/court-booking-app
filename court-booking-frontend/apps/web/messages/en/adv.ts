@@ -1,2 +1,32 @@
 // English copy: same keys as messages/ru/adv.ts.
-export const enAdv = {};
+import type { ruAdv } from "../ru/adv";
+
+export const enAdv: Record<keyof typeof ruAdv, string> = {
+  "adv.title": "Advance payment",
+  "adv.question": "How much should a player pay now to hold the slot?",
+  "adv.option.default": "Default (from pricing)",
+  "adv.option.fixed": "Fixed amount",
+  "adv.option.percent": "Percentage",
+  "adv.help.default": "Uses your price rule's advance percentage (usually 100%, the full amount now).",
+  "adv.help.fixed": "A set amount (PKR) now on every booking; the rest at the venue.",
+  "adv.help.percent": "A share of the total now, e.g. 50%; the rest at the venue.",
+  "adv.field.amount": "Advance amount (PKR)",
+  "adv.field.percent": "Percentage of total (%)",
+  "adv.field.minimum": "Minimum advance (PKR, optional)",
+  "adv.field.minimumHint": "Leave empty for no floor. If the percentage comes out lower, this amount is used.",
+  "adv.err.percent": "Enter a percentage between 0 and 100.",
+  "adv.err.amount": "Enter an advance amount (0 or more).",
+  "adv.err.minimum": "Enter a minimum of 0 or more.",
+  "adv.example.label": "Example",
+  "adv.example.line": "Court rate for {duration}: PKR {total} - {rule} -> the player pays PKR {advance} now",
+  "adv.example.balance": "PKR {balance} at the venue.",
+  "adv.example.noPrice": "Add a price and an example will show here.",
+  "adv.example.rule.default": "default {pct}%",
+  "adv.example.rule.percent": "{pct}%",
+  "adv.example.rule.fixed": "fixed PKR {amount}",
+  "adv.example.rule.min": "(at least PKR {amount})",
+  "adv.example.capped": "The advance is never more than the total.",
+  "adv.default.line": "If you set nothing: the player pays PKR {amount} now ({pct}%, from the price rule).",
+  "adv.default.noPrice": "If you set nothing: the player pays the full amount ({pct}%) now. The amount shows here once you add a price.",
+  "adv.multi": "For a longer booking (e.g. 2 hours) the advance grows the same way.",
+};

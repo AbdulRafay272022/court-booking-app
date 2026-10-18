@@ -29,6 +29,8 @@ import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
 import { CourtSetupFields } from "@/components/setup/court-setup-fields";
 import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
 import { AdvanceRuleFields } from "@/components/setup/advance-rule-fields";
+import { advanceDraftErrors, basePriceFromDrafts } from "@/components/setup/advance-preview";
+import { PaymentRemindersCard } from "@/components/setup/payment-reminders-card";
 import { PhotoManager } from "@/components/setup/photo-manager";
 import { CourtTabs } from "@/components/setup/court-tabs";
 import { CourtBasicsFields } from "@/components/setup/court-basics-fields";
@@ -62,7 +64,7 @@ export default function VenueSettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("venue");
 
   return (
-    <div className="p-8 max-w-3xl flex flex-col gap-6">
+    <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6 min-w-0">
       <h1 className="text-2xl font-bold">{t("setup.set.title")}</h1>
 
       {/* Venue-level and court-level settings live on separate tabs so it is always clear what an edit applies to. */}
@@ -104,6 +106,8 @@ export default function VenueSettingsPage() {
               initialCutoff={activeVenue.cancellation_cutoff_hours}
             />
           ) : null}
+          {/* Round 2 B1: payment reminders, preview only until per-venue values have a column (Stage 2). */}
+          {activeVenue ? <PaymentRemindersCard key={`reminders-${activeVenue.id}`} /> : null}
         </div>
       ) : (
         <div className="flex flex-col gap-6" role="tabpanel" aria-labelledby="settings-tab-courts" data-testid="settings-courts">
@@ -557,8 +561,28 @@ function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: 
   const [message, setMessage] = useState<Message>(null);
 
   const problem = courtSetupProblem(setup);
+  const advanceErrors = advanceDraftErrors({ advanceType, advanceValue, advanceMinimum });
   const advanceProblem =
-    advanceType !== "" && !advanceValue.trim() ? t("setup.set.advanceProblem") : null;
+    advanceType !== "" && !advanceValue.trim()
+      ? t("setup.set.advanceProblem")
+      : advanceErrors.value === "percent"
+        ? t("adv.err.percent")
+        : advanceErrors.value === "amount"
+          ? t("adv.err.amount")
+          : advanceErrors.minimum
+            ? t("adv.err.minimum")
+            : null;
+  // Round 2 A11: the server's own explanation (default rule, "if you set nothing"); an older backend 404s and the card
+  // then computes the same numbers from the typed prices (packages/types advance-example.ts mirrors the backend).
+  const explain = useQuery({
+    queryKey: ["advance-explain", court.id],
+    queryFn: () => api.owners.advanceExplain(court.id),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const savedDefaultPct =
+    explain.data?.default_rule.percentage ??
+    (court.pricing_rules.find((r) => r.is_active)?.advance_percentage ?? null);
 
   async function save() {
     if (!name.trim()) {
@@ -621,6 +645,14 @@ function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: 
         advanceType={advanceType}
         advanceValue={advanceValue}
         advanceMinimum={advanceMinimum}
+        unitPrice={basePriceFromDrafts(setup.pricingRules)}
+        unitMinutes={setup.slotMinutes}
+        defaultPercentage={savedDefaultPct}
+        nothingSet={
+          explain.data
+            ? { amount: explain.data.default_rule.value_if_nothing_set, percentage: explain.data.default_rule.percentage }
+            : null
+        }
         onChange={(patch) => {
           if (patch.advanceType !== undefined) setAdvanceType(patch.advanceType);
           if (patch.advanceValue !== undefined) setAdvanceValue(patch.advanceValue);

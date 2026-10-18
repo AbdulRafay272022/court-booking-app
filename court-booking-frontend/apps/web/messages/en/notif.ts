@@ -35,6 +35,10 @@ export const enNotif: Record<keyof typeof ruNotif, string> = {
   "notif.channel.whatsapp": "WhatsApp",
   "notif.channel.sms": "SMS",
 
+  "notif.bell.today": "Today",
+  "notif.bell.yesterday": "Yesterday",
+  "notif.popup.explain.owner": "While this tab is open, new notifications can also appear as a popup on your computer or phone.",
+  "notif.popup.explain.player": "While this tab is open, new notifications can also appear as a popup on your computer or phone.",
   "notif.popup.heading": "Browser popups",
   "notif.popup.enable.owner": "Turn on notifications",
   "notif.popup.enable.player": "Turn on notifications",
@@ -50,7 +54,7 @@ export const enNotif: Record<keyof typeof ruNotif, string> = {
   "notif.sound.on": "Sound is on",
   "notif.sound.off": "Sound is off",
 
-  "notif.event.generic": "New notification",
+  "notif.event.generic": "Update from Khelo",
   "notif.event.payment_submitted": "A new payment is waiting for approval",
   "notif.event.booking_confirmed": "Booking confirmed",
   "notif.event.booking_cancelled": "Booking cancelled",

@@ -37,6 +37,10 @@ export const ruNotif = {
   "notif.channel.whatsapp": "WhatsApp",
   "notif.channel.sms": "SMS",
 
+  "notif.bell.today": "Aaj",
+  "notif.bell.yesterday": "Kal",
+  "notif.popup.explain.owner": "Is tab ke khule hone par nayi notification computer ya phone par popup ki shakal mein bhi dikhegi.",
+  "notif.popup.explain.player": "Is tab ke khule hone par nayi notification computer ya phone par popup ki shakal mein bhi dikhegi.",
   // Browser popups + sound
   "notif.popup.heading": "Browser popups",
   "notif.popup.enable.owner": "Notifications on karein",
@@ -54,7 +58,7 @@ export const ruNotif = {
   "notif.sound.off": "Awaaz band hai",
 
   // Event titles (the log has no body text, so the title is built from the event type)
-  "notif.event.generic": "Nayi notification",
+  "notif.event.generic": "Khelo se update",
   "notif.event.payment_submitted": "Nayi payment approval ke intezar mein hai",
   "notif.event.booking_confirmed": "Booking confirm ho gayi",
   "notif.event.booking_cancelled": "Booking cancel ho gayi",
