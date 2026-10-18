@@ -35,6 +35,8 @@ export interface PricingRuleDraft {
   endTime: string | null;
   /** The rule's saved advance_percentage (Venue Settings keeps it on save); unset for a new rule = 100. */
   advancePercentage?: number;
+  /** The rule's saved floodlight_surcharge (kept on save); unset for a new rule = the backend default. */
+  floodlightSurcharge?: number;
 }
 
 /** Everything an owner sets for ONE court: how long a slot is, when it is open, and what it costs. The wizard and
@@ -121,6 +123,8 @@ export function buildPricingRules(setup: CourtSetup): PricingRuleInput[] {
       price_per_slot: Number(r.pricePerSlot),
       // keep a saved rule's own percentage (saving Venue Settings used to reset every rule to 100)
       advance_percentage: r.advancePercentage ?? 100,
+      // likewise keep a saved rule's floodlight surcharge (omitted for a new rule, so the backend default applies)
+      ...(r.floodlightSurcharge !== undefined ? { floodlight_surcharge: r.floodlightSurcharge } : {}),
     }));
 }
 
@@ -150,6 +154,7 @@ export function courtSetupFromCourt(court: Pick<Court, "slot_minutes" | "schedul
             startTime: r.start_time ? shortTime(r.start_time) : null,
             endTime: r.end_time ? shortTime(r.end_time) : null,
             advancePercentage: Number(r.advance_percentage),
+            floodlightSurcharge: Number(r.floodlight_surcharge ?? 0),
           }))
         : [makePricingRule("All day")],
   };

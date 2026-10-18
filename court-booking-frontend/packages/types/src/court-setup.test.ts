@@ -277,3 +277,17 @@ test("saving Venue Settings keeps each rule's own advance_percentage; a new rule
   setup.pricingRules.push({ ...makePricingRule("New"), pricePerSlot: "5000" });
   assert.deepEqual(buildPricingRules(setup).map((r) => r.advance_percentage), [50, 25, 100]);
 });
+
+test("saving Venue Settings keeps each rule's floodlight_surcharge; a new rule leaves it to the backend default", () => {
+  const court = {
+    slot_minutes: 60,
+    schedule_templates: [],
+    pricing_rules: [
+      { id: "1", name: "All day", priority: 0, day_of_week: null, start_time: null, end_time: null, price_per_slot: 3000, floodlight_surcharge: 500, advance_percentage: 100, is_active: true },
+      { id: "2", name: "Peak", priority: 1, day_of_week: null, start_time: "18:00:00", end_time: "23:00:00", price_per_slot: 4000, floodlight_surcharge: 0, advance_percentage: 100, is_active: true },
+    ],
+  };
+  const setup = courtSetupFromCourt(court as never);
+  setup.pricingRules.push({ ...makePricingRule("New"), pricePerSlot: "5000" });
+  assert.deepEqual(buildPricingRules(setup).map((r) => r.floodlight_surcharge), [500, 0, undefined]);
+});
