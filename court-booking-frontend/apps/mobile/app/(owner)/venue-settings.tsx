@@ -28,7 +28,16 @@ import { formatWhen } from "@/lib/format";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
-import { AdvanceRuleFields, CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
+import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
+import {
+  AdvanceSettings,
+  advanceDraftFromCourt,
+  advanceDraftProblem,
+  advanceDraftToInput,
+  advancePriceFromSetup,
+  type AdvanceDraft,
+} from "@/components/advance-settings";
+import { RemindersCard } from "@/components/reminders-card";
 import { PhotoManager } from "@/components/photo-manager";
 import { AmenityPicker, CourtIdentityFields } from "@/components/court-identity-fields";
 import { CourtTabs } from "@/components/court-tabs";
@@ -106,6 +115,8 @@ export default function VenueSettingsScreen() {
                 initialAllowed={activeVenue.cancellation_allowed}
                 initialCutoff={activeVenue.cancellation_cutoff_hours}
               />
+              {/* B1 preview (Stage 1): not saved until the per-venue timer columns exist (Stage 2). */}
+              <RemindersCard key={`reminders-${activeVenue.id}`} />
               <VenuePhotosCard
                 key={`photos-${activeVenue.id}`}
                 venueId={activeVenue.id}
@@ -347,9 +358,17 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
   const queryClient = useQueryClient();
   const [identity, setIdentity] = useState({ name: court.name, sport: court.sport, isIndoor: court.is_indoor });
   const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
-  const [advanceType, setAdvanceType] = useState<"" | "fixed" | "percent">(court.advance_type ?? "");
-  const [advanceValue, setAdvanceValue] = useState(court.advance_value != null ? String(court.advance_value) : "");
-  const [advanceMinimum, setAdvanceMinimum] = useState(court.advance_minimum != null ? String(court.advance_minimum) : "");
+  const [advance, setAdvance] = useState<AdvanceDraft>(() => advanceDraftFromCourt(court));
+  // A11: the backend's own answer for "what does Default mean on this court" (the real default + source). A backend
+  // without the endpoint (404) just leaves it undefined and the line is computed from the form's price instead.
+  const explainQuery = useQuery({
+    queryKey: ["advance-explain", court.id],
+    queryFn: () => api.owners.advanceExplain(court.id),
+    retry: false,
+  });
+  const explain = explainQuery.data && !explainQuery.isError ? explainQuery.data : null;
+  const basePct = court.pricing_rules.find((r) => r.is_active)?.advance_percentage;
+  const basePercentage = basePct != null && Number.isFinite(Number(basePct)) ? Number(basePct) : undefined;
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const problem = courtSetupProblem(setup);
@@ -375,8 +394,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
       },
     });
   }
-  const advanceProblem =
-    advanceType !== "" && !advanceValue.trim() ? "Enter an advance amount or percentage, or switch back to Default." : null;
+  const advanceProblem = advanceDraftProblem(advance);
 
   async function save() {
     if (!identity.name.trim()) {
@@ -399,16 +417,13 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
         is_indoor: identity.isIndoor,
         ...(setup.slotMinutes !== court.slot_minutes ? { slot_minutes: setup.slotMinutes } : {}),
       });
-      await api.courts.update(court.id, {
-        advance_type: advanceType || null,
-        advance_value: advanceType ? Number(advanceValue) : null,
-        advance_minimum: advanceMinimum.trim() ? Number(advanceMinimum) : null,
-      });
+      await api.courts.update(court.id, advanceDraftToInput(advance));
       await api.courts.setSchedule(court.id, buildSchedules(setup));
       await api.courts.setPricing(court.id, buildPricingRules(setup));
       await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      await queryClient.invalidateQueries({ queryKey: ["advance-explain", court.id] });
       Alert.alert("Saved", `${courtLabel(identity.name.trim(), identity.sport)}: details, hours, prices and advance rule updated.`);
     } catch (e) {
       Alert.alert("Couldn't save", friendlyErrorMessage(e));
@@ -428,15 +443,12 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
         onChange={(patch) => setIdentity((cur) => ({ ...cur, ...patch }))}
       />
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
-      <AdvanceRuleFields
-        advanceType={advanceType}
-        advanceValue={advanceValue}
-        advanceMinimum={advanceMinimum}
-        onChange={(patch) => {
-          if (patch.advanceType !== undefined) setAdvanceType(patch.advanceType);
-          if (patch.advanceValue !== undefined) setAdvanceValue(patch.advanceValue);
-          if (patch.advanceMinimum !== undefined) setAdvanceMinimum(patch.advanceMinimum);
-        }}
+      <AdvanceSettings
+        value={advance}
+        onChange={(patch) => setAdvance((cur) => ({ ...cur, ...patch }))}
+        price={advancePriceFromSetup(setup)}
+        explain={explain}
+        defaultPercentage={basePercentage}
       />
       <PrimaryButton label="Save changes" onPress={save} loading={saving} />
       {canDelete ? (
