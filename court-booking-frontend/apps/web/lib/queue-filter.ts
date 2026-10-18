@@ -20,9 +20,11 @@ export function parseQueueFilter(params: ParamReader): QueueFilter {
   return { date, courtIds, active: !!date || courtIds.length > 0 };
 }
 
-/** "History mein dekho": the History page with that booking highlighted, on the day the owner is looking at (the filter day,
- * else the booking's own Pakistan date). */
-export function historyHref(bookingId: string, startsAt: string, filterDate?: string): string {
-  const day = filterDate ?? pktDateString(startsAt);
+/** "History mein dekhein": the History page with that booking highlighted, on the booking's OWN Pakistan date (the queue's
+ * filter day may differ from the booking's day, and History would then not contain the row). `_filterDate` is kept for
+ * old callers and ignored. */
+export function historyHref(bookingId: string, startsAt: string, _filterDate?: string): string {
+  void _filterDate;
+  const day = pktDateString(startsAt);
   return `/dashboard/bookings?booking=${encodeURIComponent(bookingId)}&from=${day}&to=${day}`;
 }

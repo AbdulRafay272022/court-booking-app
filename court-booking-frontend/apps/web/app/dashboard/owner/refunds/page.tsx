@@ -145,7 +145,6 @@ export default function OwnerRefundsPage() {
                   <RowLinks
                     bookingId={refund.booking_id}
                     startsAt={refund.starts_at}
-                    filterDate={filter.date}
                     who={who}
                     onDetails={() => setDetailId(refund.booking_id)}
                   />

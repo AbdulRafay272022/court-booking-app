@@ -17,7 +17,7 @@ export const ruNotif = {
   "notif.filter.clear": "Sab dikhao",
   "notif.details": "Details",
   "notif.detailsAria": "Details: {who}",
-  "notif.history": "History mein dekho",
+  "notif.history": "History mein dekhein",
   "notif.queue": "Ye {pos} number hai, kul {total} approvals",
   "notif.unknownPlayer": "Player",
 
