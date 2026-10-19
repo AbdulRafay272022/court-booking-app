@@ -56,7 +56,7 @@ export default function VenueCourtsScreen() {
   // Stage 2: the owner's CNIC is required before "Send for review" unless one is already on file (e.g. a second venue).
   // Kept in memory only (useCnicDraft), never in the persisted wizard draft.
   const identityQuery = useOwnerIdentity();
-  const cnicOnFile = !!identityQuery.data && identityQuery.data.status !== "missing";
+  const cnicOnFile = identityQuery.data?.status === "submitted" || identityQuery.data?.status === "verified";
   const cnic = useCnicDraft();
   const cnicProblemText = cnicOnFile || cnicDraftComplete(cnic) ? null : "CNIC number aur card ki dono taraf ki photo dein.";
   const timersHaveErrors = Object.keys(timerDraftProblems(store.timers).errors).length > 0;

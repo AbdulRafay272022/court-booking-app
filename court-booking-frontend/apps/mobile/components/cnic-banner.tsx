@@ -21,7 +21,7 @@ export function CnicBanner() {
   return (
     <View
       testID="cnic-banner"
-      className="mx-4 mt-3 rounded-2xl px-4 py-3 gap-2"
+      className="rounded-2xl px-4 py-3 gap-2"
       style={{ backgroundColor: "#FFF6E5", borderWidth: 1.5, borderColor: "#F2D49B" }}
     >
       <Text className="font-plex-bold text-owner-ink text-[14.5px]">CNIC dein</Text>

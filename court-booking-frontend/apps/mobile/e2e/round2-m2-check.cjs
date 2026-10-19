@@ -71,6 +71,12 @@ async function setup(browser, opts = {}) {
     if (p === "/auth/me") return json({ user, session: { device_id: "d", device_name: null, platform: "web", last_active_at: iso(0), expires_at: iso(7) } });
     if (p === "/auth/refresh") return json({ token: "tok", expires_at: iso(8) });
     if (p === "/owners/venues") return json([venue]);
+    // Stage 2: venue timers (all default) and a CNIC already on file, so these Round 2 checks see the Stage 2 screens
+    if (p === "/owners/venues/v1/timers" && req.method() === "GET") {
+      const d = { hold_minutes: 15, reminders_enabled: true, first_reminder_after_min: 10, repeat_every_min: 30, max_reminders: 5, auto_cancel_enabled: true, auto_cancel_after_min: 120 };
+      return json({ values: Object.fromEntries(Object.keys(d).map((k) => [k, null])), defaults: d, effective: d });
+    }
+    if (p === "/owners/identity") return json({ status: "verified", masked: "*****-*******-1", flags: [] });
     if (p === "/courts/c1/advance-explain") return opts.noExplain ? json({ error: { code: "NOT_FOUND", message: "nf" } }, 404) : json(explain);
     if (p === "/courts/c1/blackouts") return json([]);
     if (p === "/courts/c1" && req.method() === "GET") return json(court);
@@ -133,9 +139,13 @@ const badgeText = async (page) => {
     const { ctx, page, reqs } = await setup(browser);
     await page.goto(BASE + "/venue-settings", { waitUntil: "domcontentloaded", timeout: 240000 });
     await page.getByText("Venue settings").first().waitFor({ timeout: 180000 });
+    // Stage 2 (changed on purpose): the default is auto-cancel ON at 120 and the card is saved (no "not saved yet" note)
     const pre = await waitText(page, "reminder-preview", /Reminder/);
-    check("settings: reminders preview with defaults", pre === "Reminder 10, 40, 70, 100, 130 minute par. Auto-cancel band hai.", pre);
-    check("settings: 'not saved yet' note", /jald aa raha hai/.test((await visibleText(page, "reminders-note")) || ""));
+    check("settings: reminders preview with defaults (auto-cancel ON 120)", pre === "Reminder 10, 40, 70, 100 minute par. 115 par aakhri warning, 120 par cancel.", pre);
+    check("settings: no 'not saved yet' note any more", (await visibleText(page, "reminders-note")) === null);
+    await page.getByRole("checkbox", { name: /khud cancel/ }).click();
+    const off = await waitText(page, "reminder-preview", /band hai/);
+    check("settings: auto-cancel off preview", off === "Reminder 10, 40, 70, 100, 130 minute par. Auto-cancel band hai.", off);
     await page.getByRole("checkbox", { name: /khud cancel/ }).click();
     const y120 = await waitText(page, "reminder-preview", /120 par cancel/);
     check("settings: Y=120 preview", y120 === "Reminder 10, 40, 70, 100 minute par. 115 par aakhri warning, 120 par cancel.", y120);
@@ -196,8 +206,7 @@ const badgeText = async (page) => {
     check("wizard: reminders hidden until Advanced is opened", (await visibleText(page, "reminder-preview")) === null);
     await page.getByRole("button", { name: "Advanced" }).click();
     const pre = await waitText(page, "reminder-preview", /Reminder/);
-    check("wizard: Advanced shows the same reminders preview", pre === "Reminder 10, 40, 70, 100, 130 minute par. Auto-cancel band hai.", pre);
-    await page.getByRole("checkbox", { name: /khud cancel/ }).click();
+    check("wizard: Advanced shows the same reminders preview", pre === "Reminder 10, 40, 70, 100 minute par. 115 par aakhri warning, 120 par cancel.", pre);
     await page.getByTestId("rem-cancel").fill("30");
     const y30 = await waitText(page, "reminder-preview", /30 par cancel/);
     check("wizard: Y=30 preview", y30 === "Reminder 10 minute par. 25 par aakhri warning, 30 par cancel.", y30);
