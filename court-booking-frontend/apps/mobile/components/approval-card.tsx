@@ -5,7 +5,7 @@ import { approvalSummary, type ApprovalQueueItem, type ApproveAcceptMode } from 
 import { formatPKR } from "@/lib/format";
 import { OV } from "@/lib/overview";
 import { STATE_CHIP, isGrey, parsePkr, slotWhen } from "@/lib/round2-format";
-import { BanIcon, CheckIcon, XIcon } from "@/components/icons";
+import { AlertTriangleIcon, BanIcon, CheckIcon, XIcon } from "@/components/icons";
 import { AlertCircleIcon } from "@/components/overview/icons";
 import { BottomSheet, OrangeButton, OutlineButton } from "@/components/overview/ui";
 import { BookingLinks } from "@/components/booking-links";
@@ -36,6 +36,22 @@ function AmountChip({ item }: { item: ApprovalQueueItem }) {
   );
 }
 
+/** Stage 2 (B.a): "this screenshot was already used on N other bookings" (icon + text). */
+export function duplicateText(n: number): string {
+  return `Ye screenshot pehle bhi ${n} ${n === 1 ? "booking" : "bookings"} par use hua hai`;
+}
+
+function DuplicateChip({ n }: { n: number }) {
+  return (
+    <View testID="duplicate-chip" className="flex-row items-center gap-1.5 self-start rounded-full px-3" style={{ minHeight: 30, backgroundColor: OV.redBg, borderWidth: 1, borderColor: OV.redBorder }}>
+      <AlertTriangleIcon size={14} color={OV.red} />
+      <Text className="font-plex-bold text-[12.5px]" style={{ color: OV.red, flexShrink: 1 }}>
+        {`Duplicate: ${duplicateText(n)}`}
+      </Text>
+    </View>
+  );
+}
+
 export function ApprovalCard({
   item,
   courtText,
@@ -51,7 +67,8 @@ export function ApprovalCard({
   courtText: string;
   busy: boolean;
   error: string | null;
-  /** Staff without the approve permission (after a 403 NOT_STAFF_PERMITTED): no action buttons, one clear note. */
+  /** Staff without the approve permission (known up front from /owners/me/permissions, or after a 403
+   * NOT_STAFF_PERMITTED): no action buttons, one clear note. */
   locked?: boolean;
   onDetails: () => void;
   onApprove: () => void;
@@ -92,6 +109,7 @@ export function ApprovalCard({
       </View>
 
       {!grey ? <AmountChip item={item} /> : null}
+      {!grey && item.duplicate ? <DuplicateChip n={item.duplicate.used_on_bookings} /> : null}
       {item.has_screenshot || item.proof_url ? <ScreenshotThumb paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : null}
 
       <BookingLinks bookingId={item.booking_id} startsAt={item.starts_at} onDetails={onDetails} />
@@ -275,6 +293,57 @@ function Choice({ selected, onPress, label, sub }: { selected: boolean; onPress:
         <Text className="font-plex-medium text-owner-ink-faint text-[12px]">{sub}</Text>
       </View>
     </Pressable>
+  );
+}
+
+/** Stage 2 (B.a): a SEPARATE confirm before approving a screenshot that was already used on other bookings (also opened
+ * when the server answers 409 DUPLICATE_PROOF_CONFIRM_REQUIRED). Only "Phir bhi approve karein" sends confirm_duplicate. */
+export function DuplicateConfirmSheet({
+  item,
+  usedOn,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  item: ApprovalQueueItem;
+  usedOn: number;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <BottomSheet
+      title="Duplicate screenshot"
+      subtitle={`${item.player_name ?? "Player"} - ${slotWhen(item.starts_at, item.ends_at)}`}
+      onClose={onClose}
+      footer={
+        <View className="flex-row gap-3">
+          <OutlineButton flex label="Wapas" onPress={onClose} />
+          <Pressable
+            onPress={onConfirm}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Phir bhi approve karein"
+            style={{ flex: 1, minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#8C3823", opacity: busy ? 0.5 : 1 }}
+          >
+            <Text className="font-plex-bold text-white text-[14px]">{busy ? "Approve ho raha hai" : "Phir bhi approve karein"}</Text>
+          </Pressable>
+        </View>
+      }
+    >
+      <View testID="duplicate-confirm" className="flex-row items-start gap-2.5 rounded-xl p-3.5" style={{ backgroundColor: OV.redBg, borderWidth: 1, borderColor: OV.redBorder }}>
+        <AlertTriangleIcon size={20} color={OV.red} />
+        <Text className="flex-1 font-plex-bold text-[14.5px]" style={{ color: OV.red }}>
+          {`${duplicateText(usedOn)}. Phir bhi approve karein?`}
+        </Text>
+      </View>
+      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+        Pehle apne account mein check karein ke ye paisa is booking ke liye alag se aaya hai.
+      </Text>
+      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+    </BottomSheet>
   );
 }
 

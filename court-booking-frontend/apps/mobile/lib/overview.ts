@@ -1,4 +1,4 @@
-import type { BookingStatusKey, OwnerBookingRow } from "@court-booking/types";
+import type { BookingStatusKey, MyPermissions, OwnerBookingRow } from "@court-booking/types";
 
 import { pktDateString } from "@/lib/format";
 
@@ -96,6 +96,7 @@ export function historyParams(date: string, courtIds: string[], status?: string,
 
 export const STATUS_FILTERS: { key: string; label: string }[] = [
   { key: "booked", label: "Booked" },
+  { key: "status_pending", label: "Status baqi" },
   { key: "pending", label: "Pending" },
   { key: "cancelled", label: "Cancelled" },
   { key: "refund", label: "Refund" },
@@ -108,3 +109,48 @@ export const STATUS_FILTERS: { key: string; label: string }[] = [
   { key: "refunded", label: "Refunded" },
   { key: "expired", label: "Expired" },
 ];
+
+/** Stage 2 (C.3): the status chip text of a row. A booked row the owner marked with Haan/Nahi is `completed` on the server
+ * (status_key stays "booked" for it), so it reads "Completed" instead of "Booked". */
+export function rowStatusLabel(row: Pick<OwnerBookingRow, "kind" | "status_key" | "completion">): string {
+  if (row.kind === "booked" && row.status_key === "booked" && row.completion) return "Completed";
+  return statusChipLabel(row.status_key);
+}
+
+/** Stage 2 (C.3): booked, slot over, nobody marked it yet. Only the server knows (an older backend sends nothing = no chip). */
+export function isStatusPending(row: Pick<OwnerBookingRow, "status_pending">): boolean {
+  return row.status_pending === true;
+}
+
+/** Stage 2 (C.3): "Nahi aaye (No-show)" is offered only on a still-booked row whose slot has ended and that nobody marked
+ * (not checked in, no Haan/Nahi). The server allows booked -> no_show only. */
+export function canOfferNoShow(
+  row: Pick<OwnerBookingRow, "kind" | "status_key" | "slot_ended" | "checked_in" | "completion">,
+  completion: OwnerBookingRow["completion"] = row.completion,
+): boolean {
+  return row.kind === "booked" && row.status_key === "booked" && row.slot_ended && !row.checked_in && !completion;
+}
+
+/** Staff permission keys the owner screens hide buttons by (backend StaffPermissionKey). */
+export const PERM = {
+  approve: "approve_payments",
+  recordPayments: "record_payments",
+  checkIn: "check_in",
+  refunds: "mark_refunds",
+} as const;
+
+/** Stage 2 (B.b): may this account do `key` at `venueId`? true when allowed OR unknown (no data yet, an older backend, a
+ * bad payload): the server's 403 NOT_STAFF_PERMITTED stays the fallback. false only when GET /owners/me/permissions says
+ * this is a staff account without that key for the venue. Owners and admins may do everything. */
+export function permissionAllows(data: unknown, venueId: string | undefined, key: string): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return true;
+  const d = data as Partial<MyPermissions>;
+  if (d.role !== "staff" || !Array.isArray(d.venue_permissions)) return true;
+  const list = venueId ? d.venue_permissions.filter((v) => v && v.venue_id === venueId) : d.venue_permissions;
+  return list.some((v) => Array.isArray(v?.permissions) && v.permissions.includes(key));
+}
+
+/** Stage 2 (C.4): "N bookings ka status baqi" (singular for 1). */
+export function statusPendingLine(n: number): string {
+  return `${n} ${n === 1 ? "booking" : "bookings"} ka status baqi`;
+}

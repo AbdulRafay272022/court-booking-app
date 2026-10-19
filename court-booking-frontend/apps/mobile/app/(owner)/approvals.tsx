@@ -12,12 +12,14 @@ import { formatDayHeader } from "@/lib/format";
 import { pollInterval } from "@/lib/polling";
 import { noLongerPendingState } from "@/lib/round2-format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useMyPermissions } from "@/lib/use-my-permissions";
+import { PERM } from "@/lib/overview";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { OwnerTabBar } from "@/components/owner-tab-bar";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
-import { ApprovalCard, ApproveSheet, RejectSheet } from "@/components/approval-card";
+import { ApprovalCard, ApproveSheet, DuplicateConfirmSheet, RejectSheet } from "@/components/approval-card";
 import { EmptyState } from "./_dashboard-components";
 
 const PAGE_SIZE = 50;
@@ -39,9 +41,14 @@ export default function ApprovalsScreen() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // Staff without the approve permission get 403 NOT_STAFF_PERMITTED; the app cannot know the permissions in advance (no
-  // endpoint returns them to staff), so after the first refusal the action buttons are replaced by a clear note.
+  // Stage 2 (B.b): staff without the approve permission see the note up front (GET /owners/me/permissions); a 403
+  // NOT_STAFF_PERMITTED (older backend, or a permission removed meanwhile) still swaps the buttons for the same note.
   const [noPermission, setNoPermission] = useState(false);
+  const perms = useMyPermissions();
+  const locked = noPermission || !perms.can(PERM.approve);
+  // Stage 2 (B.a): the separate "used before" confirm, with the amount/mode the owner already chose.
+  const [dup, setDup] = useState<{ id: string; usedOn: number; amount: number | undefined; mode: ApproveAcceptMode | undefined } | null>(null);
+  const [dupError, setDupError] = useState<string | null>(null);
 
   const query = useInfiniteQuery({
     queryKey: ["owner-approvals-queue", activeVenueId, filterDate, filterCourts.join(",")],
@@ -70,6 +77,7 @@ export default function ApprovalsScreen() {
   // The badge number = payments waiting for approval + grey cards that only need "Theek hai"; the header splits it.
   const { awaiting, closed } = approvalsHeaderCounts(serverTotal, fetched, removed, greyed);
   const current = sheet ? items.find((it) => it.payment_id === sheet.id) ?? null : null;
+  const dupItem = dup ? items.find((it) => it.payment_id === dup.id) ?? null : null;
 
   function refreshSide() {
     queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
@@ -84,22 +92,29 @@ export default function ApprovalsScreen() {
     queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
   }
 
-  async function act(id: string, fn: () => Promise<unknown>, onDone: () => void) {
+  async function act(id: string, fn: () => Promise<unknown>, onDone: () => void, onError?: (e: unknown) => boolean) {
     setBusyId(id);
     setSheetError(null);
+    setDupError(null);
     setErrors((e) => ({ ...e, [id]: "" }));
     try {
       await fn();
       onDone();
     } catch (e) {
       const state = noLongerPendingState(e);
-      if (state) {
+      if (onError?.(e)) {
+        // handled by the caller
+      } else if (state) {
         // The player cancelled meanwhile: grey in place, no error text, no reason asked.
         setGreyed((g) => ({ ...g, [id]: state }));
         setSheet(null);
+        setDup(null);
       } else if (e instanceof ApiError && e.code === "NOT_STAFF_PERMITTED") {
         setNoPermission(true);
         setSheet(null);
+        setDup(null);
+      } else if (dup) {
+        setDupError(friendlyErrorMessage(e));
       } else if (sheet) {
         setSheetError(friendlyErrorMessage(e));
       } else {
@@ -110,11 +125,31 @@ export default function ApprovalsScreen() {
     }
   }
 
-  function approve(item: ApprovalQueueItem, amount: number | undefined, mode: ApproveAcceptMode | undefined) {
-    act(item.payment_id, () => api.payments.approve(item.payment_id, amount, mode), () => {
+  function approve(item: ApprovalQueueItem, amount: number | undefined, mode: ApproveAcceptMode | undefined, confirmDuplicate = false) {
+    // A flagged screenshot never goes out without the separate confirm first.
+    if (item.duplicate && !confirmDuplicate) {
       setSheet(null);
-      drop(item.payment_id);
-    });
+      setDupError(null);
+      setDup({ id: item.payment_id, usedOn: item.duplicate.used_on_bookings, amount, mode });
+      return;
+    }
+    act(
+      item.payment_id,
+      () => api.payments.approve(item.payment_id, amount, mode, confirmDuplicate || undefined),
+      () => {
+        setSheet(null);
+        setDup(null);
+        drop(item.payment_id);
+      },
+      (e) => {
+        // The server knows of a duplicate this card did not show (older list, or flagged meanwhile): ask now.
+        if (!(e instanceof ApiError) || e.code !== "DUPLICATE_PROOF_CONFIRM_REQUIRED") return false;
+        const n = Number((e.details as { used_on_bookings?: unknown } | undefined)?.used_on_bookings);
+        setSheet(null);
+        setDup({ id: item.payment_id, usedOn: Number.isFinite(n) && n > 0 ? n : 1, amount, mode });
+        return true;
+      },
+    );
   }
 
   function reject(item: ApprovalQueueItem, reason: string) {
@@ -180,7 +215,7 @@ export default function ApprovalsScreen() {
         </View>
       ) : null}
 
-      {venuesLoading || query.isLoading ? (
+      {venuesLoading || query.isLoading || !perms.settled ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#0E6274" />
         </View>
@@ -197,7 +232,7 @@ export default function ApprovalsScreen() {
               courtText={courtText(it)}
               busy={busyId === it.payment_id}
               error={errors[it.payment_id] || null}
-              locked={noPermission}
+              locked={locked}
               onDetails={() => setDetailId(it.booking_id)}
               onApprove={() => {
                 setSheetError(null);
@@ -238,6 +273,16 @@ export default function ApprovalsScreen() {
           error={sheetError}
           onClose={() => setSheet(null)}
           onConfirm={(reason) => reject(current, reason)}
+        />
+      ) : null}
+      {dup && dupItem && dupItem.state === "awaiting" ? (
+        <DuplicateConfirmSheet
+          item={dupItem}
+          usedOn={dup.usedOn}
+          busy={busyId === dupItem.payment_id}
+          error={dupError}
+          onClose={() => setDup(null)}
+          onConfirm={() => approve(dupItem, dup.amount, dup.mode, true)}
         />
       ) : null}
       {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
