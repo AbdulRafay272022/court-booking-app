@@ -80,6 +80,10 @@ class OverpaymentOut(BaseModel):
     excess: int
 
 
+class DuplicateUseOut(BaseModel):
+    used_on_bookings: int
+
+
 class ApprovalQueueItemOut(PendingApprovalOut):
     """Owner Round 2 (A1/A5), docs/round2-contract.md: a PendingApprovalOut plus the card state."""
 
@@ -87,6 +91,8 @@ class ApprovalQueueItemOut(PendingApprovalOut):
     cancelled_at: datetime | None = None
     has_screenshot: bool = False
     overpayment: OverpaymentOut | None = None
+    # Round 2 Stage 2: set when the screenshot is flagged a duplicate; how many OTHER bookings it was credited on.
+    duplicate: DuplicateUseOut | None = None
 
 
 class ApprovalsQueuePageOut(BaseModel):

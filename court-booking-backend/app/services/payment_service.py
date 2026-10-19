@@ -780,6 +780,22 @@ class PaymentService:
         if payment.review_verdict is None and approval_state(booking) != "awaiting":
             raise self._no_longer_pending(booking)
 
+    async def require_duplicate_confirmed(self, payment: Payment, confirmed: bool) -> None:
+        """Round 2 Stage 2 (spec B.a): a screenshot flagged as a duplicate (`is_duplicate`, any player) may only be
+        approved with an explicit `confirm_duplicate: true`; otherwise 409 DUPLICATE_PROOF_CONFIRM_REQUIRED with
+        `used_on_bookings` = how many OTHER bookings this image was already credited on."""
+        if not payment.is_duplicate or confirmed or payment.review_verdict is not None:
+            return
+        from app.services.duplicate_proof import used_on_bookings
+
+        n = await used_on_bookings(self.db, payment)
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            ErrorCode.DUPLICATE_PROOF_CONFIRM_REQUIRED,
+            f"This screenshot was already used on {n} other booking(s). Confirm to approve it anyway.",
+            details={"used_on_bookings": n},
+        )
+
     async def acknowledge_payment(
         self, payment: Payment, booking: Booking, actor: User, *, money_received: bool
     ) -> PaymentDispute | None:

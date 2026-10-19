@@ -54,10 +54,18 @@ class PublicStatsService:
             .join(Venue, Venue.id == Court.venue_id)
             .where(live, Court.is_active.is_(True))
         )
+        # Round 2 Stage 2 (spec C.1): every booking that was confirmed counts -- booked, completed AND no_show (the old
+        # automatic no-show made played matches vanish from this number) -- on live venues only. Cancelled, expired,
+        # held and awaiting-approval bookings never count.
         bookings = await self.db.scalar(
             select(func.count())
             .select_from(Booking)
-            .where(Booking.status.in_([BookingStatus.BOOKED, BookingStatus.COMPLETED]))
+            .join(Court, Court.id == Booking.court_id)
+            .join(Venue, Venue.id == Court.venue_id)
+            .where(
+                live,
+                Booking.status.in_([BookingStatus.BOOKED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW]),
+            )
         )
         players = await self.db.scalar(
             select(func.count())

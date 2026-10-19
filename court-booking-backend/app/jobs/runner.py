@@ -1,6 +1,6 @@
 """Cron entrypoint for the background jobs.
 
-    python -m app.jobs.runner {expiry|reminders|digest|growth|billing}
+    python -m app.jobs.runner {expiry|reminders|digest|growth|billing|webpush-clean}
 
 Section 25 runs these from the EC2 host's cron (infra/scripts/court-booking.cron)
 via `docker exec` into the backend container, instead of EventBridge->Lambda:
@@ -46,12 +46,16 @@ async def _run(name: str):
         from app.jobs.billing_job import run_billing_job
 
         return await run_billing_job()
-    raise SystemExit(f"unknown job {name!r}; expected one of: expiry, reminders, digest, growth, billing")
+    if name == "webpush-clean":
+        from app.jobs.web_push_cleanup import clean_web_push_subscriptions
+
+        return await clean_web_push_subscriptions()
+    raise SystemExit(f"unknown job {name!r}; expected one of: expiry, reminders, digest, growth, billing, webpush-clean")
 
 
 def main() -> None:
     if len(sys.argv) != 2:
-        raise SystemExit("usage: python -m app.jobs.runner {expiry|reminders|digest|growth|billing}")
+        raise SystemExit("usage: python -m app.jobs.runner {expiry|reminders|digest|growth|billing|webpush-clean}")
     name = sys.argv[1]
     result = asyncio.run(_run(name))
     logger.info("jobs.runner.completed", job=name, result=result)

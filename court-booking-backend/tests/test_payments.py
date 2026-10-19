@@ -945,7 +945,11 @@ async def _book_and_pay(client, court, owner_headers, customer_headers, days_ahe
         files={"image": ("proof.jpg", io.BytesIO(_sample_png_bytes()), "image/jpeg")},
     )
     payment_id = submit.json()["payment"]["id"]
-    approve = await client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers)
+    # Round 2 Stage 2: every booking here reuses the same sample image, so from the second one on the proof is flagged
+    # a duplicate and approving it needs the explicit confirm.
+    approve = await client.post(
+        f"/api/v1/payments/{payment_id}/approve", headers=owner_headers, json={"confirm_duplicate": True}
+    )
     assert approve.json()["booking"]["status"] == "booked"
     return booking
 

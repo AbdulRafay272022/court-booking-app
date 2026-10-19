@@ -98,6 +98,12 @@ class ErrorCode:
     REASON_REQUIRED = "REASON_REQUIRED"
     # Owner Round 2 (B1): a payment screenshot sent after the hold already expired
     HOLD_EXPIRED = "HOLD_EXPIRED"
+    # Round 2 Stage 2
+    DUPLICATE_PROOF_CONFIRM_REQUIRED = "DUPLICATE_PROOF_CONFIRM_REQUIRED"  # 409, details {used_on_bookings}
+    TIMER_OUT_OF_RANGE = "TIMER_OUT_OF_RANGE"  # 422, details {errors: [{field, code, min, max}]}
+    CNIC_INVALID = "CNIC_INVALID"  # 422: not 13 digits after removing dashes/spaces
+    CNIC_NOT_CONFIGURED = "CNIC_NOT_CONFIGURED"  # 503: CNIC_HASH_KEY not set on a non-debug server
+    WEB_PUSH_ENDPOINT_NOT_ALLOWED = "WEB_PUSH_ENDPOINT_NOT_ALLOWED"  # 422: not https / host not a known push service
 
     # Section 32 Part 12 (admin feature flags + staff)
     FEATURE_DISABLED = "FEATURE_DISABLED"  # an admin has globally turned this feature off

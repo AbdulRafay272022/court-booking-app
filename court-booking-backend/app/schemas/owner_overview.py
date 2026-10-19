@@ -45,6 +45,8 @@ class OwnerBookingRowOut(BaseModel):
     original_booking_id: uuid.UUID | None
     refund_amount: float | None
     refund_status: Literal["owed", "paid"] | None
+    # Round 2 Stage 2 (no-show fix): booked, slot ended, owner has not marked it yet (Haan/Nahi or "Nahi aaye").
+    status_pending: bool = False
 
 
 class SlotCourtCountsOut(BaseModel):
@@ -115,6 +117,8 @@ class OwnerOverviewOut(BaseModel):
     # Owner Round 2 (A7): held (hold time not run out) + payment_submitted bookings for ANY date, venue + court
     # filter applied, date ignored. `bookings.pending` above stays date-based.
     pending_all: OverviewPendingOut | None = None
+    # Round 2 Stage 2: bookings of ANY date (venue + court filter) whose status the owner still has to settle.
+    status_pending_count: int = 0
 
 
 class HistoryTotalsOut(BaseModel):

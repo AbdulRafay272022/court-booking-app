@@ -14,6 +14,7 @@ from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
 from app.models.user import User, UserRole
 from app.models.venue import Venue
+from app.services.duplicate_proof import used_on_bookings
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
 from app.schemas.owner_dashboard import ApprovalsQueuePageOut, GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
@@ -422,6 +423,7 @@ async def owner_mark_refund_paid(
         dispute, booking, venue, None, payment, positives.get(booking.id, 0),
         court_name=court.name if court else "", court_sport=court.sport if court else None,
         now=datetime.now(timezone.utc), overdue_cutoff=timedelta(days=settings.REFUND_OVERDUE_DAYS),
+        duplicate_used=await used_on_bookings(db, payment) if payment is not None else 0,
     )
     out.player_name = booking.player_name
     out.player_phone = booking.player_phone

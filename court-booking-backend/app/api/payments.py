@@ -119,6 +119,7 @@ async def approve_payment(
         payment.booking_id, owner, permission="approve_payments"
     )
     payment_service.require_awaiting(payment, booking)
+    await payment_service.require_duplicate_confirmed(payment, bool(payload and payload.confirm_duplicate))
 
     payment = await payment_service.approve_payment(
         payment,

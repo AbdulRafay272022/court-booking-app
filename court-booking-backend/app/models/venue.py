@@ -2,7 +2,7 @@ import enum
 import uuid
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, SmallInteger, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -68,6 +68,15 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
     booking_horizon_days: Mapped[int] = mapped_column(
         Integer, default=90, server_default=text("90"), nullable=False
     )
+    # Round 2 Stage 2: per-venue hold / owner-reminder / auto-cancel timers. ALL nullable: NULL means the
+    # default in app/services/venue_timers.py DEFAULTS (= the behaviour before these columns existed).
+    hold_minutes: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    reminders_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    first_reminder_after_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    repeat_every_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    max_reminders: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    auto_cancel_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    auto_cancel_after_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     # A per-venue token meant to be printed/posted physically at the venue
     # (one QR per location, not per court, since multiple courts commonly
     # share one entrance) -- POST /bookings/{id}/checkin/self validates a
@@ -84,6 +93,11 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("idx_venues_sports", "sports", postgresql_using="gin"),
         CheckConstraint("booking_horizon_days BETWEEN 1 AND 365", name="valid_booking_horizon"),
+        CheckConstraint("hold_minutes BETWEEN 5 AND 180", name="ck_venues_hold_minutes"),
+        CheckConstraint("first_reminder_after_min >= 1", name="ck_venues_first_reminder_after_min"),
+        CheckConstraint("repeat_every_min >= 5", name="ck_venues_repeat_every_min"),
+        CheckConstraint("max_reminders BETWEEN 1 AND 10", name="ck_venues_max_reminders"),
+        CheckConstraint("auto_cancel_after_min BETWEEN 5 AND 1440", name="ck_venues_auto_cancel_after_min"),
     )
 
     owner: Mapped["User"] = relationship(back_populates="venues")  # noqa: F821

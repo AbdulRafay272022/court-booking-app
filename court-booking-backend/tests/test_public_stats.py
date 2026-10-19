@@ -71,15 +71,16 @@ async def _seed(make_user, make_venue, make_court, add_booking):
     await make_court(live2, name="C")
     await make_court(live2, name="Off", is_active=False)
     for v in (pending, rejected, inactive):
-        await make_court(v, name="Hidden")
+        hidden = await make_court(v, name="Hidden")
+        await add_booking(hidden, BookingStatus.BOOKED)  # a booking on a venue that is not live never counts
 
-    for status in (BookingStatus.BOOKED, BookingStatus.COMPLETED):
+    # Round 2 Stage 2: booked + completed + no_show count; held / awaiting / cancelled do not.
+    for status in (BookingStatus.BOOKED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW):
         await add_booking(c1, status)
     for status in (
         BookingStatus.HELD,
         BookingStatus.PAYMENT_SUBMITTED,
         BookingStatus.CANCELLED,
-        BookingStatus.NO_SHOW,
     ):
         await add_booking(c1, status)
 
@@ -94,7 +95,7 @@ async def test_counts_with_mixed_fixture_and_no_auth(client, make_user, make_ven
     await _seed(make_user, make_venue, make_court, add_booking)
     resp = await client.get(URL)  # no Authorization header
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"venues": 2, "courts": 3, "bookings": 2, "players": 2}
+    assert resp.json() == {"venues": 2, "courts": 3, "bookings": 3, "players": 2}
 
 
 async def test_empty_database_is_all_zero(client):

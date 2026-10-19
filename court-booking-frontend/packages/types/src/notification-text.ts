@@ -33,6 +33,15 @@ const TITLES: Record<Exclude<NotificationKind, "other">, Record<Lang, string>> =
   booking_cancelled: { ru: "Booking cancel ho gayi", en: "Booking cancelled" },
   booking_reminder: { ru: "Booking ki yaad-dehani", en: "Booking reminder" },
   hold_expiring: { ru: "Booking ka waqt khatam hone wala hai", en: "Booking hold is about to expire" },
+  payment_reminder: { ru: "Payment abhi tak approval ke intezar mein hai", en: "Payment still waiting for approval" },
+  payment_final_warning: {
+    ru: "Approve na kiya to booking jaldi cancel ho jayegi",
+    en: "Booking will be cancelled soon unless you approve it",
+  },
+  payment_auto_cancelled: {
+    ru: "Booking auto-cancel ho gayi, paisa aaya hai to wapas dena hai",
+    en: "Booking auto-cancelled; return the money if it arrived",
+  },
 };
 
 /** Raw event types the backend logs (notification_log.event_type), for the old endpoint and the "other" kind. */
@@ -63,6 +72,8 @@ const EVENT_TITLES: Record<string, Record<Lang, string>> = {
   payment_late: TITLES.late_payment,
   late_payment_proof: TITLES.late_payment,
   approval_reminder: { ru: "Payment abhi tak approval ke intezar mein hai", en: "Payment still waiting for approval" },
+  payment_final_warning: TITLES.payment_final_warning,
+  owner_payment_auto_cancelled: TITLES.payment_auto_cancelled,
   phone_changed: { ru: "Phone number badal gaya", en: "Phone number changed" },
 };
 
@@ -79,7 +90,10 @@ function humanize(eventType: string): string {
 
 /** Readable title for a raw event_type (old endpoint fallback / unknown kind). Never "New notification". */
 export function eventTypeTitle(eventType: string, lang: Lang): string {
-  const known = EVENT_TITLES[eventType] ?? EVENT_TITLES[eventType.replace(/_(whatsapp|sms|push|web_push)$/, "")];
+  const known =
+    EVENT_TITLES[eventType] ??
+    EVENT_TITLES[eventType.replace(/_(whatsapp|sms|push|web_push)$/, "")] ??
+    (/^payment_reminder(_\d+)?$/.test(eventType) ? TITLES.payment_reminder : undefined);
   if (known) return known[lang];
   const h = humanize(eventType);
   if (h) return `Update: ${h}`;
