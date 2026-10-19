@@ -175,6 +175,9 @@ class OwnerRefundOut(BaseModel):
     refunded_at: datetime | None
     created_at: datetime
     is_overdue: bool
+    # Round 2 Stage 2 (findings 1): this refund's screenshot was also credited on N OTHER bookings (same image, any
+    # player) -- the Refunds screen warns before paying the same money back twice. Null = not reused.
+    duplicate_proof: dict | None = None
 
 
 class SuspendUserIn(BaseModel):

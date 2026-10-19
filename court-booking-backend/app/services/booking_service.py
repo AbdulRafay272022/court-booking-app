@@ -20,6 +20,7 @@ from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 from app.services.availability_service import AvailabilityService
 from app.services.payment_ledger_service import recompute_payment_totals
+from app.services.venue_timers import hold_minutes_for, payment_deadline_for
 from app.services.availability_service import GRID_MINUTES
 from app.utils.timezone import format_when, utc_now
 
@@ -57,7 +58,7 @@ class BookingService:
             )
         return court
 
-    async def _require_approved_venue_for_court(self, court: Court) -> None:
+    async def _require_approved_venue_for_court(self, court: Court):
         """Player-facing bookings only -- a venue still pending/rejected/
         changes-requested review shouldn't be publicly bookable even if
         someone has the court_id directly, though an owner's own in-person
@@ -69,6 +70,7 @@ class BookingService:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.VENUE_NOT_APPROVED, "This venue is not yet approved for bookings"
             )
+        return venue
 
     async def _atomic_transition(
         self,
@@ -260,7 +262,7 @@ class BookingService:
         if starts_at <= datetime.now(timezone.utc):
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.SLOT_IN_PAST, "starts_at must be in the future")
         court = await self._load_active_court(court_id)
-        await self._require_approved_venue_for_court(court)
+        venue = await self._require_approved_venue_for_court(court)
 
         # Every slot in the range must be on the court's real grid, free, and priced; the total is the sum
         # of each slot's own rate. (The pre-check gives a clear message; the database constraints still
@@ -283,7 +285,9 @@ class BookingService:
             price=price,
             advance_amount=advance_amount,
             balance_due=round(price - advance_amount, 2),
-            held_until=datetime.now(timezone.utc) + timedelta(minutes=self.settings.BOOKING_HOLD_MINUTES),
+            # Round 2 Stage 2: the venue's own hold length (null = 15 min default). Every hold path -- app, AI chat,
+            # WhatsApp -- comes through here.
+            held_until=datetime.now(timezone.utc) + timedelta(minutes=hold_minutes_for(venue)),
         )
         if name_is_own and player_name and not (player.name or "").strip():
             # set BEFORE the insert so it is committed in the very same transaction as the hold: if the slot is taken the
@@ -642,12 +646,18 @@ class BookingService:
         submit_payment's call landing after the first one was auto-approved
         straight to BOOKED) is silently a no-op instead of resetting an
         already-confirmed booking back to payment_submitted."""
+        # Round 2 Stage 2: auto-cancel at the venue's effective minutes after the screenshot (null = the 120-minute
+        # default = the old PAYMENT_REVIEW_HOURS); auto-cancel switched off = no deadline, the slot stays held.
+        from app.models.venue import Venue
+
+        court = await self.db.get(Court, booking.court_id)
+        venue = await self.db.get(Venue, court.venue_id) if court is not None else None
         ok = await self._atomic_transition(
             booking,
             from_statuses=(BookingStatus.HELD,),
             to_status=BookingStatus.PAYMENT_SUBMITTED,
             held_until=None,
-            payment_deadline=datetime.now(timezone.utc) + timedelta(hours=self.settings.PAYMENT_REVIEW_HOURS),
+            payment_deadline=payment_deadline_for(venue, datetime.now(timezone.utc)),
         )
         if not ok:
             logger.warning(
@@ -726,56 +736,87 @@ class BookingService:
             )
         return await self._do_check_in(booking, "player")
 
-    async def owner_mark_no_show(self, booking: Booking) -> Booking:
-        """Manual counterpart to the automatic `mark_overdue_no_shows` job
-        (Section 32 Part 9) -- lets an owner flag a no-show as soon as the
-        SAME grace window the job already uses (`NO_SHOW_GRACE_MINUTES`) has
-        passed, instead of silently waiting for the job's next tick. Reuses
-        that one setting rather than introducing a second, different
-        threshold, so a booking never reads as "no-show" to the owner sooner
-        than the automated system would treat it that way."""
+    async def owner_mark_no_show(self, booking: Booking, actor: User | None = None) -> Booking:
+        """Round 2 Stage 2 (spec C.3): the owner (or staff with check-in / record-payments permission) says "Nahi
+        aaye". Allowed from BOOKED only and only once the slot has ENDED (the expiry job no longer marks no-shows by
+        itself). Audited with who/when. A wrong no-show is fixed with Haan/Nahi (no_show -> completed)."""
         if booking.status != BookingStatus.BOOKED:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_BOOKING_STATE, "Only booked slots can be marked no-show"
             )
-        grace = timedelta(minutes=self.settings.NO_SHOW_GRACE_MINUTES)
-        if datetime.now(timezone.utc) < booking.starts_at + grace:
+        if datetime.now(timezone.utc) < booking.ends_at:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,
                 ErrorCode.TOO_EARLY_FOR_NO_SHOW,
-                "Too early to mark this booking as a no-show",
+                "This booking's time has not ended yet",
+                details={"ends_at": booking.ends_at.isoformat()},
             )
-        return await self.mark_no_show(booking)
+        return await self.mark_no_show(booking, actor=actor)
 
-    async def mark_no_show(self, booking: Booking) -> Booking:
-        if booking.status != BookingStatus.BOOKED:
+    async def mark_no_show(self, booking: Booking, actor: User | None = None) -> Booking:
+        ok = await self._atomic_transition(
+            booking, from_statuses=(BookingStatus.BOOKED,), to_status=BookingStatus.NO_SHOW
+        )
+        if not ok:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_BOOKING_STATE, "Only booked slots can be marked no-show"
             )
-        booking.status = BookingStatus.NO_SHOW
         if booking.player_id is not None:
             player = await self.db.get(User, booking.player_id)
             if player is not None:
                 player.total_no_shows += 1
                 recompute_reliability(player)
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type="system",
+            actor_user_id=actor.id if actor is not None else booking.player_id,
+            actor_type=actor.role.value if actor is not None else "system",
             action="booking.no_show",
             entity_type="booking",
             entity_id=booking.id,
-            new_value={"status": booking.status.value},
+            old_value={"status": BookingStatus.BOOKED.value},
+            new_value={
+                "status": booking.status.value,
+                "marked_by": str(actor.id) if actor is not None else None,
+                "marked_at": datetime.now(timezone.utc).isoformat(),
+            },
         )
         await self.db.commit()
         await self.db.refresh(booking)
         return booking
 
-    async def mark_completed(self, booking: Booking) -> Booking:
-        if booking.status != BookingStatus.BOOKED:
+    async def mark_completed(self, booking: Booking, actor: User | None = None) -> Booking:
+        """Round 2 Stage 2 (spec C.3): the owner's Haan/Nahi on a finished booking settles its status as COMPLETED,
+        from BOOKED or from NO_SHOW (fixing an old automatic no-show; the player's no-show count is given back).
+        `completed` is an existing booking_status value and no constraint/guard forbids these transitions; the
+        slot stays taken for availability purposes only while live, and the slot has ended anyway. Idempotent on an
+        already-completed booking. Audited with who/when."""
+        if booking.status == BookingStatus.COMPLETED:
+            return booking
+        old = booking.status
+        ok = await self._atomic_transition(
+            booking, from_statuses=(BookingStatus.BOOKED, BookingStatus.NO_SHOW), to_status=BookingStatus.COMPLETED
+        )
+        if not ok:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_BOOKING_STATE, "Only booked slots can be completed"
             )
-        booking.status = BookingStatus.COMPLETED
+        if old == BookingStatus.NO_SHOW and booking.player_id is not None:
+            player = await self.db.get(User, booking.player_id)
+            if player is not None and player.total_no_shows > 0:
+                player.total_no_shows -= 1
+                recompute_reliability(player)
+        await self.audit.log(
+            actor_user_id=actor.id if actor is not None else None,
+            actor_type=actor.role.value if actor is not None else "system",
+            action="booking.completed",
+            entity_type="booking",
+            entity_id=booking.id,
+            old_value={"status": old.value},
+            new_value={
+                "status": booking.status.value,
+                "marked_by": str(actor.id) if actor is not None else None,
+                "marked_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
         await self.db.commit()
         await self.db.refresh(booking)
         return booking
@@ -891,22 +932,6 @@ class BookingService:
                     refund_amount=0,
                 )
             )
-
-    async def mark_overdue_no_shows(self) -> list[Booking]:
-        """BOOKED bookings that started NO_SHOW_GRACE_MINUTES ago or more with
-        no check-in are no-shows -- run alongside expire_stale_bookings."""
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=self.settings.NO_SHOW_GRACE_MINUTES)
-        result = await self.db.execute(
-            select(Booking).where(
-                Booking.status == BookingStatus.BOOKED,
-                Booking.starts_at < cutoff,
-                Booking.checked_in_at.is_(None),
-            )
-        )
-        overdue = result.scalars().all()
-        for booking in overdue:
-            await self.mark_no_show(booking)
-        return list(overdue)
 
     async def list_for_player(
         self, player_id: uuid.UUID, *, when: str = "all", offset: int = 0, limit: int = 20

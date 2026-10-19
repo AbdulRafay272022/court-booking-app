@@ -20,6 +20,7 @@ from app.models.user import User
 from app.models.venue import Venue
 from app.services.entitlement_service import EntitlementService, premium_required_error
 from app.services.availability_service import AvailabilityService
+from app.services.duplicate_proof import used_on_bookings_map
 from app.services.feature_flag_service import flag_on
 from app.services.overview_slots import operating_day_expr, starts_between_prefilter
 from app.services.payment_service import PaymentService, approval_state, build_payment_checks, overpayment_of
@@ -82,6 +83,7 @@ def refund_out(
     court_sport: str | None,
     now: datetime,
     overdue_cutoff: timedelta,
+    duplicate_used: int = 0,
 ) -> OwnerRefundOut:
     """One owner Refunds row with the Round 2 (A10) breakdown. `player_sent`: positive ledger entries, plus this
     dispute's own amount when that money was never credited (overpayment excess, a screenshot on a cancelled
@@ -121,6 +123,7 @@ def refund_out(
         refunded_at=dispute.refunded_at,
         created_at=dispute.created_at,
         is_overdue=dispute.refund_status == "owed" and refund_due > already and now - dispute.created_at >= overdue_cutoff,
+        duplicate_proof={"used_on_bookings": duplicate_used} if duplicate_used > 0 else None,
     )
 
 
@@ -367,6 +370,9 @@ class OwnerDashboardService:
             venues_by_id = {v.id: v for v in venues_result.scalars().all()}
             court_venues = {c.id: venues_by_id[c.venue_id] for c in courts if c.venue_id in venues_by_id}
 
+        dup_used: dict = {}
+        if queue:
+            dup_used = await used_on_bookings_map(self.db, [p for p, _b in rows if p.is_duplicate])
         now = datetime.now(timezone.utc)
         out = []
         for payment, booking in rows:
@@ -381,6 +387,7 @@ class OwnerDashboardService:
                     cancelled_at=booking.updated_at if booking.status == BookingStatus.CANCELLED else None,
                     has_screenshot=bool(payment.proof_key),
                     overpayment=overpayment_of(payment, booking),
+                    duplicate={"used_on_bookings": dup_used.get(payment.id, 0)} if payment.is_duplicate else None,
                 )
             out.append(
                 model(
@@ -495,6 +502,7 @@ class OwnerDashboardService:
         )
         rows = result.all()
         positives = await positive_entries_by_booking(self.db, {row[1].id for row in rows})
+        dup_used = await used_on_bookings_map(self.db, [row[4] for row in rows if row[4] is not None])
         now = datetime.now(timezone.utc)
         overdue_cutoff = timedelta(days=self.settings.REFUND_OVERDUE_DAYS)
         return [
@@ -502,6 +510,7 @@ class OwnerDashboardService:
                 dispute, booking, venue, player, payment, positives.get(booking.id, 0),
                 court_name=court_names.get(booking.court_id, ""), court_sport=court_sports.get(booking.court_id),
                 now=now, overdue_cutoff=overdue_cutoff,
+                duplicate_used=dup_used.get(payment.id, 0) if payment is not None else 0,
             )
             for dispute, booking, venue, player, payment in rows
         ]

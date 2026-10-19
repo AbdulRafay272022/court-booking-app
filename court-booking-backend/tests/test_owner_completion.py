@@ -203,8 +203,9 @@ async def test_no_show_and_checked_in_bookings_can_be_completed(seed, make_auth_
     for b in (ns, ci):
         r = await client.post(completion_url(b.id), json={"result": "yes"}, headers=headers)
         assert r.status_code == 200 and r.json()["due"] == 0
-    # the booking's own status is untouched: completion is a ledger + audit fact, not a status change
-    assert (await _booking(db_session_factory, ns.id)).status == BookingStatus.NO_SHOW
+    # Round 2 Stage 2 (spec C.3): Haan/Nahi now settles the status too -- a no_show becomes completed
+    assert (await _booking(db_session_factory, ns.id)).status == BookingStatus.COMPLETED
+    assert (await _booking(db_session_factory, ci.id)).status == BookingStatus.COMPLETED
 
 
 async def test_completion_permission_is_record_payments_and_not_behind_split_payments(

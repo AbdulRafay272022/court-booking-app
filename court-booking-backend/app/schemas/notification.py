@@ -28,6 +28,13 @@ class FeedParamsOut(BaseModel):
     ends_at: datetime | None = None
     amount: float | None = None
     reason: str | None = None
+    # Round 2 Stage 2: from notification_log.payload
+    count: int | None = None
+    status_pending: int | None = None
+    reminder_no: int | None = None
+    minutes_waiting: int | None = None
+    minutes_to_cancel: int | None = None
+    title: str | None = None
 
 
 class FeedLinkOut(BaseModel):

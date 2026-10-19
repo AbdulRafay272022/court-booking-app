@@ -339,7 +339,8 @@ class OwnerBillingService:
                     if await notifier.has_sent(owner_id, event, reference):
                         continue
                     await notifier._send_push_and_whatsapp(
-                        owner, event, title, " ".join(n.message for _r, n in items), reference_id=reference
+                        owner, event, title, " ".join(n.message for _r, n in items), reference_id=reference,
+                        payload={"until": anchor.isoformat(), "count": len(items)},
                     )
                     await self.db.commit()
                     sent += 1

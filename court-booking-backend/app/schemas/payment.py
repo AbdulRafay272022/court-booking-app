@@ -30,6 +30,9 @@ class PaymentApproveIn(BaseModel):
     # Owner Round 2 (A10.3): "advance_only" = credit only the expected advance, the rest becomes a refund owed
     # (overpayment_excess); "full" / omitted = today's behaviour (credit up to the price).
     accept_mode: Literal["advance_only", "full"] | None = None
+    # Round 2 Stage 2 (spec B.a): approving a duplicate-flagged screenshot needs this explicit confirm, else 409
+    # DUPLICATE_PROOF_CONFIRM_REQUIRED {used_on_bookings}.
+    confirm_duplicate: bool = False
 
 
 class PaymentOut(BaseModel):

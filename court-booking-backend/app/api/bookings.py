@@ -226,12 +226,17 @@ async def check_in_booking(
 async def mark_booking_no_show(
     booking_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
 ) -> BookingResponse:
-    """Section 32 Part 9: manual counterpart to the automatic no-show job --
-    lets an owner (or staff with check_in) flag a no-show as soon as the grace
-    window has passed, instead of waiting on the job's next tick."""
+    """Round 2 Stage 2 (spec C.3): "Nahi aaye". The expiry job no longer marks no-shows, so this is the only way:
+    BOOKED only, only after the slot ENDED, by the owner or staff with the check-in OR record-payments permission.
+    Audited with who/when (audit_log `booking.no_show`)."""
     service = BookingService(db, settings)
-    booking = await service.require_accessible_booking(booking_id, owner, permission="check_in")
-    booking = await service.owner_mark_no_show(booking)
+    try:
+        booking = await service.require_accessible_booking(booking_id, owner, permission="check_in")
+    except AppError as exc:
+        if exc.code != ErrorCode.NOT_STAFF_PERMITTED:
+            raise
+        booking = await service.require_accessible_booking(booking_id, owner, permission="record_payments")
+    booking = await service.owner_mark_no_show(booking, actor=owner)
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 

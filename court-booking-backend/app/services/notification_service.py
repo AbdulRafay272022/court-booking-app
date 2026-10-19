@@ -11,8 +11,13 @@ from app.models.message import Message
 from app.models.notification import NotificationLog
 from app.models.user import User
 from app.models.venue import Venue
+from app.models.web_push_subscription import WebPushSubscription
 from app.services.apns import send_apns
 from app.services.fcm import PushOutcome, send_push
+from app.services.web_push import HIGH_URGENCY_EVENTS as WEB_PUSH_HIGH_URGENCY
+from app.services.web_push import WebPushOutcome, keys_configured, send_web_push
+from app.services.web_push import build_payload as build_web_push_payload
+from app.services.web_push import topic_for as web_push_topic
 from app.services.feature_flag_service import flag_on
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
@@ -42,10 +47,10 @@ class NotificationService:
 
     Tier 1 (push only, free): slot_reopened, booking_reminder.
     Tier 2 (push + WhatsApp): payment_approved/rejected, booking_confirmed/cancelled.
-    payment_submitted gets its own escalation ladder to the *owner*: push now,
-    WhatsApp after ESCALATION_WHATSAPP_MINUTES, SMS after
-    ESCALATION_SMS_MINUTES, then the booking auto-releases at
-    PAYMENT_REVIEW_HOURS (handled by booking_service.expire_stale_bookings).
+    payment_submitted: push to the *owner* now, then (Round 2 Stage 2) reminders +
+    a final warning timed by the venue's timers (app/services/venue_timers.py),
+    and auto-cancel at the venue's auto_cancel_after_min (default 120 = the old
+    PAYMENT_REVIEW_HOURS; booking_service.expire_stale_bookings).
     Tier 3 (paid marketing, tier-gated): tournament/promo announcements.
 
     Every WhatsApp send goes through the 24h free-window check (Section 9.3):
@@ -72,6 +77,7 @@ class NotificationService:
         status_value: str = "sent",
         error_message: str | None = None,
         template_name: str | None = None,
+        payload: dict | None = None,
     ) -> None:
         self.db.add(
             NotificationLog(
@@ -83,6 +89,7 @@ class NotificationService:
                 status=status_value,
                 error_message=error_message,
                 template_name=template_name,
+                payload=payload,
             )
         )
         await self.db.commit()
@@ -93,7 +100,7 @@ class NotificationService:
                 NotificationLog.user_id == user_id,
                 NotificationLog.event_type == event_type,
                 NotificationLog.reference_id == reference_id,
-            )
+            ).limit(1)  # one event can have several rows (WhatsApp + push + web push)
         )
         return result.scalar_one_or_none() is not None
 
@@ -138,6 +145,7 @@ class NotificationService:
         *,
         reference_id: uuid.UUID | None = None,
         bell: bool = False,
+        payload: dict | None = None,
     ) -> None:
         """Tier 1: push only. The `data` payload is what the mobile app's tap handler
         deep-links from (apps/mobile/app/_layout.tsx, `routeForNotification`).
@@ -154,8 +162,11 @@ class NotificationService:
         if reference_id is not None:
             data["reference_id"] = str(reference_id)
         tokens = await self._active_tokens(user.id)
-        if bell and not tokens:
-            await self._log(user_id=user.id, channel="in_app", event_type=event_type, reference_id=reference_id)
+        web_subs = await self._active_web_push(user.id)
+        if bell and not tokens and not web_subs:
+            await self._log(
+                user_id=user.id, channel="in_app", event_type=event_type, reference_id=reference_id, payload=payload
+            )
         for token in tokens:
             outcome = await self._push(token, title, body, data)
             if outcome == PushOutcome.UNREGISTERED:
@@ -171,7 +182,62 @@ class NotificationService:
                 reference_id=reference_id,
                 status_value="sent" if ok else "failed",
                 error_message=None if ok else f"push {outcome.value}",
+                payload=payload,
             )
+        # Round 2 Stage 2: browser Web Push, after the device tokens (docs/web-push-plan.md section 5).
+        for sub in web_subs:
+            await self._send_web_push(user, sub, event_type, title, body, reference_id=reference_id, payload=payload)
+
+    async def _active_web_push(self, user_id: uuid.UUID) -> list[WebPushSubscription]:
+        if not keys_configured(self.settings):
+            return []
+        result = await self.db.execute(
+            select(WebPushSubscription).where(
+                WebPushSubscription.user_id == user_id, WebPushSubscription.revoked_at.is_(None)
+            )
+        )
+        return list(result.scalars().all())
+
+    async def _send_web_push(
+        self,
+        user: User,
+        sub: WebPushSubscription,
+        event_type: str,
+        title: str,
+        body: str,
+        *,
+        reference_id: uuid.UUID | None,
+        payload: dict | None,
+    ) -> None:
+        """One subscription: send, then log a `web_push` row that says what really happened. 404/410 revokes."""
+        ref = str(reference_id) if reference_id else None
+        family = "payment_reminder" if event_type.startswith("payment_reminder") else event_type
+        result = await send_web_push(
+            self.settings,
+            endpoint=sub.endpoint,
+            p256dh=sub.p256dh,
+            auth=sub.auth,
+            payload=build_web_push_payload(event_type, title, body, ref),
+            urgency="high" if family in WEB_PUSH_HIGH_URGENCY else "normal",
+            topic=web_push_topic(family, ref),
+        )
+        if result.outcome == WebPushOutcome.SKIPPED:
+            return
+        now = datetime.now(timezone.utc)
+        if result.outcome == WebPushOutcome.UNREGISTERED:
+            sub.revoked_at = now
+        elif result.outcome == WebPushOutcome.SENT:
+            sub.last_seen_at = now
+        ok = result.outcome == WebPushOutcome.SENT
+        await self._log(
+            user_id=user.id,
+            channel="web_push",
+            event_type=event_type,
+            reference_id=reference_id,
+            status_value="sent" if ok else "failed",
+            error_message=None if ok else (result.error or "web_push failed"),
+            payload=payload,
+        )
 
     async def _whatsapp_smart_best_effort(
         self, user: User, body: str, *, template_name: str, template_params: list[str]
@@ -217,20 +283,23 @@ class NotificationService:
         *,
         reference_id: uuid.UUID | None = None,
         template_params: list[str] | None = None,
+        template_name: str | None = None,
+        bell: bool = False,
+        payload: dict | None = None,
     ) -> None:
         """Tier 2: push + WhatsApp. `event_type` doubles as the template name
         to fall back to outside the 24h window (see whatsapp_templates.py);
         if there's no dedicated template for it, the generic one-param
         fallback is used automatically."""
         template_used, whatsapp_error = await self._whatsapp_smart_best_effort(
-            user, body, template_name=event_type, template_params=template_params or [body]
+            user, body, template_name=template_name or event_type, template_params=template_params or [body]
         )
         # cost_category describes what *kind* of message this is (per Meta's
         # own template categorization), independent of whether this
         # particular send happened to be free (within-window session text)
         # or a paid template -- that's what lets "cost by category" reporting
         # stay meaningful even as the window opens and closes over time.
-        template = TEMPLATES.get(event_type)
+        template = TEMPLATES.get(template_name or event_type)
         cost_category = template.category if template else "utility"
         await self._log(
             user_id=user.id,
@@ -241,8 +310,11 @@ class NotificationService:
             template_name=template_used,
             status_value="failed" if whatsapp_error else "sent",
             error_message=whatsapp_error,
+            payload=payload,
         )
-        await self._send_push_tier(user, event_type, title, body, reference_id=reference_id)
+        # The WhatsApp row above already puts the event in the bell, so `bell` only matters when the WhatsApp leg was
+        # suppressed entirely (push_notifications flag off -> nothing is sent at all, by design).
+        await self._send_push_tier(user, event_type, title, body, reference_id=reference_id, bell=bell, payload=payload)
 
     # -- Tier 1 --------------------------------------------------------
 
@@ -472,7 +544,7 @@ class NotificationService:
             reference_id=booking_id,
         )
 
-    async def notify_owner_daily_digest(self, *, owner: User, body: str) -> None:
+    async def notify_owner_daily_digest(self, *, owner: User, body: str, payload: dict | None = None) -> None:
         """WhatsApp only -- the digest never had a push tier, so this doesn't add one.
         Goes through send_smart like every other notification in this file (Section 29
         Part B): digest_job.py used to call whatsapp.send_text directly, skipping the
@@ -496,6 +568,7 @@ class NotificationService:
             event_type="owner_daily_digest",
             cost_category="utility",
             template_name=template_used,
+            payload=payload,
         )
 
     async def notify_venue_pending_review(self, *, user: User, venue_name: str, venue_id: uuid.UUID | None = None) -> None:
@@ -541,16 +614,13 @@ class NotificationService:
             reference_id=venue_id,
         )
 
-    # -- payment_submitted escalation ladder (push -> WhatsApp -> SMS) ---
+    # -- payment_submitted: immediate push, then the venue-timed reminders (Round 2 Stage 2) ---
 
     async def notify_payment_submitted(
         self, *, owner: User, court_name: str, amount: float, booking_id: uuid.UUID, ocr_verdict: str | None = None
     ) -> None:
-        """Step 0 of the escalation ladder: push immediately. Steps 1/2
-        (WhatsApp/SMS) are advanced later by escalate_payment_submitted, which
-        a periodic job calls -- this app has no task scheduler to fire timed
-        callbacks, so elapsed time is computed from booking.payment_deadline
-        instead of a stored "sent at" timestamp."""
+        """Push immediately when a screenshot arrives (unchanged). The follow-ups are the venue-timed owner reminders
+        (`notify_owner_payment_reminder`, driven by the expiry job from the pending payment's created_at)."""
         verdict_note = {
             "match": "✅ Amount matches",
             "mismatch": f"⚠️ Mismatch: screenshot doesn't match expected PKR {amount:,.0f}",
@@ -563,72 +633,87 @@ class NotificationService:
             bell=True,
         )
 
-    async def escalate_payment_submitted(
+    async def notify_owner_payment_reminder(
+        self,
+        *,
+        owner: User,
+        event_type: str,
+        court_name: str,
+        venue_name: str,
+        amount: float,
+        booking_id: uuid.UUID,
+        starts_at: datetime,
+        ends_at: datetime | None,
+        player_name: str,
+        minutes_waiting: int,
+        minutes_to_cancel: int | None,
+        reminder_no: int | None,
+    ) -> bool:
+        """Round 2 Stage 2: one owner reminder (`payment_reminder_<n>`) or the final warning (`payment_final_warning`)
+        for a screenshot still waiting for approval, timed by the venue's timers (app/services/venue_timers.py +
+        reminder_schedule). Replaces the old WhatsApp-after-5 / SMS-after-15 ladder. Push + best-effort WhatsApp,
+        always a bell row; deduped per booking through notification_log. Returns True when sent now."""
+        if await self.has_sent(owner.id, event_type, booking_id):
+            return False
+        final = event_type == "payment_final_warning"
+        if final:
+            title = "Booking will be cancelled soon"
+            body = (
+                f"Payment for {court_name} ({format_pkr(amount)}) is still waiting for approval. The booking will be "
+                f"cancelled in {minutes_to_cancel or 0} minutes unless you approve or reject it."
+            )
+        else:
+            title = "Payment still waiting for approval"
+            body = (
+                f"Still awaiting your review: payment for {court_name} ({format_pkr(amount)}), waiting "
+                f"{minutes_waiting} minutes."
+            )
+        payload = {"amount": amount, "minutes_waiting": minutes_waiting}
+        if minutes_to_cancel is not None:
+            payload["minutes_to_cancel"] = minutes_to_cancel
+        if reminder_no is not None:
+            payload["reminder_no"] = reminder_no
+        await self._send_push_and_whatsapp(
+            owner,
+            event_type,
+            title,
+            body,
+            reference_id=booking_id,
+            template_name="payment_submitted_owner",
+            template_params=[court_name, venue_name, _when(starts_at, ends_at), player_name, format_pkr(amount)],
+            bell=True,
+            payload=payload,
+        )
+        return True
+
+    async def notify_owner_payment_auto_cancelled(
         self,
         *,
         owner: User,
         court_name: str,
-        amount: float,
         booking_id: uuid.UUID,
-        minutes_elapsed: float,
-        player_name: str = "",
-    ) -> list[str]:
-        """Called by the expiry job for every still-PAYMENT_SUBMITTED booking.
-        Sends every escalation step that's due and not yet sent (both, if the
-        job hasn't run in a while and elapsed time has jumped past both
-        thresholds at once) and returns which steps fired."""
-        body = f"Still awaiting your review: payment for {court_name} (PKR {amount:,.0f})."
-        fired: list[str] = []
-
-        if minutes_elapsed >= self.settings.ESCALATION_WHATSAPP_MINUTES and not await self.has_sent(
-            owner.id, "payment_submitted_whatsapp", booking_id
-        ):
-            template_used, whatsapp_error = await self._whatsapp_smart_best_effort(
-                owner,
-                body,
-                template_name="payment_submitted_owner",
-                template_params=[court_name, "", "", player_name, f"PKR {amount:,.0f}"],
-            )
-            # Logged either way: has_sent() keys on this row, so a failed send is not retried
-            # every minute by the expiry job (the SMS step below still gets its turn).
-            await self._log(
-                user_id=owner.id,
-                channel="whatsapp",
-                event_type="payment_submitted_whatsapp",
-                reference_id=booking_id,
-                template_name=template_used,
-                status_value="failed" if whatsapp_error else "sent",
-                error_message=whatsapp_error,
-            )
-            if not whatsapp_error:
-                fired.append("whatsapp")
-
-        if minutes_elapsed >= self.settings.ESCALATION_SMS_MINUTES and not await self.has_sent(
-            owner.id, "payment_submitted_sms", booking_id
-        ):
-            # Owner Round 2: log what really happened. SMSService no-ops with {"status": "skipped"} when no provider is
-            # configured (production today), and a provider error used to escape; both were logged as "sent".
-            sms_status, sms_error = "sent", None
-            try:
-                result = await self.sms.send_text(owner.phone, body)
-                if isinstance(result, dict) and result.get("status") == "skipped":
-                    sms_status, sms_error = "skipped", "sms provider not configured"
-            except Exception as exc:  # noqa: BLE001 -- a failed SMS must never break the expiry job
-                sms_status, sms_error = "failed", f"{type(exc).__name__}: {str(exc)[:200]}"
-                logger.warning("notification.sms_failed", event_type="payment_submitted_sms", error=type(exc).__name__)
-            await self._log(
-                user_id=owner.id,
-                channel="sms",
-                event_type="payment_submitted_sms",
-                reference_id=booking_id,
-                cost_category="sms",
-                status_value=sms_status,
-                error_message=sms_error,
-            )
-            if sms_status == "sent":
-                fired.append("sms")
-
-        return fired
+        starts_at: datetime,
+        ends_at: datetime | None,
+        amount: float | None,
+    ) -> None:
+        """Round 2 Stage 2: a booking was auto-cancelled because its payment screenshot was not approved in time
+        while a screenshot WAS sent. The slot is free again; if the money really arrived it has to go back
+        ("paisa wapas dena hai") -- the expired card in Approvals has "Paisa aa gaya - Refund banayein", which queues
+        the refund through the existing payment_disputes path. Push + WhatsApp + bell."""
+        if await self.has_sent(owner.id, "owner_payment_auto_cancelled", booking_id):
+            return
+        amount_text = f" ({format_pkr(amount)})" if amount else ""
+        await self._send_push_and_whatsapp(
+            owner,
+            "owner_payment_auto_cancelled",
+            "Booking auto-cancelled",
+            f"The booking for {court_name} on {_when(starts_at, ends_at)} was cancelled because its payment"
+            f"{amount_text} was not approved in time. If the money arrived it has to be returned: open Approvals and "
+            "choose 'money received' to add it to Refunds.",
+            reference_id=booking_id,
+            bell=True,
+            payload={"amount": amount, "refund_may_be_owed": True} if amount else {"refund_may_be_owed": True},
+        )
 
     # -- Tier 3: paid marketing, tier-gated -------------------------------
 
@@ -659,7 +744,8 @@ class NotificationService:
         if not await self.can_send_marketing(venue):
             raise MarketingSendLimitExceeded(f"Venue {venue.id} has hit its monthly announcement allowance")
 
-        await self._send_push_tier(user, "tournament_announcement", title, body, reference_id=venue.id)
+        payload = {"title": title, "venue_name": venue.name}
+        await self._send_push_tier(user, "tournament_announcement", title, body, reference_id=venue.id, payload=payload)
         await self.whatsapp.send_text(user.phone, body)
         await self._log(
             user_id=user.id,
@@ -667,4 +753,5 @@ class NotificationService:
             event_type="tournament_announcement",
             reference_id=venue.id,
             cost_category="marketing",
+            payload=payload,
         )

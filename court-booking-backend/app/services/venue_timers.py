@@ -89,3 +89,45 @@ def payment_deadline_for(venue: Any | None, submitted_at: datetime) -> datetime 
     """bookings.payment_deadline for a payment submitted at `submitted_at` (None = never auto-cancel)."""
     minutes = auto_cancel_minutes_for(venue)
     return submitted_at + timedelta(minutes=minutes) if minutes is not None else None
+
+
+async def submitted_at_of(db, booking) -> datetime | None:
+    """When the screenshot awaiting review was submitted: the pending payment's created_at."""
+    from sqlalchemy import select
+
+    from app.models.payment import Payment
+
+    return await db.scalar(
+        select(Payment.created_at)
+        .where(Payment.booking_id == booking.id, Payment.review_verdict.is_(None))
+        .order_by(Payment.created_at.desc())
+        .limit(1)
+    )
+
+
+async def reapply_payment_deadlines(db, venue) -> int:
+    """After the owner changes the auto-cancel setting, every booking of this venue still waiting for payment
+    review gets its `payment_deadline` recomputed from its own submission time (NULL = never auto-cancel), so the
+    new setting applies to screenshots already in the queue. Not committed. Returns how many rows changed."""
+    from sqlalchemy import select
+
+    from app.models.booking import Booking, BookingStatus
+    from app.models.court import Court
+
+    rows = (
+        await db.execute(
+            select(Booking)
+            .join(Court, Court.id == Booking.court_id)
+            .where(Court.venue_id == venue.id, Booking.status == BookingStatus.PAYMENT_SUBMITTED)
+        )
+    ).scalars().all()
+    changed = 0
+    for booking in rows:
+        submitted = await submitted_at_of(db, booking)
+        if submitted is None:
+            continue
+        deadline = payment_deadline_for(venue, submitted)
+        if deadline != booking.payment_deadline:
+            booking.payment_deadline = deadline
+            changed += 1
+    return changed
