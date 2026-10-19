@@ -97,7 +97,8 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
   const pushState = n.push.state;
   // Web Push replaces the tab-open popup where it works; the popup stays as the fallback (and stays switchable while it is on).
   const pushOffered = pushState === "not-asked" || pushState === "granted-not-subscribed" || pushState === "subscribed" || pushState === "denied";
-  const showPopupSection = perm !== "unsupported" && (!pushOffered || (n.popupEnabled && pushState !== "subscribed" && pushState !== "denied"));
+  // With push offered, the popup block only stays while popups are really on (so they can still be switched off).
+  const showPopupSection = perm !== "unsupported" && (!pushOffered || (n.popupEnabled && perm === "granted" && pushState === "granted-not-subscribed"));
 
   async function enablePush() {
     setAnnounce("");

@@ -2,7 +2,7 @@
 import type { MyPermissions } from "@court-booking/types";
 
 /** Staff permission keys (backend app/models/staff.py StaffPermission) the owner screens act on. */
-export type StaffPermission = "approve_payments" | "record_payments" | "check_in" | "mark_refunds" | "cancel_booking" | "view_ledger";
+export type StaffPermission = "approve_payments" | "record_payments" | "check_in" | "mark_refunds" | "cancel_booking" | "view_ledger" | "edit_court_settings";
 
 /** What each button needs. Completion (Haan / Nahi) = record_payments; manual no-show = check_in (the backend checks the same). */
 export const ACTION_PERMISSION = {
@@ -12,6 +12,8 @@ export const ACTION_PERMISSION = {
   refunds: "mark_refunds",
   completion: "record_payments",
   noShow: "check_in",
+  /** Venue / court settings incl. the Stage 2 timers card (backend key edit_court_settings; no separate venue-settings key exists). */
+  venueSettings: "edit_court_settings",
 } as const satisfies Record<string, StaffPermission>;
 
 /**
