@@ -1,6 +1,8 @@
 // Expo-web e2e for Round 2 Stage 2, mobile part M1: duplicate-screenshot confirm (B.a), staff permissions hiding buttons up
 // front (B.b), "Status baqi" chip + Overview line + History filter (C.3/C.4), Haan/Nahi -> Completed and the separate
 // "Nahi aaye (No-show)" confirm sheet (C.3).
+// Stage 2 fixes: a role "staff" ACCOUNT enters the owner screens (gate -> Overview), More hides Staff / Premium / CNIC,
+// and the Venue Settings timers card is read-only without edit_court_settings.
 // Run: PLAYWRIGHT_PATH=<...>/node_modules/playwright BASE=http://localhost:8094 node e2e/stage2-m1-check.cjs
 // Expo web must be started with a DEAD api url (EXPO_PUBLIC_API_BASE_URL=http://localhost:9) and --clear; every /api/v1/**
 // call is mocked with page.route, nothing reaches a real backend. 390px viewport.
@@ -16,7 +18,15 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAACgAAAA8CAIAAACb22+3AAAAOElEQVR
 
 const user = { id: "u1", role: "owner", name: "Owner One", phone: "+923001234567", email: null };
 const courts = [{ id: "c1", venue_id: "v1", name: "Court 1", sport: "padel", is_active: true }];
-const venue = { id: "v1", name: "Arena Khelo", status: "approved", courts };
+const venue = {
+  id: "v1", name: "Arena Khelo", status: "approved", courts, sports: ["Padel"], amenities: [], address: "Street 1", area: "DHA", city: "Karachi", description: null,
+  whatsapp: null, bank_details: null, cancellation_allowed: true, cancellation_cutoff_hours: null, booking_horizon_days: 90, photo_urls: [], photo_keys: [],
+};
+const TIMERS = (() => {
+  const d = { hold_minutes: 15, reminders_enabled: true, first_reminder_after_min: 10, repeat_every_min: 30, max_reminders: 5, auto_cancel_enabled: true, auto_cancel_after_min: 120 };
+  const nulls = Object.fromEntries(Object.keys(d).map((k) => [k, null]));
+  return { values: nulls, defaults: d, effective: d };
+})();
 const ALL_KEYS = ["approve_payments", "record_payments", "check_in", "walkin", "cancel_booking", "mark_refunds", "view_ledger"];
 
 const base = (id, name, extra = {}) => ({
@@ -60,7 +70,7 @@ async function setup(browser, state) {
       localStorage.setItem("maidan.session_expires_at", new Date(Date.now() + 7 * 3600e3).toISOString());
       localStorage.setItem("maidan.cached_user", JSON.stringify(u));
     }
-  }, user);
+  }, state.user || user);
   const reqs = [];
   await ctx.route("https://proof.test/**", (r) => r.fulfill({ status: 200, contentType: "image/png", body: PNG }));
   await ctx.route("**/health", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
@@ -72,10 +82,11 @@ async function setup(browser, state) {
     reqs.push(entry);
     const json = (data, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
     let m;
-    if (p === "/auth/me") return json({ user, session: { device_id: "d", device_name: null, platform: "web", last_active_at: iso(0), expires_at: iso(7) } });
+    if (p === "/auth/me") return json({ user: state.user || user, session: { device_id: "d", device_name: null, platform: "web", last_active_at: iso(0), expires_at: iso(7) } });
     if (p === "/auth/refresh") return json({ token: "tok", expires_at: iso(8) });
     if (p === "/owners/venues") return json([venue]);
     if (p === "/owners/me/permissions") return json(state.perms);
+    if (p === "/owners/venues/v1/timers") return json(TIMERS);
     if (p === "/owners/badges") return json({ approvals: 2, refunds: 0 });
     if (p === "/owners/approvals-queue") {
       const items = state.queue().filter((it) => !state.approved.has(it.payment_id));
@@ -263,6 +274,50 @@ function defaultState() {
     await waitFor(async () => (await bcard(page, "bkp").count()) === 1, 15000);
     await page.waitForTimeout(800);
     check("B.b staff with check_in only: No-show shown, Haan/Nahi hidden", (await bcard(page, "bkp").getByRole("button", { name: "Nahi aaye (No-show)" }).count()) === 1 && (await page.getByRole("button", { name: /^Booking completed:/ }).count()) === 0);
+    await ctx.close();
+  }
+
+  // ---------------- a role "staff" ACCOUNT (not just a staff permissions answer) ----------------
+  {
+    const state = defaultState();
+    state.user = { id: "u9", role: "staff", name: "Staff Sajid", phone: "+923001112223", email: null };
+    state.perms = { role: "staff", venue_permissions: [{ venue_id: "v1", permissions: ["view_ledger", "check_in"] }] };
+    const { ctx, page, reqs } = await setup(browser, state);
+    await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
+    const landed = await page.getByTestId("total-slots-card").first().waitFor({ timeout: 180000 }).then(() => true, () => false);
+    await page.waitForTimeout(600);
+    await shot(page, "s2-staff-overview");
+    check("staff account: lands on Overview (owner screens), not the login / setup wizard", landed && !/venue-setup|login/.test(page.url()), page.url());
+    check("staff account: the gate never opened the setup wizard", !reqs.some((r) => r.method === "POST" && r.p === "/venues"));
+    check("staff account: no CNIC banner / premium notices", (await page.getByText(/CNIC dein|Shanakhti/).count()) === 0);
+    check("staff account: no '+ Add venue'", (await page.getByText("+ Add venue").count()) === 0);
+    await page.goto(BASE + "/more", { waitUntil: "domcontentloaded", timeout: 240000 });
+    await page.getByText("Venue settings").first().waitFor({ timeout: 60000 });
+    await page.waitForTimeout(400);
+    await shot(page, "s2-staff-more");
+    const items = await page.getByRole("button").allInnerTexts();
+    check("staff account: More hides Staff, Premium and CNIC", !items.some((t) => /^Staff$|^Premium$|CNIC/.test(t.split(String.fromCharCode(10))[0].trim())), items.join(" | "));
+    check("staff account: More keeps History / Venue settings / Log out", items.some((t) => /Bookings history/.test(t)) && items.some((t) => /Venue settings/.test(t)) && items.some((t) => /Log out/.test(t)));
+    await page.goto(BASE + "/venue-settings", { waitUntil: "domcontentloaded", timeout: 240000 });
+    const ro = await page.getByTestId("timers-card-readonly").first().waitFor({ timeout: 60000 }).then(() => true, () => false);
+    await page.waitForTimeout(400);
+    await page.getByTestId("timers-card-readonly").first().scrollIntoViewIfNeeded().catch(() => {});
+    await shot(page, "s2-staff-timers-readonly");
+    const roText = ro ? await page.getByTestId("timers-card-readonly").first().innerText() : "";
+    check("staff without edit_court_settings: timers card read-only summary", ro && /15 minute/.test(roText) && /115 par aakhri warning, 120 par cancel/.test(roText), roText.replace(/ +/g, " "));
+    check("staff without edit_court_settings: no timer inputs / save button", (await page.getByText("Save reminder settings").count()) === 0);
+    check("staff account: no CNIC card in Venue settings", (await page.getByTestId("identity-masked").count()) === 0 && (await page.getByText(/CNIC jama karein/).count()) === 0);
+    await ctx.close();
+  }
+  {
+    // staff WITH edit_court_settings: the editable card
+    const state = defaultState();
+    state.user = { id: "u9", role: "staff", name: "Staff Sajid", phone: "+923001112223", email: null };
+    state.perms = { role: "staff", venue_permissions: [{ venue_id: "v1", permissions: ["view_ledger", "edit_court_settings"] }] };
+    const { ctx, page } = await setup(browser, state);
+    await page.goto(BASE + "/venue-settings", { waitUntil: "domcontentloaded", timeout: 240000 });
+    const ed = await page.getByText("Save reminder settings").first().waitFor({ timeout: 60000 }).then(() => true, () => false);
+    check("staff with edit_court_settings: editable timers card", ed && (await page.getByTestId("timers-card-readonly").count()) === 0);
     await ctx.close();
   }
 

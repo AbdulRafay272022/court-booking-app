@@ -66,6 +66,8 @@ async function setup(browser, opts = {}) {
       return json(state.identity);
     }
     if (p === "/venues" && req.method() === "POST") return json({ venue: { ...venue, id: "v2", status: "pending", courts: [] } }, 201);
+    // the pending screen the wizard ends on reads the new venue (an empty {} crashed it: courts undefined)
+    if (p === "/venues/v2" && req.method() === "GET") return json({ ...venue, id: "v2", status: "pending", courts: [{ ...court, id: "c2", venue_id: "v2" }] });
     if (p === "/venues/v2/courts" && req.method() === "POST") return json({ court: { ...court, id: "c2", venue_id: "v2" } }, 201);
     if (p === "/courts/c1/advance-explain") return json({ error: { code: "NOT_FOUND", message: "nf" } }, 404);
     if (p === "/courts/c1/blackouts") return json([]);
