@@ -7,7 +7,7 @@ import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
 import { CompletionChips } from "./completion-chips";
-import { StatusChip, isConfirmedBooked } from "./status-chip";
+import { NoShowButton, StatusChip, StatusPendingChip, isConfirmedBooked, isStatusPending } from "./status-chip";
 
 export interface SortSpec {
   field: string;
@@ -37,6 +37,8 @@ export interface BookingRowsTableProps {
   caption: string;
   /** Container width in px from which the table replaces the card list. */
   tableMinWidth?: number;
+  /** Stage 2 (C.3): "Nahi aaye (No-show)" on status-pending rows; omit when the user may not mark no-shows. */
+  onNoShow?: (row: OwnerBookingRow) => void;
 }
 
 /** True when the element is at least `minPx` wide. Container-based, because the owner sidebar takes 240px from >= 768px viewports. */
@@ -102,11 +104,13 @@ function CompletionCell({
   onPick,
   busy,
   compactEarly,
+  onNoShow,
 }: {
   row: OwnerBookingRow;
   onPick?: (row: OwnerBookingRow, result: CompletionResult) => void;
   busy: boolean;
   compactEarly?: boolean;
+  onNoShow?: (row: OwnerBookingRow) => void;
 }) {
   const t = useT();
   if (!isConfirmedBooked(row)) {
@@ -148,6 +152,7 @@ function CompletionCell({
       <div className="flex flex-wrap gap-1.5">
         <CompletionChips row={row} showCheckedIn={false} />
       </div>
+      {onNoShow && isStatusPending(row) ? <NoShowButton name={row.player_name?.trim() || row.short_code} compact onClick={() => onNoShow(row)} /> : null}
     </div>
   );
 }
@@ -173,7 +178,7 @@ function SortArrow({ dir }: { dir: "asc" | "desc" | null }) {
 }
 
 export function BookingRowsTable(props: BookingRowsTableProps) {
-  const { rows, onOpen, onPickCompletion, busyId, highlightId, isNew, sort, onSort, showDate, compactEarly, caption, tableMinWidth = 900 } = props;
+  const { rows, onOpen, onPickCompletion, busyId, highlightId, isNew, sort, onSort, showDate, compactEarly, caption, tableMinWidth = 900, onNoShow } = props;
   const t = useT();
   const fmt = useFmt();
   const [wrapRef, wide] = useWide(tableMinWidth);
@@ -332,10 +337,11 @@ export function BookingRowsTable(props: BookingRowsTableProps) {
                     <div className="flex flex-col items-start gap-1">
                       <StatusChip statusKey={row.status_key} />
                       {row.checked_in ? <CompletionChips row={{ completion: null, checked_in: true }} /> : null}
+                      {isStatusPending(row) ? <StatusPendingChip /> : null}
                     </div>
                   </td>
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                    <CompletionCell row={row} onPick={onPickCompletion} busy={busyId === row.booking_id} compactEarly={compactEarly} />
+                    <CompletionCell row={row} onPick={onPickCompletion} busy={busyId === row.booking_id} compactEarly={compactEarly} onNoShow={onNoShow} />
                   </td>
                 </tr>
               );
@@ -370,7 +376,10 @@ export function BookingRowsTable(props: BookingRowsTableProps) {
                     {newBadge(row)}
                     <div className="text-[13px] text-owner-ink-muted">{v.sub}</div>
                   </div>
-                  <StatusChip statusKey={row.status_key} />
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <StatusChip statusKey={row.status_key} />
+                    {isStatusPending(row) ? <StatusPendingChip /> : null}
+                  </div>
                 </div>
                 {v.showMoney ? (
                   <dl className="mt-3 grid grid-cols-4 gap-2 text-[13px]">
@@ -398,7 +407,7 @@ export function BookingRowsTable(props: BookingRowsTableProps) {
                 )}
                 {isConfirmedBooked(row) || row.checked_in ? (
                   <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                    <CompletionCell row={row} onPick={onPickCompletion} busy={busyId === row.booking_id} compactEarly={compactEarly} />
+                    <CompletionCell row={row} onPick={onPickCompletion} busy={busyId === row.booking_id} compactEarly={compactEarly} onNoShow={onNoShow} />
                     {row.checked_in ? (
                       <div className="mt-1.5 flex gap-1.5">
                         <CompletionChips row={{ completion: null, checked_in: true }} />

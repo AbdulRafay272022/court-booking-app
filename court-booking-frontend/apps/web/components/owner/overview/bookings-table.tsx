@@ -8,6 +8,7 @@ import { useFmt } from "@/lib/use-fmt";
 import { completionValue, filterRows, initialOf, pkr, rowCounts, rowDomId, rowTone } from "@/lib/overview-helpers";
 import type { RowFilter, RowTone } from "@/lib/overview-helpers";
 import { useIsNarrow } from "./overlay";
+import { NoShowButton, StatusPendingChip, isStatusPending } from "@/components/owner/booking-table/status-chip";
 
 export interface BookingsTableProps {
   rows: OwnerBookingRow[];
@@ -25,6 +26,10 @@ export interface BookingsTableProps {
   busyBookingId: string | null;
   /** aria-live text for a failed completion (400 too early, 403, ...). */
   message: string | null;
+  /** Stage 2 (B.b): false = this staff member may not record payments, so the Haan / Nahi dropdown is not shown at all. */
+  canComplete?: boolean;
+  /** Stage 2 (C.3): "Nahi aaye (No-show)" for a status-pending row; omitted when the user may not mark no-shows. */
+  onNoShow?: (row: OwnerBookingRow) => void;
 }
 
 const TONE_ROW: Record<RowTone, string> = {
@@ -163,14 +168,28 @@ function CompletionSelect({
   noPermission,
   busy,
   onComplete,
+  canComplete = true,
+  onNoShow,
 }: {
   row: OwnerBookingRow;
   noPermission: boolean;
   busy: boolean;
   onComplete: (row: OwnerBookingRow, result: CompletionResult) => void;
+  canComplete?: boolean;
+  onNoShow?: (row: OwnerBookingRow) => void;
 }) {
   const t = useT();
   const name = row.player_name ?? t("ovw.table.noName");
+  const noShow = onNoShow && isStatusPending(row) ? <NoShowButton name={name} compact onClick={() => onNoShow(row)} /> : null;
+  if (!canComplete) {
+    // no record_payments permission: no dropdown (hidden up front), only the result chip and, if allowed, No-show
+    return (
+      <div className="flex flex-col items-start gap-1.5 min-w-0">
+        <CompletionChip row={row} />
+        {noShow}
+      </div>
+    );
+  }
   const disabled = !row.slot_ended || noPermission || busy;
   const hint = !row.slot_ended ? t("ovw.complete.tooSoon") : noPermission ? t("ovw.complete.noPermission") : null;
   const hintId = `hint-${rowDomId(row)}`;
@@ -203,6 +222,7 @@ function CompletionSelect({
       ) : (
         <CompletionChip row={row} />
       )}
+      {noShow}
     </div>
   );
 }
@@ -228,7 +248,7 @@ function money(row: OwnerBookingRow) {
 }
 
 export function BookingsTable(props: BookingsTableProps) {
-  const { rows, filter, onFilter, title, onOpen, onComplete, onJumpToOriginal, highlightId, noPermission, busyBookingId, message } = props;
+  const { rows, filter, onFilter, title, onOpen, onComplete, onJumpToOriginal, highlightId, noPermission, busyBookingId, message, canComplete = true, onNoShow } = props;
   const t = useT();
   const narrow = useIsNarrow();
   const counts = rowCounts(rows);
@@ -296,6 +316,7 @@ export function BookingsTable(props: BookingsTableProps) {
                   <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     <StatusChip row={row} />
                     <CheckedInChip row={row} />
+                    {isStatusPending(row) ? <StatusPendingChip /> : null}
                   </div>
                   {row.kind === "booked" ? (
                     <>
@@ -314,7 +335,7 @@ export function BookingsTable(props: BookingsTableProps) {
                         ))}
                       </dl>
                       <div className="mt-3">
-                        <CompletionSelect row={row} noPermission={noPermission} busy={busyBookingId === row.booking_id} onComplete={onComplete} />
+                        <CompletionSelect row={row} noPermission={noPermission} busy={busyBookingId === row.booking_id} onComplete={onComplete} canComplete={canComplete} onNoShow={onNoShow} />
                       </div>
                     </>
                   ) : (
@@ -372,11 +393,12 @@ export function BookingsTable(props: BookingsTableProps) {
                       <div className="flex flex-col items-start gap-1.5">
                         <StatusChip row={row} />
                         <CheckedInChip row={row} />
+                        {isStatusPending(row) ? <StatusPendingChip /> : null}
                       </div>
                     </td>
                     <td className="pl-3 pr-6 py-4">
                       {row.kind === "booked" ? (
-                        <CompletionSelect row={row} noPermission={noPermission} busy={busyBookingId === row.booking_id} onComplete={onComplete} />
+                        <CompletionSelect row={row} noPermission={noPermission} busy={busyBookingId === row.booking_id} onComplete={onComplete} canComplete={canComplete} onNoShow={onNoShow} />
                       ) : (
                         <span className="text-khelo-muted">{"\u2013"}</span>
                       )}

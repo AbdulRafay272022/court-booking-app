@@ -76,6 +76,12 @@ test("bad URL values are dropped", () => {
   assert.equal(s.booking, null);
 });
 
+test("Stage 2: status_pending is a filter value (the Overview 'status baqi' link)", () => {
+  const s = parseHistoryQuery(getter("from=2025-10-20&to=2027-10-20&status=status_pending"), TODAY);
+  assert.deepEqual(s.status, ["status_pending"]);
+  assert.equal(new URLSearchParams(buildHistoryQuery(s, TODAY)).get("status"), "status_pending");
+});
+
 test("defaults are omitted from the query string", () => {
   assert.equal(buildHistoryQuery(parseHistoryQuery(getter(""), TODAY), TODAY), "");
 });

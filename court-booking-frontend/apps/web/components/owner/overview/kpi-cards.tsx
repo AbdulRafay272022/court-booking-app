@@ -52,11 +52,54 @@ function TitleText({ text }: { text: string }) {
   );
 }
 
+/**
+ * A money value ("PKR 31,500") that never breaks onto two lines (Stage 2, B.c): `whitespace-nowrap`, and the font shrinks with
+ * the card's own width (container query units) and with the text length, from 30px down to 16px, so five cards in one row at
+ * 1280 px still fit "PKR 1,231,500" in Roman Urdu as well as English.
+ */
+function MoneyValue({ text, testId }: { text: string; testId?: string }) {
+  // ~0.62em per character in the display font at extra-bold; 96% of the width leaves room for rounding
+  const fit = Math.floor(960 / (Math.max(text.length, 6) * 0.62)) / 10;
+  return (
+    <div className="@container mt-2 min-w-0">
+      <p data-testid={testId} className={`${BIG} whitespace-nowrap`} style={{ fontSize: `clamp(1rem, ${fit}cqi, 1.875rem)` }}>
+        {text}
+      </p>
+    </div>
+  );
+}
+
 /** A card whose title is a link stretched over the whole card; controls inside it sit above with `relative z-10`. */
 function CardTitleLink({ href, children, testId }: { href: string; children: ReactNode; testId?: string }) {
   return (
     <Link href={href} data-testid={testId} className={`${LABEL} after:absolute after:inset-0 after:rounded-2xl`}>
       {children}
+    </Link>
+  );
+}
+
+/** "N bookings ka status baqi": one clickable line to History (any date, status_pending filter). Icon + text, 44px target. */
+function StatusPendingLine({ n, href }: { n: number; href: string }) {
+  const t = useT();
+  const text = n === 1 ? t("nsw.line.one") : t("nsw.line.many", { n });
+  return (
+    <Link
+      href={href}
+      data-testid="ovw-status-pending"
+      aria-label={t("nsw.line.aria", { text })}
+      className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-owner-warn-soft-border bg-owner-warn-soft px-4 py-2.5 text-owner-warn-dark hover:brightness-[0.98]"
+    >
+      <span className="inline-flex items-center gap-2 text-[15px] font-bold">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+        {text}
+      </span>
+      <span className="text-[13px] font-medium text-khelo-ink">{t("nsw.line.hint")}</span>
+      <span className="ml-auto inline-flex items-center">
+        <Arrow />
+      </span>
     </Link>
   );
 }
@@ -77,6 +120,8 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
   const { slots, bookings, money } = overview;
   const history = (status: HistoryStatusFilter, courtId?: string) => historyHref({ date, courts: courtId ?? courts, status });
   const pendingAll = pendingAllOf(overview);
+  // Stage 2 (C.4): bookings whose slot ended and nobody marked (ANY date); an older backend does not send it
+  const statusPending = typeof overview.status_pending_count === "number" ? overview.status_pending_count : 0;
 
   const segments = slotSegments(slots);
   const bookedCourts = topCourts(slots.by_court, (c) => c.booked, 2);
@@ -102,6 +147,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
 
   return (
     <section aria-label={t("ovw.title")} className="flex flex-col gap-3 md:gap-4" data-testid="ovw-kpis">
+      {statusPending > 0 ? <StatusPendingLine n={statusPending} href={allDatesHistoryHref(today, { courts, status: "status_pending" })} /> : null}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         {/* Total slots: bar, legend (each a button), free split, court breakdown */}
         <div className={`${CARD} md:col-span-2`} data-testid="kpi-total">
@@ -297,13 +343,13 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
 
         <div className={CARD} data-testid="kpi-collected">
           <CardTitleLink href={history("booked")}><TitleText text={t("ovw.kpi.collected")} /></CardTitleLink>
-          <p className={`${BIG} mt-2 text-2xl sm:text-3xl`}>{pkr(money.collected)}</p>
+          <MoneyValue text={pkr(money.collected)} testId="kpi-collected-value" />
           <p className={`${SUB} mt-3`}>{t("ovw.kpi.collectedSub")}</p>
         </div>
 
         <div className={`${CARD} col-span-2 lg:col-span-1`} data-testid="kpi-due">
           <CardTitleLink href={history("booked")}><TitleText text={t("ovw.kpi.due")} /></CardTitleLink>
-          <p className={`${BIG} mt-2 text-2xl sm:text-3xl`}>{pkr(money.due)}</p>
+          <MoneyValue text={pkr(money.due)} testId="kpi-due-value" />
           <p className={`${SUB} mt-3`}>{t("ovw.kpi.dueSub", { n: money.due_bookings })}</p>
         </div>
       </div>

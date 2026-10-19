@@ -35,6 +35,7 @@ export const enHist: Record<keyof typeof ruHist, string> = {
   "hist.sf.refund": "Refund",
   "hist.sf.completed": "Completed",
   "hist.sf.short_paid": "Short paid",
+  "hist.sf.status_pending": "Status pending",
   "hist.sf.held": "Awaiting payment",
   "hist.sf.awaiting_approval": "Awaiting approval",
   "hist.sf.no_show": "No-show",

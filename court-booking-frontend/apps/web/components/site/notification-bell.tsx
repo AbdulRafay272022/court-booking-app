@@ -54,6 +54,7 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
     const rect = buttonRef.current?.getBoundingClientRect();
     if (rect) setTop(Math.round(rect.bottom + 8));
     setPerm(currentPermission());
+    n.push.recheck();
     setOpen(true);
   }
 
@@ -91,6 +92,24 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
     const result = await n.enablePopups();
     setPerm(result);
     setAnnounce(result === "granted" ? t("notif.popup.on") : result === "denied" ? rk("notif.popup.denied") : "");
+  }
+
+  const pushState = n.push.state;
+  // Web Push replaces the tab-open popup where it works; the popup stays as the fallback (and stays switchable while it is on).
+  const pushOffered = pushState === "not-asked" || pushState === "granted-not-subscribed" || pushState === "subscribed" || pushState === "denied";
+  const showPopupSection = perm !== "unsupported" && (!pushOffered || (n.popupEnabled && pushState !== "subscribed" && pushState !== "denied"));
+
+  async function enablePush() {
+    setAnnounce("");
+    const res = await n.push.enable();
+    setPerm(currentPermission());
+    setAnnounce(res.ok ? t("push.live.on") : res.reason === "denied" ? rk("push.denied") : res.reason === "error" ? rk("push.live.error") : "");
+  }
+
+  async function disablePush() {
+    setAnnounce("");
+    await n.push.disable();
+    setAnnounce(t("push.live.off"));
   }
 
   return (
@@ -190,7 +209,53 @@ export function NotificationBell({ tone = "dark", className = "" }: { tone?: "da
 
           {(
             <div className="flex flex-col gap-2.5 border-t border-khelo-divider bg-khelo-page px-4 py-3">
-              {perm !== "unsupported" ? (
+              {pushState !== "hidden" && pushState !== "unsupported" ? (
+                <div className="flex flex-col gap-1.5" data-testid="push-section" data-state={pushState}>
+                  <p className="text-[12px] font-bold uppercase tracking-wide text-khelo-muted-2">{t("push.heading")}</p>
+                  {pushState === "ios-install" ? (
+                    <p className="flex gap-2 text-[13px] leading-5 text-khelo-ink" data-testid="push-ios-hint">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-0.5 shrink-0">
+                        <path d="M12 3v12M8 7l4-4 4 4M5 13v6a2 2 0 002 2h10a2 2 0 002-2v-6" />
+                      </svg>
+                      <span>{rk("push.ios")}</span>
+                    </p>
+                  ) : pushState === "denied" ? (
+                    <p className="text-[13px] leading-5 text-khelo-muted" data-testid="push-denied">
+                      {rk("push.denied")}
+                    </p>
+                  ) : pushState === "subscribed" ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-khelo-success-text" data-testid="push-on">
+                        <span aria-hidden="true">{"✓"}</span>
+                        {t("push.on")}
+                      </p>
+                      <button
+                        type="button"
+                        data-testid="push-disable"
+                        onClick={disablePush}
+                        disabled={n.push.busy}
+                        className="min-h-11 cursor-pointer rounded-lg border border-khelo-border bg-white px-3 text-[13px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-khelo-orange disabled:opacity-60"
+                      >
+                        {n.push.busy ? t("push.busy") : rk("push.off")}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-[12.5px] leading-5 text-khelo-muted">{rk("push.explain")}</p>
+                      <button
+                        type="button"
+                        data-testid="push-enable"
+                        onClick={enablePush}
+                        disabled={n.push.busy}
+                        className="min-h-11 cursor-pointer self-start rounded-lg bg-khelo-ink px-4 text-[13.5px] font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-khelo-orange disabled:opacity-60"
+                      >
+                        {n.push.busy ? t("push.busy") : rk("push.enable")}
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : null}
+              {showPopupSection ? (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[12px] font-bold uppercase tracking-wide text-khelo-muted-2">{t("notif.popup.heading")}</p>
                   <p className="text-[12.5px] leading-5 text-khelo-muted" data-testid="notification-popup-explain">{rk("notif.popup.explain")}</p>

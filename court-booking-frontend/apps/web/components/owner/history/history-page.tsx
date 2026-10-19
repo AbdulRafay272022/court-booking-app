@@ -14,7 +14,8 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
 import { BookingRowsSkeleton, BookingRowsTable } from "@/components/owner/booking-table/booking-rows-table";
 import { BookingDetail } from "@/components/owner/booking-detail";
-import { useCompletionFlow } from "@/components/owner/completion-dialog";
+import { useCompletionFlow, useNoShowFlow } from "@/components/owner/completion-dialog";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { DateFilter } from "./date-filter";
 import { MultiSelect } from "./multi-select";
 import {
@@ -97,6 +98,13 @@ export function HistoryPage() {
   const flow = useCompletionFlow(() => {
     void query.refetch();
   });
+  const noShow = useNoShowFlow(() => {
+    void query.refetch();
+  });
+  // Stage 2 (B.b): staff without the permission never see the Haan / Nahi dropdown or the No-show button
+  const perms = useMyPermissions();
+  const canComplete = perms.can("record_payments");
+  const canNoShow = perms.can("check_in");
 
   // --- CSV ---
   const [exporting, setExporting] = useState(false);
@@ -214,6 +222,9 @@ export function HistoryPage() {
       <p role="status" aria-live="polite" className={flow.message ? `text-[14px] font-semibold ${flow.message.kind === "ok" ? "text-owner-success-dark" : "text-owner-danger"}` : "sr-only"}>
         {flow.message?.text}
       </p>
+      <p role="status" aria-live="polite" data-testid="hist-noshow-live" className={noShow.message ? "text-[14px] font-semibold text-owner-success-dark" : "sr-only"}>
+        {noShow.message?.text}
+      </p>
 
       {focusId && !loading ? (
         <div data-testid="focus-banner" role="status" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-owner-accent-soft-border bg-owner-accent-soft px-4 py-2.5 text-[14px] font-semibold text-owner-ink">
@@ -256,7 +267,8 @@ export function HistoryPage() {
               showDate
               compactEarly
               onOpen={(row) => setOpenId(row.booking_id)}
-              onPickCompletion={flow.pick}
+              onPickCompletion={canComplete ? flow.pick : undefined}
+              onNoShow={canNoShow ? noShow.ask : undefined}
               busyId={flow.busyId}
               highlightId={state.booking}
               sort={state.sort}
@@ -334,6 +346,7 @@ export function HistoryPage() {
         }}
       />
       {flow.dialog}
+      {noShow.dialog}
     </div>
   );
 }

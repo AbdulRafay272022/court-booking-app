@@ -8,6 +8,20 @@ import { ApiError } from "@court-booking/api-client";
 import { notificationText, type NotificationFeedItem } from "@court-booking/types";
 import { useLang, useT } from "@/components/i18n/lang-provider";
 import { effectiveReadAt, legacyToFeed, newArrivals, newestMs, unreadCount, type NotifRole } from "@/lib/notif-helpers";
+import {
+  currentSubscription,
+  detectSupport,
+  disablePush,
+  enablePush,
+  pushUiState,
+  readPushEnv,
+  refreshPush,
+  shouldShowTabPopup,
+  type EnableResult,
+  type PushSupport,
+  type PushUiState,
+  type SubscriptionBody,
+} from "@/lib/web-push";
 
 const POLL_MS = 15_000;
 
@@ -100,6 +114,122 @@ export function currentPermission(): PopupState {
   return Notification.permission as PopupState;
 }
 
+// ---- Web Push (Stage 2): one store per page, shared by both bell instances of the owner shell ----
+interface PushSnap {
+  /** This device's subscription is active on the server for the signed-in user. */
+  subscribedHere: boolean;
+  busy: boolean;
+  /** Notification.permission as last read (it is not reactive). */
+  perm: PopupState;
+}
+let pushSnap: PushSnap = { subscribedHere: false, busy: false, perm: "unsupported" };
+const pushListeners = new Set<() => void>();
+function setPush(patch: Partial<PushSnap>) {
+  pushSnap = { ...pushSnap, ...patch };
+  pushListeners.forEach((l) => l());
+}
+function subscribePush(cb: () => void) {
+  pushListeners.add(cb);
+  return () => {
+    pushListeners.delete(cb);
+  };
+}
+const SERVER_PUSH_SNAP: PushSnap = { subscribedHere: false, busy: false, perm: "unsupported" };
+let supportCache: PushSupport | null = null;
+function pushSupport(): PushSupport {
+  if (supportCache) return supportCache;
+  const env = readPushEnv();
+  if (!env) return "unsupported";
+  supportCache = detectSupport(env);
+  return supportCache;
+}
+/** The user id the on-load sync already ran for (it runs once per page per user, whichever bell mounts first). */
+let pushSyncedFor: string | null = null;
+
+/**
+ * Web Push for the bell (docs/web-push-plan.md section 8). Never asks on load: the only `requestPermission` is inside `enable`,
+ * called from the explicit button. On load, while permission is granted and this user turned push on in this browser, the
+ * subscription is re-sent (last_seen_at, browser-side rotation); otherwise the server is asked whether THIS device is subscribed.
+ */
+function useWebPush(userId: string | undefined) {
+  const support = useSyncExternalStore(
+    subscribePush,
+    pushSupport,
+    () => "unsupported" as PushSupport,
+  );
+  const snap = useSyncExternalStore(subscribePush, () => pushSnap, () => SERVER_PUSH_SNAP);
+  const choiceKey = userId ? `khelo.push.${userId}` : null;
+
+  const config = useQuery({
+    queryKey: ["web-push-config", userId],
+    queryFn: () => api.users.webPushConfig(),
+    enabled: !!userId && support !== "unsupported",
+    staleTime: 10 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const publicKey = config.data?.enabled && config.data.public_key ? config.data.public_key : null;
+  const backendEnabled = config.data ? !!publicKey : config.isError ? false : null;
+
+  useEffect(() => {
+    if (!userId || !choiceKey || !publicKey || support !== "supported") return;
+    if (pushSyncedFor === userId) return;
+    pushSyncedFor = userId;
+    setPush({ perm: currentPermission() });
+    void (async () => {
+      try {
+        if (currentPermission() === "granted" && readKey(choiceKey) === "1") {
+          await refreshPush(api.users, publicKey);
+          setPush({ subscribedHere: true });
+          return;
+        }
+        const sub = await currentSubscription();
+        if (!sub) {
+          setPush({ subscribedHere: false });
+          return;
+        }
+        const status = await api.users.webPushStatus(sub.endpoint);
+        setPush({ subscribedHere: !!status.subscribed && currentPermission() === "granted" });
+      } catch {
+        setPush({ subscribedHere: false });
+      }
+    })();
+    // the worker asks an open tab to POST a rotated subscription (only the page holds the session token)
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data as { type?: string; subscription?: SubscriptionBody } | null;
+      if (d?.type !== "khelo-push-resubscribe" || !d.subscription?.endpoint || !d.subscription.keys) return;
+      void api.users.webPushSubscribe({ endpoint: d.subscription.endpoint, keys: d.subscription.keys, user_agent: navigator.userAgent.slice(0, 500) }).catch(() => undefined);
+    };
+    navigator.serviceWorker?.addEventListener?.("message", onMessage);
+  }, [userId, choiceKey, publicKey, support]);
+
+  const state: PushUiState = pushUiState({ support, backendEnabled, permission: snap.perm === "unsupported" ? currentPermission() : snap.perm, subscribedHere: snap.subscribedHere });
+
+  const enable = useCallback(async (): Promise<EnableResult> => {
+    if (!publicKey || !choiceKey) return { ok: false, reason: "error" };
+    setPush({ busy: true });
+    const res = await enablePush(api.users, publicKey);
+    if (res.ok) writeKey(choiceKey, "1");
+    setPush({ busy: false, perm: currentPermission(), subscribedHere: res.ok ? true : pushSnap.subscribedHere });
+    return res;
+  }, [publicKey, choiceKey]);
+
+  const disable = useCallback(async () => {
+    if (!choiceKey) return;
+    setPush({ busy: true });
+    try {
+      await disablePush(api.users);
+    } finally {
+      writeKey(choiceKey, "0");
+      setPush({ busy: false, subscribedHere: false, perm: currentPermission() });
+    }
+  }, [choiceKey]);
+
+  const recheck = useCallback(() => setPush({ perm: currentPermission() }), []);
+
+  return { state, busy: snap.busy, activeHere: snap.subscribedHere, enable, disable, recheck };
+}
+
 /** The bell's data: the user's notification log (polled every 15 s while the tab is visible), the unread count, "mark all as read",
  * and the opt-in browser popup + sound. Read state lives in this browser, keyed by user id (there is no server read flag). */
 export function useNotifications() {
@@ -138,6 +268,8 @@ export function useNotifications() {
 
   const popupEnabled = popupStored === "1";
   const soundOn = soundStored === "1";
+  const push = useWebPush(userId);
+  const pushActiveHere = push.activeHere;
 
   // Popup + beep for rows that arrived after the previous poll. The first load of a session is never "new".
   const seen = useRef<{ user?: string; newest: number | null }>({ newest: null });
@@ -149,7 +281,8 @@ export function useNotifications() {
     seen.current.newest = Math.max(seen.current.newest ?? 0, newestMs(all));
     if (fresh.length === 0) return;
     fresh.forEach((e) => announced.add(e.id));
-    if (popupEnabled && currentPermission() === "granted") {
+    // Web Push delivers to this device already (even with the tab closed): no second, tab-open popup.
+    if (shouldShowTabPopup(popupEnabled, currentPermission(), pushActiveHere)) {
       for (const e of fresh.slice(0, 3)) {
         try {
           const text = notificationText(e, lang);
@@ -160,7 +293,7 @@ export function useNotifications() {
       }
     }
     if (soundOn) playBeep();
-  }, [query.data, userId, popupEnabled, soundOn, t, lang]);
+  }, [query.data, userId, popupEnabled, pushActiveHere, soundOn, t, lang]);
 
   /** Click handler: asks the browser for permission (only ever called from the explicit button) and remembers the choice. */
   const enablePopups = useCallback(async (): Promise<PopupState> => {
@@ -206,5 +339,7 @@ export function useNotifications() {
     enablePopups,
     disablePopups,
     setSound,
+    /** Stage 2 Web Push: the bell's push section (state machine in lib/web-push.ts). */
+    push,
   };
 }

@@ -17,6 +17,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey, TFunction } from "@/lib/i18n";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import type { OwnerRefund } from "@court-booking/types";
 import { BookingDetail } from "@/components/owner/booking-detail";
 import { FilterBanner, NayaChip, RowLinks } from "@/components/owner/queue-extras";
@@ -81,20 +82,23 @@ export default function OwnerRefundsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const filter = parseQueueFilter(useSearchParams());
   const since = useSeenSince("refunds", activeVenueId);
+  // Stage 2 (B.b): a staff member without "mark_refunds" sees the no-permission state at once (the list needs it too).
+  const perms = useMyPermissions();
+  const allowed = perms.can("mark_refunds");
 
   const query = useQuery({
     queryKey: ["owner-refunds", activeVenueId, filter.date ?? null, filter.courtIds.join(",")],
     queryFn: () => api.owners.refunds(activeVenueId, { date: filter.date, courtIds: filter.courtIds }),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && allowed,
   });
 
   const list = query.data ?? [];
   const open = list.find((r) => r.id === openId) ?? null;
-  const loading = venuesLoading || query.isLoading;
+  const loading = venuesLoading || perms.loading || query.isLoading;
   // A staff member without the refunds permission gets 403 NOT_STAFF_PERMITTED: show ONE clear state (no count line, no
   // "nothing owed", no retry button), since retrying cannot help.
-  const noPermission = query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED";
-  const showCount = !loading && !query.isError;
+  const noPermission = (!loading && !allowed) || (query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED");
+  const showCount = !loading && !query.isError && !noPermission;
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6 min-w-0">

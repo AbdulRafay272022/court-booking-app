@@ -33,6 +33,7 @@ export const ruHist = {
   "hist.sf.refund": "Refund",
   "hist.sf.completed": "Mukammal",
   "hist.sf.short_paid": "Adhoora (kam paisa mila)",
+  "hist.sf.status_pending": "Status baqi",
   "hist.sf.held": "Payment ka intezar",
   "hist.sf.awaiting_approval": "Approval ka intezar",
   "hist.sf.no_show": "Nahi aaye",

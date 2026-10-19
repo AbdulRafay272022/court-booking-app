@@ -251,3 +251,101 @@ export function useCompletionFlow(onDone: (row: OwnerBookingRow) => void): Compl
 
   return { pick, dialog, busyId, message };
 }
+
+// ---- Stage 2 (C.3): the manual "Nahi aaye (No-show)" with a confirm ----
+
+/** Text for a failed no-show call. */
+export function noShowErrorText(e: unknown, t: T): string {
+  if (e instanceof ApiError && (e.code === "TOO_EARLY_FOR_NO_SHOW" || (e.code as string) === "SLOT_NOT_ENDED")) return t("nsw.err.tooEarly");
+  if (e instanceof ApiError && e.status === 403) return t("nsw.err.forbidden");
+  if (e instanceof ApiError && ((e.code as string) === "INVALID_BOOKING_STATE" || e.status === 409)) return t("nsw.err.changed");
+  return friendlyErrorMessage(e, t);
+}
+
+export function NoShowDialog({ row, onClose, onConfirm }: { row: OwnerBookingRow; onClose: () => void; onConfirm: () => Promise<void> }) {
+  const t = useT();
+  const fmt = useFmt();
+  const titleId = useId();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const name = row.player_name?.trim() || t("ovw.table.noName");
+
+  async function confirm() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (e) {
+      setError(noShowErrorText(e, t));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell labelledBy={titleId} onClose={onClose} maxWidthClass="md:max-w-[500px]">
+      <div className="flex flex-col gap-4 p-6 md:p-8" data-testid="no-show-dialog">
+        <h2 id={titleId} className="font-khelo-display text-[24px] font-extrabold leading-tight text-owner-ink">
+          {t("nsw.dlg.title")}
+        </h2>
+        <p className="text-[15px] leading-6 text-owner-ink break-words">
+          {t("nsw.dlg.body", { name, when: `${fmt.dateRelative(row.starts_at)}, ${fmt.timeRange(row.starts_at, row.ends_at)}`, court: row.court_name })}
+        </p>
+        <p className="text-[13.5px] text-owner-ink-muted">{t("nsw.dlg.fix")}</p>
+        <p role="alert" data-testid="no-show-error" className={error ? "rounded-xl bg-owner-danger-soft px-4 py-3 text-[14px] font-semibold text-owner-danger" : "sr-only"}>
+          {error}
+        </p>
+        <div className="flex flex-wrap justify-end gap-3">
+          <button type="button" onClick={onClose} className="min-h-12 flex-1 basis-28 rounded-xl border-2 border-owner-ink px-5 text-[15px] font-bold text-owner-ink sm:flex-none">
+            {t("nsw.dlg.back")}
+          </button>
+          <button
+            type="button"
+            data-testid="no-show-confirm"
+            onClick={confirm}
+            disabled={saving}
+            className="min-h-12 flex-1 basis-48 rounded-xl bg-owner-danger px-5 text-[15px] font-bold text-white disabled:opacity-60 sm:flex-none"
+          >
+            {saving ? t("nsw.dlg.saving") : t("nsw.dlg.confirm")}
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+export interface NoShowFlow {
+  ask: (row: OwnerBookingRow) => void;
+  dialog: ReactNode;
+  message: { kind: "ok" | "error"; text: string } | null;
+}
+
+/** "Nahi aaye (No-show)": confirm first, then POST /bookings/{id}/no-show; `onDone` refreshes the caller's list. */
+export function useNoShowFlow(onDone: (bookingId: string) => void): NoShowFlow {
+  const t = useT();
+  const [target, setTarget] = useState<OwnerBookingRow | null>(null);
+  const [message, setMessage] = useState<NoShowFlow["message"]>(null);
+
+  const dialog = target ? (
+    <NoShowDialog
+      key={target.booking_id}
+      row={target}
+      onClose={() => setTarget(null)}
+      onConfirm={async () => {
+        await api.bookings.noShow(target.booking_id);
+        setTarget(null);
+        setMessage({ kind: "ok", text: t("nsw.saved", { name: target.player_name?.trim() || t("ovw.table.noName") }) });
+        onDone(target.booking_id);
+      }}
+    />
+  ) : null;
+
+  return {
+    ask: (row) => {
+      setMessage(null);
+      setTarget(row);
+    },
+    dialog,
+    message,
+  };
+}

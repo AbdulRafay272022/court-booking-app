@@ -64,6 +64,7 @@ export const STATUS_FILTERS: readonly HistoryStatusFilter[] = [
   "refund",
   "completed",
   "short_paid",
+  "status_pending",
   "held",
   "awaiting_approval",
   "no_show",
