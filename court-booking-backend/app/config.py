@@ -214,6 +214,18 @@ class Settings(BaseSettings):
     # Development-client builds register sandbox tokens; ad-hoc / TestFlight / App Store use production.
     APNS_USE_SANDBOX: bool = False
 
+    # Web Push (Round 2 Stage 2, docs/web-push-plan.md). All blank = feature off. PRIVATE = base64url of the
+    # 32-byte P-256 scalar, PUBLIC = base64url of the 65-byte uncompressed point (scripts/make_vapid_keys.py),
+    # SUBJECT = "mailto:<support email>". Rotating the pair invalidates every browser subscription.
+    WEB_PUSH_VAPID_PRIVATE_KEY: str = ""
+    WEB_PUSH_VAPID_PUBLIC_KEY: str = ""
+    WEB_PUSH_VAPID_SUBJECT: str = ""
+
+    # Owner CNIC (Round 2 Stage 2): HMAC-SHA256 key for owner_identity.cnic_hash (duplicate detection without
+    # decrypting). Blank + DEBUG=false -> POST /owners/identity answers 503 CNIC_NOT_CONFIGURED (never hashes
+    # with an empty key). Changing it later breaks duplicate matching against rows hashed with the old key.
+    CNIC_HASH_KEY: str = ""
+
     # Sentry
     SENTRY_DSN: str = ""
 
