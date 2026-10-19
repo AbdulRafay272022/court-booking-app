@@ -36,9 +36,15 @@ ALL_PERMISSIONS = [p.value for p in StaffPermissionKey]
 
 @owner_router.get("/venues/{venue_id}/timers", response_model=VenueTimersOut)
 async def get_venue_timers(venue_id: uuid.UUID, db: DbSession, settings: AppSettings, user: RequireStaffCapable) -> dict:
-    """Owner (or admin) only: there is no `edit_venue_settings` staff permission, so staff get 403 (contract:
-    "whichever exists")."""
-    venue = await VenueService(db, settings).require_owned_venue(venue_id, user)
+    """Owner, admin, or staff with `edit_court_settings` (there is no `edit_venue_settings` key); staff of the venue
+    with only `view_ledger` may READ them too."""
+    service = VenueService(db, settings)
+    try:
+        venue = await service.require_owned_venue(venue_id, user, permission="edit_court_settings")
+    except AppError as exc:
+        if exc.code != ErrorCode.NOT_STAFF_PERMITTED:
+            raise
+        venue = await service.require_owned_venue(venue_id, user, permission="view_ledger")
     return timers_view(venue)
 
 
@@ -48,7 +54,7 @@ async def put_venue_timers(
 ) -> dict:
     """Body = all seven values; null resets that field to the default. 422 TIMER_OUT_OF_RANGE with the failing
     fields. Changing auto-cancel re-times screenshots already waiting (from their own submission time)."""
-    venue = await VenueService(db, settings).require_owned_venue(venue_id, user)
+    venue = await VenueService(db, settings).require_owned_venue(venue_id, user, permission="edit_court_settings")
     values = payload.model_dump()
     errors = validate_values(values)
     if errors:

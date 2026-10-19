@@ -81,15 +81,20 @@ class Settings(BaseSettings):
     PLATFORM_ACCOUNT_TITLE: str = ""
     PLATFORM_ACCOUNT_NUMBER: str = ""
     PLATFORM_IBAN: str = ""  # a feature keeps working this long after its paid period ends
+    # Round 2 Stage 2: hold length and payment auto-cancel now come from app/services/venue_timers.py (per venue; NULL =
+    # DEFAULTS there, which equal these two values). Kept as the documented "today's values" the defaults mirror.
     PAYMENT_REVIEW_HOURS: int = 2  # owner-action expiry after a proof is submitted
-    NO_SHOW_GRACE_MINUTES: int = 60  # how long past starts_at before an unchecked-in booking is a no-show
+    # Only the check-in "implausible timing" flag uses this now; the expiry job no longer marks no-shows (Stage 2).
+    NO_SHOW_GRACE_MINUTES: int = 60
 
     # Payment verification
     OCR_MATCH_TOLERANCE_PERCENT: float = 5.0
     DUPLICATE_HASH_DISTANCE: int = 10  # perceptual-hash Hamming distance threshold
     DUPLICATE_LOOKBACK_DAYS: int = 90
 
-    # Notification escalation (payment_submitted -> owner)
+    # Notification escalation (payment_submitted -> owner). UNUSED since Round 2 Stage 2: replaced by the venue-timed
+    # owner reminders (app/services/venue_timers.py + app/jobs/expiry_job.remind_pending_payment_reviews). Kept so an
+    # existing .env line stays harmless.
     ESCALATION_WHATSAPP_MINUTES: int = 5
     ESCALATION_SMS_MINUTES: int = 15
 

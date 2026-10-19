@@ -84,7 +84,7 @@ async def test_put_timers_out_of_range_is_422(client, make_user, make_venue, mak
         assert err["code"] == "TIMER_OUT_OF_RANGE" and err["details"]["field"] == field
 
 
-async def test_timers_are_owner_only(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers):
+async def test_timers_permissions_owner_and_edit_court_settings_staff(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers):
     owner, venue, court, oh, _p, player_h = await _world(
         make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, "+92302102"
     )
@@ -93,9 +93,15 @@ async def test_timers_are_owner_only(client, db_session_factory, make_user, make
         async with db_session_factory() as s:
             return await s.get(User, uid)
 
-    _u, staff_h = await make_staff(client, oh, venue, "+923021029901", ["edit_court_settings", "view_ledger"], load_user, make_auth_headers)
-    assert (await client.get(URL.format(venue.id), headers=staff_h)).status_code == 403
-    assert (await client.put(URL.format(venue.id), headers=staff_h, json={})).status_code == 403
+    _u, editor_h = await make_staff(client, oh, venue, "+923021029901", ["edit_court_settings"], load_user, make_auth_headers)
+    _r, reader_h = await make_staff(client, oh, venue, "+923021029903", ["view_ledger"], load_user, make_auth_headers)
+    _n, none_h = await make_staff(client, oh, venue, "+923021029904", ["check_in"], load_user, make_auth_headers)
+    body = {k: None for k in DEFAULTS} | {"hold_minutes": 20}
+    assert (await client.get(URL.format(venue.id), headers=editor_h)).status_code == 200
+    assert (await client.put(URL.format(venue.id), headers=editor_h, json=body)).status_code == 200
+    assert (await client.get(URL.format(venue.id), headers=reader_h)).json()["values"]["hold_minutes"] == 20  # read-only
+    assert (await client.put(URL.format(venue.id), headers=reader_h, json=body)).status_code == 403
+    assert (await client.get(URL.format(venue.id), headers=none_h)).status_code == 403
     assert (await client.get(URL.format(venue.id), headers=player_h)).status_code == 403
     other = await make_user("+923021029902", role=UserRole.OWNER)
     assert (await client.get(URL.format(venue.id), headers=await make_auth_headers(other))).status_code == 403
