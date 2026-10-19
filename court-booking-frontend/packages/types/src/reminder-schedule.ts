@@ -12,6 +12,7 @@
  * Shifting a reminder that falls outside the venue's operating hours is the scheduler's job, not this preview.
  */
 import type { TextLang } from "./locale-text";
+import { VENUE_TIMER_DEFAULTS } from "./stage2";
 
 export interface ReminderScheduleInput {
   firstAfterMin: number;
@@ -27,12 +28,15 @@ export interface ReminderSchedule {
   cancelAt: number | null;
 }
 
-/** Today's behaviour (B1 defaults); auto-cancel is off by default. */
+/**
+ * What runs when the owner sets nothing (Stage 2: auto-cancel ON at 120). Derived from VENUE_TIMER_DEFAULTS (the
+ * backend venue_timers.DEFAULTS mirror) so the numbers are never retyped.
+ */
 export const REMINDER_DEFAULTS: ReminderScheduleInput = {
-  firstAfterMin: 10,
-  everyMin: 30,
-  maxReminders: 5,
-  autoCancelMin: null,
+  firstAfterMin: VENUE_TIMER_DEFAULTS.first_reminder_after_min,
+  everyMin: VENUE_TIMER_DEFAULTS.repeat_every_min,
+  maxReminders: VENUE_TIMER_DEFAULTS.max_reminders,
+  autoCancelMin: VENUE_TIMER_DEFAULTS.auto_cancel_enabled ? VENUE_TIMER_DEFAULTS.auto_cancel_after_min : null,
 };
 
 export const REMINDER_LIMITS = {

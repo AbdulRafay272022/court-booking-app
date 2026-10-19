@@ -23,6 +23,7 @@ export type SettingDefaultKey =
   | "auto_cancel_enabled"
   | "auto_cancel_after_min"
   | "slot_minutes"
+  | "court_slot_minutes"
   | "cancellation_allowed"
   | "cancellation_cutoff_hours"
   | "booking_horizon_days"
@@ -44,6 +45,12 @@ const COURT = defaultCourtSetup();
 
 /** Backend VenueCreate.booking_horizon_days default (app/schemas/venue.py). */
 export const DEFAULT_BOOKING_HORIZON_DAYS = 90;
+/**
+ * Backend court slot length default (app/models/court.py Court.slot_minutes default=60, app/schemas/court.py
+ * CourtCreateIn.slot_minutes = 60). The wizards and the "+ Court" form prefill 90 instead (`slot_minutes` below), so a
+ * NEW court shows 90 and an EXISTING court in Settings shows this one (`court_slot_minutes`).
+ */
+export const DEFAULT_COURT_SLOT_MINUTES = 60;
 /** Backend PricingRuleIn.floodlight_surcharge default (app/schemas/court.py). */
 export const DEFAULT_FLOODLIGHT_SURCHARGE = 0;
 
@@ -66,7 +73,10 @@ export const SETTINGS_DEFAULTS: Record<SettingDefaultKey, SettingDefault> = {
       : onOff(false, l),
   ),
   auto_cancel_after_min: row(VENUE_TIMER_DEFAULTS.auto_cancel_after_min, (l) => min(VENUE_TIMER_DEFAULTS.auto_cancel_after_min, l)),
+  /** The wizard / new-court prefill (court-setup.ts defaultCourtSetup). */
   slot_minutes: row(COURT.slotMinutes, (l) => min(COURT.slotMinutes, l)),
+  /** An existing court edited in Settings: the backend default. */
+  court_slot_minutes: row(DEFAULT_COURT_SLOT_MINUTES, (l) => min(DEFAULT_COURT_SLOT_MINUTES, l)),
   cancellation_allowed: row(true, (l) => (l === "ru" ? "Allowed (cancel ho sakti hai)" : "Allowed")),
   cancellation_cutoff_hours: row(null, (l) => (l === "ru" ? "koi had nahi (start se pehle kabhi bhi)" : "no limit (any time before the start)")),
   booking_horizon_days: row(DEFAULT_BOOKING_HORIZON_DAYS, (l) => (l === "ru" ? `${DEFAULT_BOOKING_HORIZON_DAYS} din aage tak` : `${DEFAULT_BOOKING_HORIZON_DAYS} days ahead`)),

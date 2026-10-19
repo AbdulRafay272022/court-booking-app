@@ -41,6 +41,8 @@ export function CourtSetupFields({
   const problem = courtSetupProblem(value);
   const hoursProblem = problem && !/price/i.test(problem) ? problem : null;
   const hidden = hiddenRates(value);
+  // an EXISTING court (Venue Settings) runs on the backend default (60); a new court starts from the wizard prefill (90)
+  const slotKey = slotChangeNote ? "court_slot_minutes" : "slot_minutes";
 
   function updateRule(id: string, patch: Partial<PricingRuleDraft>) {
     onChange({ pricingRules: value.pricingRules.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
@@ -63,9 +65,9 @@ export function CourtSetupFields({
           ))}
         </View>
         <DefaultHint
-          settingKey="slot_minutes"
+          settingKey={slotKey}
           value={value.slotMinutes}
-          onReset={() => onChange({ slotMinutes: SETTINGS_DEFAULTS.slot_minutes.value as number })}
+          onReset={() => onChange({ slotMinutes: SETTINGS_DEFAULTS[slotKey].value as number })}
           testID="default-slot-minutes"
         />
         <SlotPreviewLine value={value} />

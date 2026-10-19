@@ -204,7 +204,8 @@ async function waitReq(reqs, pred, timeout = 15000) {
     // courts tab hints
     await page.getByRole("tab", { name: /Courts/ }).click();
     const slot = await waitText(page, "default-slot-minutes", /Default/, 30000);
-    check("court: slot hint 'Default: 90 minute' + reset (court is 60)", /Default: 90 minute/.test(slot || "") && /Default par wapas/.test(slot || ""), slot);
+    // an EXISTING court shows the backend default (60, like web Settings); the court is 60 -> "running" marker
+    check("court: slot hint 'Default: 60 minute' + running (court is 60)", /Default: 60 minute/.test(slot || "") && /chal raha/.test(slot || ""), slot);
     const adv = await waitText(page, "default-advance", /Default/);
     check("court: advance default says 'abhi poori raqam' (split_payments off)", /abhi poori raqam/.test(adv || "") && /chal raha/.test(adv || ""), adv);
     const ruleAdv = await prefixText(page, "default-rule-advance-");

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SETTINGS_DEFAULTS, VENUE_TIMER_DEFAULTS } from "@court-booking/types";
-import { BACKEND_SLOT_MINUTES_DEFAULT, defaultState, slotMinutesDefault } from "./hint-state";
+import { defaultState, slotMinutesDefault, slotMinutesKey } from "./hint-state";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "..", "..", "..", "..", "..");
@@ -32,7 +32,9 @@ test("venue / court / pricing defaults match the backend models", () => {
   assert.equal(SETTINGS_DEFAULTS.floodlight_surcharge.value, 0);
   // slot length: backend 60, wizard prefill 90 -- each screen shows the one that really applies there
   assert.match(court, /slot_minutes: Mapped\[int\][\s\S]{0,80}default=60/);
-  assert.equal(BACKEND_SLOT_MINUTES_DEFAULT, 60);
+  assert.equal(SETTINGS_DEFAULTS.court_slot_minutes.value, 60);
+  assert.equal(slotMinutesKey("settings"), "court_slot_minutes");
+  assert.equal(slotMinutesKey("wizard"), "slot_minutes");
   assert.equal(slotMinutesDefault("settings"), 60);
   assert.equal(slotMinutesDefault("wizard"), 90);
 });
