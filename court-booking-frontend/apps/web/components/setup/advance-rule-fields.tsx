@@ -1,9 +1,12 @@
 "use client";
 
 import { useId } from "react";
-import { useT } from "@/components/i18n/lang-provider";
+import { useLang, useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import { formatPKR } from "@/lib/format";
+import { useFeatureFlags } from "@/lib/use-feature-flags";
+import { DefaultHint } from "@/components/settings/default-hint";
+import { defaultState, defaultValueText } from "@/components/settings/hint-state";
 import { Field, SectionCard, SectionLabel } from "./ui";
 import {
   advanceDraftErrors,
@@ -49,7 +52,10 @@ export function AdvanceRuleFields({
 }) {
   const t = useT();
   const fmt = useFmt();
+  const lang = useLang();
   const groupId = useId();
+  // Stage 2 A.2: with split_payments OFF the backend takes the whole price up front whatever the rule says.
+  const splitOn = useFeatureFlags().isOn("split_payments");
   const draft = { advanceType, advanceValue, advanceMinimum };
   const errors = advanceDraftErrors(draft);
   const pct = effectiveDefaultPercentage(nothingSet?.percentage ?? defaultPercentage);
@@ -108,6 +114,14 @@ export function AdvanceRuleFields({
             })}
           </div>
         </fieldset>
+        <DefaultHint
+          id="advance"
+          field={t("set2.adv.label")}
+          text={t("set2.adv.defaultText", { pct: String(pct) })}
+          note={splitOn ? null : t("set2.adv.fullNote")}
+          state={defaultState(advanceType === "" ? null : advanceType, null)}
+          onReset={() => onChange({ advanceType: "", advanceValue: "", advanceMinimum: "" })}
+        />
 
         {advanceType !== "" ? (
           <div className="flex flex-wrap gap-3">
@@ -133,6 +147,13 @@ export function AdvanceRuleFields({
                 mono
               />
               <p className="mt-1 text-[12px] text-owner-ink-faint">{t("adv.field.minimumHint")}</p>
+              <DefaultHint
+                id="advance_minimum"
+                field={t("adv.field.minimum")}
+                text={defaultValueText("advance_minimum", lang)}
+                state={defaultState(advanceMinimum.trim() === "" ? null : Number(advanceMinimum), null)}
+                onReset={() => onChange({ advanceMinimum: "" })}
+              />
             </div>
           </div>
         ) : null}

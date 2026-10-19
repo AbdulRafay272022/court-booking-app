@@ -12,6 +12,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { ErrorState } from "@/components/error-state";
 import { PrimaryButton, SecondaryButton, Stepper } from "@/components/setup/ui";
 import { PhotoManager } from "@/components/setup/photo-manager";
+import { IdentityCard } from "@/components/identity/identity-card";
 
 function Timeline({ rows }: { rows: { state: "done" | "active" | "upcoming"; title: string; subtitle: string }[] }) {
   return (
@@ -149,6 +150,9 @@ function StatusView() {
           { state: "upcoming", title: t("setup.status.tl3"), subtitle: t("setup.status.tl3sub") },
         ]}
       />
+
+      {/* Stage 2: the owner's CNIC status (and a way to give it if a reload lost the wizard's in-memory copy). */}
+      <IdentityCard />
 
       {/* QA signup-venue round item 8: photo upload on the WEB wizard's post-submit page,
           mirroring what mobile's `pending` screen already offers. Same PhotoManager component

@@ -15,6 +15,7 @@ import { SUPPORT_WHATSAPP_NUMBER, supportWhatsAppUrl } from "@/lib/support";
 import { Logo } from "@/components/auth/logo";
 import { VenuePicker, VenueStatusBanner } from "@/components/owner/venue-nav";
 import { PremiumNotices } from "@/components/owner/premium-notices";
+import { CnicBanner } from "@/components/identity/cnic-banner";
 import { NotificationBell } from "@/components/site/notification-bell";
 import { useT } from "@/components/i18n/lang-provider";
 
@@ -215,6 +216,7 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
           <NotificationBell tone="light" />
         </div>
         {!isStaff ? <PremiumNotices /> : null}
+        <CnicBanner />
         {activeVenue ? <VenueStatusBanner venue={activeVenue} /> : null}
         {children}
       </div>

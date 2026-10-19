@@ -1,2 +1,31 @@
-// Roman Urdu copy (source of truth). Keys start with 'set2.'.
-export const ruSet2 = {} as const;
+// Roman Urdu copy (source of truth). Keys start with 'set2.'. Owner-facing: "karein".
+export const ruSet2 = {
+  "set2.default": "Default: {value}",
+  "set2.usingDefault": "Abhi default chal raha hai",
+  "set2.reset": "Default par wapas",
+  "set2.resetAria": "{field}: default par wapas",
+  "set2.val.minute": "{n} minute",
+  "set2.val.minutes": "{n} minute",
+  "set2.val.on": "On",
+  "set2.val.off": "Band",
+  "set2.timers.title": "Hold, reminders aur auto-cancel",
+  "set2.timers.save": "Ye settings save karein",
+  "set2.timers.saved": "Settings save ho gayin.",
+  "set2.timers.readOnly": "Ye settings sirf venue owner (ya settings ki ijazat wala staff) badal sakta hai.",
+  "set2.hold.title": "Slot hold",
+  "set2.hold.help": "Player slot chunne ke baad itni der mein payment ka screenshot bheje, warna slot dobara khul jata hai.",
+  "set2.hold.label": "Hold (minute)",
+  "set2.hold.preview": "Player ke paas payment bhejne ke liye {minutes}.",
+  "set2.reminders.toggle": "Approve karne ke reminders bhejein",
+  "set2.reminders.offNote": "Reminders band hain: screenshot aane par sirf pehla notification jayega.",
+  "set2.cancel.title": "Auto-cancel",
+  "set2.cancel.offWarning": "Band karne par approve na hone wali booking ka slot band rahega.",
+  "set2.err.outOfRange": "Koi waqt had se bahar hai. Neeche di gayi had ke andar rakhein aur dobara save karein.",
+  "set2.wizard.timersFailed": "Venue ban gaya, lekin hold aur reminders ki settings save nahi huin: {error}. Dobara bhejein.",
+  "set2.adv.fullNote": "abhi poori raqam",
+  "set2.adv.defaultText": "price rule ka {pct}%",
+  "set2.adv.label": "Advance",
+  "set2.slot.label": "Kam az kam booking ka waqt",
+  "set2.cancel.allowedLabel": "Cancel ki ijazat",
+  "set2.cancel.cutoffLabel": "Cancel ki aakhri had",
+} as const;

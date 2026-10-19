@@ -17,7 +17,16 @@ import { CourtTabs } from "@/components/setup/court-tabs";
 import { AdvanceRuleFields } from "@/components/setup/advance-rule-fields";
 import { advanceDraftErrors, basePriceFromDrafts } from "@/components/setup/advance-preview";
 import { advanceApiFields, useAdvanceDraftStore } from "@/components/setup/advance-draft-store";
-import { PaymentRemindersCard } from "@/components/setup/payment-reminders-card";
+import { VenueTimersFields, timerErrorMessage } from "@/components/setup/venue-timers-card";
+import { useTimerDraftStore } from "@/components/setup/timer-draft-store";
+import { draftHasValues, validateTimers, valuesFromDraft } from "@/components/setup/venue-timers";
+import { slotMinutesDefault } from "@/components/settings/hint-state";
+import { useLang } from "@/components/i18n/lang-provider";
+import { WizardIdentityStep } from "@/components/identity/wizard-identity-step";
+import { useOwnerIdentity } from "@/components/identity/identity-card";
+import { useIdentityDraftStore } from "@/components/identity/identity-draft-store";
+import { identityDraftReady } from "@/components/identity/cnic-fields";
+import { identityErrorMessage } from "@/components/identity/identity-errors";
 
 /** Has the owner filled anything into this court beyond what a fresh tab starts with? Decides whether deleting its tab
  * asks for confirmation. A fresh tab is "Court N", the default sport, and the default hours and prices. */
@@ -34,6 +43,9 @@ function stripIds(setup: object): unknown {
   return JSON.parse(JSON.stringify(setup, (k, v) => (k === "id" ? undefined : v)));
 }
 
+/** A failure after the venue exists whose message is already written for the owner (timers / CNIC). */
+class WizardStepError extends Error {}
+
 export default function VenueCourtsPage() {
   const router = useRouter();
   const t = useT();
@@ -41,8 +53,13 @@ export default function VenueCourtsPage() {
   const queryClient = useQueryClient();
   const store = useVenueSetupStore();
   const advance = useAdvanceDraftStore();
+  const lang = useLang();
+  const timers = useTimerDraftStore();
+  const identityDraft = useIdentityDraftStore();
+  const identity = useOwnerIdentity();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
   // Section 31 Part 2: the saved draft pointed at a venue/court that no longer exists (or isn't
   // ours). Shown as a recovery panel with a next step, not as a bare error.
   const [staleDraft, setStaleDraft] = useState(false);
@@ -66,11 +83,18 @@ export default function VenueCourtsPage() {
     const e = advanceDraftErrors(advance.get(i));
     return !e.value && !e.minimum;
   });
-  const isValid = store.courts.length > 0 && courtProblems.every((p) => p === null) && advanceOk;
+  // Stage 2: the venue timers (wizard "Advanced") must be in range before they are sent.
+  const timersOk = Object.keys(validateTimers(timers.timers, lang).errors).length === 0;
+  // Stage 2: a CNIC is required before "Send for review" unless this owner already submitted one. If the status cannot be
+  // read (older backend / network), the step still asks for it and the send fails clearly rather than skipping it.
+  const identityOnFile = identity.data ? identity.data.status !== "missing" : false;
+  const identityOk = identityOnFile || identityDraftReady(identityDraft);
+  const isValid = store.courts.length > 0 && courtProblems.every((p) => p === null) && advanceOk && timersOk && identityOk;
 
   async function handleSubmit() {
     setSubmitting(true);
     setError(null);
+    setStepError(null);
     setStaleDraft(false);
     // Ids read from the saved draft (as opposed to created during this run) are the only ones
     // whose failure can mean "stale draft" -- see isStaleVenueDraftError.
@@ -147,8 +171,30 @@ export default function VenueCourtsPage() {
         await api.courts.setPricing(courtId, buildPricingRules(court));
       }
 
+      // Stage 2: the venue timers exist only in the draft until now. PUT is idempotent, so a retry just sends them again.
+      if (draftHasValues(useTimerDraftStore.getState().timers)) {
+        try {
+          await api.owners.updateVenueTimers(venueId, valuesFromDraft(useTimerDraftStore.getState().timers));
+        } catch (e) {
+          throw new WizardStepError(t("set2.wizard.timersFailed", { error: timerErrorMessage(e, t) }));
+        }
+      }
+
+      // Stage 2: the CNIC (kept in memory only) goes right after the venue exists, before review. Skipped when already on file.
+      const idDraft = useIdentityDraftStore.getState();
+      if (!identityOnFile && idDraft.front && idDraft.back) {
+        try {
+          const res = await api.owners.submitIdentity(idDraft.number, idDraft.front, idDraft.back);
+          queryClient.setQueryData(["owner-identity"], res);
+        } catch (e) {
+          throw new WizardStepError(t("cnic.wizard.failed", { error: identityErrorMessage(e, t) }));
+        }
+      }
+
       store.reset();
       advance.reset();
+      timers.reset();
+      useIdentityDraftStore.getState().clear();
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       router.replace(`/venue-setup/status?venueId=${venueId}`);
     } catch (e) {
@@ -158,6 +204,8 @@ export default function VenueCourtsPage() {
         store.setField("createdCourtIds", {});
         store.setField("orphanCourtIds", []);
         setStaleDraft(true);
+      } else if (e instanceof WizardStepError) {
+        setStepError(e.message);
       } else {
         setError(friendlyErrorMessage(e, t));
       }
@@ -205,7 +253,11 @@ export default function VenueCourtsPage() {
               onChange={(patch) => store.updateCourt(index, patch)}
               note={index > 0 ? t("setup.courts.copyNote") : undefined}
             />
-            <CourtSetupFields value={court} onChange={(patch) => store.updateCourt(index, patch)} />
+            <CourtSetupFields
+              value={court}
+              onChange={(patch) => store.updateCourt(index, patch)}
+              defaultSlotMinutes={slotMinutesDefault("wizard")}
+            />
             <AdvanceRuleFields
               {...advance.get(index)}
               onChange={(patch) => advance.update(index, patch)}
@@ -233,6 +285,7 @@ export default function VenueCourtsPage() {
             onClick={() => {
               store.reset();
               advance.reset();
+              timers.reset();
               setStaleDraft(false);
               router.replace("/venue-setup/register");
             }}
@@ -248,17 +301,26 @@ export default function VenueCourtsPage() {
           {t("setup.courts.sendFailed", { error })}
         </p>
       ) : null}
+      {stepError ? (
+        <p role="alert" data-testid="wizard-step-error" className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border text-owner-danger text-[13.5px] font-semibold px-4 py-3">
+          {stepError}
+        </p>
+      ) : null}
 
-      {/* Round 2 B1: same reminders card as Venue Settings (parity), tucked under "Advanced" with today's defaults. */}
+      {/* Stage 2: same timers fields as Venue Settings (parity), tucked under "Advanced"; PUT right after the venue is created. */}
       <details className="group rounded-2xl border border-owner-border bg-owner-surface" data-testid="wizard-advanced">
         <summary className="cursor-pointer list-none min-h-11 px-5 py-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]">
           <span className="text-[14.5px] font-bold text-owner-ink">{t("timer.advanced")}</span>
           <span className="text-[12.5px] text-owner-ink-faint">{t("timer.advancedHint")}</span>
         </summary>
         <div className="px-2 pb-2 sm:px-3 sm:pb-3">
-          <PaymentRemindersCard />
+          <section className="bg-owner-surface border border-owner-border rounded-2xl p-5 sm:p-6 flex flex-col gap-4">
+            <VenueTimersFields draft={timers.timers} onChange={timers.setTimers} />
+          </section>
         </div>
       </details>
+
+      <WizardIdentityStep identity={identity.data ?? null} />
 
       <p className="text-[13px] font-medium text-owner-ink-faint">{t("setup.courts.reviewNote")}</p>
       <div className="flex flex-col-reverse gap-3 sm:flex-row">
