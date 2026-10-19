@@ -1,8 +1,8 @@
 /** Stage 2 (B.b): pure helper behind useMyPermissions (no React, unit-tested in lib/my-permissions.test.ts). */
-import type { MyPermissions } from "@court-booking/types";
+import type { MyPermissions, StaffPermissionKey } from "@court-booking/types";
 
-/** Staff permission keys (backend app/models/staff.py StaffPermission) the owner screens act on. */
-export type StaffPermission = "approve_payments" | "record_payments" | "check_in" | "mark_refunds" | "cancel_booking" | "view_ledger" | "edit_court_settings";
+/** Staff permission keys (backend app/models/staff.py StaffPermission; one TS list in packages/types staff.ts). */
+export type StaffPermission = StaffPermissionKey;
 
 /** What each button needs. Completion (Haan / Nahi) = record_payments; manual no-show = check_in (the backend checks the same). */
 export const ACTION_PERMISSION = {

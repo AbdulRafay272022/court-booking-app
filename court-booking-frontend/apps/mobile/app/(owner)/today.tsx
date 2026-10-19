@@ -130,11 +130,15 @@ export default function OwnerOverviewScreen() {
             venues={venues}
             activeVenueId={activeVenueId}
             onSelect={setVenueId}
-            onAdd={() => {
-              // Reuses the existing setup wizard, from a clean draft (not whatever was left half-done).
-              useVenueSetupStore.getState().reset();
-              router.push("/(owner)/venue-setup/register");
-            }}
+            onAdd={
+              isOwner
+                ? () => {
+                    // Reuses the existing setup wizard, from a clean draft (not whatever was left half-done).
+                    useVenueSetupStore.getState().reset();
+                    router.push("/(owner)/venue-setup/register");
+                  }
+                : undefined
+            }
           />
         ) : null}
         {isOwner ? <PremiumNotices /> : null}

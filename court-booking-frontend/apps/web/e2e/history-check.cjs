@@ -111,10 +111,14 @@ async function run() {
       if (await sel.count()) {
         await sel.selectOption("no");
         await page.getByRole("dialog").waitFor();
-        await page.locator("input[inputmode=numeric]").fill("2000");
-        await page.getByRole("button", { name: lang === "en" ? "Save" : "Save karein" }).click();
+        // Round 2 A8: the amount is what came in NOW out of the remaining due (never more than the due) and a partial needs a
+        // reason, so take the whole due ("fill" button) and save by test id.
+        await page.getByTestId("ovw-received-full").click();
+        const filled = await page.getByTestId("ovw-received").inputValue();
+        check(filled === "1500" || filled === "2500", `${tag}: fill puts the due in (${filled})`);
+        await page.getByTestId("ovw-completion-save").click();
         await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
-        check(requests.some((u) => u.startsWith("completion:") && u.includes('"received_pkr":2000')), `${tag}: completion posted`);
+        check(requests.some((u) => u.startsWith("completion:") && u.includes(`"received_now":${filled}`)), `${tag}: completion posted with received_now`);
       }
       check((await overflow()) <= 1, `${tag}: no horizontal scroll at end`);
       // Endpoints this script does not mock (flags, badges, notifications) have no server behind the build's API base: ignore only those refusals.

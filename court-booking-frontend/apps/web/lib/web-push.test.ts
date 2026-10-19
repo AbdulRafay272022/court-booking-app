@@ -10,6 +10,7 @@ import {
   sameKey,
   shouldShowTabPopup,
   subscriptionBody,
+  unsubscribePushOnLogout,
   urlBase64ToUint8Array,
   type PushEnv,
   type SubscriptionBody,
@@ -232,4 +233,46 @@ test("disablePush: unsubscribes in the browser and DELETEs the endpoint", async 
   await disablePush(f.api);
   assert.equal((existing as unknown as { unsubscribed: boolean }).unsubscribed, true);
   assert.deepEqual(f.calls, [{ op: "delete", arg: "https://fcm.googleapis.com/fcm/send/old" }]);
+});
+
+test("unsubscribePushOnLogout: DELETEs the endpoint and unsubscribes this browser", async () => {
+  const existing = fakeSub("https://fcm.googleapis.com/fcm/send/logout");
+  installBrowser({ permission: "granted", existing });
+  const f = fakeApi();
+  await unsubscribePushOnLogout(f.api);
+  assert.equal((existing as unknown as { unsubscribed: boolean }).unsubscribed, true);
+  assert.deepEqual(f.calls, [{ op: "delete", arg: "https://fcm.googleapis.com/fcm/send/logout" }]);
+});
+
+test("unsubscribePushOnLogout: no subscription (or no service worker) = no calls", async () => {
+  installBrowser({ permission: "default" });
+  const f = fakeApi();
+  await unsubscribePushOnLogout(f.api);
+  assert.equal(f.calls.length, 0);
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: "TestUA" } });
+  await unsubscribePushOnLogout(f.api);
+  assert.equal(f.calls.length, 0);
+});
+
+test("unsubscribePushOnLogout: a failing DELETE never throws and the browser still unsubscribes", async () => {
+  const existing = fakeSub("https://fcm.googleapis.com/fcm/send/x");
+  installBrowser({ permission: "granted", existing });
+  const api = {
+    webPushSubscribe: async () => undefined,
+    webPushUnsubscribe: () => {
+      throw new Error("offline");
+    },
+  };
+  await unsubscribePushOnLogout(api);
+  assert.equal((existing as unknown as { unsubscribed: boolean }).unsubscribed, true);
+});
+
+test("unsubscribePushOnLogout: a hanging DELETE is cut off at the timeout (logout never blocks)", async () => {
+  const existing = fakeSub("https://fcm.googleapis.com/fcm/send/slow");
+  installBrowser({ permission: "granted", existing });
+  const api = { webPushSubscribe: async () => undefined, webPushUnsubscribe: () => new Promise<void>(() => undefined) };
+  const t0 = Date.now();
+  await unsubscribePushOnLogout(api, 60);
+  const took = Date.now() - t0;
+  assert.ok(took >= 50 && took < 1000, `took ${took} ms`);
 });

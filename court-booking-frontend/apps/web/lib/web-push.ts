@@ -220,3 +220,37 @@ export async function refreshPush(api: PushApi, publicKey: string): Promise<stri
   await api.webPushSubscribe(subscriptionBody(sub, navigator.userAgent));
   return sub.endpoint;
 }
+
+/** Logout never waits longer than this for the push cleanup. */
+export const LOGOUT_PUSH_TIMEOUT_MS = 2000;
+
+/**
+ * Logout (every web sign-out path): drop THIS browser's push subscription so the next person on this computer does not get
+ * the previous account's pushes. Sends DELETE (it needs the session, so call this BEFORE the session is cleared) and
+ * unsubscribes in the browser, in parallel. Best effort: never throws, and resolves after at most `timeoutMs` even when the
+ * network or the service worker hangs (the server's cleanup job removes anything left behind).
+ */
+export async function unsubscribePushOnLogout(api: PushApi, timeoutMs: number = LOGOUT_PUSH_TIMEOUT_MS): Promise<void> {
+  const work = (async () => {
+    try {
+      const sub = await currentSubscription();
+      if (!sub) return;
+      const endpoint = sub.endpoint;
+      await Promise.allSettled([
+        Promise.resolve().then(() => api.webPushUnsubscribe(endpoint)),
+        Promise.resolve().then(() => sub.unsubscribe()),
+      ]);
+    } catch {
+      // best effort
+    }
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  try {
+    await Promise.race([work, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}

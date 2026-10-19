@@ -9,12 +9,12 @@ import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDayHeader, formatPKR, formatWhen } from "@/lib/format";
-import { OV, PERM } from "@/lib/overview";
+import { OV, PERM, duplicateCreditText } from "@/lib/overview";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { OwnerTabBar } from "@/components/owner-tab-bar";
-import { ChevronLeftIcon } from "@/components/icons";
+import { AlertTriangleIcon, ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { BookingLinks } from "@/components/booking-links";
@@ -112,6 +112,18 @@ export default function RefundsScreen() {
                   <View className="flex-1 gap-0.5">
                     <Text className="font-plex-bold text-owner-ink text-[14.5px]">{refund.player_name ?? refund.player_phone ?? "Player"}</Text>
                     <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{`${courtText(refund)} - ${formatWhen(refund.starts_at)}`}</Text>
+                    {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (
+                      <View
+                        testID="refund-dup-chip"
+                        className="flex-row items-center gap-1.5 self-start rounded-full px-2.5 mt-1"
+                        style={{ minHeight: 26, backgroundColor: OV.redBg, borderWidth: 1, borderColor: OV.redBorder }}
+                      >
+                        <AlertTriangleIcon size={13} color={OV.red} />
+                        <Text className="font-plex-bold text-[11.5px]" style={{ color: OV.red, flexShrink: 1 }}>
+                          {duplicateCreditText(refund.duplicate_proof.used_on_bookings)}
+                        </Text>
+                      </View>
+                    ) : null}
                     {refund.is_overdue ? (
                       <Text className="font-plex-semibold text-[11.5px]" style={{ color: "#A8432C" }}>
                         {`Der ho gayi - ${formatWhen(refund.created_at)} se baqi`}

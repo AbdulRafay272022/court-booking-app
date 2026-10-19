@@ -4,7 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_HINT_COPY, type SettingDefaultKey, type VenueTimers } from "@court-booking/types";
 
 import { api } from "@/lib/api";
+import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { PERM } from "@/lib/overview";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import {
   effectiveTimerDraft,
   timerDraftFromValues,
@@ -156,6 +159,7 @@ export function RemindersCard({
 
 /** Venue Settings: loads this venue's timers, saves them (PUT, null = default) and shows the result. */
 export function VenueRemindersCard({ venueId }: { venueId: string }) {
+  const perms = useMyPermissions();
   const q = useQuery({
     queryKey: ["venue-timers", venueId],
     queryFn: () => api.owners.venueTimers(venueId),
@@ -163,6 +167,20 @@ export function VenueRemindersCard({ venueId }: { venueId: string }) {
   });
   // placeholderData keeps the previous venue's data while a new one loads: never seed from another venue's answer.
   const data = q.data && !q.isPlaceholderData ? q.data : undefined;
+  // staff without edit_court_settings: a read-only summary (the server answers 403 to their PUT, and to the GET too
+  // unless they hold view_ledger), never inputs and never an error box
+  const denied = q.error instanceof ApiError && q.error.status === 403;
+  if (perms.settled && (!perms.can(PERM.editSettings, venueId) || denied)) {
+    return <VenueRemindersReadOnly data={data} />;
+  }
+  if (!perms.settled) {
+    return (
+      <SectionCard>
+        <SectionLabel>Hold aur payment reminders</SectionLabel>
+        <ActivityIndicator color="#0E6274" />
+      </SectionCard>
+    );
+  }
   if (q.isError && !data) {
     return (
       <SectionCard>
@@ -180,6 +198,27 @@ export function VenueRemindersCard({ venueId }: { venueId: string }) {
     );
   }
   return <VenueRemindersForm key={venueId} venueId={venueId} initial={data} />;
+}
+
+/** What runs at this venue, without inputs (staff without the settings permission). */
+function VenueRemindersReadOnly({ data }: { data: VenueTimers | undefined }) {
+  const preview = data ? timerPreview(timerDraftFromValues(data.values)) : null;
+  return (
+    <SectionCard>
+      <View testID="timers-card-readonly" className="gap-2">
+        <SectionLabel>Hold aur payment reminders</SectionLabel>
+        {data ? (
+          <Text className="font-plex-medium text-owner-ink text-[13.5px]">
+            {`Player ke paas payment bhejne ke liye ${data.effective.hold_minutes} minute.`}
+          </Text>
+        ) : null}
+        {preview ? <Text className="font-plex-medium text-owner-ink text-[13.5px]">{preview}</Text> : null}
+        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+          Ye settings sirf venue owner (ya settings ki ijazat wala staff) badal sakta hai.
+        </Text>
+      </View>
+    </SectionCard>
+  );
 }
 
 function VenueRemindersForm({ venueId, initial }: { venueId: string; initial: VenueTimers }) {

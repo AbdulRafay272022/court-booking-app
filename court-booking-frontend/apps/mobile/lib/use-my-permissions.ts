@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { StaffPermissionKey } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
@@ -19,7 +20,7 @@ export function useMyPermissions() {
     retry: false,
   });
   return {
-    can: (key: string, venueId: string | undefined = activeVenueId) => permissionAllows(query.data, venueId, key),
+    can: (key: StaffPermissionKey, venueId: string | undefined = activeVenueId) => permissionAllows(query.data, venueId, key),
     isStaff: (query.data as { role?: string } | undefined)?.role === "staff",
     /** The answer is in (or failed, or not needed): screens wait for this so a staff member never sees a button flash. */
     settled: !!role && (query.fetchStatus === "idle" || !query.isPending),

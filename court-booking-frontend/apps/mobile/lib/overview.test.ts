@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { OwnerBookingRow } from "@court-booking/types";
 
-import { PERM, STATUS_FILTERS, canOfferNoShow, isStatusPending, permissionAllows, rowStatusLabel, statusPendingLine } from "./overview";
+import { PERM, STATUS_FILTERS, canOfferNoShow, duplicateCreditText, isStatusPending, permissionAllows, rowStatusLabel, statusPendingLine } from "./overview";
 
 const staff = { role: "staff", venue_permissions: [{ venue_id: "v1", permissions: ["approve_payments"] }, { venue_id: "v2", permissions: ["check_in"] }] };
 
@@ -46,4 +46,17 @@ test("status labels and the Overview line", () => {
   assert.equal(statusPendingLine(1), "1 booking ka status baqi");
   assert.equal(statusPendingLine(4), "4 bookings ka status baqi");
   assert.ok(STATUS_FILTERS.some((f) => f.key === "status_pending" && f.label === "Status baqi"));
+});
+
+test("edit_court_settings: staff without it cannot edit the timers card; owners can", () => {
+  const s = { role: "staff", venue_permissions: [{ venue_id: "v1", permissions: ["view_ledger"] }, { venue_id: "v2", permissions: ["edit_court_settings"] }] };
+  assert.equal(PERM.editSettings, "edit_court_settings");
+  assert.equal(permissionAllows(s, "v1", PERM.editSettings), false);
+  assert.equal(permissionAllows(s, "v2", PERM.editSettings), true);
+  assert.equal(permissionAllows({ role: "owner", venue_permissions: [] }, "v1", PERM.editSettings), true);
+});
+
+test("duplicateCreditText: singular / plural", () => {
+  assert.equal(duplicateCreditText(1), "Ye screenshot 1 aur booking par bhi credit hua");
+  assert.equal(duplicateCreditText(3), "Ye screenshot 3 aur bookings par bhi credit hua");
 });

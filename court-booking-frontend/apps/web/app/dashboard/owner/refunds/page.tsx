@@ -149,6 +149,9 @@ export default function OwnerRefundsPage() {
                     {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))}{" \u00b7 "}{fmt.when(refund.starts_at)}
                   </p>
                   {why ? <p className="text-owner-ink-faint text-[12.5px]">{why}</p> : null}
+                  {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (
+                    <DuplicateProofChip n={refund.duplicate_proof.used_on_bookings} />
+                  ) : null}
                   {refund.is_overdue ? (
                     <p className="text-[12px] font-semibold" style={{ color: DANGER }}>
                       <span aria-hidden="true">! </span>
@@ -529,5 +532,22 @@ function MarkRefundedDialog({
         )}
       </div>
     </div>
+  );
+}
+
+/** Stage 2: the screenshot behind this refund was also credited on other bookings (OwnerRefund.duplicate_proof). */
+function DuplicateProofChip({ n }: { n: number }) {
+  const t = useT();
+  return (
+    <span
+      data-testid="refund-dup-chip"
+      className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-owner-danger-soft-border bg-owner-danger-soft px-3 py-1 text-[12.5px] font-bold text-owner-danger"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+        <rect x="8" y="8" width="12" height="13" rx="2" />
+        <path d="M16 8V5a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2h2" />
+      </svg>
+      <span>{n === 1 ? t("rfd.dup.one") : t("rfd.dup.many", { n })}</span>
+    </span>
   );
 }

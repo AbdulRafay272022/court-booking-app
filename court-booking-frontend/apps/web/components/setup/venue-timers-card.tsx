@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@court-booking/api-client";
 import { VENUE_TIMER_DEFAULTS, type VenueTimerEffective, type VenueTimers } from "@court-booking/types";
 import { api } from "@/lib/api";
-import { useMyPermissions, type StaffPermission } from "@/lib/use-my-permissions";
+import { ACTION_PERMISSION, useMyPermissions } from "@/lib/use-my-permissions";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { ErrorState } from "@/components/error-state";
 import { useLang, useT } from "@/components/i18n/lang-provider";
@@ -201,9 +201,6 @@ export function timerErrorMessage(e: unknown, t: TFunction): string {
   return friendlyErrorMessage(e, t);
 }
 
-/** The staff permission that edits venue / court settings (backend app/models/staff.py EDIT_COURT_SETTINGS). */
-const EDIT_SETTINGS = "edit_court_settings" as StaffPermission;
-
 /**
  * Venue Settings: loads this venue's timers, edits them with VenueTimersFields and saves with PUT (null = default).
  * Staff without the settings permission get a short read-only summary instead of inputs (and never an error).
@@ -212,7 +209,7 @@ export function VenueTimersCard({ venueId }: { venueId: string }) {
   const t = useT();
   const lang = useLang();
   const perms = useMyPermissions();
-  const canEdit = perms.can(EDIT_SETTINGS, venueId);
+  const canEdit = perms.can(ACTION_PERMISSION.venueSettings, venueId);
   const query = useQuery({
     queryKey: ["venue-timers", venueId],
     queryFn: () => api.owners.venueTimers(venueId),

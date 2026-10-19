@@ -30,12 +30,19 @@ function useIsCurrent() {
 }
 
 function logout(router: ReturnType<typeof useRouter>) {
-  // Best effort server-side revoke; the local sign-out happens regardless.
-  void import("@/lib/api").then(({ api }) => api.auth.logout().catch(() => undefined)).finally(() => {
-    suppressAuthRedirect(); // a deliberate sign-out: the page's own "signed out -> /login?next=" guard must not win the race to "/"
-    useAuthStore.getState().signOut();
-    router.push("/");
-  });
+  // Best effort: drop this browser's Web Push subscription (needs the session, so first; capped at 2 s), then the
+  // server-side revoke; the local sign-out happens regardless.
+  void Promise.all([import("@/lib/api"), import("@/lib/web-push")])
+    .then(async ([{ api }, { unsubscribePushOnLogout }]) => {
+      await unsubscribePushOnLogout(api.users);
+      await api.auth.logout().catch(() => undefined);
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      suppressAuthRedirect(); // a deliberate sign-out: the page's own "signed out -> /login?next=" guard must not win the race to "/"
+      useAuthStore.getState().signOut();
+      router.push("/");
+    });
 }
 
 function HamburgerIcon({ open }: { open: boolean }) {

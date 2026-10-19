@@ -1,4 +1,4 @@
-import type { BookingStatusKey, MyPermissions, OwnerBookingRow } from "@court-booking/types";
+import type { BookingStatusKey, MyPermissions, OwnerBookingRow, StaffPermissionKey } from "@court-booking/types";
 
 import { pktDateString } from "@/lib/format";
 
@@ -137,17 +137,24 @@ export const PERM = {
   recordPayments: "record_payments",
   checkIn: "check_in",
   refunds: "mark_refunds",
-} as const;
+  /** Venue / court settings incl. the Stage 2 timers card (no separate venue-settings key exists). */
+  editSettings: "edit_court_settings",
+} as const satisfies Record<string, StaffPermissionKey>;
 
 /** Stage 2 (B.b): may this account do `key` at `venueId`? true when allowed OR unknown (no data yet, an older backend, a
  * bad payload): the server's 403 NOT_STAFF_PERMITTED stays the fallback. false only when GET /owners/me/permissions says
  * this is a staff account without that key for the venue. Owners and admins may do everything. */
-export function permissionAllows(data: unknown, venueId: string | undefined, key: string): boolean {
+export function permissionAllows(data: unknown, venueId: string | undefined, key: StaffPermissionKey): boolean {
   if (!data || typeof data !== "object" || Array.isArray(data)) return true;
   const d = data as Partial<MyPermissions>;
   if (d.role !== "staff" || !Array.isArray(d.venue_permissions)) return true;
   const list = venueId ? d.venue_permissions.filter((v) => v && v.venue_id === venueId) : d.venue_permissions;
   return list.some((v) => Array.isArray(v?.permissions) && v.permissions.includes(key));
+}
+
+/** Stage 2: a refund whose screenshot was also credited on N OTHER bookings (OwnerRefund.duplicate_proof). */
+export function duplicateCreditText(n: number): string {
+  return `Ye screenshot ${n} aur ${n === 1 ? "booking" : "bookings"} par bhi credit hua`;
 }
 
 /** Stage 2 (C.4): "N bookings ka status baqi" (singular for 1). */
