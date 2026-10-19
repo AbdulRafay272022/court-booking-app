@@ -28,7 +28,8 @@ test("wizard and Venue Settings use the same advance editor and reminders card",
     assert.match(file, /<AdvanceSettings\b/, `${name} renders AdvanceSettings`);
     assert.match(file, /advanceDraftToInput\(/, `${name} saves through the shared mapping`);
     assert.match(file, /advanceDraftProblem\(/, `${name} validates through the shared check`);
-    assert.match(file, /<RemindersCard\b/, `${name} renders the reminders preview`);
+    // Stage 2: Settings renders the saving wrapper (VenueRemindersCard), the wizard the same card on its draft
+    assert.match(file, /<(Venue)?RemindersCard\b/, `${name} renders the reminders card`);
     assert.doesNotMatch(file, /AdvanceRuleFields/, `${name} no longer uses the old editor`);
   }
   // same defaults: the wizard falls back to ADVANCE_DRAFT_DEFAULTS, Settings seeds from the court (null court = the same)

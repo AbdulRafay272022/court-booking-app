@@ -1,5 +1,9 @@
 import { Text, View } from "react-native";
-import { DEFAULT_ADVANCE_PERCENTAGE, type AdvanceExplain } from "@court-booking/types";
+import { useQuery } from "@tanstack/react-query";
+import { DEFAULT_ADVANCE_PERCENTAGE, advanceDefaultHintText, isFeatureOn, type AdvanceExplain } from "@court-booking/types";
+
+import { api } from "@/lib/api";
+import { DefaultHint } from "./default-hint";
 
 import { Chip, FieldLabel, SectionCard, SectionLabel, TextField } from "../app/(owner)/venue-setup/_components";
 import {
@@ -27,6 +31,13 @@ const HELP: Record<AdvanceTypeDraft, string> = {
   percent: "Percentage: booking ke total ka itna % abhi, baqi venue par.",
 };
 
+/** Stage 2: is the split_payments flag on? Off = every new booking is paid in full up front (backend kill switch), so the
+ * advance Default says "abhi poori raqam". A failed / missing answer counts as ON (fail-open, like the backend). */
+export function useSplitPaymentsOn(): boolean {
+  const q = useQuery({ queryKey: ["public-flags"], queryFn: () => api.featureFlags.publicFlags(), retry: false, staleTime: 5 * 60_000 });
+  return isFeatureOn(q.data?.flags, "split_payments");
+}
+
 export function AdvanceSettings({
   value,
   onChange,
@@ -46,6 +57,7 @@ export function AdvanceSettings({
   const example = advanceExampleLine(value, price, pct);
   const problem = advanceDraftProblem(value);
   const digits = (v: string) => v.replace(/\D/g, "");
+  const splitOn = useSplitPaymentsOn();
   return (
     <SectionCard>
       <SectionLabel>Advance payment</SectionLabel>
@@ -55,6 +67,13 @@ export function AdvanceSettings({
         <Chip label="Fixed amount" selected={value.advanceType === "fixed"} onPress={() => onChange({ advanceType: "fixed" })} />
         <Chip label="Percentage" selected={value.advanceType === "percent"} onPress={() => onChange({ advanceType: "percent" })} />
       </View>
+      <DefaultHint
+        settingKey="advance"
+        text={advanceDefaultHintText(splitOn, "ru")}
+        isDefault={value.advanceType === ""}
+        onReset={() => onChange({ advanceType: "", advanceValue: "" })}
+        testID="default-advance"
+      />
       <Text testID="advance-help" className="font-plex-medium text-owner-ink-faint text-[12.5px]">
         {HELP[value.advanceType]}
       </Text>
@@ -92,6 +111,12 @@ export function AdvanceSettings({
         <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
           Advance is se kam kabhi nahi hoga (lekin booking ke total se zyada bhi nahi).
         </Text>
+        <DefaultHint
+          settingKey="advance_minimum"
+          value={value.advanceMinimum.trim() ? Number(value.advanceMinimum) : null}
+          onReset={() => onChange({ advanceMinimum: "" })}
+          testID="default-advance-minimum"
+        />
       </View>
       {example ? (
         <View className="rounded-[10px] px-3 py-2.5" style={{ backgroundColor: "#EEF6F7" }}>
