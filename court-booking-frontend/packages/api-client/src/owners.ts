@@ -12,6 +12,10 @@ import type {
   ApprovalsQueuePage,
   AcknowledgeResult,
   AdvanceExplain,
+  VenueTimers,
+  VenueTimerValues,
+  MyPermissions,
+  OwnerIdentity,
   OwnerDigest,
   OwnerRefund,
   OwnerToday,
@@ -130,6 +134,26 @@ export function createOwnersApi(client: ApiClient) {
 
     /** Round 2 (A11): how this court's advance works, with a live example. */
     advanceExplain: (courtId: string) => client.request<AdvanceExplain>(`/courts/${courtId}/advance-explain`),
+
+    /** Stage 2: per-venue hold / reminder / auto-cancel timers (null = default). */
+    venueTimers: (venueId: string) => client.request<VenueTimers>(`/owners/venues/${venueId}/timers`),
+    updateVenueTimers: (venueId: string, values: VenueTimerValues) =>
+      client.request<VenueTimers>(`/owners/venues/${venueId}/timers`, { method: "PUT", body: JSON.stringify(values) }),
+
+    /** Stage 2: what this account may do per venue (hide buttons up front for staff). */
+    myPermissions: () => client.request<MyPermissions>("/owners/me/permissions"),
+
+    /** Stage 2: CNIC (never returns the number, only a masked form). */
+    identity: () => client.request<OwnerIdentity>("/owners/identity"),
+    submitIdentity: (number: string, front: string | Blob, back: string | Blob) => {
+      const form = new FormData();
+      form.append("number", number);
+      const part = (f: string | Blob, name: string) =>
+        typeof f === "string" ? ({ uri: f, name, type: "image/jpeg" } as unknown as Blob) : f;
+      form.append("front", part(front, "front.jpg"), "front.jpg");
+      form.append("back", part(back, "back.jpg"), "back.jpg");
+      return client.requestUpload<OwnerIdentity>("/owners/identity", form);
+    },
 
     growth: (venueId?: string) =>
       client.request<Growth>(`/owners/growth${toQuery({ venue_id: venueId })}`),

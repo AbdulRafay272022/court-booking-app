@@ -8,6 +8,8 @@ export interface ApprovalQueueItem extends PendingApproval {
   cancelled_at: string | null;
   has_screenshot: boolean;
   overpayment: { expected: number; ocr_amount: number; excess: number } | null;
+  /** Stage 2: the screenshot was already used on other bookings; approve needs confirm_duplicate. */
+  duplicate?: { used_on_bookings: number } | null;
 }
 
 export interface ApprovalsQueuePage {

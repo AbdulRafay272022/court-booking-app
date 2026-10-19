@@ -1,4 +1,6 @@
 import type {
+  AdminIdentityFull,
+  AdminIdentityPage,
   AdminOwnerInvoice,
   BillingSummary,
   OwnerBillingDetail,
@@ -21,6 +23,13 @@ import { toQuery } from "./util";
 
 export function createAdminApi(client: ApiClient) {
   return {
+    /** Stage 2 CNIC review. The full view writes an audit row on every call. */
+    ownerIdentities: (filter: "missing" | "duplicates" | "unverified" | "all" = "all", page = 1) =>
+      client.request<AdminIdentityPage>(`/admin/owner-identities${toQuery({ filter, page })}`),
+    ownerIdentity: (userId: string) => client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}`),
+    verifyOwnerIdentity: (userId: string) =>
+      client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}/verify`, { method: "POST" }),
+
     stats: () => client.request<PlatformStats>("/admin/stats"),
 
     overview: () => client.request<AdminOverview>("/admin/overview"),
