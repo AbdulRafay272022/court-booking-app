@@ -114,7 +114,8 @@ function DetailDialog({
   });
   // Stage 2 (B.b): hide what a staff member may not do (the 403 messages stay as the fallback)
   const perms = useMyPermissions();
-  const allowed = { complete: perms.can("record_payments"), noShow: perms.can("check_in") };
+  // "Nahi aaye": the backend allows check_in OR record_payments (stage2-contract section 5).
+  const allowed = { complete: perms.can("record_payments"), noShow: perms.can("check_in") || perms.can("record_payments") };
 
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

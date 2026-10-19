@@ -80,7 +80,8 @@ function OverviewScreen() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
   const perms = useMyPermissions();
   const canComplete = perms.can("record_payments");
-  const canNoShow = perms.can("check_in");
+  // The backend allows "Nahi aaye" for check_in OR record_payments (stage2-contract section 5).
+  const canNoShow = perms.can("check_in") || perms.can("record_payments");
 
   const today = pktDateString();
   const dateParam = search.get("date");

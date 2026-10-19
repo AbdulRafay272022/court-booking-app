@@ -89,7 +89,8 @@ async def test_identity_submit_get_masked_and_stored_encrypted(client, db_sessio
 async def test_identity_validation(client, make_user, make_auth_headers, s3):
     owner = await make_user("+923022000012", role=UserRole.OWNER)
     oh = await make_auth_headers(owner)
-    for bad in ("12345", "42101-1234567-33", "4210A12345673", ""):
+    # QA: Arabic-Indic digits are 13 "digits" to Python's \d but not a CNIC (and would hash apart from the ASCII number).
+    for bad in ("12345", "42101-1234567-33", "4210A12345673", "", "٤٢١٠١١٢٣٤٥٦٧٣"):
         resp = await client.post("/api/v1/owners/identity", headers=oh, files=_files(number=bad))
         assert resp.status_code == 422, (bad, resp.text)
         if bad:

@@ -104,7 +104,8 @@ export function HistoryPage() {
   // Stage 2 (B.b): staff without the permission never see the Haan / Nahi dropdown or the No-show button
   const perms = useMyPermissions();
   const canComplete = perms.can("record_payments");
-  const canNoShow = perms.can("check_in");
+  // The backend allows "Nahi aaye" for check_in OR record_payments (stage2-contract section 5).
+  const canNoShow = perms.can("check_in") || perms.can("record_payments");
 
   // --- CSV ---
   const [exporting, setExporting] = useState(false);

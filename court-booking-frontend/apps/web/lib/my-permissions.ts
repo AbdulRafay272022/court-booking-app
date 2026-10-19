@@ -4,7 +4,8 @@ import type { MyPermissions, StaffPermissionKey } from "@court-booking/types";
 /** Staff permission keys (backend app/models/staff.py StaffPermission; one TS list in packages/types staff.ts). */
 export type StaffPermission = StaffPermissionKey;
 
-/** What each button needs. Completion (Haan / Nahi) = record_payments; manual no-show = check_in (the backend checks the same). */
+/** What each button needs. Completion (Haan / Nahi) = record_payments; manual no-show = check_in, and the backend ALSO accepts
+ * record_payments for it, so the screens show "Nahi aaye" when either key is granted. */
 export const ACTION_PERMISSION = {
   approve: "approve_payments",
   reject: "approve_payments",

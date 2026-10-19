@@ -44,7 +44,9 @@ _DEV_HASH_KEY = "dev-only-cnic-hash-key"
 
 def normalize_cnic(raw: str | None) -> str:
     digits = re.sub(r"[\s\-]", "", raw or "")
-    if not re.fullmatch(r"\d{13}", digits):
+    # [0-9], not \d: \d also matches Arabic-Indic/other Unicode digits, which would store a non-ASCII "number" and
+    # hash differently from the same CNIC typed in ASCII (dodging the duplicate flag).
+    if not re.fullmatch(r"[0-9]{13}", digits):
         raise AppError(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             ErrorCode.CNIC_INVALID,

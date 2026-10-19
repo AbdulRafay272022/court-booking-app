@@ -177,7 +177,8 @@ function DetailBody({
   const completion = d.completion ?? r.completion;
   const mayCheckIn = can(PERM.checkIn) && !r.checked_in && !completion;
   // Stage 2 (C.3): only after the slot ended, never on a booking already marked.
-  const mayNoShow = can(PERM.checkIn) && canOfferNoShow(r, completion);
+  // The backend allows "Nahi aaye" for check_in OR record_payments (stage2-contract section 5).
+  const mayNoShow = (can(PERM.checkIn) || can(PERM.recordPayments)) && canOfferNoShow(r, completion);
   const mayRecord = can(PERM.recordPayments) && r.due > 0;
   return (
     <View className="gap-1">

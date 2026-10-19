@@ -75,7 +75,8 @@ export function BookingCard({
   // Stage 2 (B.b): staff without the permission never see these buttons (the 403 message stays as the fallback).
   const { can } = useMyPermissions();
   const mayComplete = canComplete && can(PERM.recordPayments);
-  const mayNoShow = can(PERM.checkIn) && canOfferNoShow(row);
+  // "Nahi aaye": the backend allows check_in OR record_payments (stage2-contract section 5).
+  const mayNoShow = (can(PERM.checkIn) || can(PERM.recordPayments)) && canOfferNoShow(row);
   const [error, setError] = useState<string | null>(null);
   const invalidate = useInvalidateOverview();
   const initial = (row.player_name ?? "?").trim().charAt(0).toUpperCase() || "?";
