@@ -55,7 +55,8 @@ async def put_venue_timers(
     """Body = all seven values; null resets that field to the default. 422 TIMER_OUT_OF_RANGE with the failing
     fields. Changing auto-cancel re-times screenshots already waiting (from their own submission time)."""
     venue = await VenueService(db, settings).require_owned_venue(venue_id, user, permission="edit_court_settings")
-    values = payload.model_dump()
+    # A field missing from the body keeps its stored value; an explicit null resets it to the default.
+    values = {**stored_values(venue), **payload.model_dump(exclude_unset=True)}
     errors = validate_values(values)
     if errors:
         raise AppError(

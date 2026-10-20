@@ -67,6 +67,12 @@ async def test_get_and_put_timers(client, make_user, make_venue, make_court, mak
     assert out["effective"]["hold_minutes"] == 30 and out["effective"]["auto_cancel_enabled"] is False
     assert out["effective"]["first_reminder_after_min"] == 10
 
+    # a partial body changes only what it names; the rest keeps the stored values
+    resp = await client.put(URL.format(venue.id), headers=oh, json={"max_reminders": 4})
+    assert resp.status_code == 200, resp.text
+    part = resp.json()["values"]
+    assert part["max_reminders"] == 4 and part["hold_minutes"] == 30 and part["auto_cancel_enabled"] is False
+
     # null resets to default
     resp = await client.put(URL.format(venue.id), headers=oh, json={k: None for k in DEFAULTS})
     assert resp.json()["effective"] == DEFAULTS
