@@ -7,6 +7,8 @@ import { useAuthStore } from "@/lib/auth-store";
 import { Logo } from "@/components/auth/logo";
 import { useT } from "@/components/i18n/lang-provider";
 import { supportWhatsAppUrl } from "@/lib/support";
+import { api } from "@/lib/api";
+import { unsubscribePushOnLogout } from "@/lib/web-push";
 
 /** Venue onboarding (owner system: teal / Plex Sans). Web counterpart of the mobile
  * `(owner)/venue-setup` group -- owners can now sign up and register a venue entirely
@@ -36,7 +38,9 @@ export default function VenueSetupLayout({ children }: { children: React.ReactNo
           </a>
           <span className="hidden sm:inline text-[13px] text-owner-ink-faint">{user?.name ?? t("setup.layout.owner")}</span>
           <button
-            onClick={() => {
+            onClick={async () => {
+              // drop this browser's Web Push subscription first (DELETE needs the session); best effort, capped at 2 s
+              await unsubscribePushOnLogout(api.users);
               suppressAuthRedirect(); // deliberate sign-out: land on "/", not on /login?next=
               void useAuthStore.getState().signOut();
               router.push("/");

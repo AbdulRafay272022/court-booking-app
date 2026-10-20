@@ -6,8 +6,17 @@ import { fileURLToPath } from "node:url";
 
 import { REMINDER_DEFAULTS, reminderPreviewText, reminderSchedule, validateReminderInput } from "./reminder-schedule";
 
-test("defaults with auto-cancel off: five reminders, no warning, no cancel", () => {
-  assert.deepEqual(reminderSchedule(REMINDER_DEFAULTS), { reminders: [10, 40, 70, 100, 130], finalWarning: null, cancelAt: null });
+test("defaults (Stage 2: auto-cancel ON at 120): 10, 40, 70, 100, warning 115, cancel 120", () => {
+  assert.deepEqual(REMINDER_DEFAULTS, { firstAfterMin: 10, everyMin: 30, maxReminders: 5, autoCancelMin: 120 });
+  assert.deepEqual(reminderSchedule(REMINDER_DEFAULTS), { reminders: [10, 40, 70, 100], finalWarning: 115, cancelAt: 120 });
+});
+
+test("auto-cancel off: five reminders, no warning, no cancel", () => {
+  assert.deepEqual(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: null }), {
+    reminders: [10, 40, 70, 100, 130],
+    finalWarning: null,
+    cancelAt: null,
+  });
 });
 
 test("Y = 120 with defaults: 10, 40, 70, 100, warning 115, cancel 120 (warning not counted)", () => {
@@ -37,7 +46,7 @@ test("Y smaller than the first reminder: no reminders, only the warning", () => 
 test("Y = 0 / null = off", () => {
   assert.equal(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: 0 }).cancelAt, null);
   assert.equal(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: null }).finalWarning, null);
-  assert.match(reminderPreviewText(reminderSchedule(REMINDER_DEFAULTS), "ru"), /Auto-cancel band hai\.$/);
+  assert.match(reminderPreviewText(reminderSchedule({ ...REMINDER_DEFAULTS, autoCancelMin: null }), "ru"), /Auto-cancel band hai\.$/);
 });
 
 test("custom values and max", () => {

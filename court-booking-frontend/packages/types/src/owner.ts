@@ -204,6 +204,8 @@ export interface OwnerRefund {
   refunded_at: string | null;
   created_at: string;
   is_overdue: boolean;
+  /** Stage 2: this refund's screenshot was also credited on N OTHER bookings (same image, any player); null = not reused. */
+  duplicate_proof?: { used_on_bookings: number } | null;
 }
 
 /** GET /owners/digest */

@@ -13,12 +13,13 @@ import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useAuthStore } from "@/lib/auth-store";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
-import { OV, courtShort, dateTitle, historyParams } from "@/lib/overview";
+import { OV, courtShort, dateTitle, historyParams, statusPendingLine } from "@/lib/overview";
 import { allDatesRange } from "@/lib/round2-format";
-import { BellIcon } from "@/components/icons";
+import { BellIcon, ChevronRightIcon, ClockIcon } from "@/components/icons";
 import { BellBadge } from "@/components/bell-badge";
 import { ErrorState } from "@/components/error-state";
 import { PremiumNotices } from "@/components/premium-notices";
+import { CnicBanner } from "@/components/cnic-banner";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { OwnerTabBar } from "@/components/owner-tab-bar";
 import { BookingCard } from "@/components/overview/booking-card";
@@ -129,14 +130,19 @@ export default function OwnerOverviewScreen() {
             venues={venues}
             activeVenueId={activeVenueId}
             onSelect={setVenueId}
-            onAdd={() => {
-              // Reuses the existing setup wizard, from a clean draft (not whatever was left half-done).
-              useVenueSetupStore.getState().reset();
-              router.push("/(owner)/venue-setup/register");
-            }}
+            onAdd={
+              isOwner
+                ? () => {
+                    // Reuses the existing setup wizard, from a clean draft (not whatever was left half-done).
+                    useVenueSetupStore.getState().reset();
+                    router.push("/(owner)/venue-setup/register");
+                  }
+                : undefined
+            }
           />
         ) : null}
         {isOwner ? <PremiumNotices /> : null}
+        {isOwner ? <CnicBanner /> : null}
         {activeVenue ? (
           <VenueStatusBanner
             venue={activeVenue}
@@ -253,6 +259,27 @@ export default function OwnerOverviewScreen() {
                 </Text>
               </Pressable>
             </View>
+
+            {/* Stage 2 (C.4): bookings whose slot ended and nobody marked yet (any date) -> History, that filter. */}
+            {(data.status_pending_count ?? 0) > 0 ? (
+              <Pressable
+                testID="status-pending-line"
+                onPress={() => {
+                  const r = allDatesRange();
+                  router.push({ pathname: "/(owner)/history", params: historyParams(r.from, courtIds, "status_pending", { to: r.to }) });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={statusPendingLine(data.status_pending_count ?? 0)}
+                className="flex-row items-center gap-2 rounded-xl px-4"
+                style={{ minHeight: 48, backgroundColor: OV.amberBg, borderWidth: 1, borderColor: OV.amberBorder }}
+              >
+                <ClockIcon size={15} color={OV.amberDark} />
+                <Text className="flex-1 font-plex-semibold text-[13.5px] underline" style={{ color: OV.amberDark }}>
+                  {statusPendingLine(data.status_pending_count ?? 0)}
+                </Text>
+                <ChevronRightIcon size={16} color={OV.amberDark} />
+              </Pressable>
+            ) : null}
 
             <View className="flex-row flex-wrap gap-3">
               <KpiCard label="Bookings" onPress={() => goHistory("booked")}>

@@ -14,9 +14,8 @@ thing it was about (`reference_id`) -- no message text, no payload. This module 
 4. DELIVERIES: one entry per channel tried; "sent" if any row of that channel was sent, else "failed" (a skipped
    send, e.g. SMS with no provider configured, counts as failed).
 
-Stage 2 gap: rows have no payload column, so events whose reference_id is not a booking/venue (premium billing
-invoices, marketing announcements, the daily digest, the waitlist "slot reopened", admin "venue pending review")
-can only show their kind, not amounts or names.
+Stage 2: new rows carry `payload` (small JSON, never phone/CNIC); it fills params that the reference could not
+resolve (premium billing invoices, marketing announcements, the daily digest, reminder counts).
 """
 
 from __future__ import annotations
@@ -74,13 +73,24 @@ EVENT_KINDS: dict[str, tuple[str, str, str, str]] = {
     "premium_payment_approved": ("other", "premium_payment_approved", "none", "none"),
     "premium_payment_rejected": ("other", "premium_payment_rejected", "none", "none"),
     "tournament_announcement": ("other", "tournament_announcement", "none", "none"),
+    # Round 2 Stage 2: venue-timed owner reminders (payment_reminder_<n>, see classify), the final warning, and the
+    # auto-cancel notice when a screenshot was on file (money may have to go back).
+    "payment_final_warning": ("payment_final_warning", "payment_final_warning", "booking", "approvals"),
+    "owner_payment_auto_cancelled": ("payment_auto_cancelled", "owner_payment_auto_cancelled", "booking", "approvals"),
 }
+PAYLOAD_PARAM_KEYS = (
+    "player_name", "court_name", "sport", "venue_name", "amount", "reason",
+    "count", "status_pending", "reminder_no", "minutes_waiting", "minutes_to_cancel", "title",
+)
 # Families whose rows always fold for one reference (the owner's payment escalation ladder).
 ESCALATION_FAMILIES = {"payment_submitted"}
 CHANNELS = ("push", "whatsapp", "sms", "web_push")
 
 
 def classify(event_type: str) -> tuple[str, str, str, str]:
+    if event_type not in EVENT_KINDS and event_type.startswith("payment_reminder_"):
+        # each numbered reminder is its own family, so every reminder shows as its own bell item
+        return ("payment_reminder", event_type, "booking", "approvals")
     return EVENT_KINDS.get(event_type, ("other", event_type, "none", "none"))
 
 
@@ -173,7 +183,10 @@ async def _resolve(db: AsyncSession, groups: list[_Group]) -> tuple[dict, dict, 
     booking_ids: set[uuid.UUID] = set()
     venue_ids: set[uuid.UUID] = set()
     waitlist_ids: set[uuid.UUID] = set()
-    payment_kinds = {"payment_waiting", "late_payment", "player_cancelled", "payment_rejected"}
+    payment_kinds = {
+        "payment_waiting", "late_payment", "player_cancelled", "payment_rejected",
+        "payment_reminder", "payment_final_warning", "payment_auto_cancelled",
+    }
     refund_kinds = {"refund_owed", "refund_sent"}
     need_payments: set[uuid.UUID] = set()
     need_refunds: set[uuid.UUID] = set()
@@ -265,7 +278,10 @@ def _params(kind: str, ref_type: str, ref: uuid.UUID | None, bookings, payments,
     p["starts_at"] = booking.starts_at
     p["ends_at"] = booking.ends_at
     amount: float | None = None
-    if kind in ("payment_waiting", "late_payment", "player_cancelled"):
+    if kind in (
+        "payment_waiting", "late_payment", "player_cancelled", "payment_reminder", "payment_final_warning",
+        "payment_auto_cancelled",
+    ):
         pay = payments.get(ref)
         if pay is not None and pay.ocr_amount is not None:
             amount = float(pay.ocr_amount)
@@ -297,6 +313,20 @@ def _params(kind: str, ref_type: str, ref: uuid.UUID | None, bookings, payments,
     return p
 
 
+def _with_payload(params: dict, group: _Group) -> dict:
+    """Round 2 Stage 2: notification_log.payload fills what reference resolution could not (daily digest numbers,
+    premium/marketing details, reminder counts). Resolved values always win; only known keys are copied (the payload
+    never carries a phone or CNIC by construction)."""
+    for row in group.rows:
+        payload = row.payload if isinstance(row.payload, dict) else None
+        if not payload:
+            continue
+        for key in PAYLOAD_PARAM_KEYS:
+            if key not in params and payload.get(key) is not None:
+                params[key] = payload[key]
+    return params
+
+
 async def notification_feed(db: AsyncSession, user_id: uuid.UUID, page: int, page_size: int) -> dict:
     page = max(1, page)
     page_size = min(max(1, page_size), 100)
@@ -320,7 +350,9 @@ async def notification_feed(db: AsyncSession, user_id: uuid.UUID, page: int, pag
                 "event_type": first.event_type,
                 "kind": kind,
                 "created_at": first.created_at,
-                "params": _params(kind, ref_type, g.reference_id, bookings, payments, disputes, venues),
+                "params": _with_payload(
+                    _params(kind, ref_type, g.reference_id, bookings, payments, disputes, venues), g
+                ),
                 "link": link,
                 "deliveries": _deliveries(g),
             }

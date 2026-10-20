@@ -13,8 +13,9 @@ import type { MessageKey } from "@/lib/i18n";
 import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
 import { CompletionChips } from "@/components/owner/booking-table/completion-chips";
-import { StatusChip, isConfirmedBooked } from "@/components/owner/booking-table/status-chip";
-import { useCompletionFlow } from "@/components/owner/completion-dialog";
+import { NoShowButton, StatusChip, StatusPendingChip, isConfirmedBooked, isStatusPending } from "@/components/owner/booking-table/status-chip";
+import { useCompletionFlow, useNoShowFlow, type NoShowFlow } from "@/components/owner/completion-dialog";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { historyLinkForBooking } from "@/components/owner/history/filters";
 import { ModalShell } from "@/components/owner/modal-shell";
 import { ScreenshotThumb } from "@/components/media/screenshot-thumb";
@@ -107,6 +108,14 @@ function DetailDialog({
     void query.refetch();
     onChanged?.();
   });
+  const noShow = useNoShowFlow(() => {
+    void query.refetch();
+    onChanged?.();
+  });
+  // Stage 2 (B.b): hide what a staff member may not do (the 403 messages stay as the fallback)
+  const perms = useMyPermissions();
+  // "Nahi aaye": the backend allows check_in OR record_payments (stage2-contract section 5).
+  const allowed = { complete: perms.can("record_payments"), noShow: perms.can("check_in") || perms.can("record_payments") };
 
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,6 +179,7 @@ function DetailDialog({
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <StatusChip statusKey={row.status_key} />
                 <CompletionChips row={row} />
+                {isStatusPending(row) ? <StatusPendingChip /> : null}
               </div>
             ) : null}
           </div>
@@ -203,7 +213,7 @@ function DetailDialog({
             </button>
           </div>
         ) : (
-          <DetailContent detail={detail} row={row} flow={flow} onOpenOther={onOpenOther} onClose={onClose} />
+          <DetailContent detail={detail} row={row} flow={flow} noShow={noShow} allowed={allowed} onOpenOther={onOpenOther} onClose={onClose} />
         )}
 
         <div className="mt-8 border-t border-owner-border-light pt-5">
@@ -226,6 +236,7 @@ function DetailDialog({
         </div>
       </div>
       {flow.dialog}
+      {noShow.dialog}
     </ModalShell>
   );
 }
@@ -234,18 +245,24 @@ function DetailContent({
   detail,
   row,
   flow,
+  noShow,
+  allowed,
   onOpenOther,
   onClose,
 }: {
   detail: OwnerBookingDetail;
   row: OwnerBookingRow;
   flow: ReturnType<typeof useCompletionFlow>;
+  noShow: NoShowFlow;
+  allowed: { complete: boolean; noShow: boolean };
   onOpenOther: (id: string) => void;
   onClose: () => void;
 }) {
   const t = useT();
   const fmt = useFmt();
   const dueClass = row.due > 0 ? "text-owner-danger" : "text-owner-success-dark";
+  const pending = isStatusPending(row);
+  const showNoShow = allowed.noShow && pending;
 
   return (
     <div className="mt-8 grid gap-x-12 gap-y-8 md:grid-cols-2">
@@ -284,12 +301,13 @@ function DetailContent({
           </dl>
         </section>
 
-        {isConfirmedBooked(row) ? (
+        {isConfirmedBooked(row) && (allowed.complete || showNoShow) ? (
           <section aria-labelledby="d-complete">
             <span id="d-complete">
               <SectionTitle>{t("detail.sec.completeAsk")}</SectionTitle>
             </span>
             <div className="mt-3 flex flex-wrap items-center gap-3">
+              {allowed.complete ? (
               <div role="group" aria-labelledby="d-complete" className="inline-flex overflow-hidden rounded-xl border border-owner-border">
                 {(["yes", "no"] as const).map((r) => (
                   <button
@@ -306,10 +324,16 @@ function DetailContent({
                   </button>
                 ))}
               </div>
+              ) : null}
+              {showNoShow ? <NoShowButton name={row.player_name?.trim() || row.short_code} onClick={() => noShow.ask(row)} /> : null}
               {!row.slot_ended ? <span className="text-[13px] text-owner-ink-muted">{t("hist.completed.early")}</span> : null}
             </div>
+            {row.status_key === "no_show" && allowed.complete ? <p className="mt-2 text-[13px] text-owner-ink-muted">{t("nsw.fixHint")}</p> : null}
             <p role="status" aria-live="polite" className={flow.message ? `mt-2 text-[13.5px] font-semibold ${flow.message.kind === "ok" ? "text-owner-success-dark" : "text-owner-danger"}` : "sr-only"}>
               {flow.message?.text}
+            </p>
+            <p role="status" aria-live="polite" data-testid="detail-noshow-live" className={noShow.message ? "mt-2 text-[13.5px] font-semibold text-owner-success-dark" : "sr-only"}>
+              {noShow.message?.text}
             </p>
           </section>
         ) : null}

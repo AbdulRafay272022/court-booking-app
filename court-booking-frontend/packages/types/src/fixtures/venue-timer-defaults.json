@@ -1,0 +1,9 @@
+{
+  "hold_minutes": 15,
+  "reminders_enabled": true,
+  "first_reminder_after_min": 10,
+  "repeat_every_min": 30,
+  "max_reminders": 5,
+  "auto_cancel_enabled": true,
+  "auto_cancel_after_min": 120
+}

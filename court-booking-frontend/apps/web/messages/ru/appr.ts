@@ -62,4 +62,13 @@ export const ruAppr = {
   "appr.live.ackRefund": "{who} ka refund, Refunds list mein add ho gaya.",
   "appr.live.nowClosed": "{who} ki booking ab baqi nahi. Card update ho gaya.",
   "appr.live.failed": "{who}: ye kaam nahi hua, card wapas aa gaya. {error}",
+  // Stage 2 (B.a): a screenshot already used on other bookings
+  "appr.dup.chip.one": "Ye screenshot pehle 1 booking par use hua",
+  "appr.dup.chip.many": "Ye screenshot pehle {n} bookings par use hua",
+  "appr.dup.title": "Ye screenshot pehle bhi use hua hai",
+  "appr.dup.question.one": "Ye screenshot pehle bhi 1 booking par use hua hai. Phir bhi approve karein?",
+  "appr.dup.question.many": "Ye screenshot pehle bhi {n} bookings par use hua hai. Phir bhi approve karein?",
+  "appr.dup.help": "Player se pakka kar lein ke ye nayi payment hai, purani payment ka screenshot nahi.",
+  "appr.dup.confirm": "Haan, phir bhi approve karein",
+  "appr.dup.back": "Wapas",
 } as const;

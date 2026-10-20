@@ -18,6 +18,8 @@ import {
 import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { TFunction } from "@/lib/i18n";
+import { DefaultHint } from "@/components/settings/default-hint";
+import { defaultState } from "@/components/settings/hint-state";
 import { Chip, Field, FieldLabel, SectionCard, SectionLabel } from "./ui";
 import { TimeField12 } from "./time-fields";
 
@@ -30,11 +32,15 @@ export function CourtSetupFields({
   value,
   onChange,
   slotChangeNote = false,
+  defaultSlotMinutes,
 }: {
   value: CourtSetup;
   onChange: (patch: Partial<CourtSetup>) => void;
   /** Venue Settings only: say what changing the slot length does to bookings that already exist. */
   slotChangeNote?: boolean;
+  /** Stage 2 A.2: the minimum booking time that really applies on this screen (components/settings/hint-state.ts
+   * slotMinutesDefault: the wizard / new-court prefill, or the backend default for an existing court). */
+  defaultSlotMinutes: number;
 }) {
   const t = useT();
   const fmt = useFmt();
@@ -62,6 +68,13 @@ export function CourtSetupFields({
             <Chip key={m} label={t("setup.slot.min", { m })} selected={value.slotMinutes === m} onClick={() => onChange({ slotMinutes: m })} />
           ))}
         </div>
+        <DefaultHint
+          id="slot_minutes"
+          field={t("set2.slot.label")}
+          text={fmt.duration(defaultSlotMinutes)}
+          state={defaultState(value.slotMinutes, defaultSlotMinutes)}
+          onReset={() => onChange({ slotMinutes: defaultSlotMinutes })}
+        />
         <SlotPreviewLine value={value} />
         {slotChangeNote ? (
           <p className="text-[12.5px] font-medium text-owner-ink-faint">

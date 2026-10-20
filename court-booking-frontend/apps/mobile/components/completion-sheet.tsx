@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import type { OwnerBookingRow } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
@@ -13,8 +13,63 @@ import { CheckIcon } from "@/components/icons";
 import { AlertCircleIcon } from "@/components/overview/icons";
 import { BottomSheet, OrangeButton, OutlineButton } from "@/components/overview/ui";
 
+/** Stage 2 (C.3): the error line for a refused no-show (Roman Urdu, never the raw server text). */
+export function noShowErrorText(e: unknown): string {
+  if (e instanceof ApiError && e.status === 403) return "Aapke paas no-show mark karne ki ijazat nahi hai.";
+  if (e instanceof ApiError && e.code === "TOO_EARLY_FOR_NO_SHOW") return "Slot abhi khatam nahi hua. Slot khatam hone ke baad No-show mark karein.";
+  if (e instanceof ApiError && e.code === "INVALID_BOOKING_STATE") return "Is booking ka status badal chuka hai. Page refresh karke dekhein.";
+  return friendlyErrorMessage(e);
+}
+
+/** Stage 2 (C.3): "Nahi aaye (No-show)" confirm (a sheet, never Alert.alert: that is a no-op on Expo web). The server
+ * records who/when; a mistake is fixed later with Haan/Nahi (no_show -> completed). */
+export function NoShowSheet({ row, onClose, onSaved }: { row: OwnerBookingRow; onClose: () => void; onSaved: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => api.bookings.noShow(row.booking_id),
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+    onError: (e) => setError(noShowErrorText(e)),
+  });
+  return (
+    <BottomSheet
+      title="Nahi aaye (No-show)?"
+      subtitle={`${row.player_name ?? "Player"} - ${row.court_name} - ${formatTimeRange(row.starts_at, row.ends_at)} - ${row.short_code}`}
+      onClose={onClose}
+      footer={
+        <View className="flex-row gap-3">
+          <OutlineButton flex label="Wapas" onPress={onClose} />
+          <Pressable
+            onPress={() => save.mutate()}
+            disabled={save.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="No-show mark karein"
+            style={{ flex: 1, minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: OV.red, opacity: save.isPending ? 0.5 : 1 }}
+          >
+            <Text className="font-plex-bold text-white text-[14px]">{save.isPending ? "Save ho raha hai" : "No-show mark karein"}</Text>
+          </Pressable>
+        </View>
+      }
+    >
+      <View testID="no-show-confirm" className="flex-row items-start gap-2 rounded-xl px-3.5 py-3" style={{ backgroundColor: OV.redBg }}>
+        <AlertCircleIcon size={18} />
+        <Text className="flex-1 font-plex-semibold text-[13.5px]" style={{ color: OV.red }}>
+          Player khelne nahi aaya? Booking No-show mark ho jayegi.
+        </Text>
+      </View>
+      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+        Ye record ke saath save hoga (kis ne, kab). Ghalti ho to baad mein Haan/Nahi se booking Completed kar sakte hain.
+      </Text>
+      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+    </BottomSheet>
+  );
+}
+
 /** Round 2 (A8) "Nahi": how much of the REMAINING due came in now. Adds a positive payment (never lowers what was
- * paid); entering the whole due makes the booking Mukammal; a reason is needed only while some due remains. */
+ * paid); entering the whole due makes the booking Mukammal; a reason is needed only while some due remains. Stage 2 (C.3):
+ * saving marks the booking Completed either way (also from No-show). */
 export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRow; onClose: () => void; onSaved: () => void }) {
   const due = Math.max(0, Math.round(row.due));
   const [amount, setAmount] = useState("0");
@@ -127,7 +182,7 @@ export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRo
 
       {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
       <Text className="font-plex-medium text-owner-ink-faint text-[12px]">
-        Ye record ke saath save hoga (kis ne, kab). Ghalti ho to payment correction se theek karein.
+        Save karne par booking Completed ho jayegi. Ye record ke saath save hoga (kis ne, kab). Ghalti ho to payment correction se theek karein.
       </Text>
     </BottomSheet>
   );

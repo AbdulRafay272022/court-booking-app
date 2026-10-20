@@ -14,12 +14,19 @@ const ACTION =
 const H2 = "font-khelo-display text-[20px] font-extrabold tracking-tight";
 
 function logout(router: ReturnType<typeof useRouter>) {
-  // Best effort server-side revoke; the local sign-out happens regardless.
-  void import("@/lib/api").then(({ api }) => api.auth.logout().catch(() => undefined)).finally(() => {
-    suppressAuthRedirect(); // deliberate sign-out: land on "/", not on /login?next=
-    useAuthStore.getState().signOut();
-    router.push("/");
-  });
+  // Best effort: drop this browser's Web Push subscription (needs the session, so first; capped at 2 s), then the
+  // server-side revoke; the local sign-out happens regardless.
+  void Promise.all([import("@/lib/api"), import("@/lib/web-push")])
+    .then(async ([{ api }, { unsubscribePushOnLogout }]) => {
+      await unsubscribePushOnLogout(api.users);
+      await api.auth.logout().catch(() => undefined);
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      suppressAuthRedirect(); // deliberate sign-out: land on "/", not on /login?next=
+      useAuthStore.getState().signOut();
+      router.push("/");
+    });
 }
 
 /** Account > Settings: language, sign-in details (phone, password), help, legal links and log out.

@@ -1,0 +1,33 @@
+// English copy: same keys as messages/ru/set2.ts.
+import type { ruSet2 } from "../ru/set2";
+
+export const enSet2: Record<keyof typeof ruSet2, string> = {
+  "set2.default": "Default: {value}",
+  "set2.usingDefault": "Using the default now",
+  "set2.reset": "Back to default",
+  "set2.resetAria": "{field}: back to default",
+  "set2.val.minute": "{n} minute",
+  "set2.val.minutes": "{n} minutes",
+  "set2.val.on": "On",
+  "set2.val.off": "Off",
+  "set2.timers.title": "Hold, reminders and auto-cancel",
+  "set2.timers.save": "Save these settings",
+  "set2.timers.saved": "Settings saved.",
+  "set2.timers.readOnly": "Only the venue owner (or staff allowed to edit settings) can change these.",
+  "set2.hold.title": "Slot hold",
+  "set2.hold.help": "After picking a slot the player must send the payment screenshot within this time, or the slot opens again.",
+  "set2.hold.label": "Hold (minutes)",
+  "set2.hold.preview": "The player has {minutes} to send the payment.",
+  "set2.reminders.toggle": "Send me reminders to approve",
+  "set2.reminders.offNote": "Reminders are off: only the first notification goes out when a screenshot arrives.",
+  "set2.cancel.title": "Auto-cancel",
+  "set2.cancel.offWarning": "If you switch this off, a booking that is never approved keeps its slot blocked.",
+  "set2.err.outOfRange": "A time is outside the allowed range. Keep it within the limits shown and save again.",
+  "set2.wizard.timersFailed": "The venue was created, but the hold and reminder settings were not saved: {error}. Send again.",
+  "set2.adv.fullNote": "full amount for now",
+  "set2.adv.defaultText": "the price rule's {pct}%",
+  "set2.adv.label": "Advance",
+  "set2.slot.label": "Minimum booking time",
+  "set2.cancel.allowedLabel": "Cancellation allowed",
+  "set2.cancel.cutoffLabel": "Cancellation cutoff",
+};

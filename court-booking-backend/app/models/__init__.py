@@ -9,6 +9,7 @@ from app.models.fcm_token import FCMToken
 from app.models.feature_flag import FEATURE_FLAG_SEED, FeatureFlag, FeatureFlagKey
 from app.models.message import Message
 from app.models.notification import NotificationLog
+from app.models.owner_identity import OwnerIdentity
 from app.models.owner_billing import (
     InvoiceStatus,
     OwnerFeature,
@@ -30,6 +31,7 @@ from app.models.stats import SlotStats
 from app.models.user import City, Gender, LoginAttempt, OtpPurpose, OtpRequest, Session, User, UserRole
 from app.models.venue import Venue, VenueStatus
 from app.models.waitlist import WaitlistEntry
+from app.models.web_push_subscription import WebPushSubscription
 
 __all__ = [
     "InvoiceStatus",
@@ -62,6 +64,7 @@ __all__ = [
     "StaffPermissionKey",
     "Message",
     "NotificationLog",
+    "OwnerIdentity",
     "Payment",
     "PaymentEntry",
     "PaymentMethod",
@@ -76,4 +79,5 @@ __all__ = [
     "Venue",
     "VenueStatus",
     "WaitlistEntry",
+    "WebPushSubscription",
 ]

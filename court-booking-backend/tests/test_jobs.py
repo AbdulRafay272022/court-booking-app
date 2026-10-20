@@ -4,9 +4,8 @@ from sqlalchemy import select
 
 from app.jobs.digest_job import send_owner_daily_digests
 from app.jobs.expiry_job import (
-    escalate_pending_payment_reviews,
     expire_stale_bookings,
-    mark_overdue_no_shows,
+    remind_pending_payment_reviews,
     run_expiry_job,
 )
 from app.jobs.growth_job import materialize_nightly_stats
@@ -413,9 +412,9 @@ async def test_compute_slot_stats_guardrail_skips_slot_with_too_few_observations
         assert stats_result.scalars().all() == []
 
 
-async def test_mark_overdue_no_shows_hits_reliability_score(
-    db_session_factory, make_user, make_venue, make_court
-):
+async def test_expiry_job_no_longer_marks_no_shows(db_session_factory, make_user, make_venue, make_court):
+    """Round 2 Stage 2 (spec C.2): a booked booking whose slot passed with no check-in stays `booked` (the owner marks
+    it; it shows as "Status baqi"); the player's reliability is untouched."""
     owner = await make_user("+923010000010", role=UserRole.OWNER)
     customer = await make_user("+923010000011", role=UserRole.PLAYER)
     venue = await make_venue(owner)
@@ -434,49 +433,21 @@ async def test_mark_overdue_no_shows_hits_reliability_score(
         await session.commit()
         booking_id = booking.id
 
-    count = await mark_overdue_no_shows(session_factory=db_session_factory)
-    assert count == 1
+    result = await run_expiry_job(session_factory=db_session_factory)
+    assert "no_shows" not in result
 
     async with db_session_factory() as session:
         refreshed = await session.get(Booking, booking_id)
-        assert refreshed.status == BookingStatus.NO_SHOW
-
+        assert refreshed.status == BookingStatus.BOOKED
         player = await session.get(User, customer.id)
-        assert player.total_no_shows == 1
-        assert player.reliability_score < 1.0
+        assert player.total_no_shows == 0
 
 
-async def test_mark_overdue_no_shows_ignores_checked_in_bookings(
-    db_session_factory, make_user, make_venue, make_court
-):
-    owner = await make_user("+923010000012", role=UserRole.OWNER)
-    customer = await make_user("+923010000013", role=UserRole.PLAYER)
-    venue = await make_venue(owner)
-    court = await make_court(venue)
-
-    async with db_session_factory() as session:
-        booking = Booking(
-            court_id=court.id,
-            player_id=customer.id,
-            starts_at=datetime.now(timezone.utc) - timedelta(hours=2),
-            ends_at=datetime.now(timezone.utc) - timedelta(hours=1),
-            price=1000,
-            status=BookingStatus.BOOKED,
-            checked_in_at=datetime.now(timezone.utc) - timedelta(hours=2),
-        )
-        session.add(booking)
-        await session.commit()
-
-    count = await mark_overdue_no_shows(session_factory=db_session_factory)
-    assert count == 0
-
-
-async def test_escalation_job_sends_whatsapp_then_sms(
+async def test_payment_reminder_job_sends_first_reminder_once_and_no_sms(
     db_session_factory, make_user, make_venue, make_court, monkeypatch
 ):
-    # No prior inbound message from the owner in this test, so the WhatsApp
-    # escalation step goes out as the payment_submitted_owner template, not
-    # free text -- mock at the _send level (shared by both) to catch it.
+    """Round 2 Stage 2: the old WhatsApp-after-5 / SMS-after-15 ladder is replaced by the venue-timed reminders
+    (default: first after 10 minutes). Push + WhatsApp, never SMS; deduped."""
     whatsapp_sent = []
     sms_sent = []
 
@@ -496,8 +467,7 @@ async def test_escalation_job_sends_whatsapp_then_sms(
     venue = await make_venue(owner)
     court = await make_court(venue)
 
-    # payment_deadline = submitted_at + PAYMENT_REVIEW_HOURS(2h); backdate
-    # submission by 6 minutes so only the WhatsApp threshold (5min) is due.
+    # No payment row: submission time falls back to payment_deadline - 120 min. 6 minutes in: nothing due yet.
     async with db_session_factory() as session:
         booking = Booking(
             court_id=court.id,
@@ -511,36 +481,44 @@ async def test_escalation_job_sends_whatsapp_then_sms(
         )
         session.add(booking)
         await session.commit()
+        booking_id = booking.id
 
-    escalated = await escalate_pending_payment_reviews(session_factory=db_session_factory)
-    assert escalated == 1
+    assert await remind_pending_payment_reviews(session_factory=db_session_factory) == 0
+    assert whatsapp_sent == []
+
+    async with db_session_factory() as session:
+        b = await session.get(Booking, booking_id)
+        b.payment_deadline = datetime.now(timezone.utc) + timedelta(hours=2) - timedelta(minutes=12)
+        await session.commit()
+
+    assert await remind_pending_payment_reviews(session_factory=db_session_factory) == 1
     assert owner.phone.lstrip("+") in whatsapp_sent
     assert sms_sent == []
+    # Running again immediately does not re-send.
+    assert await remind_pending_payment_reviews(session_factory=db_session_factory) == 0
 
-    # Running again immediately shouldn't re-send the same step.
-    escalated_again = await escalate_pending_payment_reviews(session_factory=db_session_factory)
-    assert escalated_again == 0
+    async with db_session_factory() as session:
+        rows = (
+            await session.execute(select(NotificationLog).where(NotificationLog.reference_id == booking_id))
+        ).scalars().all()
+        assert {r.event_type for r in rows} == {"payment_reminder_1"}
+        assert all(r.payload and r.payload.get("reminder_no") == 1 for r in rows)
 
 
-async def test_escalation_job_fires_both_steps_if_run_late(
+async def test_payment_reminder_job_sends_only_latest_step_if_run_late(
     db_session_factory, make_user, make_venue, make_court, monkeypatch
 ):
-    async def fake_whatsapp(self, to, body):
+    async def fake_whatsapp(self, payload):
         return {"messages": [{"id": "x"}]}
 
-    async def fake_sms(self, to, body):
-        return {"status": "sent"}
-
-    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService.send_text", fake_whatsapp)
-    monkeypatch.setattr("app.services.sms_service.SMSService.send_text", fake_sms)
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", fake_whatsapp)
 
     owner = await make_user("+923010000016", role=UserRole.OWNER)
     customer = await make_user("+923010000017", role=UserRole.PLAYER)
     venue = await make_venue(owner)
     court = await make_court(venue)
 
-    # 20 minutes since submission: past both the 5-min WhatsApp and 15-min
-    # SMS thresholds -- both should fire in a single pass.
+    # 45 minutes since submission: reminders at 10 and 40 are both due -- only #2 goes out, #1 never afterwards.
     async with db_session_factory() as session:
         booking = Booking(
             court_id=court.id,
@@ -550,13 +528,22 @@ async def test_escalation_job_fires_both_steps_if_run_late(
             price=1000,
             advance_amount=1000,
             status=BookingStatus.PAYMENT_SUBMITTED,
-            payment_deadline=datetime.now(timezone.utc) + timedelta(hours=2) - timedelta(minutes=20),
+            payment_deadline=datetime.now(timezone.utc) + timedelta(hours=2) - timedelta(minutes=45),
         )
         session.add(booking)
         await session.commit()
+        booking_id = booking.id
 
-    escalated = await escalate_pending_payment_reviews(session_factory=db_session_factory)
-    assert escalated == 2
+    assert await remind_pending_payment_reviews(session_factory=db_session_factory) == 1
+    assert await remind_pending_payment_reviews(session_factory=db_session_factory) == 0
+    async with db_session_factory() as session:
+        events = {
+            r.event_type
+            for r in (
+                await session.execute(select(NotificationLog).where(NotificationLog.reference_id == booking_id))
+            ).scalars().all()
+        }
+        assert events == {"payment_reminder_2"}
 
 
 async def test_booking_reminder_sent_within_window(
@@ -660,7 +647,7 @@ async def test_run_expiry_job_runs_all_steps_and_is_idempotent(
             status=BookingStatus.HELD,
             held_until=datetime.now(timezone.utc) - timedelta(minutes=1),
         )
-        no_show = Booking(
+        played = Booking(
             court_id=court.id,
             player_id=customer.id,
             starts_at=datetime.now(timezone.utc) - timedelta(hours=2),
@@ -671,17 +658,16 @@ async def test_run_expiry_job_runs_all_steps_and_is_idempotent(
         past_waitlist = WaitlistEntry(
             court_id=court.id, player_id=customer.id, slot_starts_at=datetime.now(timezone.utc) - timedelta(hours=5)
         )
-        session.add_all([held, no_show, past_waitlist])
+        session.add_all([held, played, past_waitlist])
         await session.commit()
 
     result = await run_expiry_job(session_factory=db_session_factory)
     assert result["expired_bookings"] == 1
-    assert result["no_shows"] == 1
+    assert "no_shows" not in result  # Round 2 Stage 2: no automatic no-show
     assert result["waitlist_entries_deactivated"] == 1
 
     # Running again immediately should be a no-op -- nothing left to process,
-    # no errors on the now-already-cancelled/no_show/deactivated rows.
+    # no errors on the now-already-cancelled/deactivated rows.
     result_again = await run_expiry_job(session_factory=db_session_factory)
     assert result_again["expired_bookings"] == 0
-    assert result_again["no_shows"] == 0
     assert result_again["waitlist_entries_deactivated"] == 0

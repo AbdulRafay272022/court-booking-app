@@ -42,13 +42,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const settingsSrc = readFileSync(join(here, "../../app/dashboard/owner/settings/page.tsx"), "utf8");
 const wizardSrc = readFileSync(join(here, "../../app/venue-setup/courts/page.tsx"), "utf8");
 
-test("settings and wizard share the advance card and the reminders card", () => {
+test("settings and wizard share the advance card (the timers parity test lives in venue-timers.test.ts)", () => {
   for (const src of [settingsSrc, wizardSrc]) {
     assert.match(src, /from "@\/components\/setup\/advance-rule-fields"/);
     assert.match(src, /<AdvanceRuleFields/);
     assert.match(src, /unitPrice=\{basePriceFromDrafts\(/);
     assert.match(src, /unitMinutes=\{/);
-    assert.match(src, /from "@\/components\/setup\/payment-reminders-card"/);
-    assert.match(src, /<PaymentRemindersCard/);
   }
 });

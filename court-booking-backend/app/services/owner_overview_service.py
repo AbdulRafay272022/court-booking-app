@@ -116,6 +116,7 @@ STATUS_FILTERS = {
     "booked", "pending", "cancelled", "refund", "completed", "short_paid",
     "held", "awaiting_approval", "no_show", "refund_owed", "refunded", "expired",
     "checked_in", "completed_yes", "completed_no",
+    "status_pending",
 }
 
 
@@ -125,6 +126,27 @@ def short_code(booking_id: uuid.UUID) -> str:
 
 def _confirmed_cond():
     return cast(Booking.status, String).in_(CONFIRMED_VALUES)
+
+
+def status_pending_cond(now_expr=None):
+    """Round 2 Stage 2 (spec C.3/C.4): a booking whose status the owner still has to settle -- still `booked`, its
+    slot has ended, and no Haan/Nahi completion was recorded (a completion before Stage 2 only wrote the audit row and
+    left status=booked; those are NOT pending). Checked-in bookings are already `completed`."""
+    completion_exists = (
+        select(AuditLog.id)
+        .where(
+            AuditLog.entity_type == "booking",
+            AuditLog.entity_id == Booking.id,
+            AuditLog.action == COMPLETION_ACTION,
+        )
+        .correlate(Booking)
+        .exists()
+    )
+    return and_(
+        Booking.status == BookingStatus.BOOKED,
+        Booking.ends_at <= (now_expr if now_expr is not None else func.now()),
+        not_(completion_exists),
+    )
 
 
 def _expired_cond():
@@ -380,7 +402,11 @@ class OwnerOverviewService:
         if refund_amount is not None:
             refund_status = "owed" if m.refund_status == "owed" else "paid"
         is_confirmed = m.status in CONFIRMED_VALUES
+        status_pending = bool(
+            m.variant == "main" and m.status == "booked" and m.ends_at <= now and m.completion_result is None
+        )
         return OwnerBookingRowOut(
+            status_pending=status_pending,
             booking_id=m.booking_id,
             short_code=short_code(m.booking_id),
             kind=m.kind,
@@ -455,6 +481,15 @@ class OwnerOverviewService:
                 count=int(pa[0]) + int(pa[1]), awaiting_approval=int(pa[0]), awaiting_payment=int(pa[1])
             )
 
+        status_pending_count = 0
+        if cids:
+            status_pending_count = int(
+                await self.db.scalar(
+                    select(func.count(Booking.id)).where(Booking.court_id.in_(cids), status_pending_cond(now))
+                )
+                or 0
+            )
+
         def agg(cid: uuid.UUID, key: str) -> int | float:
             return per_court.get(cid, {}).get(key, 0)
 
@@ -504,6 +539,7 @@ class OwnerOverviewService:
             ),
             rows=rows,
             pending_all=pending_all,
+            status_pending_count=status_pending_count,
         )
 
     async def _aggregates(
@@ -560,6 +596,10 @@ class OwnerOverviewService:
                 parts.append(and_(main, sub.c.completion_result == "no"))
             elif s == "checked_in":
                 parts.append(and_(main, sub.c.checked_in_at.is_not(None)))
+            elif s == "status_pending":
+                parts.append(
+                    and_(main, sub.c.status == "booked", sub.c.ends_at <= func.now(), sub.c.completion_result.is_(None))
+                )
             else:
                 parts.append(sub.c.status_key == s)
         return or_(*parts) if parts else true()
@@ -973,6 +1013,7 @@ class OwnerOverviewService:
             note_up="Booking completed" if result == "yes" else "Booking completed: balance received",
             note_down="Booking completed: correction to the amount received",
         )
+        old_status = booking.status
         await ledger.audit.log(
             actor_user_id=actor.id,
             actor_type=actor.role.value,
@@ -987,6 +1028,10 @@ class OwnerOverviewService:
             new_value={"result": result, "received_pkr": target, "reason": reason, **extra},
         )
         await self.db.commit()
+        # Round 2 Stage 2 (spec C.3): Haan/Nahi settles the booking's STATUS too: booked or no_show -> completed
+        # (audited as booking.completed with who/when; a wrong old no-show is fixed this way).
+        if old_status in (BookingStatus.BOOKED, BookingStatus.NO_SHOW):
+            await BookingService(self.db, self.settings).mark_completed(booking, actor=actor)
         return await self._main_row(booking.id, datetime.now(timezone.utc))
 
     # ------------------------------------------------------------------ Badges

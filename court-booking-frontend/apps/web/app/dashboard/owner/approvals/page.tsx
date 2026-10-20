@@ -27,6 +27,7 @@ import { VoiceTextarea } from "@/components/voice/voice-textarea";
 import { parseQueueFilter } from "@/lib/queue-filter";
 import { isNaya } from "@/lib/owner-seen";
 import { useSeenSince } from "@/lib/use-owner-seen";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import {
   PAGE_SIZE,
   amountChip,
@@ -50,7 +51,11 @@ const REJECT_REASONS: { value: string; label: MessageKey }[] = [
   { value: "Other", label: "odash.approvals.reason.other" },
 ];
 
-type Dialog = { kind: "approve" | "reject"; item: ApprovalQueueItem } | null;
+type Dialog =
+  | { kind: "approve" | "reject"; item: ApprovalQueueItem }
+  // Stage 2 (B.a): the separate "used before" confirm, after the amount was chosen
+  | { kind: "dup"; item: ApprovalQueueItem; amount: number | null; mode: ApproveAcceptMode; n: number }
+  | null;
 type Live = { kind: "ok" | "error"; text: string } | null;
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-owner-accent";
@@ -91,6 +96,9 @@ export default function OwnerApprovalsPage() {
   // A staff member without the approve permission gets 403 NOT_STAFF_PERMITTED (the client cannot know the permissions in
   // advance: no endpoint returns them to staff). After the first refusal the action buttons are replaced by a clear note.
   const [noPermission, setNoPermission] = useState(false);
+  // Stage 2 (B.b): GET /owners/me/permissions hides Approve / Reject / Theek hai up front; the 403 above stays as the fallback.
+  const perms = useMyPermissions();
+  const locked = noPermission || !perms.can("approve_payments");
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const shown = visibleIds(serverIds, snapshot, hidden);
@@ -132,7 +140,13 @@ export default function OwnerApprovalsPage() {
     void queryClient.invalidateQueries({ queryKey: ["owner-today"] });
   }
 
-  async function act(item: ApprovalQueueItem, run: () => Promise<unknown>, okText: string, after?: (res: unknown) => void) {
+  async function act(
+    item: ApprovalQueueItem,
+    run: () => Promise<unknown>,
+    okText: string,
+    after?: (res: unknown) => void,
+    onDuplicate?: (usedOn: number) => void,
+  ) {
     const id = item.payment_id;
     const who = item.player_name ?? t("appr.player");
     moveFocusFrom(id);
@@ -149,6 +163,11 @@ export default function OwnerApprovalsPage() {
         setOverrides((o) => ({ ...o, [id]: stateFrom409(e.details) }));
         setLive({ kind: "ok", text: t("appr.live.nowClosed", { who }) });
         refreshRelated();
+      } else if (e instanceof ApiError && (e.code as string) === "DUPLICATE_PROOF_CONFIRM_REQUIRED" && onDuplicate) {
+        // The server knows the screenshot was used before (the card may be older than the flag): ask the same question.
+        const n = Number((e.details as { used_on_bookings?: unknown } | undefined)?.used_on_bookings) || item.duplicate?.used_on_bookings || 1;
+        setLive(null);
+        onDuplicate(n);
       } else if (e instanceof ApiError && e.code === "NOT_STAFF_PERMITTED") {
         setNoPermission(true);
         setLive({ kind: "error", text: t("appr.live.noPermission") });
@@ -158,13 +177,25 @@ export default function OwnerApprovalsPage() {
     }
   }
 
-  function approve(item: ApprovalQueueItem, amount: number | null, mode: ApproveAcceptMode) {
+  function approve(item: ApprovalQueueItem, amount: number | null, mode: ApproveAcceptMode, confirmDuplicate = false) {
+    const usedOn = item.duplicate?.used_on_bookings ?? 0;
+    if (usedOn > 0 && !confirmDuplicate) {
+      // a second, separate question before anything is sent (the list stays frozen: the snapshot is kept)
+      setDialog({ kind: "dup", item, amount, mode, n: usedOn });
+      return;
+    }
     closeDialog();
     const { amountPkr, acceptMode } = approveArgs(item, amount, mode);
     const who = item.player_name ?? t("appr.player");
-    void act(item, () => api.payments.approve(item.payment_id, amountPkr, acceptMode), t("appr.live.approved", { who }), () => {
-      if (acceptMode === "advance_only") void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
-    });
+    void act(
+      item,
+      () => api.payments.approve(item.payment_id, amountPkr, acceptMode, confirmDuplicate),
+      t("appr.live.approved", { who }),
+      () => {
+        if (acceptMode === "advance_only") void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
+      },
+      confirmDuplicate ? undefined : (n) => openDialog({ kind: "dup", item, amount, mode, n }),
+    );
   }
 
   function reject(item: ApprovalQueueItem, reason: string) {
@@ -232,12 +263,12 @@ export default function OwnerApprovalsPage() {
             return (
               <li key={id}>
                 {isClosedState(state) ? (
-                  <ClosedCard item={item} state={state} locked={noPermission} onAck={(money) => acknowledge(item, money)} />
+                  <ClosedCard item={item} state={state} locked={locked} onAck={(money) => acknowledge(item, money)} />
                 ) : (
                   <AwaitingCard
                     item={item}
                     naya={isNaya(item.submitted_at, since)}
-                    locked={noPermission}
+                    locked={locked}
                     onDetails={() => setDetailId(item.booking_id)}
                     onApprove={() => openDialog({ kind: "approve", item })}
                     onReject={() => openDialog({ kind: "reject", item })}
@@ -265,6 +296,9 @@ export default function OwnerApprovalsPage() {
       ) : null}
 
       {dialog?.kind === "approve" ? <ApproveDialog item={dialog.item} onCancel={closeDialog} onConfirm={(amount, mode) => approve(dialog.item, amount, mode)} /> : null}
+      {dialog?.kind === "dup" ? (
+        <DuplicateDialog item={dialog.item} n={dialog.n} onCancel={closeDialog} onConfirm={() => approve(dialog.item, dialog.amount, dialog.mode, true)} />
+      ) : null}
       {dialog?.kind === "reject" ? <RejectDialog item={dialog.item} onCancel={closeDialog} onConfirm={(reason) => reject(dialog.item, reason)} /> : null}
 
       <BookingDetail
@@ -321,6 +355,7 @@ function AmountChips({ item }: { item: ApprovalQueueItem }) {
         </span>
         {text}
       </span>
+      {item.duplicate && item.duplicate.used_on_bookings > 0 ? <DuplicateChip n={item.duplicate.used_on_bookings} /> : null}
       {item.overpayment ? (
         <span className="inline-flex items-center gap-1.5 rounded-full border border-owner-warn-soft-border bg-owner-warn-soft px-3 py-1 text-[13px] font-bold text-owner-warn-dark">
           <span aria-hidden="true">+</span>
@@ -328,6 +363,50 @@ function AmountChips({ item }: { item: ApprovalQueueItem }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+/** Stage 2 (B.a): icon (two stacked pages) + text, never colour alone. */
+function DuplicateChip({ n }: { n: number }) {
+  const t = useT();
+  return (
+    <span data-testid="dup-chip" className="inline-flex items-center gap-1.5 rounded-full border border-owner-danger-soft-border bg-owner-danger-soft px-3 py-1 text-[13px] font-bold text-owner-danger">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="8" y="8" width="12" height="13" rx="2" />
+        <path d="M16 8V5a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2h2" />
+      </svg>
+      {n === 1 ? t("appr.dup.chip.one") : t("appr.dup.chip.many", { n })}
+    </span>
+  );
+}
+
+function DuplicateDialog({ item, n, onCancel, onConfirm }: { item: ApprovalQueueItem; n: number; onCancel: () => void; onConfirm: () => void }) {
+  const t = useT();
+  const titleId = useId();
+  return (
+    <ModalShell labelledBy={titleId} onClose={onCancel} maxWidthClass="md:max-w-[520px]">
+      <div className="flex flex-col gap-4 p-5 md:p-7" data-testid="dup-dialog">
+        <h2 id={titleId} className="flex items-start gap-2 font-khelo-display text-[24px] font-extrabold leading-tight text-owner-ink">
+          <span aria-hidden="true" className="mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-owner-danger-soft text-[16px] text-owner-danger">
+            !
+          </span>
+          {t("appr.dup.title")}
+        </h2>
+        <DialogSummary item={item} />
+        <p data-testid="dup-question" className="text-[16px] font-bold leading-6 text-owner-ink">
+          {n === 1 ? t("appr.dup.question.one") : t("appr.dup.question.many", { n })}
+        </p>
+        <p className="text-[14px] text-owner-ink-muted">{t("appr.dup.help")}</p>
+        <div className="flex flex-wrap gap-2.5 pt-1">
+          <button type="button" data-testid="dup-back" onClick={onCancel} className={`min-h-12 flex-1 basis-28 rounded-xl border border-owner-border px-4 font-semibold text-owner-ink ${focusRing}`}>
+            {t("appr.dup.back")}
+          </button>
+          <button type="button" data-testid="dup-confirm" onClick={onConfirm} className={`min-h-12 flex-1 basis-48 rounded-xl bg-owner-danger px-4 font-bold text-white ${focusRing}`}>
+            {t("appr.dup.confirm")}
+          </button>
+        </div>
+      </div>
+    </ModalShell>
   );
 }
 

@@ -16,8 +16,10 @@ import {
   courtSetupProblem,
   defaultCourtSetup,
   pktInstant,
+  DEFAULT_BOOKING_HORIZON_DAYS,
   type Court,
   type CourtSetup,
+  type CreateVenueInput,
   type Venue,
 } from "@court-booking/types";
 
@@ -37,7 +39,9 @@ import {
   advancePriceFromSetup,
   type AdvanceDraft,
 } from "@/components/advance-settings";
-import { RemindersCard } from "@/components/reminders-card";
+import { VenueRemindersCard } from "@/components/reminders-card";
+import { IdentityCard } from "@/components/identity-card";
+import { DefaultHint } from "@/components/default-hint";
 import { PhotoManager } from "@/components/photo-manager";
 import { AmenityPicker, CourtIdentityFields } from "@/components/court-identity-fields";
 import { CourtTabs } from "@/components/court-tabs";
@@ -105,6 +109,8 @@ export default function VenueSettingsScreen() {
         {section === "venue" ? (
           activeVenue ? (
             <>
+              {/* Stage 2: the owner's CNIC (owner only; masked). First, so the Overview banner's "CNIC dein" lands on it. */}
+              <IdentityCard />
               {/* QA signup-venue round item 3: post-approval editing for the fields the wizard's own
                   copy already promised are editable (name / WhatsApp / bank details). */}
               <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} activeSports={courts.map((c) => c.sport)} />
@@ -115,8 +121,13 @@ export default function VenueSettingsScreen() {
                 initialAllowed={activeVenue.cancellation_allowed}
                 initialCutoff={activeVenue.cancellation_cutoff_hours}
               />
-              {/* B1 preview (Stage 1): not saved until the per-venue timer columns exist (Stage 2). */}
-              <RemindersCard key={`reminders-${activeVenue.id}`} />
+              <BookingHorizonCard
+                key={`horizon-${activeVenue.id}`}
+                venueId={activeVenue.id}
+                initialDays={activeVenue.booking_horizon_days}
+              />
+              {/* Stage 2: hold / reminders / auto-cancel, saved per venue (null = default). */}
+              <VenueRemindersCard key={`reminders-${activeVenue.id}`} venueId={activeVenue.id} />
               <VenuePhotosCard
                 key={`photos-${activeVenue.id}`}
                 venueId={activeVenue.id}
@@ -349,6 +360,65 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
       <PrimaryButton label="Save cancellation policy" onPress={save} loading={saving} />
     </View>
+  );
+}
+
+/** Stage 2: how many days ahead players can book (venue.booking_horizon_days, backend default 90, 1-365). */
+function BookingHorizonCard({ venueId, initialDays }: { venueId: string; initialDays: number | undefined }) {
+  const queryClient = useQueryClient();
+  const [days, setDays] = useState(String(initialDays ?? DEFAULT_BOOKING_HORIZON_DAYS));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const n = Number(days);
+  const problem = !days.trim() || !Number.isInteger(n) || n < 1 || n > 365 ? "1 se 365 din ke beech rakhein." : null;
+
+  async function save() {
+    if (problem) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      // booking_horizon_days is accepted by PATCH /venues/{id} (VenueUpdateIn) but not in the shared CreateVenueInput type
+      const patch = { booking_horizon_days: n } as Partial<CreateVenueInput>;
+      await api.venues.update(venueId, patch);
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ ok: true, text: "Saved." });
+    } catch (e) {
+      setMessage({ ok: false, text: friendlyErrorMessage(e) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>Kitne din aage tak booking</SectionLabel>
+      <View className="gap-1.5">
+        <TextField
+          label="Players kitne din aage tak book kar sakte hain"
+          value={days}
+          onChangeText={(v) => {
+            setMessage(null);
+            setDays(v.replace(/\D/g, ""));
+          }}
+          keyboardType="number-pad"
+          mono
+          error={problem}
+          testID="horizon-days"
+        />
+        <DefaultHint
+          settingKey="booking_horizon_days"
+          value={days.trim() ? n : null}
+          onReset={() => setDays(String(DEFAULT_BOOKING_HORIZON_DAYS))}
+          testID="default-horizon"
+        />
+      </View>
+      {message ? (
+        <Text accessibilityRole="alert" className="font-plex-semibold text-[13.5px]" style={{ color: message.ok ? "#0E6274" : "#C13525" }}>
+          {message.text}
+        </Text>
+      ) : null}
+      <PrimaryButton label="Save booking window" onPress={save} disabled={!!problem || saving} loading={saving} />
+    </SectionCard>
   );
 }
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Owner Round 2 (W3) check: refund breakdown dialog (A10), advance card in Venue Settings + wizard (A11), payment reminders
- * preview (B1) and the readable bell (A6). The API is MOCKED (context.route), no backend needed.
+ * Owner Round 2 (W3) check: refund breakdown dialog (A10) and the readable bell (A6). The API is MOCKED (context.route), no
+ * backend needed. The old Venue Settings / wizard sections (advance card, preview-only reminders card) were RETIRED after
+ * Stage 2: `stage2-settings-cnic-check.cjs` covers the saveable timers card, the advance card and every "Default" hint now.
+ * Stage 2: a refund whose screenshot was also credited on other bookings shows a warning chip (OwnerRefund.duplicate_proof).
  * Run against a PRODUCTION build served from a COPY of apps/web (never next dev):
  *   BASE_URL=http://localhost:3823 PLAYWRIGHT_PATH=... node e2e/round2-refunds-settings-bell-check.cjs
  * Covers en + ru at 360 / 768 / 1280.
@@ -46,8 +48,8 @@ function refund(id, over) {
   };
 }
 const REFUNDS = [
-  refund("r1", { player_sent: 10000, refund_due: 2000, already_refunded: 0, payment_id: "pay1" }),
-  refund("r2", { player_name: "Mujtaba Anwer", player_sent: 5000, refund_due: 3000, already_refunded: 1000, refunded_amount: 1000, remaining_amount: 2000, refund_amount: 3000 }),
+  refund("r1", { player_sent: 10000, refund_due: 2000, already_refunded: 0, payment_id: "pay1", duplicate_proof: { used_on_bookings: 2 } }),
+  refund("r2", { duplicate_proof: null, player_name: "Mujtaba Anwer", player_sent: 5000, refund_due: 3000, already_refunded: 1000, refunded_amount: 1000, remaining_amount: 2000, refund_amount: 3000 }),
   refund("r3", { player_name: "Sara Khan", player_sent: 1500, refund_due: 1500, already_refunded: 1500, refunded_amount: 1500, remaining_amount: 0, refund_amount: 1500 }),
   refund("r4", { player_name: "Old Backend", refund_amount: 1200, remaining_amount: undefined, refunded_amount: null }),
 ];
@@ -86,11 +88,7 @@ const TEXT = {
     full: "Full PKR 2,000",
     none: "No refund left to send",
     success: "Refund recorded",
-    y120: "Reminders at 10, 40, 70, 100 minutes. Final warning at 115, cancel at 120.",
-    y30: "Reminder at 10 minutes. Final warning at 25, cancel at 30.",
-    soon: "Saving these settings is coming soon",
-    everyErr: "at least 5 minutes",
-    defaultLine: "If you set nothing: the player pays PKR 4,000 now (100%",
+    dup: "This screenshot was also credited on 2 other bookings",
     bellTitle: "New payment waiting for approval",
     bellContext: "Abbas Zafar - Futsal 1 - Today 9 PM - PKR 2,000",
     bellDelivery: "Sent by WhatsApp",
@@ -110,11 +108,7 @@ const TEXT = {
     full: "Poora PKR 2,000",
     none: "Koi refund baqi nahi",
     success: "Refund record ho gaya",
-    y120: "Reminder 10, 40, 70, 100 minute par. 115 par aakhri warning, 120 par cancel.",
-    y30: "Reminder 10 minute par. 25 par aakhri warning, 30 par cancel.",
-    soon: "Ye settings save karne ka option jald aa raha hai",
-    everyErr: "kam az kam 5 minute",
-    defaultLine: "Agar aap kuch set na karein: player abhi PKR 4,000 dega (100%",
+    dup: "Ye screenshot 2 aur bookings par bhi credit hua",
     bellTitle: "Naya payment approval ke liye",
     bellContext: "Abbas Zafar - Futsal 1 - Aaj 9 PM - PKR 2,000",
     bellDelivery: "WhatsApp par bheja gaya",
@@ -158,6 +152,9 @@ async function newCtx(browser, { width, lang, state }) {
     if (p === "/owners/venues") return json(route, [VENUE]);
     if (p === "/owners/badges") return json(route, { approvals: 1, refunds: 4 });
     if (p === "/owners/premium/notices") return json(route, []);
+    if (p === "/owners/me/permissions") return json(route, { role: "owner", venue_permissions: [{ venue_id: "v1", permissions: [] }] });
+    if (p === "/owners/identity") return json(route, { status: "verified", masked: "*****-*******-1", flags: [] });
+    if (p === "/users/me/web-push/config") return json(route, { enabled: false, public_key: null });
     if (p === "/owners/refunds") {
       if (state.refunds === "denied") return json(route, { error: { code: "NOT_STAFF_PERMITTED", message: "Your account isn't allowed to do this." } }, 403);
       return json(route, REFUNDS);
@@ -214,22 +211,6 @@ const overflowInfo = (page) =>
     return out.slice(0, 5).join(", ");
   });
 
-/** Every visible interactive control in `scope` has an accessible name and a >= 44px (or 40 for inline chips) target. */
-async function smallTargets(page, scope) {
-  return page.evaluate((sel) => {
-    const root = document.querySelector(sel) || document.body;
-    const bad = [];
-    root.querySelectorAll("button, a[href], input:not([type=hidden]), summary").forEach((el) => {
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return;
-      const t = el.getAttribute("type");
-      if (t === "radio" || t === "checkbox" || t === "file") return; // the wrapping label is the target
-      if (r.height < 40) bad.push(`${el.tagName}:${(el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 24)}@${Math.round(r.height)}`);
-    });
-    return bad;
-  }, scope);
-}
-
 async function refundsCheck(browser, width, lang, f) {
   const T = TEXT[lang];
   const errors = [];
@@ -243,6 +224,15 @@ async function refundsCheck(browser, width, lang, f) {
   if (!(await rows.nth(1).innerText()).includes(T.partial)) f.push(`${tag}: partial row has no "${T.partial}" chip`);
   if ((await rows.nth(0).locator('[data-testid="shot-thumb"]').count()) < 1) f.push(`${tag}: row with payment id shows no screenshot thumb`);
   if ((await rows.nth(3).locator('[data-testid="shot-thumb"]').count()) !== 0) f.push(`${tag}: row without payment id shows a thumb`);
+  // Stage 2: duplicate_proof -> warning chip (icon + text) only on that row; null / missing -> nothing
+  const dup = rows.nth(0).locator('[data-testid="refund-dup-chip"]');
+  if ((await dup.count()) !== 1) f.push(`${tag}: duplicate_proof row has no warning chip`);
+  else {
+    const dt = (await dup.innerText()).trim();
+    if (dt !== T.dup) f.push(`${tag}: duplicate chip text "${dt}"`);
+    if ((await dup.locator("svg").count()) !== 1) f.push(`${tag}: duplicate chip has no icon`);
+  }
+  if ((await page.locator('[data-testid="refund-dup-chip"]').count()) !== 1) f.push(`${tag}: duplicate chip on rows without duplicate_proof`);
   if ((await overflow(page)) > 1) f.push(`${tag}: horizontal scroll: ${await overflowInfo(page)}`);
   await page.screenshot({ path: `${SHOTS}/w3-refunds-${lang}-${width}.png`, fullPage: true });
 
@@ -322,109 +312,6 @@ async function refundsDeniedCheck(browser, width, lang, f) {
   await context.close();
 }
 
-async function advanceTestIds(card) {
-  return card.evaluate((el) => [...el.querySelectorAll("[data-testid]")].map((x) => x.getAttribute("data-testid")).filter((x) => x.startsWith("adv")).sort());
-}
-
-async function settingsCheck(browser, width, lang, f, parity) {
-  const T = TEXT[lang];
-  const errors = [];
-  const state = freshState();
-  const context = await newCtx(browser, { width, lang, state });
-  const page = await openPage(context, "/dashboard/owner/settings", errors);
-  const tag = `settings ${lang}@${width}`;
-  if ((await page.locator("h1").count()) !== 1) f.push(`${tag}: one h1`);
-  const card = page.locator('[data-testid="reminders-card"]');
-  if (!(await card.count())) f.push(`${tag}: no reminders card`);
-  else {
-    if (!(await card.locator('[data-testid="timer-coming-soon"]').innerText()).includes(T.soon)) f.push(`${tag}: no "coming soon" note`);
-    await card.locator('[data-testid="timer-autoCancel"]').check();
-    await card.locator('[data-testid="timer-autoCancelMin"]').fill("120");
-    const t120 = (await card.locator('[data-testid="timer-preview-text"]').innerText()).trim();
-    if (t120 !== T.y120) f.push(`${tag}: Y=120 preview "${t120}"`);
-    await card.locator('[data-testid="timer-autoCancelMin"]').fill("30");
-    const t30 = (await card.locator('[data-testid="timer-preview-text"]').innerText()).trim();
-    if (t30 !== T.y30) f.push(`${tag}: Y=30 preview "${t30}"`);
-    await card.locator('[data-testid="timer-everyMin"]').fill("2");
-    if (!(await card.innerText()).includes(T.everyErr)) f.push(`${tag}: no Roman Urdu/English error for every=2`);
-    if ((await page.locator("button, a").filter({ hasText: /^Save$|save karein$/i }).count()) > 0 && false) f.push("");
-    await card.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${SHOTS}/w3-reminders-${lang}-${width}.png` });
-    const small = await smallTargets(page, '[data-testid="reminders-card"]');
-    if (small.length) f.push(`${tag}: small targets in reminders card: ${small.join(", ")}`);
-  }
-  if ((await overflow(page)) > 1) f.push(`${tag}: venue tab horizontal scroll: ${await overflowInfo(page)}`);
-
-  await page.screenshot({ path: `${SHOTS}/w3-settings-venue-${lang}-${width}.png`, fullPage: true });
-  await page.locator("#settings-tab-courts").click({ timeout: 8000 }).catch(() => f.push(`${tag}: no Courts tab (url ${page.url()})`));
-  const adv = page.locator('[data-testid="advance-card"]');
-  await adv.waitFor({ timeout: 8000 }).catch(() => {});
-  if (!(await adv.count())) f.push(`${tag}: no advance card on the Courts tab`);
-  else {
-    const ex = await adv.locator('[data-testid="adv-example"]').innerText();
-    if (!/PKR 4,000/.test(ex) || !/PKR 2,000/.test(ex)) f.push(`${tag}: example "${ex.replace(/\s+/g, " ")}"`);
-    const def = await adv.locator('[data-testid="adv-default-line"]').innerText();
-    if (!def.includes(T.defaultLine)) f.push(`${tag}: default line "${def}"`);
-    // live: change the percentage
-    await adv.locator('[data-testid="adv-value"] input').fill("25");
-    const ex2 = await adv.locator('[data-testid="adv-example"]').innerText();
-    if (!/PKR 1,000/.test(ex2)) f.push(`${tag}: example not live after 25% ("${ex2.replace(/\s+/g, " ")}")`);
-    await adv.locator('[data-testid="adv-value"] input').fill("50");
-    parity.settings = await advanceTestIds(adv);
-    await adv.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${SHOTS}/w3-advance-settings-${lang}-${width}.png` });
-  }
-  if ((await overflow(page)) > 1) f.push(`${tag}: courts tab horizontal scroll: ${await overflowInfo(page)}`);
-  for (const e of errors) f.push(`${tag}: ${e}`);
-  if (state.unmocked.length) console.log(`  (${tag} unmocked: ${[...new Set(state.unmocked)].join(", ")})`);
-  await context.close();
-}
-
-async function wizardCheck(browser, width, lang, f, parity) {
-  const T = TEXT[lang];
-  const errors = [];
-  const state = freshState();
-  const context = await newCtx(browser, { width, lang, state });
-  const page = await openPage(context, "/venue-setup/courts", errors);
-  const tag = `wizard ${lang}@${width}`;
-  if ((await page.locator("h1").count()) !== 1) f.push(`${tag}: one h1`);
-  const adv = page.locator('[data-testid="advance-card"]');
-  if (!(await adv.count())) {
-    f.push(`${tag}: no advance card in the wizard`);
-  } else {
-    const before = await adv.locator('[data-testid="adv-example"]').innerText();
-    if (/PKR \d/.test(before.split("\n").slice(1).join(" "))) f.push(`${tag}: example shows money before a price ("${before}")`);
-    await page.locator('input[placeholder="2500"]').first().fill("4000");
-    // 60-minute minimum so the example reads one hour (the default court is 90)
-    const def = await adv.locator('[data-testid="adv-default-line"]').innerText();
-    if (!/PKR 4,000|PKR 6,000/.test(def)) f.push(`${tag}: default line "${def}"`);
-    await adv.locator('[data-testid="adv-opt-percent"]').click();
-    await adv.locator('[data-testid="adv-value"] input').fill("50");
-    const ex = await adv.locator('[data-testid="adv-example"]').innerText();
-    if (!/PKR 4,000/.test(ex) || !/PKR 2,000/.test(ex)) f.push(`${tag}: example "${ex.replace(/\s+/g, " ")}"`);
-    if (!def.startsWith(T.defaultLine.split(":")[0])) f.push(`${tag}: default line wording "${def}"`);
-    parity.wizard = await advanceTestIds(adv);
-    await adv.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${SHOTS}/w3-advance-wizard-${lang}-${width}.png` });
-  }
-  const advd = page.locator('[data-testid="wizard-advanced"]');
-  if (!(await advd.count())) f.push(`${tag}: no Advanced section`);
-  else {
-    await advd.locator("summary").click();
-    const card = advd.locator('[data-testid="reminders-card"]');
-    if (!(await card.count())) f.push(`${tag}: no reminders card under Advanced`);
-    else {
-      await card.locator('[data-testid="timer-autoCancel"]').check();
-      await card.locator('[data-testid="timer-autoCancelMin"]').fill("120");
-      const t = (await card.locator('[data-testid="timer-preview-text"]').innerText()).trim();
-      if (t !== T.y120) f.push(`${tag}: wizard Y=120 preview "${t}"`);
-    }
-  }
-  if ((await overflow(page)) > 1) f.push(`${tag}: horizontal scroll: ${await overflowInfo(page)}`);
-  for (const e of errors) f.push(`${tag}: ${e}`);
-  await context.close();
-}
-
 async function bellCheck(browser, width, lang, f) {
   const T = TEXT[lang];
   const errors = [];
@@ -488,15 +375,9 @@ async function run() {
   const fails = [];
   for (const lang of LANGS) {
     for (const width of WIDTHS) {
-      const parity = {};
       const f = [];
       await refundsCheck(browser, width, lang, f);
       await refundsDeniedCheck(browser, width, lang, f);
-      await settingsCheck(browser, width, lang, f, parity);
-      await wizardCheck(browser, width, lang, f, parity);
-      if (parity.settings && parity.wizard && JSON.stringify(parity.settings) !== JSON.stringify(parity.wizard)) {
-        f.push(`parity ${lang}@${width}: settings ${JSON.stringify(parity.settings)} vs wizard ${JSON.stringify(parity.wizard)}`);
-      }
       await bellCheck(browser, width, lang, f);
       console.log(`${lang}@${width}: ${f.length ? "FAIL" : "ok"}`);
       fails.push(...f);

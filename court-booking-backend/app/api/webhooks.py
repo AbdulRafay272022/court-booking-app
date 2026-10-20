@@ -19,6 +19,7 @@ from app.models.venue import Venue
 from app.services.ai_chat_service import AIChatService, explicit_proposal_data, is_plain_affirmative
 from app.errors import AppError, ErrorCode
 from app.services.booking_service import BookingService, booking_source_ctx
+from app.services.venue_timers import hold_minutes_for
 from app.services.chat_fallbacks import MUTATING_TOOLS, newer_text_exists, player_language, run_turn
 from app.services.chat_lock import ConversationBusy, conversation_locks
 from app.services.entitlement_service import EntitlementService
@@ -268,7 +269,7 @@ async def _held_reply(db: DbSession, settings: AppSettings, booking: Booking, la
         total=float(booking.price),
         duration_minutes=int((booking.ends_at - booking.starts_at).total_seconds() // 60),
         advance=float(booking.advance_amount),
-        hold_minutes=settings.BOOKING_HOLD_MINUTES,
+        hold_minutes=hold_minutes_for(venue),  # Round 2 Stage 2: the venue's own hold length
         bank_lines=[(label, str(bank[key])) for label, key in BANK_LABELS if bank and bank.get(key)],
     )
 

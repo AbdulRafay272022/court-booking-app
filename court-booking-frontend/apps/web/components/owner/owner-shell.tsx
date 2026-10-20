@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { unsubscribePushOnLogout } from "@/lib/web-push";
 import { suppressAuthRedirect, useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
@@ -15,6 +16,7 @@ import { SUPPORT_WHATSAPP_NUMBER, supportWhatsAppUrl } from "@/lib/support";
 import { Logo } from "@/components/auth/logo";
 import { VenuePicker, VenueStatusBanner } from "@/components/owner/venue-nav";
 import { PremiumNotices } from "@/components/owner/premium-notices";
+import { CnicBanner } from "@/components/identity/cnic-banner";
 import { NotificationBell } from "@/components/site/notification-bell";
 import { useT } from "@/components/i18n/lang-provider";
 
@@ -94,7 +96,9 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
     router.replace(`/venue-setup/status?venueId=${target.id}`);
   }, [venues, pathname, router, isStaff]);
 
-  function signOut() {
+  async function signOut() {
+    // drop this browser's Web Push subscription first (DELETE needs the session); best effort, capped at 2 s
+    await unsubscribePushOnLogout(api.users);
     suppressAuthRedirect(); // deliberate sign-out: land on "/", not on /login?next=
     useAuthStore.getState().signOut();
     router.push("/");
@@ -215,6 +219,7 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
           <NotificationBell tone="light" />
         </div>
         {!isStaff ? <PremiumNotices /> : null}
+        <CnicBanner />
         {activeVenue ? <VenueStatusBanner venue={activeVenue} /> : null}
         {children}
       </div>

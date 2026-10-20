@@ -3,16 +3,23 @@ import { ActivityIndicator, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 
 /**
  * Per Section 6.1: an owner with zero venues goes straight to the setup wizard;
  * one with a venue still under review sees the pending screen; otherwise, Today.
+ * Staff have no venues of their own (the API lists the venues they work at) and never run the setup wizard: straight to
+ * Overview, like web's owner shell.
  */
 export default function OwnerGateScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (useAuthStore.getState().user?.role === "staff") {
+      router.replace("/(owner)/today");
+      return;
+    }
     (async () => {
       try {
         const venues = await api.owners.venues();

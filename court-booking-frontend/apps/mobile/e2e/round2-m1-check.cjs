@@ -176,7 +176,7 @@ function defaultState() {
   state.refunds = () => [
     { id: "r1", booking_id: "b-r1", court_name: "Court 1", court_id: "c1", court_sport: "padel", venue_name: "Arena Khelo", player_name: "Mujtaba Anwer", player_phone: "0300 1111111",
       starts_at: at(pktToday, 18), reason: "player_cancelled_paid_booking", refund_amount: 2000, refund_status: "owed", refunded_amount: 500, remaining_amount: 1500,
-      player_sent: 10000, refund_due: 2000, already_refunded: 500, reason_label_key: "player_cancelled", refund_reference: null, refunded_at: null, created_at: iso(-5), is_overdue: false },
+      player_sent: 10000, refund_due: 2000, already_refunded: 500, reason_label_key: "player_cancelled", refund_reference: null, refunded_at: null, created_at: iso(-5), is_overdue: false, duplicate_proof: { used_on_bookings: 2 } },
     { id: "r2", booking_id: "b-r2", court_name: "Court 2", court_id: "c2", court_sport: "padel", venue_name: "Arena Khelo", player_name: "Abbas Zafar", player_phone: "0300 2222222",
       starts_at: at(pktToday, 19), reason: "payment_review_expired", refund_amount: 0, refund_status: "owed", refunded_amount: 0, remaining_amount: 0,
       player_sent: 2000, refund_due: 0, already_refunded: 0, reason_label_key: "review_expired", refund_reference: null, refunded_at: null, created_at: iso(-5), is_overdue: false },
@@ -433,6 +433,9 @@ function defaultState() {
     await page.getByText("Refunds to pay").first().waitFor({ timeout: 180000 });
     await page.getByText("Mujtaba Anwer").first().waitFor({ timeout: 30000 });
     check("A10 'Hissa wapas' chip on a partly refunded card", (await page.getByTestId("chip-partial").count()) === 1);
+    // Stage 2: duplicate_proof -> warning chip (icon + text) on that card only
+    const dupChip = page.getByTestId("refund-dup-chip");
+    check("Stage 2 duplicate_proof chip on the refund card (icon + text), only there", (await dupChip.count()) === 1 && (await dupChip.innerText()).trim() === "Ye screenshot 2 aur bookings par bhi credit hua" && (await dupChip.locator("svg").count()) === 1, (await dupChip.count()) ? await dupChip.innerText() : "none");
     await page.getByRole("button", { name: "Mujtaba Anwer refund" }).click();
     await page.getByTestId("refund-breakdown").first().waitFor({ timeout: 8000 });
     await page.waitForTimeout(500);

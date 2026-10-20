@@ -21,6 +21,7 @@ export type HistoryStatusFilter =
   | "refund"
   | "completed"
   | "short_paid"
+  | "status_pending"
   | BookingStatusKey;
 
 export type CompletionResult = "yes" | "no";
@@ -62,6 +63,8 @@ export interface OwnerBookingRow {
   /** Refund rows (and cancelled rows that have one). */
   refund_amount: number | null;
   refund_status: "owed" | "paid" | null;
+  /** Stage 2: booked, slot ended, not completed and not no_show yet (owner must mark). */
+  status_pending?: boolean;
 }
 
 export interface SlotCourtCounts {
@@ -98,6 +101,8 @@ export interface OwnerOverview {
   money: { collected: number; due: number; due_bookings: number };
   /** Round 2 (A7): held + payment_submitted for ANY date (venue + court filter). Optional for an older backend. */
   pending_all?: import("./round2").PendingAll;
+  /** Stage 2: bookings whose slot ended and the owner has not marked yet (any date). */
+  status_pending_count?: number;
   rows: OwnerBookingRow[];
 }
 

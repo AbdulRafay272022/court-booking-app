@@ -8,6 +8,8 @@ export interface ApprovalQueueItem extends PendingApproval {
   cancelled_at: string | null;
   has_screenshot: boolean;
   overpayment: { expected: number; ocr_amount: number; excess: number } | null;
+  /** Stage 2: the screenshot was already used on other bookings; approve needs confirm_duplicate. */
+  duplicate?: { used_on_bookings: number } | null;
 }
 
 export interface ApprovalsQueuePage {
@@ -42,6 +44,12 @@ export type NotificationKind =
   | "booking_cancelled"
   | "booking_reminder"
   | "hold_expiring"
+  /** Stage 2: owner reminder for a screenshot still waiting (event payment_reminder_<n>). */
+  | "payment_reminder"
+  /** Stage 2: "this booking will be cancelled in N minutes" (event payment_final_warning). */
+  | "payment_final_warning"
+  /** Stage 2: auto-cancelled with a screenshot on file; money may have to go back (event owner_payment_auto_cancelled). */
+  | "payment_auto_cancelled"
   | "other";
 
 export interface NotificationFeedItem {
@@ -58,6 +66,13 @@ export interface NotificationFeedItem {
     ends_at?: string;
     amount?: number;
     reason?: string;
+    /** Stage 2 (from notification_log.payload): digest totals, reminder details, announcement title. */
+    count?: number;
+    status_pending?: number;
+    reminder_no?: number;
+    minutes_waiting?: number;
+    minutes_to_cancel?: number;
+    title?: string;
   };
   link: { kind: "approvals" | "refunds" | "booking" | "bookings" | "overview" | "venue_status" | "none"; booking_id?: string };
   deliveries: { channel: "push" | "whatsapp" | "sms" | "web_push"; status: "sent" | "failed" }[];

@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import structlog
 from sqlalchemy import delete, func, select, update
@@ -10,10 +10,15 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.booking import Booking, BookingStatus
 from app.models.court import Court
+from app.models.payment import Payment
+from app.models.schedule import ScheduleTemplate
 from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
+from app.services.reminder_schedule import reminder_schedule, shift_to_open_hours
+from app.services.venue_timers import effective_timers, submitted_at_of
+from app.utils.timezone import naive_pkt_to_utc, utc_to_pkt_naive
 from app.services.waitlist_service import WaitlistService
 
 logger = structlog.get_logger(__name__)
@@ -38,15 +43,35 @@ async def expire_stale_bookings(session_factory: async_sessionmaker = AsyncSessi
                     user=player, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
                     reference_id=booking.id,
                 )
-            # A payment-review timeout means the owner sat on it -- flag them too.
+            # A payment-review timeout means the owner sat on it -- flag them too. Round 2 Stage 2: when a screenshot
+            # was on file the owner gets the auto-cancel notice instead ("paisa aaya hai to wapas dena hai"; the
+            # expired card in Approvals queues the refund through the existing payment_disputes path).
             if court and booking.cancellation_reason == "payment_review_expired":
                 venue = await db.get(Venue, court.venue_id)
                 owner = await db.get(User, venue.owner_id) if venue else None
                 if owner:
-                    await notifications.notify_booking_cancelled(
-                        user=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
-                        reference_id=booking.id,
+                    proof = await db.scalar(
+                        select(Payment)
+                        .where(
+                            Payment.booking_id == booking.id,
+                            Payment.review_verdict.is_(None),
+                            Payment.proof_key.is_not(None),
+                        )
+                        .order_by(Payment.created_at.desc())
+                        .limit(1)
                     )
+                    if proof is not None:
+                        amount = proof.ocr_amount if proof.ocr_amount is not None else proof.amount_claimed
+                        await notifications.notify_owner_payment_auto_cancelled(
+                            owner=owner, court_name=court.name, booking_id=booking.id,
+                            starts_at=booking.starts_at, ends_at=booking.ends_at,
+                            amount=float(amount) if amount is not None else None,
+                        )
+                    else:
+                        await notifications.notify_booking_cancelled(
+                            user=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
+                            reference_id=booking.id,
+                        )
             if court:
                 await waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
 
@@ -93,55 +118,125 @@ async def remind_expiring_holds(session_factory: async_sessionmaker = AsyncSessi
     return sent
 
 
-async def mark_overdue_no_shows(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
-    """BOOKED bookings that started NO_SHOW_GRACE_MINUTES ago with no check-in
-    become no-shows, which dents the player's reliability score."""
-    settings = get_settings()
-    async with session_factory() as db:
-        booking_service = BookingService(db, settings)
-        overdue = await booking_service.mark_overdue_no_shows()
-        logger.info("no_show_job.completed", count=len(overdue))
-        return len(overdue)
-
-
-async def escalate_pending_payment_reviews(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
-    """For every booking still awaiting owner review, fire the next
-    escalation step (WhatsApp at ESCALATION_WHATSAPP_MINUTES, SMS at
-    ESCALATION_SMS_MINUTES) if it's due and hasn't already gone out.
-    Submission time is derived from payment_deadline (set to submission +
-    PAYMENT_REVIEW_HOURS) since there's no separate "submitted_at" column."""
-    settings = get_settings()
-    escalated = 0
-    async with session_factory() as db:
-        notifications = NotificationService(db, settings)
-        result = await db.execute(
-            select(Booking).where(
-                Booking.status == BookingStatus.PAYMENT_SUBMITTED, Booking.payment_deadline.is_not(None)
+async def _venue_hours(db, venue_id, local_date: date) -> tuple[time | None, time | None]:
+    """The venue's operating window on `local_date` (Pakistan wall clock) for night-time shifting: the earliest
+    opening and the latest closing across its active courts' schedule for that weekday (a court open past midnight
+    makes the window overnight). (None, None) = no schedule = no shifting."""
+    rows = (
+        await db.execute(
+            select(ScheduleTemplate.open_time, ScheduleTemplate.close_time, ScheduleTemplate.closes_next_day)
+            .join(Court, Court.id == ScheduleTemplate.court_id)
+            .where(
+                Court.venue_id == venue_id,
+                Court.is_active.is_(True),
+                ScheduleTemplate.is_active.is_(True),
+                ScheduleTemplate.day_of_week == local_date.weekday(),
             )
         )
-        for booking in result.scalars().all():
-            submitted_at = booking.payment_deadline - timedelta(hours=settings.PAYMENT_REVIEW_HOURS)
-            minutes_elapsed = (datetime.now(timezone.utc) - submitted_at).total_seconds() / 60
+    ).all()
+    if not rows:
+        return None, None
+    opens = min(r[0] for r in rows)
+    overnight = [r[1] for r in rows if r[2]]
+    closes = max(overnight) if overnight else max(r[1] for r in rows)
+    return opens, closes
 
+
+async def _shifted(db, venue_id, due: datetime, cache: dict) -> datetime:
+    """`due` (UTC) moved into the venue's opening hours (reminder_schedule.shift_to_open_hours), back in UTC."""
+    local = utc_to_pkt_naive(due)
+    key = (venue_id, local.date())
+    if key not in cache:
+        cache[key] = await _venue_hours(db, venue_id, local.date())
+    open_t, close_t = cache[key]
+    return naive_pkt_to_utc(shift_to_open_hours(local, open_t, close_t))
+
+
+async def remind_pending_payment_reviews(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
+    """Round 2 Stage 2: owner reminders for screenshots still waiting for approval, timed by each venue's timers
+    (app/services/venue_timers.py -> reminder_schedule): reminder n at its minute after the submission, then ONE
+    final warning before the auto-cancel. Only during the venue's opening hours (a reminder due at night goes out
+    when it opens). Replaces the old WhatsApp-after-5 / SMS-after-15 ladder. Stops by itself when the owner acts or
+    the player cancels (only payment_submitted bookings are looked at). Deduped per booking through notification_log
+    (`payment_reminder_<n>`, `payment_final_warning`): when several are due at once (a late run, or the morning after
+    a night) only the latest one goes out, and nothing earlier than an already-sent step is ever sent. Submission
+    time = the pending payment's created_at (fallback: payment_deadline minus the auto-cancel minutes). Returns how
+    many messages went out."""
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    sent = 0
+    hours_cache: dict = {}
+    async with session_factory() as db:
+        notifications = NotificationService(db, settings)
+        bookings = (
+            await db.execute(select(Booking).where(Booking.status == BookingStatus.PAYMENT_SUBMITTED))
+        ).scalars().all()
+        for booking in bookings:
             court = await db.get(Court, booking.court_id)
-            if court is None:
-                continue
-            venue = await db.get(Venue, court.venue_id)
+            venue = await db.get(Venue, court.venue_id) if court else None
             owner = await db.get(User, venue.owner_id) if venue else None
             if owner is None:
                 continue
-
-            steps_fired = await notifications.escalate_payment_submitted(
-                owner=owner,
-                court_name=court.name,
-                amount=float(booking.advance_amount),
-                booking_id=booking.id,
-                minutes_elapsed=minutes_elapsed,
+            eff = effective_timers(venue)
+            submitted_at = await submitted_at_of(db, booking)
+            if submitted_at is None:
+                if booking.payment_deadline is None:
+                    continue
+                submitted_at = booking.payment_deadline - timedelta(minutes=eff["auto_cancel_after_min"])
+            cancel_min = eff["auto_cancel_after_min"] if eff["auto_cancel_enabled"] else None
+            reminders, final_at, _cancel_at = reminder_schedule(
+                eff["first_reminder_after_min"],
+                eff["repeat_every_min"],
+                eff["max_reminders"] if eff["reminders_enabled"] else 0,
+                cancel_min,
             )
-            escalated += len(steps_fired)
+            steps: list[tuple[str, int | None]] = [(f"payment_reminder_{n}", n) for n in range(1, len(reminders) + 1)]
+            minutes = list(reminders)
+            if final_at is not None:
+                steps.append(("payment_final_warning", None))
+                minutes.append(final_at)
+            due_index = -1
+            for i, minute in enumerate(minutes):
+                at = await _shifted(db, venue.id, submitted_at + timedelta(minutes=minute), hours_cache)
+                if at <= now:
+                    due_index = i
+            if due_index < 0:
+                continue
+            already = False
+            for ev, _n in steps[due_index:]:
+                if await notifications.has_sent(owner.id, ev, booking.id):
+                    already = True
+                    break
+            if already:
+                continue
+            event_type, n = steps[due_index]
+            minutes_waiting = int((now - submitted_at).total_seconds() // 60)
+            minutes_to_cancel = None
+            if booking.payment_deadline is not None:
+                minutes_to_cancel = max(0, math.ceil((booking.payment_deadline - now).total_seconds() / 60))
+            player = await db.get(User, booking.player_id) if booking.player_id else None
+            try:
+                if await notifications.notify_owner_payment_reminder(
+                    owner=owner,
+                    event_type=event_type,
+                    court_name=court.name,
+                    venue_name=venue.name,
+                    amount=float(booking.advance_amount),
+                    booking_id=booking.id,
+                    starts_at=booking.starts_at,
+                    ends_at=booking.ends_at,
+                    player_name=booking.player_name or (player.name if player and player.name else ""),
+                    minutes_waiting=minutes_waiting,
+                    minutes_to_cancel=minutes_to_cancel,
+                    reminder_no=n,
+                ):
+                    sent += 1
+            except Exception:  # noqa: BLE001 -- one owner's send problem never stops the job
+                logger.warning("payment_reminder_job.send_failed", booking_id=str(booking.id), exc_info=True)
+                await db.rollback()
 
-    logger.info("escalation_job.completed", escalated=escalated)
-    return escalated
+    logger.info("payment_reminder_job.completed", sent=sent)
+    return sent
 
 
 async def cleanup_waitlist(session_factory: async_sessionmaker = AsyncSessionLocal) -> int:
@@ -222,16 +317,16 @@ async def run_expiry_job(session_factory: async_sessionmaker = AsyncSessionLocal
     docstrings for how each one achieves that."""
     expired = await expire_stale_bookings(session_factory)
     hold_reminders = await remind_expiring_holds(session_factory)
-    no_shows = await mark_overdue_no_shows(session_factory)
-    escalated = await escalate_pending_payment_reviews(session_factory)
+    # Round 2 Stage 2 (spec C.2): no automatic booked -> no_show any more. Owners mark a finished booking themselves
+    # (Haan/Nahi -> completed, or "Nahi aaye" -> no_show); until then it shows as "Status baqi".
+    payment_reminders = await remind_pending_payment_reviews(session_factory)
     waitlist_deactivated = await cleanup_waitlist(session_factory)
     unverified_purged = await purge_stale_unverified_signups(session_factory)
 
     result = {
         "expired_bookings": expired,
         "hold_reminders_sent": hold_reminders,
-        "no_shows": no_shows,
-        "escalations_sent": escalated,
+        "payment_reminders_sent": payment_reminders,
         "waitlist_entries_deactivated": waitlist_deactivated,
         "unverified_signups_purged": unverified_purged,
     }

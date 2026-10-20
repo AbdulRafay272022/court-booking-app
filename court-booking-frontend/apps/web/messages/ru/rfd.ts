@@ -49,4 +49,6 @@ export const ruRfd = {
   "rfd.reason.owner_cancelled_paid_booking": "Aap ne paid booking cancel ki.",
   "rfd.reason.system_cancelled_paid_booking": "System ne paid booking cancel ki.",
   "rfd.reason.generic": "Refund ki wajah: {reason}",
+  "rfd.dup.one": "Ye screenshot 1 aur booking par bhi credit hua",
+  "rfd.dup.many": "Ye screenshot {n} aur bookings par bhi credit hua",
 } as const;

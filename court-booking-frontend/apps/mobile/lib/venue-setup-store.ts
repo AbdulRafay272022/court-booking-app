@@ -10,6 +10,8 @@ import {
   type CourtSetup,
 } from "@court-booking/types";
 
+import { EMPTY_TIMER_DRAFT, type TimerDraft } from "./settings-defaults";
+
 // SPORT_OPTIONS / AMENITY_OPTIONS now live in @court-booking/types (single source of truth shared with web).
 
 // Re-exported so existing imports keep working. The week is Monday-first, matching the backend (see court-setup.ts).
@@ -69,6 +71,9 @@ interface VenueSetupState {
   /** Ids of courts that were already created on the server and THEN removed from the draft (their tab was deleted after a
    * partial submit). Submit deactivates them so a removed tab never leaves a live court behind. */
   removedCreatedCourtIds: string[];
+  /** Stage 2: hold / reminders / auto-cancel from the wizard's "Advanced" (null fields = default). PUT to
+   * /owners/venues/{id}/timers after the venue is created. The CNIC is NOT here: it is never persisted. */
+  timers: TimerDraft;
 
   setField: <K extends keyof VenueSetupState>(key: K, value: VenueSetupState[K]) => void;
   toggleSport: (sport: string) => void;
@@ -100,6 +105,7 @@ const initialState = {
   createdVenueId: null as string | null,
   createdCourtIds: {} as Record<number, string>,
   removedCreatedCourtIds: [] as string[],
+  timers: { ...EMPTY_TIMER_DRAFT } as TimerDraft,
 };
 
 export const useVenueSetupStore = create<VenueSetupState>()(
@@ -159,11 +165,11 @@ export const useVenueSetupStore = create<VenueSetupState>()(
         set({ createdCourtIds: { ...get().createdCourtIds, [index]: courtId } });
       },
 
-      reset: () => set(initialState),
+      reset: () => set({ ...initialState, timers: { ...EMPTY_TIMER_DRAFT } }),
     }),
     {
       name: "maidan.venue-setup-draft",
-      version: 4,
+      version: 5,
       // v1 kept ONE shared cancellation setting on the draft; v2 moved it onto each court (Section 31). v3 (Section 32
       // Part 4) makes it ONE per venue again and gives every court its OWN hours and prices instead of one shared set.
       // An owner who is mid-wizard keeps everything they had typed: the shared hours/prices are copied onto each
@@ -217,6 +223,10 @@ export const useVenueSetupStore = create<VenueSetupState>()(
           const courts = Array.isArray(state.courts) ? (state.courts as Record<string, unknown>[]) : [];
           state.courts = courts.map((c) => ({ ...c, isIndoor: typeof c.isIndoor === "boolean" ? c.isIndoor : false }));
         }
+        // v5 (Stage 2): venue timers from "Advanced". Older drafts have none = every timer on its default.
+        // (Every version lands here, so a v5 draft with a damaged timers object is repaired too.)
+        const t = (state.timers ?? {}) as Partial<TimerDraft>;
+        state.timers = { ...EMPTY_TIMER_DRAFT, ...(typeof t === "object" && t ? t : {}) };
         // Whatever version it came from, never hand the app a draft missing a field the screens now read.
         if (!Array.isArray(state.sports)) state.sports = [];
         if (!Array.isArray(state.amenities)) state.amenities = [];

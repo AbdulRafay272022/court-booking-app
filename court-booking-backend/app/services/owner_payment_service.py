@@ -333,12 +333,14 @@ class OwnerPaymentService:
                     owner, "premium_payment_approved", "Payment received",
                     f"Thank you! Your premium payment of {format_pkr(invoice.total_pkr)} is confirmed.",
                     reference_id=invoice.id,
+                    payload={"amount": invoice.total_pkr},
                 )
             else:
                 await notifier._send_push_and_whatsapp(
                     owner, "premium_payment_rejected", "Payment not accepted",
                     f"Your premium payment screenshot was not accepted: {reason}. Please upload it again.",
                     reference_id=invoice.id,
+                    payload={"amount": invoice.total_pkr, "reason": reason} if reason else {"amount": invoice.total_pkr},
                 )
             await self.db.commit()
         except Exception:  # noqa: BLE001 -- a failed notification never undoes the decision

@@ -9,11 +9,12 @@ import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDayHeader, formatPKR, formatWhen } from "@/lib/format";
-import { OV } from "@/lib/overview";
+import { OV, PERM, duplicateCreditText } from "@/lib/overview";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { OwnerTabBar } from "@/components/owner-tab-bar";
-import { ChevronLeftIcon } from "@/components/icons";
+import { AlertTriangleIcon, ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { BookingLinks } from "@/components/booking-links";
@@ -30,19 +31,22 @@ export default function RefundsScreen() {
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Stage 2 (B.b): staff without the refunds permission get the no-permission state up front (no request, no buttons).
+  const perms = useMyPermissions();
+  const allowed = perms.can(PERM.refunds);
 
   const query = useQuery({
     queryKey: ["owner-refunds", activeVenueId, filterDate, filterCourts.join(",")],
     queryFn: () => api.owners.refunds(activeVenueId, { date: filterDate, courtIds: filterCourts }),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && allowed && perms.settled,
   });
 
   const list = query.data ?? [];
   const open = list.find((r) => r.id === openId) ?? null;
-  const loading = venuesLoading || query.isLoading;
-  // Staff without the refunds permission: 403 NOT_STAFF_PERMITTED -> ONE clear state (no count line, no retry).
-  const noPermission = query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED";
-  const showCount = !loading && !query.isError;
+  const loading = venuesLoading || !perms.settled || (allowed && query.isLoading);
+  // Staff without the refunds permission: known up front, or 403 NOT_STAFF_PERMITTED -> ONE clear state (no count line, no retry).
+  const noPermission = !allowed || (query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED");
+  const showCount = !loading && !query.isError && !noPermission;
   const courtText = (r: OwnerRefund) => courtLabel(r.court_name, r.court_sport ?? sportForCourtName(activeVenue?.courts, r.court_name));
 
   return (
@@ -108,6 +112,18 @@ export default function RefundsScreen() {
                   <View className="flex-1 gap-0.5">
                     <Text className="font-plex-bold text-owner-ink text-[14.5px]">{refund.player_name ?? refund.player_phone ?? "Player"}</Text>
                     <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{`${courtText(refund)} - ${formatWhen(refund.starts_at)}`}</Text>
+                    {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (
+                      <View
+                        testID="refund-dup-chip"
+                        className="flex-row items-center gap-1.5 self-start rounded-full px-2.5 mt-1"
+                        style={{ minHeight: 26, backgroundColor: OV.redBg, borderWidth: 1, borderColor: OV.redBorder }}
+                      >
+                        <AlertTriangleIcon size={13} color={OV.red} />
+                        <Text className="font-plex-bold text-[11.5px]" style={{ color: OV.red, flexShrink: 1 }}>
+                          {duplicateCreditText(refund.duplicate_proof.used_on_bookings)}
+                        </Text>
+                      </View>
+                    ) : null}
                     {refund.is_overdue ? (
                       <Text className="font-plex-semibold text-[11.5px]" style={{ color: "#A8432C" }}>
                         {`Der ho gayi - ${formatWhen(refund.created_at)} se baqi`}

@@ -81,15 +81,20 @@ class Settings(BaseSettings):
     PLATFORM_ACCOUNT_TITLE: str = ""
     PLATFORM_ACCOUNT_NUMBER: str = ""
     PLATFORM_IBAN: str = ""  # a feature keeps working this long after its paid period ends
+    # Round 2 Stage 2: hold length and payment auto-cancel now come from app/services/venue_timers.py (per venue; NULL =
+    # DEFAULTS there, which equal these two values). Kept as the documented "today's values" the defaults mirror.
     PAYMENT_REVIEW_HOURS: int = 2  # owner-action expiry after a proof is submitted
-    NO_SHOW_GRACE_MINUTES: int = 60  # how long past starts_at before an unchecked-in booking is a no-show
+    # Only the check-in "implausible timing" flag uses this now; the expiry job no longer marks no-shows (Stage 2).
+    NO_SHOW_GRACE_MINUTES: int = 60
 
     # Payment verification
     OCR_MATCH_TOLERANCE_PERCENT: float = 5.0
     DUPLICATE_HASH_DISTANCE: int = 10  # perceptual-hash Hamming distance threshold
     DUPLICATE_LOOKBACK_DAYS: int = 90
 
-    # Notification escalation (payment_submitted -> owner)
+    # Notification escalation (payment_submitted -> owner). UNUSED since Round 2 Stage 2: replaced by the venue-timed
+    # owner reminders (app/services/venue_timers.py + app/jobs/expiry_job.remind_pending_payment_reviews). Kept so an
+    # existing .env line stays harmless.
     ESCALATION_WHATSAPP_MINUTES: int = 5
     ESCALATION_SMS_MINUTES: int = 15
 
@@ -213,6 +218,18 @@ class Settings(BaseSettings):
     APNS_BUNDLE_ID: str = "com.maidan.app"  # must match ios.bundleIdentifier in app.json
     # Development-client builds register sandbox tokens; ad-hoc / TestFlight / App Store use production.
     APNS_USE_SANDBOX: bool = False
+
+    # Web Push (Round 2 Stage 2, docs/web-push-plan.md). All blank = feature off. PRIVATE = base64url of the
+    # 32-byte P-256 scalar, PUBLIC = base64url of the 65-byte uncompressed point (scripts/make_vapid_keys.py),
+    # SUBJECT = "mailto:<support email>". Rotating the pair invalidates every browser subscription.
+    WEB_PUSH_VAPID_PRIVATE_KEY: str = ""
+    WEB_PUSH_VAPID_PUBLIC_KEY: str = ""
+    WEB_PUSH_VAPID_SUBJECT: str = ""
+
+    # Owner CNIC (Round 2 Stage 2): HMAC-SHA256 key for owner_identity.cnic_hash (duplicate detection without
+    # decrypting). Blank + DEBUG=false -> POST /owners/identity answers 503 CNIC_NOT_CONFIGURED (never hashes
+    # with an empty key). Changing it later breaks duplicate matching against rows hashed with the old key.
+    CNIC_HASH_KEY: str = ""
 
     # Sentry
     SENTRY_DSN: str = ""

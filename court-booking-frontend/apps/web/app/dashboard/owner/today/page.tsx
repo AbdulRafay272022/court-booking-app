@@ -17,6 +17,8 @@ import { ErrorState } from "@/components/error-state";
 import { BookingDetail } from "@/components/owner/booking-detail";
 import { BookingsTable } from "@/components/owner/overview/bookings-table";
 import { CompletionDialog, completionErrorText } from "@/components/owner/overview/completion-dialog";
+import { useNoShowFlow } from "@/components/owner/completion-dialog";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { CourtSelect } from "@/components/owner/overview/court-select";
 import { DateSelect } from "@/components/owner/overview/date-select";
 import { KpiCards } from "@/components/owner/overview/kpi-cards";
@@ -76,6 +78,10 @@ function OverviewScreen() {
   const search = useSearchParams();
   const queryClient = useQueryClient();
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
+  const perms = useMyPermissions();
+  const canComplete = perms.can("record_payments");
+  // The backend allows "Nahi aaye" for check_in OR record_payments (stage2-contract section 5).
+  const canNoShow = perms.can("check_in") || perms.can("record_payments");
 
   const today = pktDateString();
   const dateParam = search.get("date");
@@ -134,7 +140,8 @@ function OverviewScreen() {
     setBusyId(row.booking_id);
     await queryClient.cancelQueries({ queryKey });
     const previous = queryClient.getQueryData<OwnerOverview>(queryKey);
-    queryClient.setQueryData<OwnerOverview>(queryKey, (prev) => (prev ? patchOverviewRow(prev, applyCompletion(row, "yes")) : prev));
+    // Stage 2: Haan also makes the booking "completed" on the server, so the row stops being "status baqi" at once
+    queryClient.setQueryData<OwnerOverview>(queryKey, (prev) => (prev ? patchOverviewRow(prev, { ...applyCompletion(row, "yes"), status_pending: false }) : prev));
     try {
       applyServerRow(await api.owners.markCompletion(row.booking_id, { result: "yes" }));
     } catch (e) {
@@ -157,7 +164,9 @@ function OverviewScreen() {
   async function submitNo(row: OwnerBookingRow, body: CompletionInput): Promise<OwnerBookingRow> {
     await queryClient.cancelQueries({ queryKey });
     const previous = queryClient.getQueryData<OwnerOverview>(queryKey);
-    queryClient.setQueryData<OwnerOverview>(queryKey, (prev) => (prev ? patchOverviewRow(prev, applyReceivedNow(row, body.received_now ?? 0, body.reason ?? "")) : prev));
+    queryClient.setQueryData<OwnerOverview>(queryKey, (prev) =>
+      prev ? patchOverviewRow(prev, { ...applyReceivedNow(row, body.received_now ?? 0, body.reason ?? ""), status_pending: false }) : prev,
+    );
     try {
       const updated = await api.owners.markCompletion(row.booking_id, body);
       applyServerRow(updated);
@@ -168,6 +177,10 @@ function OverviewScreen() {
       throw e;
     }
   }
+
+  const noShow = useNoShowFlow(() => {
+    void queryClient.invalidateQueries({ queryKey: ["owner-overview"] });
+  });
 
   function openSlots(f: SlotFilter) {
     setSlotsFilter(f);
@@ -292,8 +305,13 @@ function OverviewScreen() {
             highlightId={highlightId}
             noPermission={noPermission}
             busyBookingId={busyId}
-            message={message}
+            message={message ?? (noShow.message?.kind === "error" ? noShow.message.text : null)}
+            canComplete={canComplete}
+            onNoShow={canNoShow ? noShow.ask : undefined}
           />
+          <p role="status" aria-live="polite" data-testid="ovw-noshow-live" className={noShow.message?.kind === "ok" ? "rounded-xl bg-owner-success-soft px-4 py-3 text-sm font-semibold text-owner-success-dark" : "sr-only"}>
+            {noShow.message?.kind === "ok" ? noShow.message.text : null}
+          </p>
         </>
       ) : null}
 
@@ -317,6 +335,7 @@ function OverviewScreen() {
           submit={(body) => submitNo(dialogRow, body)}
         />
       ) : null}
+      {noShow.dialog}
       <BookingDetail bookingId={detailId} onClose={() => setDetailId(null)} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-overview"] })} />
     </div>
   );

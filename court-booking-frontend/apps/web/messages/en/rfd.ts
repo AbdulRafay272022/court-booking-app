@@ -51,4 +51,6 @@ export const enRfd: Record<keyof typeof ruRfd, string> = {
   "rfd.reason.owner_cancelled_paid_booking": "You cancelled a paid booking.",
   "rfd.reason.system_cancelled_paid_booking": "The system cancelled a paid booking.",
   "rfd.reason.generic": "Reason: {reason}",
+  "rfd.dup.one": "This screenshot was also credited on 1 other booking",
+  "rfd.dup.many": "This screenshot was also credited on {n} other bookings",
 };

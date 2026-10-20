@@ -87,3 +87,39 @@ test("tomorrow in Roman Urdu carries the date", () => {
   const t = notificationText(item({ params: { starts_at: "2026-10-18T13:00:00Z" } }), "ru", NOW);
   assert.match(t.context, /^Kal .*18 Oct 6 PM$/);
 });
+
+test("Stage 2 params: reminder number + minutes waiting", () => {
+  const r = item({
+    kind: "payment_reminder",
+    event_type: "payment_reminder_2",
+    params: { player_name: "Abbas Zafar", court_name: "Futsal 1", starts_at: "2026-10-17T16:00:00Z", amount: 2000, reminder_no: 2, minutes_waiting: 40 },
+  });
+  assert.equal(notificationText(r, "ru", NOW).context, "Abbas Zafar - Futsal 1 - Aaj 9 PM - PKR 2,000 - Reminder 2 - 40 minute se intezar");
+  assert.equal(notificationText(r, "en", NOW).context, "Abbas Zafar - Futsal 1 - Today 9 PM - PKR 2,000 - Reminder 2 - waiting 40 min");
+  // missing / bad params are skipped, never "undefined"
+  const bare = notificationText(item({ kind: "payment_reminder", params: { reminder_no: 0, minutes_waiting: Number.NaN } }), "ru", NOW);
+  assert.equal(bare.context, "");
+});
+
+test("Stage 2 params: final warning says the minutes to the cancel", () => {
+  const w = item({ kind: "payment_final_warning", event_type: "payment_final_warning", params: { player_name: "Abbas Zafar", amount: 1500, minutes_to_cancel: 5 } });
+  assert.equal(notificationText(w, "ru", NOW).context, "Abbas Zafar - PKR 1,500 - 5 minute mein cancel");
+  assert.equal(notificationText(w, "en", NOW).context, "Abbas Zafar - PKR 1,500 - cancels in 5 min");
+  assert.equal(notificationText(w, "ru", NOW).title, "Approve na kiya to booking jaldi cancel ho jayegi");
+});
+
+test("Stage 2 params: auto-cancelled", () => {
+  const a = item({ kind: "payment_auto_cancelled", event_type: "owner_payment_auto_cancelled", params: { player_name: "Abbas Zafar", court_name: "Futsal 1", amount: 2000 } });
+  assert.equal(notificationText(a, "ru", NOW).context, "Abbas Zafar - Futsal 1 - PKR 2,000 - Approve nahi hui");
+  assert.equal(notificationText(a, "en", NOW).context, "Abbas Zafar - Futsal 1 - PKR 2,000 - Not approved in time");
+});
+
+test("Stage 2 params: daily digest count, revenue and status-pending line", () => {
+  const d = item({ kind: "daily_summary", event_type: "owner_daily_digest", params: { count: 4, amount: 12000, status_pending: 3 } });
+  assert.equal(notificationText(d, "ru", NOW).context, "4 bookings aaj - PKR 12,000 - 3 bookings ka status baqi hai");
+  assert.equal(notificationText(d, "en", NOW).context, "4 bookings today - PKR 12,000 - 3 bookings need a status");
+  const one = item({ kind: "daily_summary", params: { count: 1, status_pending: 1 } });
+  assert.equal(notificationText(one, "ru", NOW).context, "1 booking aaj - 1 booking ka status baqi hai");
+  // status_pending 0 / missing -> no line
+  assert.equal(notificationText(item({ kind: "daily_summary", params: { count: 2, status_pending: 0 } }), "en", NOW).context, "2 bookings today");
+});

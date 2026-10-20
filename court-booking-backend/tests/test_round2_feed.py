@@ -143,34 +143,59 @@ def test_every_emitted_event_type_has_a_kind():
     assert missing == [], missing
 
 
-async def test_sms_escalation_logs_skipped_truthfully(venue_world, db_session_factory):
-    owner, venue, court, oh = await venue_world("+92301403")
-    b = await add_booking(db_session_factory, court, at(future_day(2), 21), status=BookingStatus.PAYMENT_SUBMITTED)
+async def _remind(db_session_factory, owner, b, event_type="payment_reminder_1"):
     async with db_session_factory() as session:
         o = await session.get(User, owner.id)
-        fired = await NotificationService(session, get_settings()).escalate_payment_submitted(
-            owner=o, court_name="Futsal 1", amount=2000, booking_id=b.id, minutes_elapsed=20
+        return await NotificationService(session, get_settings()).notify_owner_payment_reminder(
+            owner=o, event_type=event_type, court_name="Futsal 1", venue_name="R2 Arena", amount=2000,
+            booking_id=b.id, starts_at=b.starts_at, ends_at=b.ends_at, player_name="Abbas",
+            minutes_waiting=10, minutes_to_cancel=110, reminder_no=1,
         )
-    assert "sms" not in fired  # no SMS provider configured: nothing was sent
-    rows = await log_rows(db_session_factory, owner.id, "payment_submitted_sms")
-    assert len(rows) == 1 and rows[0].status == "skipped" and rows[0].error_message
 
 
-async def test_sms_escalation_failure_is_logged_failed(venue_world, db_session_factory, monkeypatch):
+async def test_payment_reminder_never_sends_sms_and_logs_whatsapp_truthfully(venue_world, db_session_factory, monkeypatch):
+    """Round 2 Stage 2: the SMS step of the old ladder is gone (replaced by venue-timed reminders over push +
+    WhatsApp). A WhatsApp failure is logged `failed`, never `sent`."""
+    owner, venue, court, oh = await venue_world("+92301403")
+    b = await add_booking(db_session_factory, court, at(future_day(2), 21), status=BookingStatus.PAYMENT_SUBMITTED)
+
+    async def boom(self, payload):
+        raise RuntimeError("meta down")
+
+    sms_calls = []
+
+    async def fake_sms(self, to, body):
+        sms_calls.append(to)
+        return {"status": "sent"}
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", boom)
+    monkeypatch.setattr("app.services.sms_service.SMSService.send_text", fake_sms)
+    assert await _remind(db_session_factory, owner, b) is True
+    rows = await log_rows(db_session_factory, owner.id, "payment_reminder_1")
+    whatsapp = [r for r in rows if r.channel == "whatsapp"]
+    assert len(whatsapp) == 1 and whatsapp[0].status == "failed" and whatsapp[0].error_message
+    assert sms_calls == []
+    assert all(r.channel != "sms" for r in rows)
+
+
+async def test_payment_reminder_is_deduped_and_shows_in_the_bell(venue_world, client, db_session_factory, monkeypatch):
     owner, venue, court, oh = await venue_world("+92301404")
     b = await add_booking(db_session_factory, court, at(future_day(2), 21), status=BookingStatus.PAYMENT_SUBMITTED)
 
-    async def boom(self, to, body):
-        raise RuntimeError("provider down")
+    async def ok(self, payload):
+        return {"messages": [{"id": "x"}]}
 
-    monkeypatch.setattr("app.services.sms_service.SMSService.send_text", boom)
-    async with db_session_factory() as session:
-        o = await session.get(User, owner.id)
-        await NotificationService(session, get_settings()).escalate_payment_submitted(
-            owner=o, court_name="Futsal 1", amount=2000, booking_id=b.id, minutes_elapsed=20
-        )
-    rows = await log_rows(db_session_factory, owner.id, "payment_submitted_sms")
-    assert len(rows) == 1 and rows[0].status == "failed" and "provider down" in rows[0].error_message
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", ok)
+    assert await _remind(db_session_factory, owner, b) is True
+    assert await _remind(db_session_factory, owner, b) is False  # deduped per booking
+    assert await _remind(db_session_factory, owner, b, "payment_final_warning") is True
+    body = (await client.get(FEED, headers=oh)).json()
+    kinds = [i["kind"] for i in body["items"]]
+    assert kinds == ["payment_final_warning", "payment_reminder"]
+    reminder = body["items"][1]
+    assert reminder["link"] == {"kind": "approvals", "booking_id": str(b.id)}
+    assert reminder["params"]["reminder_no"] == 1 and reminder["params"]["minutes_to_cancel"] == 110
+    assert reminder["params"]["court_name"] == court.name  # resolved values win over the payload
 
 
 async def test_reference_ids_on_booking_venue_court_and_waitlist_notifications(

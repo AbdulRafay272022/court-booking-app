@@ -64,4 +64,12 @@ export const enAppr: Record<keyof typeof ruAppr, string> = {
   "appr.live.ackRefund": "Refund for {who} added to the Refunds list.",
   "appr.live.nowClosed": "The booking of {who} no longer exists. The card was updated.",
   "appr.live.failed": "{who}: that did not work, the card is back. {error}",
+  "appr.dup.chip.one": "Screenshot already used on 1 booking",
+  "appr.dup.chip.many": "Screenshot already used on {n} bookings",
+  "appr.dup.title": "This screenshot was used before",
+  "appr.dup.question.one": "This screenshot was already used on 1 booking. Approve anyway?",
+  "appr.dup.question.many": "This screenshot was already used on {n} bookings. Approve anyway?",
+  "appr.dup.help": "Check with the player that this is a new payment, not a screenshot of an old one.",
+  "appr.dup.confirm": "Yes, approve anyway",
+  "appr.dup.back": "Back",
 };

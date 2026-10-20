@@ -33,6 +33,15 @@ const TITLES: Record<Exclude<NotificationKind, "other">, Record<Lang, string>> =
   booking_cancelled: { ru: "Booking cancel ho gayi", en: "Booking cancelled" },
   booking_reminder: { ru: "Booking ki yaad-dehani", en: "Booking reminder" },
   hold_expiring: { ru: "Booking ka waqt khatam hone wala hai", en: "Booking hold is about to expire" },
+  payment_reminder: { ru: "Payment abhi tak approval ke intezar mein hai", en: "Payment still waiting for approval" },
+  payment_final_warning: {
+    ru: "Approve na kiya to booking jaldi cancel ho jayegi",
+    en: "Booking will be cancelled soon unless you approve it",
+  },
+  payment_auto_cancelled: {
+    ru: "Booking auto-cancel ho gayi, paisa aaya hai to wapas dena hai",
+    en: "Booking auto-cancelled; return the money if it arrived",
+  },
 };
 
 /** Raw event types the backend logs (notification_log.event_type), for the old endpoint and the "other" kind. */
@@ -63,6 +72,8 @@ const EVENT_TITLES: Record<string, Record<Lang, string>> = {
   payment_late: TITLES.late_payment,
   late_payment_proof: TITLES.late_payment,
   approval_reminder: { ru: "Payment abhi tak approval ke intezar mein hai", en: "Payment still waiting for approval" },
+  payment_final_warning: TITLES.payment_final_warning,
+  owner_payment_auto_cancelled: TITLES.payment_auto_cancelled,
   phone_changed: { ru: "Phone number badal gaya", en: "Phone number changed" },
 };
 
@@ -79,7 +90,10 @@ function humanize(eventType: string): string {
 
 /** Readable title for a raw event_type (old endpoint fallback / unknown kind). Never "New notification". */
 export function eventTypeTitle(eventType: string, lang: Lang): string {
-  const known = EVENT_TITLES[eventType] ?? EVENT_TITLES[eventType.replace(/_(whatsapp|sms|push|web_push)$/, "")];
+  const known =
+    EVENT_TITLES[eventType] ??
+    EVENT_TITLES[eventType.replace(/_(whatsapp|sms|push|web_push)$/, "")] ??
+    (/^payment_reminder(_\d+)?$/.test(eventType) ? TITLES.payment_reminder : undefined);
   if (known) return known[lang];
   const h = humanize(eventType);
   if (h) return `Update: ${h}`;
@@ -100,6 +114,28 @@ function validIso(v: string | undefined): v is string {
 
 const SEP = " - ";
 
+const posInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0;
+
+/** Stage 2 feed params (from notification_log.payload): reminder number, minutes to the cancel, digest status line. */
+function stage2Parts(item: NotificationFeedItem, lang: Lang): string[] {
+  const p = item.params ?? {};
+  const out: string[] = [];
+  if (item.kind === "payment_reminder") {
+    if (posInt(p.reminder_no)) out.push(lang === "ru" ? `Reminder ${p.reminder_no}` : `Reminder ${p.reminder_no}`);
+    if (posInt(p.minutes_waiting)) out.push(lang === "ru" ? `${p.minutes_waiting} minute se intezar` : `waiting ${p.minutes_waiting} min`);
+  } else if (item.kind === "payment_final_warning") {
+    if (posInt(p.minutes_to_cancel)) out.push(lang === "ru" ? `${p.minutes_to_cancel} minute mein cancel` : `cancels in ${p.minutes_to_cancel} min`);
+  } else if (item.kind === "payment_auto_cancelled") {
+    out.push(lang === "ru" ? "Approve nahi hui" : "Not approved in time");
+  } else if (item.kind === "daily_summary") {
+    if (posInt(p.status_pending)) {
+      const n = p.status_pending;
+      out.push(lang === "ru" ? `${n} ${n === 1 ? "booking" : "bookings"} ka status baqi hai` : `${n} ${n === 1 ? "booking needs" : "bookings need"} a status`);
+    }
+  }
+  return out;
+}
+
 function contextFor(item: NotificationFeedItem, lang: Lang, now: Date): string {
   const p = item.params ?? {};
   const parts: string[] = [];
@@ -112,7 +148,12 @@ function contextFor(item: NotificationFeedItem, lang: Lang, now: Date): string {
     else if (p.venue_name) parts.push(p.venue_name);
   }
   if (validIso(p.starts_at)) parts.push(`${formatDateRelative(p.starts_at, now, lang)} ${shortTime(p.starts_at)}`);
+  // Stage 2: the daily digest's booking count goes before its revenue
+  if (item.kind === "daily_summary" && posInt(p.count)) {
+    parts.push(lang === "ru" ? `${p.count} ${p.count === 1 ? "booking" : "bookings"} aaj` : `${p.count} ${p.count === 1 ? "booking" : "bookings"} today`);
+  }
   if (typeof p.amount === "number" && Number.isFinite(p.amount) && p.amount > 0) parts.push(formatPkrAmount(p.amount));
+  parts.push(...stage2Parts(item, lang));
   if (p.reason && (venueKind || item.kind === "payment_rejected" || item.kind === "booking_cancelled")) {
     parts.push(p.reason);
   }

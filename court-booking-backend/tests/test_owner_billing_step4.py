@@ -426,7 +426,7 @@ async def test_reminders_go_once_per_kind_per_period_and_the_job_does_it_all(db_
     await billing.give(owner, "auto_approve", enabled_at=E_OLD, paid_through=date(2026, 10, 31))
     sent: list[tuple[str, str]] = []
 
-    async def fake(self, user, event_type, title, body, *, reference_id=None, template_params=None):
+    async def fake(self, user, event_type, title, body, *, reference_id=None, template_params=None, **_kw):
         sent.append((event_type, body))
         await self._log(user_id=user.id, channel="push", event_type=event_type, reference_id=reference_id, cost_category="utility",
                         template_name=None, status_value="sent", error_message=None)

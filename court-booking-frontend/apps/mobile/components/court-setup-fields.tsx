@@ -5,7 +5,9 @@ import {
   SLOT_MINUTES_OPTIONS,
   WEEKDAY_NUMBERS,
   WEEKEND_NUMBERS,
+  SETTINGS_DEFAULTS,
   courtSetupProblem,
+  formatPkrAmount,
   hiddenRates,
   formatDuration,
   formatTime24As12,
@@ -18,6 +20,7 @@ import {
 } from "@court-booking/types";
 
 import { TimeField12 } from "./time-fields";
+import { DefaultHint } from "./default-hint";
 import { Chip, FieldLabel, SectionCard, SectionLabel, TextField } from "../app/(owner)/venue-setup/_components";
 
 /**
@@ -38,6 +41,8 @@ export function CourtSetupFields({
   const problem = courtSetupProblem(value);
   const hoursProblem = problem && !/price/i.test(problem) ? problem : null;
   const hidden = hiddenRates(value);
+  // an EXISTING court (Venue Settings) runs on the backend default (60); a new court starts from the wizard prefill (90)
+  const slotKey = slotChangeNote ? "court_slot_minutes" : "slot_minutes";
 
   function updateRule(id: string, patch: Partial<PricingRuleDraft>) {
     onChange({ pricingRules: value.pricingRules.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
@@ -59,6 +64,12 @@ export function CourtSetupFields({
             <Chip key={m} label={`${m} min`} selected={value.slotMinutes === m} onPress={() => onChange({ slotMinutes: m })} />
           ))}
         </View>
+        <DefaultHint
+          settingKey={slotKey}
+          value={value.slotMinutes}
+          onReset={() => onChange({ slotMinutes: SETTINGS_DEFAULTS[slotKey].value as number })}
+          testID="default-slot-minutes"
+        />
         <SlotPreviewLine value={value} />
         {slotChangeNote ? (
           <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
@@ -143,6 +154,21 @@ export function CourtSetupFields({
               <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
             </View>
             <RuleDays rule={rule} onChange={(dayOfWeek) => updateRule(rule.id, { dayOfWeek })} />
+            {/* No input for these two (they are kept on save); the owner still sees what applies and can put the default back. */}
+            <DefaultHint
+              settingKey="advance_percentage"
+              text={`Is rate ka advance: ${rule.advancePercentage ?? SETTINGS_DEFAULTS.advance_percentage.value}% (Default: ${SETTINGS_DEFAULTS.advance_percentage.ru})`}
+              value={rule.advancePercentage ?? null}
+              onReset={() => updateRule(rule.id, { advancePercentage: undefined })}
+              testID={`default-rule-advance-${rule.id}`}
+            />
+            <DefaultHint
+              settingKey="floodlight_surcharge"
+              text={`Floodlight surcharge: ${formatPkrAmount(rule.floodlightSurcharge ?? (SETTINGS_DEFAULTS.floodlight_surcharge.value as number))} (Default: ${SETTINGS_DEFAULTS.floodlight_surcharge.ru})`}
+              value={rule.floodlightSurcharge ?? null}
+              onReset={() => updateRule(rule.id, { floodlightSurcharge: undefined })}
+              testID={`default-rule-floodlight-${rule.id}`}
+            />
             {hidden[rule.id] ? <Text className="font-plex-semibold text-owner-danger text-[12.5px]">{hidden[rule.id].message}</Text> : null}
           </View>
         ))}
@@ -309,16 +335,25 @@ export function CancellationPolicyFields({
           <Chip label="Allowed" selected={allowed} onPress={() => onAllowedChange(true)} />
           <Chip label="Not allowed" selected={!allowed} onPress={() => onAllowedChange(false)} />
         </View>
+        <DefaultHint settingKey="cancellation_allowed" value={allowed} onReset={() => onAllowedChange(true)} testID="default-cancellation" />
       </View>
       {allowed ? (
-        <TextField
-          label="Require cancelling at least this many hours before (optional)"
-          value={cutoffHours}
-          onChangeText={(v) => onCutoffChange(v.replace(/\D/g, ""))}
-          keyboardType="number-pad"
-          placeholder="Leave blank for no limit"
-          mono
-        />
+        <View className="gap-1.5">
+          <TextField
+            label="Require cancelling at least this many hours before (optional)"
+            value={cutoffHours}
+            onChangeText={(v) => onCutoffChange(v.replace(/\D/g, ""))}
+            keyboardType="number-pad"
+            placeholder="Leave blank for no limit"
+            mono
+          />
+          <DefaultHint
+            settingKey="cancellation_cutoff_hours"
+            value={cutoffHours.trim() ? Number(cutoffHours) : null}
+            onReset={() => onCutoffChange("")}
+            testID="default-cancellation-cutoff"
+          />
+        </View>
       ) : null}
     </SectionCard>
   );

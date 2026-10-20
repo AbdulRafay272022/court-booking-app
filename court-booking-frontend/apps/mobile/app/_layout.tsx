@@ -168,7 +168,8 @@ export default function RootLayout() {
           <Stack.Protected guard={status === "signedIn" && role === "player"}>
             <Stack.Screen name="(player)" />
           </Stack.Protected>
-          <Stack.Protected guard={status === "signedIn" && role === "owner"}>
+          {/* Staff accounts (Section 32 Part 12) use the owner screens with a reduced view, like web's owner shell. */}
+          <Stack.Protected guard={status === "signedIn" && (role === "owner" || role === "staff")}>
             <Stack.Screen name="(owner)" />
           </Stack.Protected>
           <Stack.Protected guard={status === "signedIn" && role === "admin"}>

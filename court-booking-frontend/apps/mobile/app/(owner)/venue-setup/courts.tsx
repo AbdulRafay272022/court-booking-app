@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { isStaleVenueDraftError } from "@court-booking/api-client";
 import { buildPricingRules, buildSchedules, courtSetupProblem } from "@court-booking/types";
 
@@ -23,7 +24,11 @@ import {
   type AdvanceDraft,
 } from "@/components/advance-settings";
 import { RemindersCard } from "@/components/reminders-card";
-import { PrimaryButton, SecondaryButton } from "./_components";
+import { CnicFields, submitCnicDraft, useCnicDraft } from "@/components/cnic-form";
+import { cnicDraftComplete } from "@/components/cnic-logic";
+import { OWNER_IDENTITY_KEY, useOwnerIdentity } from "@/components/identity-card";
+import { timerDraftIsEmpty, timerDraftProblems, timerDraftToValues } from "@/lib/settings-defaults";
+import { PrimaryButton, SecondaryButton, SectionCard, SectionLabel } from "./_components";
 
 /** A wizard court plus its A11 advance rule. The persisted draft store (lib/venue-setup-store.ts) spreads whatever fields a
  * court carries, so the advance fields ride along in the saved draft; a court from an older draft simply has none
@@ -47,6 +52,14 @@ export default function VenueCourtsScreen() {
   const [selected, setSelected] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const tabIndex = Math.min(selected, store.courts.length - 1);
+  const queryClient = useQueryClient();
+  // Stage 2: the owner's CNIC is required before "Send for review" unless one is already on file (e.g. a second venue).
+  // Kept in memory only (useCnicDraft), never in the persisted wizard draft.
+  const identityQuery = useOwnerIdentity();
+  const cnicOnFile = identityQuery.data?.status === "submitted" || identityQuery.data?.status === "verified";
+  const cnic = useCnicDraft();
+  const cnicProblemText = cnicOnFile || cnicDraftComplete(cnic) ? null : "CNIC number aur card ki dono taraf ki photo dein.";
+  const timersHaveErrors = Object.keys(timerDraftProblems(store.timers).errors).length > 0;
 
   // A court whose sport isn't one the venue offers (e.g. the default "Padel" on a Futsal-only venue) starts on the venue's
   // first sport instead of an unselected chip row.
@@ -64,7 +77,9 @@ export default function VenueCourtsScreen() {
     const p = c.name.trim() ? (courtSetupProblem(c) ?? advanceDraftProblem(advanceOf(c))) : "Give this court a name.";
     return p ? `Court ${i + 1}: ${p}` : null;
   });
-  const firstProblem = courtProblems.find((p) => p !== null) ?? null;
+  const firstCourtProblem = courtProblems.find((p) => p !== null) ?? null;
+  const firstProblem =
+    firstCourtProblem ?? (timersHaveErrors ? "Advanced: reminder settings theek karein." : null) ?? cnicProblemText;
   const problemTab = courtProblems.findIndex((p) => p !== null);
   const isValid = store.courts.length > 0 && firstProblem === null;
 
@@ -81,6 +96,12 @@ export default function VenueCourtsScreen() {
     const draftHadVenue = !!store.createdVenueId;
     const draftCourtIds = { ...store.createdCourtIds };
     try {
+      // CNIC first: it belongs to the owner, not the venue, so a wrong number (422 CNIC_INVALID) stops here before
+      // anything is created. Once accepted it is on file, so a retry after a later failure skips it.
+      if (!cnicOnFile) {
+        const identity = await submitCnicDraft(useCnicDraft.getState());
+        queryClient.setQueryData(OWNER_IDENTITY_KEY, identity);
+      }
       let venueId = store.createdVenueId;
       if (!venueId) {
         const { venue } = await api.venues.create({
@@ -149,6 +170,20 @@ export default function VenueCourtsScreen() {
         // each court gets ITS OWN hours and prices
         await api.courts.setSchedule(courtId, buildSchedules(court));
         await api.courts.setPricing(courtId, buildPricingRules(court));
+      }
+
+      // Stage 2: the "Advanced" timers. Nothing set = nothing to send (a new venue is all-default already). The venue is
+      // already created at this point, so a failure here must not block the hand-off: say where to set them again.
+      const timers = useVenueSetupStore.getState().timers;
+      if (!timerDraftIsEmpty(timers)) {
+        try {
+          await api.owners.updateVenueTimers(venueId, timerDraftToValues(timers));
+        } catch (err) {
+          Alert.alert(
+            "Reminder settings save nahi huin",
+            `Venue review ke liye bhej di gayi hai. Hold aur reminders Venue Settings mein dobara set karein. (${friendlyErrorMessage(err)})`,
+          );
+        }
       }
 
       const finishedVenueId = venueId;
@@ -252,8 +287,26 @@ export default function VenueCourtsScreen() {
             <Text className="font-plex-semibold text-owner-ink text-[14.5px]">Advanced</Text>
             <Text className="font-plex-semibold text-owner-accent text-[13px]">{advancedOpen ? "Chhupayein" : "Dikhayein"}</Text>
           </Pressable>
-          {advancedOpen ? <RemindersCard /> : null}
+          {advancedOpen ? <RemindersCard value={store.timers} onChange={(patch) => store.setField("timers", { ...store.timers, ...patch })} /> : null}
         </View>
+
+        {/* Stage 2: CNIC, required before Send for review (unless already on file). Memory only, never saved in the draft. */}
+        {cnicOnFile ? (
+          <SectionCard>
+            <SectionLabel>Shanakhti card (CNIC)</SectionLabel>
+            <Text testID="wizard-cnic-on-file" className="font-plex-medium text-owner-ink-muted text-[13px]">
+              Aap ka CNIC pehle se jama hai ({identityQuery.data?.masked ?? ""}). Badalna ho to Venue Settings mein badlein.
+            </Text>
+          </SectionCard>
+        ) : (
+          <SectionCard>
+            <SectionLabel>Shanakhti card (CNIC)</SectionLabel>
+            <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+              Venue review ke liye bhejne se pehle apna CNIC number aur card ki dono taraf ki photo dein.
+            </Text>
+            <CnicFields />
+          </SectionCard>
+        )}
 
         {staleDraft ? (
           <View className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border px-4 py-3 gap-3">

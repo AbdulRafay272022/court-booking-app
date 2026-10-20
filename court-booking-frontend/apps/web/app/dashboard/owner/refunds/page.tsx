@@ -17,6 +17,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey, TFunction } from "@/lib/i18n";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import type { OwnerRefund } from "@court-booking/types";
 import { BookingDetail } from "@/components/owner/booking-detail";
 import { FilterBanner, NayaChip, RowLinks } from "@/components/owner/queue-extras";
@@ -81,20 +82,23 @@ export default function OwnerRefundsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const filter = parseQueueFilter(useSearchParams());
   const since = useSeenSince("refunds", activeVenueId);
+  // Stage 2 (B.b): a staff member without "mark_refunds" sees the no-permission state at once (the list needs it too).
+  const perms = useMyPermissions();
+  const allowed = perms.can("mark_refunds");
 
   const query = useQuery({
     queryKey: ["owner-refunds", activeVenueId, filter.date ?? null, filter.courtIds.join(",")],
     queryFn: () => api.owners.refunds(activeVenueId, { date: filter.date, courtIds: filter.courtIds }),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && allowed,
   });
 
   const list = query.data ?? [];
   const open = list.find((r) => r.id === openId) ?? null;
-  const loading = venuesLoading || query.isLoading;
+  const loading = venuesLoading || perms.loading || query.isLoading;
   // A staff member without the refunds permission gets 403 NOT_STAFF_PERMITTED: show ONE clear state (no count line, no
   // "nothing owed", no retry button), since retrying cannot help.
-  const noPermission = query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED";
-  const showCount = !loading && !query.isError;
+  const noPermission = (!loading && !allowed) || (query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED");
+  const showCount = !loading && !query.isError && !noPermission;
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6 min-w-0">
@@ -145,6 +149,9 @@ export default function OwnerRefundsPage() {
                     {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))}{" \u00b7 "}{fmt.when(refund.starts_at)}
                   </p>
                   {why ? <p className="text-owner-ink-faint text-[12.5px]">{why}</p> : null}
+                  {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (
+                    <DuplicateProofChip n={refund.duplicate_proof.used_on_bookings} />
+                  ) : null}
                   {refund.is_overdue ? (
                     <p className="text-[12px] font-semibold" style={{ color: DANGER }}>
                       <span aria-hidden="true">! </span>
@@ -525,5 +532,22 @@ function MarkRefundedDialog({
         )}
       </div>
     </div>
+  );
+}
+
+/** Stage 2: the screenshot behind this refund was also credited on other bookings (OwnerRefund.duplicate_proof). */
+function DuplicateProofChip({ n }: { n: number }) {
+  const t = useT();
+  return (
+    <span
+      data-testid="refund-dup-chip"
+      className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-owner-danger-soft-border bg-owner-danger-soft px-3 py-1 text-[12.5px] font-bold text-owner-danger"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+        <rect x="8" y="8" width="12" height="13" rx="2" />
+        <path d="M16 8V5a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2h2" />
+      </svg>
+      <span>{n === 1 ? t("rfd.dup.one") : t("rfd.dup.many", { n })}</span>
+    </span>
   );
 }

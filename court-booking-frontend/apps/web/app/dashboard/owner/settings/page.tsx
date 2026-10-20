@@ -30,7 +30,10 @@ import { CourtSetupFields } from "@/components/setup/court-setup-fields";
 import { CancellationPolicyFields } from "@/components/setup/cancellation-policy-fields";
 import { AdvanceRuleFields } from "@/components/setup/advance-rule-fields";
 import { advanceDraftErrors, basePriceFromDrafts } from "@/components/setup/advance-preview";
-import { PaymentRemindersCard } from "@/components/setup/payment-reminders-card";
+import { VenueTimersCard } from "@/components/setup/venue-timers-card";
+import { IdentityCard } from "@/components/identity/identity-card";
+import { slotMinutesDefault } from "@/components/settings/hint-state";
+import { useAuthStore } from "@/lib/auth-store";
 import { PhotoManager } from "@/components/setup/photo-manager";
 import { CourtTabs } from "@/components/setup/court-tabs";
 import { CourtBasicsFields } from "@/components/setup/court-basics-fields";
@@ -61,6 +64,7 @@ type SettingsTab = "venue" | "courts";
 export default function VenueSettingsPage() {
   const t = useT();
   const { activeVenue } = useOwnerVenues();
+  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
   const [tab, setTab] = useState<SettingsTab>("venue");
 
   return (
@@ -106,8 +110,14 @@ export default function VenueSettingsPage() {
               initialCutoff={activeVenue.cancellation_cutoff_hours}
             />
           ) : null}
-          {/* Round 2 B1: payment reminders, preview only until per-venue values have a column (Stage 2). */}
-          {activeVenue ? <PaymentRemindersCard key={`reminders-${activeVenue.id}`} /> : null}
+          {/* Stage 2: hold / reminders / auto-cancel per venue (null = default), saved with PUT .../timers. */}
+          {activeVenue ? <VenueTimersCard key={`timers-${activeVenue.id}`} venueId={activeVenue.id} /> : null}
+          {/* Stage 2: the owner's own CNIC (account-level, not per venue); staff never see it. */}
+          {isOwner ? (
+            <div id="cnic" className="scroll-mt-4">
+              <IdentityCard />
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="flex flex-col gap-6" role="tabpanel" aria-labelledby="settings-tab-courts" data-testid="settings-courts">
@@ -323,6 +333,7 @@ function NewCourtForm({
       />
       <CourtSetupFields
         value={setup}
+        defaultSlotMinutes={slotMinutesDefault("wizard")}
         onChange={(patch) => {
           onDirty();
           setSetup((s) => ({ ...s, ...patch }));
@@ -640,7 +651,12 @@ function CourtSettingsForm({ court, venueSports }: { court: Court; venueSports: 
           if (patch.isIndoor !== undefined) setIsIndoor(patch.isIndoor);
         }}
       />
-      <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
+      <CourtSetupFields
+        value={setup}
+        onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))}
+        slotChangeNote
+        defaultSlotMinutes={slotMinutesDefault("settings")}
+      />
       <AdvanceRuleFields
         advanceType={advanceType}
         advanceValue={advanceValue}

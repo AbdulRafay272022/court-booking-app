@@ -5,15 +5,17 @@ import { CHANNEL_HEADING, bookingChannelLabel, type BookingTimelineEvent, type O
 import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
-import { confirmAction } from "@/lib/confirm";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTime, formatWhen, formatWhenRange } from "@/lib/format";
-import { OV, SOURCE_LABEL, durationLabel, statusChipLabel } from "@/lib/overview";
+import { OV, PERM, SOURCE_LABEL, canOfferNoShow, durationLabel, isStatusPending, rowStatusLabel } from "@/lib/overview";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { CheckIcon } from "@/components/icons";
 import { AlertCircleIcon, CopyIcon } from "@/components/overview/icons";
 import { openInHistory } from "@/components/booking-links";
 import { ScreenshotThumb } from "@/components/screenshot-viewer";
 import { RecordPaymentSheet } from "@/components/record-payment-sheet";
+import { NoShowSheet } from "@/components/completion-sheet";
+import { StatusPendingChip } from "@/components/overview/booking-card";
 import { BottomSheet, OrangeButton, OutlineButton, SmallChip } from "@/components/overview/ui";
 
 const TIMELINE_LABEL: Record<string, string> = {
@@ -150,7 +152,10 @@ function DetailBody({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
+  const [noShow, setNoShow] = useState(false);
   const live = r.kind === "booked" && r.status_key === "booked";
+  // Stage 2 (B.b): buttons this staff member may not use are not shown at all (a 403 still shows its message).
+  const { can } = useMyPermissions();
   const refreshAll = () => {
     qc.invalidateQueries({ queryKey: ["owner-overview"] });
     qc.invalidateQueries({ queryKey: ["owner-history"] });
@@ -170,6 +175,11 @@ function DetailBody({
   }
   const slots = r.slot_count ? ` (${r.slot_count} slots)` : "";
   const completion = d.completion ?? r.completion;
+  const mayCheckIn = can(PERM.checkIn) && !r.checked_in && !completion;
+  // Stage 2 (C.3): only after the slot ended, never on a booking already marked.
+  // The backend allows "Nahi aaye" for check_in OR record_payments (stage2-contract section 5).
+  const mayNoShow = (can(PERM.checkIn) || can(PERM.recordPayments)) && canOfferNoShow(r, completion);
+  const mayRecord = can(PERM.recordPayments) && r.due > 0;
   return (
     <View className="gap-1">
       <View className="flex-row flex-wrap items-center gap-2">
@@ -186,7 +196,8 @@ function DetailBody({
         {copyNote ? <Text className="font-plex-medium text-owner-success text-[12.5px]">{copyNote}</Text> : null}
       </View>
       <View className="flex-row flex-wrap gap-2 mt-1">
-        <SmallChip label={statusChipLabel(r.status_key)} bg={OV.accentSoft} fg={OV.accent} />
+        <SmallChip label={rowStatusLabel({ ...r, completion })} bg={OV.accentSoft} fg={OV.accent} />
+        {isStatusPending(r) ? <StatusPendingChip /> : null}
         {completion?.result === "yes" ? (
           <SmallChip label="Mukammal" bg={OV.greenBg} fg={OV.greenDark} icon={<CheckIcon size={12} color={OV.greenDark} strokeWidth={2.6} />} />
         ) : completion?.result === "no" ? (
@@ -302,30 +313,19 @@ function DetailBody({
         </>
       ) : null}
 
-      {live ? (
+      {live && (mayCheckIn || mayNoShow || mayRecord || actionError) ? (
         <View className="gap-2 mt-3">
-          <View className="flex-row gap-3">
-            {!r.checked_in ? <OutlineButton flex label={busy ? "..." : "Check in"} onPress={() => run(() => api.bookings.checkin(r.booking_id))} /> : null}
-            {!r.checked_in ? (
-              <OutlineButton
-                flex
-                label="No-show"
-                onPress={() =>
-                  confirmAction({
-                    title: "No-show mark karein?",
-                    message: "Ye record hoga ke player aaya nahi.",
-                    confirmLabel: "No-show",
-                    destructive: true,
-                    onConfirm: () => run(() => api.bookings.noShow(r.booking_id)),
-                  })
-                }
-              />
-            ) : null}
-          </View>
-          {r.due > 0 ? <OutlineButton label={`Payment record karein (PKR ${formatPKR(r.due)} baqi)`} onPress={() => setRecording(true)} /> : null}
+          {mayCheckIn || mayNoShow ? (
+            <View className="flex-row gap-3">
+              {mayCheckIn ? <OutlineButton flex label={busy ? "..." : "Check in"} onPress={() => run(() => api.bookings.checkin(r.booking_id))} /> : null}
+              {mayNoShow ? <OutlineButton flex label="Nahi aaye (No-show)" onPress={() => setNoShow(true)} /> : null}
+            </View>
+          ) : null}
+          {mayRecord ? <OutlineButton label={`Payment record karein (PKR ${formatPKR(r.due)} baqi)`} onPress={() => setRecording(true)} /> : null}
           {actionError ? <Text className="font-plex-medium text-owner-danger text-[12.5px]">{actionError}</Text> : null}
         </View>
       ) : null}
+      {noShow ? <NoShowSheet row={r} onClose={() => setNoShow(false)} onSaved={refreshAll} /> : null}
       {recording ? (
         <RecordPaymentSheet
           bookingId={r.booking_id}

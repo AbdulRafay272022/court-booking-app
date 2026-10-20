@@ -82,7 +82,7 @@ async def test_concurrent_approve_reject_only_one_wins(
         target = date.today() + timedelta(days=2 + i)
         booking_id, payment_id = await _payment_submitted_booking(client, court, customer_headers, target)
 
-        approve_coro = client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers)
+        approve_coro = client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers, json={"confirm_duplicate": True})
         reject_coro = client.post(
             f"/api/v1/payments/{payment_id}/reject",
             headers=owner_headers,
@@ -166,7 +166,7 @@ async def test_reject_then_approve_gets_clean_conflict_error(
     assert reject.status_code == 200, reject.text
     assert reject.json()["booking"]["status"] == "cancelled"
 
-    approve = await client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers)
+    approve = await client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers, json={"confirm_duplicate": True})
     assert approve.status_code == 409, approve.text
     assert approve.json()["error"]["code"] == "PAYMENT_ALREADY_REVIEWED"
 
@@ -207,7 +207,7 @@ async def test_concurrent_cancel_and_approve_only_one_wins(
         booking_id, payment_id = await _payment_submitted_booking(client, court, customer_headers, target)
 
         approve_resp, cancel_resp = await asyncio.gather(
-            client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers),
+            client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers, json={"confirm_duplicate": True}),
             client.post(
                 f"/api/v1/bookings/{booking_id}/cancel", headers=customer_headers, json={"reason": "changed plans"}
             ),
@@ -277,7 +277,7 @@ async def test_cancel_after_approve_still_succeeds(
     target = date.today() + timedelta(days=2)
     booking_id, payment_id = await _payment_submitted_booking(client, court, customer_headers, target)
 
-    approve = await client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers)
+    approve = await client.post(f"/api/v1/payments/{payment_id}/approve", headers=owner_headers, json={"confirm_duplicate": True})
     assert approve.status_code == 200, approve.text
     assert approve.json()["booking"]["status"] == "booked"
 

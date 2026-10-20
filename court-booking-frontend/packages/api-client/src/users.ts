@@ -1,4 +1,4 @@
-import type { NotificationFeedPage, NotificationLogEntry, User } from "@court-booking/types";
+import type { WebPushConfig, NotificationFeedPage, NotificationLogEntry, User } from "@court-booking/types";
 import type { ApiClient } from "./client";
 
 export function createUsersApi(client: ApiClient) {
@@ -13,6 +13,15 @@ export function createUsersApi(client: ApiClient) {
       client.request<void>(`/users/me/fcm-token/${token}`, { method: "DELETE" }),
 
     /** Round 2 (A6): readable, grouped notifications (sentence built client-side by notificationText). */
+    /** Stage 2 Web Push. */
+    webPushConfig: () => client.request<WebPushConfig>("/users/me/web-push/config"),
+    webPushSubscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent?: string }) =>
+      client.request<void>("/users/me/web-push", { method: "POST", body: JSON.stringify(sub) }),
+    webPushUnsubscribe: (endpoint: string) =>
+      client.request<void>("/users/me/web-push", { method: "DELETE", body: JSON.stringify({ endpoint }) }),
+    webPushStatus: (endpoint: string) =>
+      client.request<{ subscribed: boolean }>(`/users/me/web-push?endpoint=${encodeURIComponent(endpoint)}`),
+
     notificationsFeed: (page = 1, pageSize = 30) =>
       client.request<NotificationFeedPage>(`/users/me/notifications/feed?page=${page}&page_size=${pageSize}`),
 
