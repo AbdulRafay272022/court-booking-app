@@ -8,9 +8,9 @@ Agent brief (env, commands, rules): scratchpad `agent-brief.md` (session temp di
 | A housekeeping | main | DONE 1fdef6b |
 | B native foundation | native-foundation | DONE, merged f791e0a (unit 47→53, e2e 245/245) |
 | D-BE backend findings | floodlight-be | DONE early, merged ce1315a (docs/floodlight-contract.md, docs/venue-card-contract.md, backend 1568 pass) |
-| C design system | floodlight-ds | in progress |
-| D-FX leftover fixes | leftover-fixes (worktree ../kb-fx) | in progress (parallel with C; screens only) |
-| D screens (W1, M1, M2) | floodlight-web / -player / -owner | todo (after C) |
+| C design system | floodlight-ds | DONE, merged 003bc22 (unit 63→89, 102 contrast pairs pass, e2e 245/245) |
+| D-FX leftover fixes | leftover-fixes | DONE, merged d985cda (unit 53→63) |
+| D screens (W1, M1, M2) | floodlight-web / -player / -owner (worktrees ../kb-w1, kb-m1, kb-m2) | in progress |
 | E QA | floodlight-qa | todo |
 
 ## BE key findings
