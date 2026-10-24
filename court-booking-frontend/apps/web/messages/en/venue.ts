@@ -65,6 +65,8 @@ export const enVenue = {
   "venue.gallery.next": "Next photo",
   "venue.gallery.thumbs": "Photo thumbnails",
   "venue.gallery.show": "Show photo {n}",
+  "venue.gallery.open": "Open {alt} photo {n} full screen",
+  "venue.gallery.full": "{alt} photos",
 
   // reviews
   "venue.reviews.stars": "{value} out of 5 stars",
@@ -112,6 +114,10 @@ export const enVenue = {
   "venue.sheet.advance": "Pay PKR {advance} now to hold it, and PKR {balance} at the venue.",
   "venue.sheet.payNow": "You pay this now to hold the court.",
   "venue.sheet.continue": "Continue",
+  "venue.sheet.totalRow": "Total",
+  "venue.sheet.advanceRow": "Advance now",
+  "venue.sheet.balanceRow": "Balance at the venue",
+  "venue.sheet.policy": "Cancellation policy",
 
   // day popup
   "venue.pop.today": "Today",
@@ -131,6 +137,8 @@ export const enVenue = {
   "venue.pop.notifyMe": "Notify me",
   "venue.pop.open": "Open",
   "venue.pop.tooShort": "Too short",
+  "venue.pop.heldByOther": "Held by someone",
+  "venue.pop.closed": "Closed",
   "venue.pop.waitlistJoined": "You're on the list. We'll let you know if this slot opens up. You're #{position} in line.",
   "venue.pop.waitlistFailed": "Couldn't join the waitlist: {error}",
 } as const;

@@ -5,9 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 const STYLE = {
-  info: { bg: "#E7F2F5", fg: "#0E6274", border: "#BFDDE5" },
-  urgent: { bg: "#FBF0DD", fg: "#8A5208", border: "#EBCB93" },
-  off: { bg: "#F9E3E1", fg: "#A32018", border: "#EDB5B0" },
+  info: { bg: "var(--color-fl-teal-tint)", fg: "var(--color-fl-teal-deep)", border: "var(--color-fl-teal-half)" },
+  urgent: { bg: "var(--color-fl-waiting-tint)", fg: "var(--color-fl-waiting)", border: "var(--color-fl-waiting-border)" },
+  off: { bg: "var(--color-fl-danger-tint)", fg: "var(--color-fl-danger)", border: "var(--color-fl-danger-border)" },
 } as const;
 
 /** Banners about premium payments at the top of the owner dashboard: a period ending within a week, an overdue payment

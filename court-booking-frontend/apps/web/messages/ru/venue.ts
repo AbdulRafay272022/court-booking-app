@@ -66,6 +66,8 @@ export const ruVenue = {
   "venue.gallery.next": "Agli tasveer",
   "venue.gallery.thumbs": "Tasveeron ke thumbnails",
   "venue.gallery.show": "Tasveer {n} dikhao",
+  "venue.gallery.open": "{alt} ki tasveer {n} poori screen par kholein",
+  "venue.gallery.full": "{alt} ki tasveerein",
 
   // reviews
   "venue.reviews.stars": "5 mein se {value} stars",
@@ -113,6 +115,10 @@ export const ruVenue = {
   "venue.sheet.advance": "Hold karne ke liye abhi PKR {advance} dein; PKR {balance} venue par.",
   "venue.sheet.payNow": "Court hold karne ke liye yeh abhi dena hai.",
   "venue.sheet.continue": "Aage barhein",
+  "venue.sheet.totalRow": "Total",
+  "venue.sheet.advanceRow": "Abhi advance",
+  "venue.sheet.balanceRow": "Venue par baqi",
+  "venue.sheet.policy": "Cancel policy",
 
   // day popup
   "venue.pop.today": "Aaj",
@@ -132,6 +138,8 @@ export const ruVenue = {
   "venue.pop.notifyMe": "Bata do",
   "venue.pop.open": "Khali",
   "venue.pop.tooShort": "Bohat chhota",
+  "venue.pop.heldByOther": "Kisi ne hold kiya",
+  "venue.pop.closed": "Band hai",
   "venue.pop.waitlistJoined": "Aap list mein hain \u2014 slot khali hua to hum bata denge. Aap line mein #{position} hain.",
   "venue.pop.waitlistFailed": "Waitlist mein shamil nahi ho sake: {error}",
 } as const;

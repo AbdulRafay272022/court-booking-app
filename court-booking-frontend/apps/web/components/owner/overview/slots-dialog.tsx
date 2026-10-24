@@ -23,11 +23,11 @@ export function slotView(slot: Pick<Slot, "status" | "ends_at">, nowMs: number):
 }
 
 const VIEW_STYLE: Record<SlotView, string> = {
-  booked: "bg-khelo-teal text-white border-khelo-teal",
-  pending: "bg-khelo-orange text-khelo-ink border-khelo-orange",
-  blocked: "bg-khelo-muted-3 text-khelo-ink border-khelo-muted-3",
-  free: "bg-khelo-mint text-khelo-ink border-khelo-dash",
-  past: "bg-khelo-page text-khelo-muted border-dashed border-khelo-dash line-through",
+  booked: "bg-fl-teal text-fl-white border-fl-teal",
+  pending: "bg-fl-waiting-tint text-fl-waiting border-dashed border-fl-waiting-border",
+  blocked: "bg-fl-mist text-fl-muted border-dashed border-fl-line-strong line-through",
+  free: "bg-fl-teal-tint text-fl-night border-fl-line-strong",
+  past: "bg-fl-ground text-fl-muted border-dashed border-fl-line-strong line-through",
 };
 
 const VIEW_ICON: Record<SlotView, string> = {
@@ -86,7 +86,7 @@ export function SlotsDialog({
     <Modal open={open} onClose={onClose} size="lg" title={t("ovw.slots.title")} subtitle={t("ovw.slots.subtitle", { date: fmt.dateString(date), n: courts.length })} testId="ovw-slots-dialog">
       <ul aria-label={t("ovw.slots.legend")} className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
         {VIEWS.map((v) => (
-          <li key={v} className="inline-flex items-center gap-2 text-[13px] font-semibold text-khelo-ink">
+          <li key={v} className="inline-flex items-center gap-2 text-[13px] font-semibold text-fl-night">
             <span aria-hidden="true" className={`inline-flex items-center justify-center w-6 h-6 rounded-md border ${VIEW_STYLE[v]}`}>
               <ViewIcon view={v} />
             </span>
@@ -104,7 +104,7 @@ export function SlotsDialog({
             onClick={() => onFilter(f)}
             data-testid={`ovw-slots-filter-${f}`}
             className={`min-h-11 px-4 rounded-full text-[13px] font-bold whitespace-nowrap border-[1.5px] ${
-              filter === f ? "bg-khelo-ink text-white border-khelo-ink" : "bg-khelo-surface text-khelo-ink border-khelo-border"
+              filter === f ? "bg-fl-night text-white border-fl-night" : "bg-fl-white text-fl-night border-fl-line-strong"
             }`}
           >
             {f === "all" ? t("ovw.slots.filterAll") : f === "free" ? t("ovw.slots.filterFree") : t(`ovw.slots.${f}` as MessageKey)}
@@ -113,7 +113,7 @@ export function SlotsDialog({
       </div>
 
       <div aria-live="polite" role="status">
-        {anyLoading ? <p className="text-sm text-khelo-muted py-4">{t("ovw.slots.loading")}</p> : null}
+        {anyLoading ? <p className="text-sm text-fl-muted py-4">{t("ovw.slots.loading")}</p> : null}
         {failed > 0 ? (
           <p className="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-owner-danger-soft px-4 py-3 text-sm font-semibold text-owner-danger">
             {t("ovw.slots.error")}
@@ -146,14 +146,14 @@ export function SlotsDialog({
           };
           return (
             <section key={court.id} aria-label={courtLabel(court.name, court.sport)} data-testid="ovw-slots-court">
-              <h3 className="flex items-baseline justify-between gap-3 mb-2 font-bold text-[15px] text-khelo-ink">
+              <h3 className="flex items-baseline justify-between gap-3 mb-2 font-bold text-[15px] text-fl-night">
                 {courtLabel(court.name, court.sport)}
-                {slots.length > 0 ? <span className="text-[13px] font-semibold text-khelo-muted">{t("ovw.slots.courtCount", { n: shown.length })}</span> : null}
+                {slots.length > 0 ? <span className="text-[13px] font-semibold text-fl-muted">{t("ovw.slots.courtCount", { n: shown.length })}</span> : null}
               </h3>
               {slots.length === 0 && results[i] && !results[i].isLoading && !results[i].isError ? (
-                <p className="text-sm text-khelo-muted">{t("ovw.slots.noSlots")}</p>
+                <p className="text-sm text-fl-muted">{t("ovw.slots.noSlots")}</p>
               ) : slots.length > 0 && shown.length === 0 ? (
-                <p className="text-sm text-khelo-muted" data-testid="ovw-slots-filter-empty">
+                <p className="text-sm text-fl-muted" data-testid="ovw-slots-filter-empty">
                   {t("ovw.slots.filterEmpty")}
                 </p>
               ) : (
@@ -161,7 +161,7 @@ export function SlotsDialog({
                   <ul className="flex flex-wrap gap-1.5">{regular.map(renderSlot)}</ul>
                   {late.length > 0 ? (
                     <>
-                      <p className="mt-2 mb-1 text-[12px] font-bold uppercase tracking-wider text-khelo-muted">{t("ovw.slots.afterMidnight")}</p>
+                      <p className="mt-2 mb-1 text-[12px] font-bold uppercase tracking-wider text-fl-muted">{t("ovw.slots.afterMidnight")}</p>
                       <ul className="flex flex-wrap gap-1.5">{late.map(renderSlot)}</ul>
                     </>
                   ) : null}

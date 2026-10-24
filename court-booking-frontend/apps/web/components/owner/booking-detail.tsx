@@ -229,7 +229,7 @@ function DetailDialog({
                 {t("detail.history")}
               </CloseThenGo>
             ) : null}
-            <button type="button" onClick={onClose} className="min-h-12 rounded-xl bg-khelo-orange px-6 text-[15px] font-bold text-khelo-ink">
+            <button type="button" onClick={onClose} className="min-h-12 rounded-xl bg-fl-teal px-6 text-[15px] font-bold text-fl-white">
               {t("detail.close")}
             </button>
           </div>
@@ -431,12 +431,12 @@ function DetailContent({
                 const subParts = [ev.actor_name, ev.amount != null ? pkr(ev.amount) : null, ev.note].filter(Boolean);
                 const dot =
                   ev.kind === "completion_marked"
-                    ? "bg-khelo-orange"
+                    ? "bg-fl-amber"
                     : ev.kind === "slot_started" || ev.kind === "slot_ended"
                       ? "bg-owner-ink-fainter"
                       : ["cancelled", "rejected", "no_show", "expired"].includes(ev.kind)
                         ? "bg-owner-danger"
-                        : "bg-khelo-teal";
+                        : "bg-fl-teal";
                 return (
                   <li key={`${ev.kind}-${ev.at}-${i}`} className="flex gap-3">
                     <span aria-hidden="true" className={`mt-1.5 h-3 w-3 shrink-0 rounded-full ${dot}`} />

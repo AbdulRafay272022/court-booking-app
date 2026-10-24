@@ -10,6 +10,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
 import type { MessageKey } from "@/lib/i18n";
+import { Chip } from "@/components/fl";
 
 function formatHourRange(hour: number): string {
   const pad = (h: number) => String(h % 24).padStart(2, "0");
@@ -40,14 +41,7 @@ export default function OwnerGrowthPage() {
       {showSwitcher ? (
         <div className="flex flex-wrap gap-2">
           {venues.map((v) => (
-            <button
-              key={v.id}
-              onClick={() => setVenueId(v.id)}
-              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold whitespace-nowrap"
-              style={{ background: v.id === activeVenueId ? "#0E6274" : "#F4F6F7", color: v.id === activeVenueId ? "#fff" : "#5B7079" }}
-            >
-              {v.name}
-            </button>
+            <Chip key={v.id} label={v.name} selected={v.id === activeVenueId} onClick={() => setVenueId(v.id)} />
           ))}
         </div>
       ) : null}
@@ -56,8 +50,8 @@ export default function OwnerGrowthPage() {
         <p className="text-owner-ink-faint">{t("odash.growth.loading")}</p>
       ) : ineligible ? (
         <div className="bg-owner-surface border border-owner-border rounded-xl p-10 flex flex-col items-center gap-3 text-center">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "#FBF0DD" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9C5C0A" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <div className="w-11 h-11 rounded-full flex items-center justify-center" style={{ background: "var(--color-fl-waiting-tint)" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-fl-waiting)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.6-6.2 4.6 2.4-7.4L2 9.4h7.6z" />
             </svg>
           </div>
@@ -65,7 +59,7 @@ export default function OwnerGrowthPage() {
           <p className="text-owner-ink-faint text-sm max-w-sm">
             {t("odash.growth.premium.body", { venue: activeVenue?.name ?? t("odash.growth.thisVenue") })}
           </p>
-          <a href="/dashboard/owner/premium" className="text-sm font-semibold underline" style={{ color: "#0E6274" }}>
+          <a href="/dashboard/owner/premium" className="text-sm font-semibold underline" style={{ color: "var(--color-fl-teal)" }}>
             {t("odash.growth.premium.link")}
           </a>
         </div>
@@ -82,8 +76,8 @@ export default function OwnerGrowthPage() {
             return (
               <div key={`${s.court_id}-${s.day_of_week}-${s.hour}`} className="bg-owner-surface border border-owner-border rounded-xl p-5 flex flex-col gap-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#FBF0DD" }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9C5C0A" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--color-fl-waiting-tint)" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-fl-waiting)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M3 17l6-6 4 4 8-8" />
                       <path d="M17 7h4v4" />
                     </svg>
@@ -99,8 +93,8 @@ export default function OwnerGrowthPage() {
                 </div>
 
                 <div className="flex gap-8">
-                  <ComparisonBar label={t("odash.growth.bar.slot")} fraction={s.booking_rate} color="#9C5C0A" />
-                  <ComparisonBar label={t("odash.growth.bar.avg")} fraction={s.venue_average} color="#5B7079" />
+                  <ComparisonBar label={t("odash.growth.bar.slot")} fraction={s.booking_rate} color="var(--color-fl-waiting)" />
+                  <ComparisonBar label={t("odash.growth.bar.avg")} fraction={s.venue_average} color="var(--color-fl-muted)" />
                 </div>
 
                 <p className="text-owner-ink-fainter text-xs">
@@ -111,7 +105,7 @@ export default function OwnerGrowthPage() {
           })}
 
           <p className="text-owner-ink-faint text-xs flex items-center gap-2 px-1">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9C5C0A" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-fl-waiting)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.6-6.2 4.6 2.4-7.4L2 9.4h7.6z" />
             </svg>
             {t("odash.growth.note")}
@@ -126,10 +120,10 @@ function ComparisonBar({ label, fraction, color }: { label: string; fraction: nu
   return (
     <div className="flex flex-col gap-1.5 w-32">
       <span className="text-[10px] font-bold tracking-wider text-owner-ink-faint">{label}</span>
-      <div className="h-1.5 rounded-full" style={{ background: "#EDF1F2" }}>
+      <div className="h-1.5 rounded-full" style={{ background: "var(--color-fl-divider)" }}>
         <div className="h-full rounded-full" style={{ width: `${Math.max(4, Math.round(fraction * 100))}%`, background: color }} />
       </div>
-      <span className="font-mono text-sm font-semibold">{Math.round(fraction * 100)}%</span>
+      <span className="tabular-nums text-sm font-semibold">{Math.round(fraction * 100)}%</span>
     </div>
   );
 }

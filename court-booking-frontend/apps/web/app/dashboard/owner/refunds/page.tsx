@@ -26,8 +26,8 @@ import { parseQueueFilter } from "@/lib/queue-filter";
 import { isNaya } from "@/lib/owner-seen";
 import { useSeenSince } from "@/lib/use-owner-seen";
 
-const TEAL = "#0E6274";
-const DANGER = "#A8432C";
+const TEAL = "var(--color-fl-teal)";
+const DANGER = "var(--color-fl-danger)";
 
 /** "Hissa wapas" / "Wapas dena hai" chip: icon + text, never colour alone. */
 function StatusChip({ b }: { b: RefundBreakdown }) {
@@ -137,7 +137,7 @@ export default function OwnerRefundsPage() {
                 key={refund.id}
                 data-testid="refund-row"
                 className="bg-owner-surface border rounded-xl p-4 flex flex-wrap items-start justify-between gap-4"
-                style={{ borderColor: refund.is_overdue ? "#DDBAB1" : undefined }}
+                style={{ borderColor: refund.is_overdue ? "var(--color-fl-danger-border)" : undefined }}
               >
                 <div className="flex flex-col gap-1 min-w-0 flex-1 basis-56">
                   <p className="font-bold flex flex-wrap items-center gap-2">
@@ -171,7 +171,7 @@ export default function OwnerRefundsPage() {
                   />
                 </div>
                 <div className="flex items-center gap-3 shrink-0 flex-wrap">
-                  <span className="font-mono font-bold text-[15px]" data-testid="refund-remaining">
+                  <span className="tabular-nums font-bold text-[15px]" data-testid="refund-remaining">
                     {t("rfd.row.remaining", { amount: formatPKR(b.remaining) })}
                     {b.alreadyRefunded > 0 ? (
                       <span className="block text-[11px] font-semibold text-owner-ink-faint">{t("rfd.row.of", { total: formatPKR(b.refundDue) })}</span>
@@ -180,7 +180,7 @@ export default function OwnerRefundsPage() {
                   <button
                     type="button"
                     onClick={() => setOpenId(refund.id)}
-                    className="px-4 min-h-11 rounded-lg text-white font-semibold text-[13.5px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]"
+                    className="px-4 min-h-11 rounded-lg text-white font-semibold text-[13.5px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
                     style={{ background: TEAL }}
                   >
                     {t("odash.refunds.mark")}
@@ -342,7 +342,7 @@ function MarkRefundedDialog({
   const row = (label: string, value: string, strong = false, testid?: string) => (
     <div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-owner-border last:border-b-0">
       <dt className={strong ? "font-semibold text-owner-ink" : "text-owner-ink-muted"}>{label}</dt>
-      <dd data-testid={testid} className={`font-mono text-right ${strong ? "font-bold text-[15px]" : ""}`}>{value}</dd>
+      <dd data-testid={testid} className={`tabular-nums text-right ${strong ? "font-bold text-[15px]" : ""}`}>{value}</dd>
     </div>
   );
 
@@ -389,7 +389,7 @@ function MarkRefundedDialog({
           <button
             type="button"
             onClick={onDone}
-            className="h-12 rounded-xl text-white font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]"
+            className="h-12 rounded-xl text-white font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
             style={{ background: TEAL }}
           >
             {t("rfd.success.ok")}
@@ -403,7 +403,7 @@ function MarkRefundedDialog({
             <button
               type="button"
               onClick={onClose}
-              className="h-12 rounded-xl border border-owner-border font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]"
+              className="h-12 rounded-xl border border-owner-border font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
             >
               {t("rfd.dialog.close")}
             </button>
@@ -435,7 +435,7 @@ function MarkRefundedDialog({
                   autoComplete="off"
                   aria-invalid={showAmountError}
                   aria-describedby={`${amountHintId}${showAmountError ? ` ${amountErrId}` : ""}`}
-                  className="h-11 min-w-0 flex-1 basis-32 px-3.5 rounded-lg border outline-none text-sm font-mono focus-visible:ring-2 focus-visible:ring-[#0E6274]"
+                  className="h-11 min-w-0 flex-1 basis-32 px-3.5 rounded-lg border outline-none text-sm tabular-nums focus-visible:ring-2 focus-visible:ring-fl-teal"
                   style={{ borderColor: showAmountError ? DANGER : undefined }}
                   data-testid="refund-amount"
                 />
@@ -446,7 +446,7 @@ function MarkRefundedDialog({
                     setAmount(String(maxOwed));
                     setServerError(null);
                   }}
-                  className="min-h-11 px-3 rounded-full border border-owner-border text-[13px] font-semibold whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]"
+                  className="min-h-11 px-3 rounded-full border border-owner-border text-[13px] font-semibold whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
                   aria-pressed={typed === maxOwed}
                 >
                   {t("rfd.amount.full", { amount: formatPKR(maxOwed) })}
@@ -476,7 +476,7 @@ function MarkRefundedDialog({
                 aria-invalid={showRefError}
                 aria-describedby={`${refHintId}${showRefError ? ` ${refErrId}` : ""}`}
                 maxLength={80}
-                className="h-11 px-3.5 rounded-lg border outline-none text-sm focus-visible:ring-2 focus-visible:ring-[#0E6274]"
+                className="h-11 px-3.5 rounded-lg border outline-none text-sm focus-visible:ring-2 focus-visible:ring-fl-teal"
                 style={{ borderColor: showRefError ? DANGER : undefined }}
                 data-testid="refund-reference"
               />
@@ -514,7 +514,7 @@ function MarkRefundedDialog({
                 type="button"
                 onClick={onClose}
                 disabled={busy}
-                className="flex-1 basis-32 h-12 rounded-xl border border-owner-border font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]"
+                className="flex-1 basis-32 h-12 rounded-xl border border-owner-border font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
               >
                 {t("rfd.cancel")}
               </button>
@@ -522,7 +522,7 @@ function MarkRefundedDialog({
                 type="submit"
                 disabled={busy}
                 data-testid="refund-submit"
-                className="flex-1 basis-32 h-12 rounded-xl text-white font-semibold disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]"
+                className="flex-1 basis-32 h-12 rounded-xl text-white font-semibold disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
                 style={{ background: TEAL }}
               >
                 {busy ? t("rfd.saving") : t("rfd.submit")}

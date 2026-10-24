@@ -1,99 +1,36 @@
 "use client";
 
+import { amenityItems } from "@court-booking/ui-tokens";
+import { AMENITY_ICONS, useFlLang } from "@/components/fl";
 import { useT } from "@/components/i18n/lang-provider";
-import { useFmt } from "@/lib/use-fmt";
 
-type IconProps = { className?: string };
-
-const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
-
-function Svg({ className, children }: IconProps & { children: React.ReactNode }) {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" className={className} aria-hidden="true" {...stroke}>
-      {children}
-    </svg>
-  );
-}
-
-const ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
-  floodlights: (p) => (
-    <Svg {...p}>
-      <path d="M12 3v2M5.6 5.6 7 7M18.4 5.6 17 7M3 12h2M19 12h2" />
-      <path d="M8 21h8M12 21v-5" />
-      <path d="M8 16h8a4 4 0 1 0-8 0Z" />
-    </Svg>
-  ),
-  parking: (p) => (
-    <Svg {...p}>
-      <rect x="4" y="3" width="16" height="18" rx="3" />
-      <path d="M9.5 17V7.5h3.2a2.8 2.8 0 0 1 0 5.6H9.5" />
-    </Svg>
-  ),
-  washrooms: (p) => (
-    <Svg {...p}>
-      <circle cx="7" cy="5" r="1.6" />
-      <circle cx="17" cy="5" r="1.6" />
-      <path d="M7 9v11M4.5 9.5h5M17 9l-2.5 8h5L17 9ZM17 17v3" />
-    </Svg>
-  ),
-  changing_room: (p) => (
-    <Svg {...p}>
-      <path d="M9 4 4 7l2 3 2-1v11h8V9l2 1 2-3-5-3a3 3 0 0 1-6 0Z" />
-    </Svg>
-  ),
-};
-
-function FallbackIcon(p: IconProps) {
-  return (
-    <Svg {...p}>
-      <path d="m5 12 4.5 4.5L19 7" />
-    </Svg>
-  );
-}
-
-/** Amenity chips with an icon each. `max` collapses the rest into "+N" (for cards); omit it to show all. */
-export function AmenityBadges({
-  amenities,
-  max,
-  size = "sm",
-  tone = "player",
-}: {
-  amenities: string[] | null | undefined;
-  max?: number;
-  size?: "sm" | "md";
-  /** `khelo` = the Khelo website/search palette; `player` (default) = the player app's. */
-  tone?: "player" | "khelo";
-}) {
+/**
+ * The venue page's full amenities list (cards show the single "Amenities [n]" chip instead). Same icons and labels as the
+ * Floodlight AmenitiesPopover / mobile AmenitiesSheet; an unknown key keeps a check icon and the text as the owner typed it.
+ * Teal info style: #0A5F59 text on the #E3F4F1 tint. `max` collapses the rest into "+N".
+ */
+export function AmenityBadges({ amenities, max, size = "sm" }: { amenities: string[] | null | undefined; max?: number; size?: "sm" | "md" }) {
   const t = useT();
-  const fmt = useFmt();
-  const list = amenities ?? [];
+  const lang = useFlLang();
+  const list = amenityItems(amenities ?? [], lang);
   if (list.length === 0) return null;
   const shown = max != null ? list.slice(0, max) : list;
   const hidden = list.length - shown.length;
-  const chip =
-    size === "md"
-      ? "px-3 py-1.5 text-[13.5px] gap-2 rounded-lg"
-      : "px-2 py-1 text-[12px] gap-1.5 rounded-md";
+  const chip = size === "md" ? "min-h-9 px-3 text-[13.5px] gap-2 rounded-fl-sm" : "min-h-7 px-2 text-[12px] gap-1.5 rounded-fl-xs";
 
   return (
-    <ul className="flex gap-1.5 flex-wrap" aria-label={t("play.amenities")} data-testid="amenity-badges">
-      {shown.map((key) => {
-        const Icon = ICONS[key] ?? FallbackIcon;
+    <ul className="flex flex-wrap gap-1.5" aria-label={t("play.amenities")} data-testid="amenity-badges">
+      {shown.map((a) => {
+        const Icon = AMENITY_ICONS[a.icon];
         return (
-          <li
-            key={key}
-            className={`inline-flex items-center font-semibold border ${tone === "khelo" ? "bg-khelo-warm-2 text-khelo-orange-label border-khelo-warm" : "bg-player-accent-soft text-player-accent-hover border-player-accent-soft-border"} ${chip}`}
-          >
-            <Icon className="shrink-0" />
-            {fmt.amenity(key)}
+          <li key={a.key} className={`inline-flex items-center bg-fl-teal-tint font-bold text-fl-teal-deep ${chip}`}>
+            <Icon size={16} strokeWidth={2.2} className="shrink-0" />
+            {a.label}
           </li>
         );
       })}
       {hidden > 0 ? (
-        <li
-          title={list.slice(shown.length).map((k) => fmt.amenity(k)).join(", ")}
-          className={`inline-flex items-center font-semibold ${tone === "khelo" ? "bg-khelo-page text-khelo-muted-2" : "bg-player-surface-2 text-player-ink-muted"} ${chip}`}
-        >
+        <li title={list.slice(shown.length).map((a) => a.label).join(", ")} className={`inline-flex items-center bg-fl-ground font-bold text-fl-muted ${chip}`}>
           +{hidden}
         </li>
       ) : null}

@@ -18,13 +18,13 @@ export function SavedVenues({ grid = false, showHeading = true }: { grid?: boole
         {showHeading ? (
           <h2 className="font-khelo-display text-[22px] font-extrabold tracking-tight">
             {t("bookings.saved.title")}
-            {venues.length ? <span className="ml-2 text-[15px] font-bold text-khelo-muted-2">{venues.length}</span> : null}
+            {venues.length ? <span className="ml-2 text-[15px] font-bold text-fl-muted2">{venues.length}</span> : null}
           </h2>
         ) : (
           <span />
         )}
         {venues.length > 0 ? (
-          <Link href="/search" className="inline-flex min-h-11 items-center text-[14px] font-extrabold text-khelo-orange-text hover:underline">
+          <Link href="/search" className="inline-flex min-h-11 items-center text-[14px] font-extrabold text-fl-orange-deep hover:underline">
             {t("bookings.saved.findMore")}
           </Link>
         ) : null}
@@ -33,22 +33,22 @@ export function SavedVenues({ grid = false, showHeading = true }: { grid?: boole
       {loading ? (
         <div className={grid ? "grid gap-4 sm:grid-cols-2" : "flex gap-4 overflow-hidden"} aria-hidden="true">
           {[0, 1].map((i) => (
-            <div key={i} className={`h-[300px] animate-pulse rounded-3xl bg-khelo-divider ${grid ? "" : "w-[280px] shrink-0"}`} />
+            <div key={i} className={`h-[300px] animate-pulse rounded-3xl bg-fl-mist ${grid ? "" : "w-[280px] shrink-0"}`} />
           ))}
         </div>
       ) : isError && venues.length === 0 ? (
-        <p role="alert" className="rounded-3xl bg-khelo-surface px-5 py-4 text-[15px] text-khelo-muted">
+        <p role="alert" className="rounded-3xl bg-fl-white px-5 py-4 text-[15px] text-fl-muted">
           {t("bookings.saved.error")}
         </p>
       ) : venues.length === 0 ? (
-        <p className="rounded-3xl border-[1.5px] border-dashed border-khelo-dash bg-khelo-surface px-5 py-4 text-[15px] text-khelo-muted" data-testid="saved-empty">
+        <p className="rounded-3xl border-[1.5px] border-dashed border-fl-line-strong bg-fl-white px-5 py-4 text-[15px] text-fl-muted" data-testid="saved-empty">
           {t("bookings.saved.empty")}
         </p>
       ) : (
         <ul className={grid ? "grid gap-4 sm:grid-cols-2" : "-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-3"} aria-label={t("bookings.saved.listAria")}>
-          {venues.map((v) => (
+          {venues.map((v, i) => (
             <li key={v.id} className={`flex flex-col ${grid ? "" : "w-[280px] shrink-0 snap-start"}`} data-testid="saved-venue">
-              <VenueCard venue={v} href={`/venues/${v.slug}`} />
+              <VenueCard venue={v} href={`/venues/${v.slug}`} eager={i < 2} />
             </li>
           ))}
         </ul>

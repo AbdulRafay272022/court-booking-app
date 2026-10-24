@@ -13,11 +13,11 @@ import type { MessageKey } from "@/lib/i18n";
 // Day-state colours come from the Khelo tokens: available = mint, filling up = warning, fully booked = the grey of a booked slot.
 // A soft tint fills the whole cell; a dot beneath the number carries the state.
 const CELL_CLASS: Partial<Record<DaySummaryState, string>> = {
-  open: "bg-khelo-success-bg text-khelo-ink",
-  few: "bg-khelo-warning-bg text-khelo-ink",
-  full: "bg-khelo-booked-bg text-khelo-muted",
+  open: "bg-fl-open-tint text-fl-night",
+  few: "bg-fl-waiting-tint text-fl-night",
+  full: "bg-fl-booked-bg text-fl-muted",
 };
-const DOT_CLASS: Partial<Record<DaySummaryState, string>> = { open: "bg-khelo-success-text", few: "bg-khelo-warning-text", full: "bg-khelo-muted-3" };
+const DOT_CLASS: Partial<Record<DaySummaryState, string>> = { open: "bg-fl-open", few: "bg-fl-waiting", full: "bg-fl-muted2" };
 // Diagonal hatch for a court with no schedule set: reads as "not set up", not "broken".
 const HATCH = "repeating-linear-gradient(135deg, var(--color-khelo-page), var(--color-khelo-page) 4px, var(--color-khelo-divider) 4px, var(--color-khelo-divider) 8px)";
 const HATCH_LEGEND = "repeating-linear-gradient(135deg, var(--color-khelo-page), var(--color-khelo-page) 2px, var(--color-khelo-dash) 2px, var(--color-khelo-dash) 4px)";
@@ -86,7 +86,7 @@ export function CourtMonthCalendar({
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between">
         <NavButton dir="prev" disabled={prevDisabled} onClick={() => setMonth((m) => addMonths(m, -1))} />
-        <span className="font-khelo-display text-[17px] font-extrabold tracking-tight text-khelo-ink">{fmt.month(month)}</span>
+        <span className="font-khelo-display text-[17px] font-extrabold tracking-tight text-fl-night">{fmt.month(month)}</span>
         <NavButton dir="next" disabled={nextDisabled} onClick={() => setMonth((m) => addMonths(m, 1))} />
       </div>
 
@@ -94,7 +94,7 @@ export function CourtMonthCalendar({
         {weekdayHeaders.map((h, i) => (
           <span
             key={i}
-            className="mx-auto flex h-5 w-6 items-center justify-center rounded-md bg-khelo-page text-[11px] font-bold text-khelo-muted-2"
+            className="mx-auto flex h-5 w-6 items-center justify-center rounded-md bg-fl-ground text-[11px] font-bold text-fl-muted2"
           >
             {h}
           </span>
@@ -102,7 +102,7 @@ export function CourtMonthCalendar({
       </div>
 
       {summaryQuery.isLoading ? (
-        <p className="py-10 text-center text-khelo-muted-2 text-sm">{t("venue.cal.loading")}</p>
+        <p className="py-10 text-center text-fl-muted2 text-sm">{t("venue.cal.loading")}</p>
       ) : (
         <>
           <div className="grid grid-cols-7 gap-0.5">
@@ -125,8 +125,8 @@ export function CourtMonthCalendar({
                   onClick={() => onSelectDate(date)}
                   aria-label={t("venue.cal.dayLabel", { date, state: isNoHours ? t("venue.cal.state.noHours") : t(STATE_LABEL[state]) })}
                   className={`khelo-btn flex min-h-11 flex-col items-center justify-center gap-[3px] rounded-xl border-2 text-[13px] font-bold ${
-                    isToday ? "border-khelo-orange" : "border-transparent"
-                  } ${isNoHours || isPast ? "text-khelo-muted-2" : CELL_CLASS[state] ?? "text-khelo-ink"} ${isPast ? "opacity-50" : ""} ${
+                    isToday ? "border-fl-orange" : "border-transparent"
+                  } ${isNoHours || isPast ? "text-fl-muted2" : CELL_CLASS[state] ?? "text-fl-night"} ${isPast ? "opacity-50" : ""} ${
                     tappable ? "cursor-pointer" : "cursor-default hover:transform-none! hover:shadow-none!"
                   }`}
                   style={isNoHours ? { backgroundImage: HATCH } : undefined}
@@ -140,7 +140,7 @@ export function CourtMonthCalendar({
                   ) : dotClass ? (
                     <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} aria-hidden />
                   ) : state === "closed" ? (
-                    <span className="w-1.5 h-1.5 rounded-full border-[1.5px] border-khelo-dash" aria-hidden />
+                    <span className="w-1.5 h-1.5 rounded-full border-[1.5px] border-fl-line-strong" aria-hidden />
                   ) : (
                     <span className="w-1.5 h-1.5" aria-hidden />
                   )}
@@ -151,24 +151,24 @@ export function CourtMonthCalendar({
 
           {noHours ? (
             <>
-              <div className="mt-4 flex flex-wrap gap-3.5 border-t border-dashed border-khelo-border pt-3.5">
+              <div className="mt-4 flex flex-wrap gap-3.5 border-t border-dashed border-fl-line-strong pt-3.5">
                 <LegendItem label={t("venue.cal.noHours")}>
-                  <span className="h-2 w-2 rounded-full border border-khelo-dash" style={{ backgroundImage: HATCH_LEGEND }} />
+                  <span className="h-2 w-2 rounded-full border border-fl-line-strong" style={{ backgroundImage: HATCH_LEGEND }} />
                 </LegendItem>
               </div>
               <div
-                className="mt-4 rounded-2xl border border-khelo-warm bg-khelo-warm-2 px-4 py-3.5 text-[13.5px] text-khelo-orange-label"
+                className="mt-4 rounded-2xl border border-fl-orange-tint bg-fl-orange-tint px-4 py-3.5 text-[13.5px] text-fl-orange-deep"
                 role="status"
               >
                 {t("venue.cal.noHoursNote")}
               </div>
             </>
           ) : (
-            <div className="mt-4 flex flex-wrap gap-3.5 border-t border-dashed border-khelo-border pt-3.5">
+            <div className="mt-4 flex flex-wrap gap-3.5 border-t border-dashed border-fl-line-strong pt-3.5">
               {LEGEND.map(({ state, label }) => (
                 <LegendItem key={state} label={t(label)}>
                   {state === "closed" ? (
-                    <span className="h-2 w-2 rounded-full border-[1.5px] border-khelo-dash" />
+                    <span className="h-2 w-2 rounded-full border-[1.5px] border-fl-line-strong" />
                   ) : (
                     <span className={`h-2 w-2 rounded-full ${DOT_CLASS[state]}`} />
                   )}
@@ -184,7 +184,7 @@ export function CourtMonthCalendar({
 
 function LegendItem({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-khelo-muted-2">
+    <span className="flex items-center gap-1.5 text-[12px] font-semibold text-fl-muted2">
       {children}
       {label}
     </span>
@@ -199,7 +199,7 @@ function NavButton({ dir, disabled, onClick }: { dir: "prev" | "next"; disabled:
       disabled={disabled}
       onClick={onClick}
       aria-label={dir === "prev" ? t("venue.cal.prev") : t("venue.cal.next")}
-      className={`khelo-btn flex h-11 w-11 items-center justify-center rounded-full border border-khelo-border bg-khelo-surface text-[18px] text-khelo-ink ${
+      className={`khelo-btn flex h-11 w-11 items-center justify-center rounded-full border border-fl-line-strong bg-fl-white text-[18px] text-fl-night ${
         disabled ? "cursor-default opacity-40 hover:transform-none! hover:shadow-none!" : "cursor-pointer"
       }`}
     >

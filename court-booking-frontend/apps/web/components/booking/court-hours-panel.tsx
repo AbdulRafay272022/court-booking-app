@@ -26,22 +26,22 @@ export function CourtHoursPanel({ court, horizonDays }: { court: Court; horizonD
   const horizon = fmt.bookingHorizon(horizonDays);
 
   return (
-    <div className="rounded-2xl border border-khelo-divider bg-khelo-page px-3.5 py-3 flex flex-col gap-2.5" data-testid={`court-hours-${court.name}`}>
+    <div className="rounded-2xl border border-fl-line bg-fl-ground px-3.5 py-3 flex flex-col gap-2.5" data-testid={`court-hours-${court.name}`}>
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">{t("venue.hours.title")}</span>
+        <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.hours.title")}</span>
         {lines.map((l) => (
           <p key={l.days} className="flex justify-between gap-3 text-[13px]" data-testid="hours-line">
-            <span className="font-semibold text-khelo-muted">{l.days}</span>
-            <span className={l.closed ? "text-khelo-muted-2" : "font-mono text-khelo-ink"}>{l.hours}</span>
+            <span className="font-semibold text-fl-muted">{l.days}</span>
+            <span className={l.closed ? "text-fl-muted2" : "tabular-nums text-fl-night"}>{l.hours}</span>
           </p>
         ))}
       </div>
-      {horizon ? <p className="text-[12.5px] font-medium text-khelo-muted-2" data-testid="horizon-text">{horizon}</p> : null}
+      {horizon ? <p className="text-[12.5px] font-medium text-fl-muted2" data-testid="horizon-text">{horizon}</p> : null}
       {blackouts.length > 0 ? (
         <div className="flex flex-col gap-1" data-testid="blackout-list">
-          <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">{t("venue.hours.closed")}</span>
+          <span className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.hours.closed")}</span>
           {blackouts.map((b) => (
-            <p key={b.id} className="text-[13px] text-khelo-muted">
+            <p key={b.id} className="text-[13px] text-fl-muted">
               <span className="font-semibold">{b.label}</span> · {b.when}
             </p>
           ))}

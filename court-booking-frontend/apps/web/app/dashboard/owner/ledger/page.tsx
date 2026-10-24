@@ -16,6 +16,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { Chip } from "@/components/fl";
 
 type RangeKey = "7d" | "30d" | "month";
 
@@ -103,17 +104,17 @@ export default function OwnerLedgerPage() {
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <p className="font-mono text-4xl font-semibold">PKR {ledger ? formatPKR(ledger.summary.total_in_range) : "—"}</p>
+        <p className="tabular-nums text-4xl font-semibold">PKR {ledger ? formatPKR(ledger.summary.total_in_range) : "—"}</p>
         <p className="text-owner-ink-faint text-sm">
           {ledger ? (ledger.entries.length === 1 ? t("odash.ledger.count.one") : t("odash.ledger.count.many", { n: ledger.entries.length })) : ""}
         </p>
         {summary && summary.outstanding_balance > 0 ? (
-          <p className="text-sm font-semibold" style={{ color: "#9C5C0A" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--color-fl-waiting)" }}>
             {t("odash.ledger.owed", { amount: formatPKR(summary.outstanding_balance) })}
           </p>
         ) : null}
         {summary && summary.cancelled_refund_pending > 0 ? (
-          <p className="text-sm font-semibold" style={{ color: "#8C3823" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--color-fl-danger)" }}>
             {t("odash.ledger.refundOwed", { amount: formatPKR(summary.cancelled_refund_pending) })}
           </p>
         ) : null}
@@ -121,34 +122,14 @@ export default function OwnerLedgerPage() {
 
       <div className="flex gap-2 flex-wrap">
         {(["7d", "30d", "month"] as const).map((k) => (
-          <button
-            key={k}
-            onClick={() => setRangeKey(k)}
-            className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
-            style={{ background: rangeKey === k ? "#0E6274" : "#F4F6F7", color: rangeKey === k ? "#fff" : "#5B7079" }}
-          >
-            {t(`odash.ledger.range.${k}`)}
-          </button>
+          <Chip key={k} label={t(`odash.ledger.range.${k}`)} selected={rangeKey === k} onClick={() => setRangeKey(k)} />
         ))}
         {courts.length > 1 ? (
           <>
             <span className="w-px bg-owner-border mx-1" />
-            <button
-              onClick={() => setCourtId(undefined)}
-              className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
-              style={{ background: !courtId ? "#0E6274" : "#F4F6F7", color: !courtId ? "#fff" : "#5B7079" }}
-            >
-              {t("odash.ledger.allCourts")}
-            </button>
+            <Chip label={t("odash.ledger.allCourts")} selected={!courtId} onClick={() => setCourtId(undefined)} />
             {courts.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setCourtId(c.id)}
-                className="px-3.5 py-2 rounded-lg text-[13px] font-semibold"
-                style={{ background: courtId === c.id ? "#0E6274" : "#F4F6F7", color: courtId === c.id ? "#fff" : "#5B7079" }}
-              >
-                {courtLabel(c.name, c.sport)}
-              </button>
+              <Chip key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onClick={() => setCourtId(c.id)} />
             ))}
           </>
         ) : null}
@@ -183,8 +164,8 @@ export default function OwnerLedgerPage() {
                 const isCorrection = entry.amount_pkr < 0;
                 return (
                   <tr key={entry.entry_id} className="border-b border-owner-border-light last:border-0">
-                    <td className="px-4 py-3 font-mono text-sm">{fmt.date(entry.recorded_at)}</td>
-                    <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">{fmt.time(entry.recorded_at)}</td>
+                    <td className="px-4 py-3 tabular-nums text-sm">{fmt.date(entry.recorded_at)}</td>
+                    <td className="px-4 py-3 tabular-nums text-sm text-owner-ink-faint">{fmt.time(entry.recorded_at)}</td>
                     <td className="px-4 py-3 text-sm font-semibold">{entry.player ?? t("odash.ledger.walkin")}</td>
                     <td className="px-4 py-3 text-sm">{courtLabel(entry.court, entry.court_sport ?? sports.byName(entry.court))}</td>
                     <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">
@@ -195,16 +176,16 @@ export default function OwnerLedgerPage() {
                       ) : null}
                     </td>
                     <td className="px-4 py-3 text-xs font-semibold uppercase text-owner-ink-muted">{fmt.bookingStatus(entry.booking_status)}</td>
-                    <td className="px-4 py-3 font-mono text-sm font-semibold" style={{ color: isCorrection ? "#8C3823" : undefined }}>
+                    <td className="px-4 py-3 tabular-nums text-sm font-semibold" style={{ color: isCorrection ? "var(--color-fl-danger)" : undefined }}>
                       {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
                     </td>
-                    <td className="px-4 py-3 font-mono text-sm text-owner-ink-faint">PKR {formatPKR(entry.running_total)}</td>
+                    <td className="px-4 py-3 tabular-nums text-sm text-owner-ink-faint">PKR {formatPKR(entry.running_total)}</td>
                     <td className="px-4 py-3 text-right">
                       {!isCorrection ? (
                         <button
                           onClick={() => setCorrecting(entry)}
                           className="text-[12px] font-semibold"
-                          style={{ color: "#8C3823" }}
+                          style={{ color: "var(--color-fl-danger)" }}
                         >
                           {t("odash.ledger.correct")}
                         </button>
@@ -237,7 +218,7 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl border border-owner-border-light bg-owner-surface px-4 py-3 flex flex-col gap-1">
       <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">{label.toUpperCase()}</span>
-      <span className="font-mono text-lg font-semibold">PKR {formatPKR(value)}</span>
+      <span className="tabular-nums text-lg font-semibold">PKR {formatPKR(value)}</span>
     </div>
   );
 }

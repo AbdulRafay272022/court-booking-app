@@ -64,3 +64,17 @@ The component props and the list of replaced files are for the screen agents (W1
 | `photos: string[]` | `photo_urls` |
 | `amenities: string[]` | `amenities`, labelled with `amenityLabel(key, lang)` |
 | extras | `has_indoor`, `has_outdoor` (court-derived) |
+
+## Web screens using VenueCard (agent W1, branch `floodlight-web`)
+
+| Surface | File | How |
+|---|---|---|
+| /search results grid | `apps/web/app/search/page.tsx` | `components/discovery/venue-card.tsx` wraps the fl `VenueCard`: `venueCardData(summary, { sport: filters.sport })`, `eager` for the first 2 cards, heart = `useFavoriteToggle()` (hidden for owners/admins, signed out goes to login), opening a card remembers the search for "Back to results". |
+| Saved venues (Account > Saved, bookings strip) | `apps/web/components/bookings/saved-venues.tsx` | same wrapper, data from `GET /users/me/favorites`. |
+| Search loading | `apps/web/app/search/loading.tsx` | fl `SkeletonCard`. |
+| Venue detail hero | `apps/web/components/photo-gallery.tsx` | NO autoplay: swipe (touch), 44px arrows, arrow keys, thumbnails, "1/6" counter; click the photo = full-screen gallery (Esc / Close / backdrop). Pure helpers in `lib/gallery-nav.ts` (tested). |
+| Venue page amenities | `apps/web/components/amenity-badges.tsx` | full list with the same `amenityItems()` + `AMENITY_ICONS` as the popover. |
+
+Home has no venue list on web (marketing sections only), so nothing to replace there. "Sahooliat"/"Sahulatein" copy is now "Amenities" (RU + EN).
+Old card (`venue-card.tsx` v1 with sport/area/Open-in-Maps links and the availability tags) is gone; those links still exist on the venue page.
+Local QA note: the local backend has no `CLOUDFRONT_DOMAIN`, so `photo_urls` use the S3 URL format; the W1 Playwright run serves those URLs from localstack via a route handler (the browser never contacts AWS).

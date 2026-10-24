@@ -15,18 +15,35 @@ import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
 import { DurationSheet } from "./duration-sheet";
 import { useT } from "@/components/i18n/lang-provider";
-import type { MessageKey } from "@/lib/i18n";
+import { slotChipA11y, slotChipCue, type SlotChipState } from "@court-booking/ui-tokens";
+import { Hourglass, Lock, UserCheck, useFlLang } from "@/components/fl";
+import { slotRowSpec } from "@/lib/slot-row";
 import { CourtMonthCalendar } from "./court-month-calendar";
 
-const OTHER_STATUS_LABEL: Record<string, MessageKey> = {
-  held: "venue.pop.paymentPending",
-  payment_submitted: "venue.pop.paymentPending",
-  booked: "venue.pop.booked",
-  blocked: "venue.pop.unavailable",
+/** Row look per slot state (Floodlight System board): never colour-only, the cue (icon / strike / dashed / outline) comes from slotChipCue. */
+const ROW: Record<SlotChipState, string> = {
+  open: "border-[1.5px] border-fl-line bg-fl-ground text-fl-night hover:border-fl-night",
+  selected: "border-2 border-fl-role-slot-selected-border bg-fl-role-slot-selected text-fl-role-on-slot-selected",
+  inRange: "border-2 border-fl-role-slot-range-border bg-fl-role-slot-range text-fl-role-on-slot-range",
+  held: "border-[1.5px] border-dashed border-fl-waiting-border bg-fl-waiting-tint text-fl-waiting",
+  booked: "border-[1.5px] border-transparent bg-fl-booked-bg text-fl-muted",
+  noRoom: "border-[1.5px] border-dashed border-fl-line-strong bg-fl-white text-fl-muted",
+  blocked: "border-[1.5px] border-dashed border-fl-line-strong bg-fl-mist text-fl-muted",
+  mine: "border-2 border-fl-open bg-fl-open-tint text-fl-open",
+};
+const PILL: Record<SlotChipState, string> = {
+  open: "bg-fl-white text-fl-open",
+  selected: "bg-fl-white text-fl-night",
+  inRange: "bg-fl-white text-fl-night",
+  held: "bg-fl-white text-fl-waiting",
+  booked: "bg-fl-white text-fl-muted",
+  noRoom: "bg-fl-ground text-fl-muted",
+  blocked: "bg-fl-white text-fl-muted",
+  mine: "bg-fl-white text-fl-open",
 };
 
 // Day-state dot colours for the week strip (the same tokens as the month calendar).
-const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "bg-khelo-success-text", few: "bg-khelo-warning-text", full: "bg-khelo-muted-3" };
+const DOW_DOT: Partial<Record<DaySummaryState, string>> = { open: "bg-fl-open", few: "bg-fl-waiting", full: "bg-fl-muted2" };
 
 /**
  * The popup a tapped calendar date opens (Section 32 Part 4b UPDATE), scoped to ONE court: a centered dialog on
@@ -42,6 +59,7 @@ export function CourtDayPopup({
   venueName,
   initialDate,
   onClose,
+  cancellation,
 }: {
   courtId: string;
   courtName: string;
@@ -52,9 +70,11 @@ export function CourtDayPopup({
   venueName: string;
   initialDate: string;
   onClose: () => void;
+  cancellation?: { cancellation_allowed: boolean; cancellation_cutoff_hours: number | null } | null;
 }) {
   const t = useT();
   const fmt = useFmt();
+  const lang = useFlLang();
   const router = useRouter();
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
@@ -162,12 +182,12 @@ export function CourtDayPopup({
 
   return (
     <>
-      <div className="khelo fixed inset-0 z-50 flex items-end md:items-center justify-center bg-khelo-ink/50 font-[family-name:var(--font-khelo-body-x)] text-khelo-ink" onClick={onClose}>
+      <div className="khelo fixed inset-0 z-50 flex items-end md:items-center justify-center bg-fl-night/50 font-[family-name:var(--font-khelo-body-x)] text-fl-night" onClick={onClose}>
         <div
           role="dialog"
           aria-modal="true"
           aria-label={t("venue.pop.availability", { court: courtName })}
-          className="bg-khelo-surface w-full md:w-[440px] rounded-t-3xl md:rounded-3xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4"
+          className="bg-fl-white w-full md:w-[440px] rounded-t-3xl md:rounded-3xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4"
           style={{ maxHeight: "86vh" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -177,19 +197,19 @@ export function CourtDayPopup({
                 type="button"
                 onClick={() => setView("month")}
                 aria-label={t("venue.pop.backToMonth")}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-khelo-page text-lg font-bold text-khelo-ink"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-fl-ground text-lg font-bold text-fl-night"
               >
                 ‹
               </button>
             ) : (
               <span className="w-11" />
             )}
-            <span className="font-khelo-display text-[16px] font-extrabold text-khelo-ink"><CourtLabel name={courtName} sport={courtSport} /></span>
+            <span className="font-khelo-display text-[16px] font-extrabold text-fl-night"><CourtLabel name={courtName} sport={courtSport} /></span>
             <button
               type="button"
               onClick={onClose}
               aria-label={t("venue.common.close")}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-khelo-page text-lg font-bold text-khelo-ink"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-fl-ground text-lg font-bold text-fl-night"
             >
               ✕
             </button>
@@ -220,106 +240,81 @@ export function CourtDayPopup({
                       onClick={() => setDate(d)}
                       aria-pressed={selected}
                       className={`min-w-0 flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-2xl border-[1.5px] py-2.5 transition-colors ${
-                        selected ? "border-khelo-orange bg-khelo-orange text-khelo-ink" : "border-khelo-border bg-khelo-surface text-khelo-ink"
+                        selected ? "border-2 border-fl-role-selected-border bg-fl-role-selected text-fl-role-on-selected" : "border-fl-line-strong bg-fl-white text-fl-night"
                       } ${isPast ? "opacity-40" : "cursor-pointer"}`}
                     >
-                      <span className={`text-[11px] font-bold leading-none whitespace-nowrap ${selected ? "text-khelo-ink" : "text-khelo-muted"}`}>
+                      <span className={`text-[11px] font-bold leading-none whitespace-nowrap ${selected ? "text-fl-night" : "text-fl-muted"}`}>
                         {tabLabel(d)}
                       </span>
-                      <span className="font-mono text-[15px] font-extrabold">
+                      <span className="text-[15px] font-extrabold tabular-nums">
                         {String(Number(d.slice(8))).padStart(2, "0")}
                       </span>
-                      <span className={`h-[5px] w-[5px] rounded-full ${selected ? (dot ? "bg-khelo-ink" : "bg-transparent") : (dot ?? "bg-transparent")}`} aria-hidden />
+                      <span className={`h-[5px] w-[5px] rounded-full ${selected ? (dot ? "bg-fl-night" : "bg-transparent") : (dot ?? "bg-transparent")}`} aria-hidden />
                     </button>
                   );
                 })}
               </div>
 
-              <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-khelo-border [&::-webkit-scrollbar-track]:bg-transparent">
+              <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-fl-line-strong [&::-webkit-scrollbar-track]:bg-transparent">
                 {dayQuery.isLoading ? (
-                  <p className="text-center py-10 text-khelo-muted-2">{t("venue.cal.loading")}</p>
+                  <p className="text-center py-10 text-fl-muted2">{t("venue.cal.loading")}</p>
                 ) : slots.length === 0 ? (
-                  <p className="text-center py-8 text-[13.5px] text-khelo-muted-2">{(dayQuery.data?.slots.length ?? 0) > 0 ? t("venue.pop.noMoreToday") : t("venue.pop.closedDay")}</p>
+                  <p className="text-center py-8 text-[13.5px] text-fl-muted2">{(dayQuery.data?.slots.length ?? 0) > 0 ? t("venue.pop.noMoreToday") : t("venue.pop.closedDay")}</p>
                 ) : (
                   slots.map((slot, index) => {
                     // on the 30-minute grid a free slot is only a place a booking can START when the court's minimum
                     // (e.g. 2 slots for 60 minutes) fits from here; the first choice also carries that minimum's price
                     const startChoices = slot.status === "available" ? durationChoices(slots, index, minSlots) : [];
-                    const isOpen = startChoices.length > 0;
-                    const tooShort = slot.status === "available" && !isOpen;
-                    const isBooked = slot.status === "booked";
+                    const spec = slotRowSpec(slot, { now, fits: startChoices.length > 0 }, lang);
+                    if (!spec) return null;
+                    const cue = slotChipCue(spec.state);
+                    const Icon = cue.icon === "lock" ? Lock : cue.icon === "hourglass" ? Hourglass : cue.icon === "user" ? UserCheck : null;
+                    const time = fmt.slotTimes(slot);
+                    const label = spec.statusLabel ?? (spec.labelKey ? t(spec.labelKey) : "");
                     const dividerBefore = slot.after_midnight && !slots[index - 1]?.after_midnight;
-                    const divider = dividerBefore ? (
-                      <span className="text-[11px] font-extrabold tracking-[0.14em] text-khelo-muted-2">{t("venue.pop.afterMidnight")}</span>
-                    ) : null;
-                    if (slot.is_mine && slot.booking_id && (isBooked || slot.status === "held" || slot.status === "payment_submitted")) {
-                      const pending = !isBooked;
-                      return (
-                        <div key={slot.starts_at} className="flex flex-col gap-1">
-                          {divider}
-                          <button
-                            onClick={() => handleTapSlot(index, slot.booking_id)}
-                            className={`flex min-h-12 items-center justify-between rounded-2xl border-[1.5px] px-3.5 py-3 text-left ${
-                              pending ? "border-khelo-warning bg-khelo-warning-bg" : "border-khelo-success bg-khelo-success-bg"
-                            }`}
-                          >
-                            <span className="font-mono text-[13px] font-semibold text-khelo-ink">{fmt.slotTimes(slot)}</span>
-                            <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-extrabold ${pending ? "bg-khelo-warning text-khelo-ink" : "bg-khelo-success-text text-white"}`}>
-                              {pending ? t("venue.pop.paymentPendingCaps") : t("venue.pop.yourBooking")}
-                            </span>
-                          </button>
-                        </div>
-                      );
-                    }
                     const waitlistKey = `${courtId}|${slot.starts_at}`;
                     const onWaitlist = joinedKeys.has(waitlistKey);
                     const joining = joiningKey === waitlistKey;
                     return (
                       <div key={slot.starts_at} className="flex flex-col gap-1">
-                        {divider}
-                        <button
-                          onClick={() => handleTapSlot(index, null)}
-                          disabled={!isOpen}
-                          title={slot.status === "blocked" && slot.reason ? slot.reason : tooShort ? t("venue.pop.needsAtLeast", { duration: fmt.duration(slotMinutes) }) : undefined}
-                          data-testid={isOpen ? "slot-open" : undefined}
-                          className={`flex min-h-12 items-center justify-between rounded-2xl border-[1.5px] px-3.5 py-3 text-left ${
-                            isOpen
-                              ? "cursor-pointer border-khelo-teal/30 bg-khelo-mint hover:border-khelo-orange"
-                              : tooShort
-                                ? "cursor-default border-khelo-border bg-khelo-page"
-                                : "cursor-default border-transparent bg-khelo-booked-bg"
-                          }`}
-                        >
-                          <span className={`font-mono text-[13px] font-semibold ${isOpen ? "text-khelo-ink" : "text-khelo-muted"} ${isBooked ? "line-through" : ""}`}>
-                            {fmt.slotTimes(slot)}
-                          </span>
-                          <span className="flex items-center gap-2">
-                            {isBooked ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!onWaitlist) handleJoinWaitlist(slot.starts_at);
-                                }}
-                                disabled={onWaitlist || joining}
-                                className={`h-11 rounded-full px-3 text-[11.5px] font-extrabold ${onWaitlist ? "bg-khelo-page text-khelo-muted" : "bg-khelo-warm-2 text-khelo-orange-label"}`}
-                              >
-                                {joining ? "\u2026" : onWaitlist ? t("venue.pop.onWaitlist") : t("venue.pop.notifyMe")}
-                              </button>
-                            ) : null}
-                            {isOpen ? (
-                              <>
-                                <span className="font-mono text-[12px] font-semibold text-khelo-muted">
-                                  PKR {formatPKR(startChoices[0].price)}{minSlots > 1 ? ` · ${fmt.duration(startChoices[0].minutes)}` : ""}
+                        {dividerBefore ? <span className="text-[11px] font-extrabold tracking-[0.14em] text-fl-muted2">{t("venue.pop.afterMidnight")}</span> : null}
+                        <div className={`flex min-h-12 items-stretch gap-2 rounded-fl-md ${ROW[spec.state]}`} data-state={spec.state}>
+                          <button
+                            type="button"
+                            onClick={() => (spec.state === "mine" ? handleTapSlot(index, slot.booking_id) : handleTapSlot(index, null))}
+                            disabled={!spec.pressable}
+                            aria-label={`${slotChipA11y(spec.state, time, lang, slot.reason)}${spec.statusLabel ? `, ${spec.statusLabel}` : ""}${spec.state === "open" ? `, PKR ${formatPKR(startChoices[0].price)}` : ""}`}
+                            title={spec.state === "blocked" && slot.reason ? slot.reason : spec.state === "noRoom" ? t("venue.pop.needsAtLeast", { duration: fmt.duration(slotMinutes) }) : undefined}
+                            data-testid={spec.state === "open" ? "slot-open" : `slot-${spec.state}`}
+                            className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-fl-md px-3.5 py-3 text-left enabled:cursor-pointer disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
+                          >
+                            <span className={`flex items-center gap-1.5 text-[14px] font-extrabold tabular-nums ${cue.strike ? "line-through" : ""}`}>
+                              {Icon ? <Icon size={14} strokeWidth={2.4} /> : null}
+                              {time}
+                            </span>
+                            <span className="flex flex-wrap items-center justify-end gap-2">
+                              {spec.state === "open" ? (
+                                <span className="text-[13px] font-bold tabular-nums text-fl-muted">
+                                  PKR {formatPKR(startChoices[0].price)}
+                                  {minSlots > 1 ? ` · ${fmt.duration(startChoices[0].minutes)}` : ""}
                                 </span>
-                                <span className="rounded-full bg-khelo-surface px-2.5 py-1 text-[10.5px] font-extrabold text-khelo-success-text">{t("venue.pop.open")}</span>
-                              </>
-                            ) : (
-                              <span className="text-[11.5px] font-bold text-khelo-muted">
-                                {tooShort ? t("venue.pop.tooShort") : OTHER_STATUS_LABEL[slot.status] ? t(OTHER_STATUS_LABEL[slot.status]) : slot.status}
-                              </span>
-                            )}
-                          </span>
-                        </button>
+                              ) : null}
+                              <span className={`rounded-full px-2.5 py-1 text-[12px] font-extrabold ${PILL[spec.state]}`}>{label}</span>
+                            </span>
+                          </button>
+                          {spec.waitlist ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!onWaitlist) handleJoinWaitlist(slot.starts_at);
+                              }}
+                              disabled={onWaitlist || joining}
+                              className={`my-auto mr-1.5 h-11 shrink-0 rounded-full px-3 text-[12px] font-extrabold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night ${onWaitlist ? "bg-fl-white text-fl-muted" : "bg-fl-orange-tint text-fl-orange-deep"}`}
+                            >
+                              {joining ? "…" : onWaitlist ? t("venue.pop.onWaitlist") : t("venue.pop.notifyMe")}
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     );
                   })
@@ -340,6 +335,7 @@ export function CourtDayPopup({
           index={pickingIndex}
           onClose={() => setPickingIndex(null)}
           onContinue={handleContinue}
+          cancellation={cancellation}
         />
       ) : null}
     </>

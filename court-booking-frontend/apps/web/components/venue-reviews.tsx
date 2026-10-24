@@ -27,13 +27,13 @@ function Stars({ value, size = 16, label }: { value: number; size?: number; labe
   const pct = Math.max(0, Math.min(5, value)) * 20;
   return (
     <span role="img" aria-label={label ?? t("venue.reviews.stars", { value })} className="relative inline-flex">
-      <span className="inline-flex text-khelo-border">
+      <span className="inline-flex text-fl-line-strong">
         {[0, 1, 2, 3, 4].map((i) => (
           <StarShape key={i} size={size} />
         ))}
       </span>
       <span className="absolute inset-y-0 left-0 overflow-hidden whitespace-nowrap" style={{ width: `${pct}%` }}>
-        <span className="inline-flex text-khelo-orange">
+        <span className="inline-flex text-fl-orange">
           {[0, 1, 2, 3, 4].map((i) => (
             <StarShape key={i} size={size} />
           ))}
@@ -44,11 +44,11 @@ function Stars({ value, size = 16, label }: { value: number; size?: number; labe
 }
 
 const AVATAR_TONES = [
-  "bg-khelo-warm text-khelo-orange-label",
-  "bg-khelo-mint text-khelo-teal",
-  "bg-khelo-success-bg text-khelo-success-text",
-  "bg-khelo-warning-bg text-khelo-warning-text",
-  "bg-khelo-page text-khelo-muted",
+  "bg-fl-orange-tint text-fl-orange-deep",
+  "bg-fl-teal-tint text-fl-teal-deep",
+  "bg-fl-open-tint text-fl-open",
+  "bg-fl-waiting-tint text-fl-waiting",
+  "bg-fl-ground text-fl-muted",
 ];
 
 function Avatar({ name }: { name: string }) {
@@ -73,15 +73,15 @@ function Summary({ average, count, distribution }: { average: number; count: num
   const t = useT();
   return (
     <div
-      className="grid gap-6 sm:grid-cols-[auto_1fr] items-center bg-khelo-surface border border-khelo-divider rounded-3xl p-5 sm:p-6"
+      className="grid gap-6 sm:grid-cols-[auto_1fr] items-center bg-fl-white border border-fl-line rounded-3xl p-5 sm:p-6"
       data-testid="review-summary"
     >
-      <div className="flex flex-col items-center sm:items-start gap-1.5 sm:pr-6 sm:border-r border-khelo-divider">
+      <div className="flex flex-col items-center sm:items-start gap-1.5 sm:pr-6 sm:border-r border-fl-line">
         <span className="text-5xl font-extrabold tracking-tight leading-none" data-testid="review-average">
           {average.toFixed(1)}
         </span>
         <Stars value={average} size={20} label={t("venue.reviews.stars", { value: average.toFixed(1) })} />
-        <span className="text-[13px] text-khelo-muted-2">
+        <span className="text-[13px] text-fl-muted2">
           {t(count === 1 ? "venue.reviews.countOne" : "venue.reviews.countMany", { count })}
         </span>
       </div>
@@ -90,11 +90,11 @@ function Summary({ average, count, distribution }: { average: number; count: num
           const star = 5 - i;
           return (
             <li key={star} className="flex items-center gap-3 text-[13px]" data-testid={`review-bar-${star}`}>
-              <span className="w-9 shrink-0 font-semibold text-khelo-muted">{star} ★</span>
-              <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-khelo-page">
-                <span className="block h-full rounded-full bg-khelo-orange" style={{ width: `${count ? (n / count) * 100 : 0}%` }} />
+              <span className="w-9 shrink-0 font-semibold text-fl-muted">{star} ★</span>
+              <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-fl-ground">
+                <span className="block h-full rounded-full bg-fl-orange" style={{ width: `${count ? (n / count) * 100 : 0}%` }} />
               </span>
-              <span className="w-7 shrink-0 text-right font-mono text-khelo-muted-2">{n}</span>
+              <span className="w-7 shrink-0 text-right tabular-nums text-fl-muted2">{n}</span>
             </li>
           );
         })}
@@ -138,16 +138,16 @@ export function VenueReviews({ venueId }: { venueId: string }) {
 
       {query.isLoading ? (
         <div className="flex flex-col gap-4 animate-pulse" aria-hidden="true">
-          <div className="h-40 rounded-3xl bg-khelo-divider" />
-          <div className="h-28 rounded-3xl bg-khelo-divider" />
+          <div className="h-40 rounded-3xl bg-fl-line" />
+          <div className="h-28 rounded-3xl bg-fl-line" />
         </div>
       ) : reviews.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-10 px-6 text-center bg-khelo-surface border border-khelo-divider rounded-3xl">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-khelo-warm text-khelo-orange">
+        <div className="flex flex-col items-center gap-2 py-10 px-6 text-center bg-fl-white border border-fl-line rounded-3xl">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-fl-orange-tint text-fl-orange">
             <StarShape size={24} />
           </span>
           <p className="font-bold">{t("venue.reviews.none")}</p>
-          <p className="text-[14px] text-khelo-muted-2 max-w-xs">{t("venue.reviews.noneHint")}</p>
+          <p className="text-[14px] text-fl-muted2 max-w-xs">{t("venue.reviews.noneHint")}</p>
         </div>
       ) : (
         <>
@@ -160,7 +160,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                 <li
                   key={r.id}
                   data-testid="review-card"
-                  className="bg-khelo-surface border border-khelo-divider rounded-3xl p-5 flex flex-col gap-3"
+                  className="bg-fl-white border border-fl-line rounded-3xl p-5 flex flex-col gap-3"
                   style={r.is_hidden ? { opacity: 0.55 } : undefined}
                 >
                   <div className="flex items-center gap-3">
@@ -168,9 +168,9 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                     <div className="flex flex-col min-w-0">
                       <span className="font-bold text-[15px] truncate">
                         {name}
-                        {r.is_hidden ? <span className="ml-2 text-[11px] font-bold text-khelo-muted-2">{t("venue.reviews.hidden")}</span> : null}
+                        {r.is_hidden ? <span className="ml-2 text-[11px] font-bold text-fl-muted2">{t("venue.reviews.hidden")}</span> : null}
                       </span>
-                      <span className="text-[12.5px] text-khelo-muted-2">
+                      <span className="text-[12.5px] text-fl-muted2">
                         {when(r.created_at, fmt)}
                         {r.updated_at ? ` \u00b7 ${t("venue.reviews.edited")}` : ""}
                       </span>
@@ -179,15 +179,15 @@ export function VenueReviews({ venueId }: { venueId: string }) {
                       <Stars value={r.rating} />
                     </span>
                   </div>
-                  {r.comment ? <p className="text-[15px] leading-relaxed text-khelo-muted">{r.comment}</p> : null}
+                  {r.comment ? <p className="text-[15px] leading-relaxed text-fl-muted">{r.comment}</p> : null}
                   {r.owner_reply ? (
-                    <div className="rounded-xl bg-khelo-page px-4 py-3 flex flex-col gap-1">
-                      <p className="text-[12px] font-bold tracking-wide text-khelo-muted-2 uppercase">{t("venue.reviews.reply")}</p>
-                      <p className="text-[14px] text-khelo-muted">{r.owner_reply}</p>
+                    <div className="rounded-xl bg-fl-ground px-4 py-3 flex flex-col gap-1">
+                      <p className="text-[12px] font-bold tracking-wide text-fl-muted2 uppercase">{t("venue.reviews.reply")}</p>
+                      <p className="text-[14px] text-fl-muted">{r.owner_reply}</p>
                     </div>
                   ) : null}
                   {isAdmin ? (
-                    <button onClick={() => toggleHidden(r)} className="inline-flex min-h-11 items-center self-start text-[13px] font-bold text-khelo-orange-label hover:underline">
+                    <button onClick={() => toggleHidden(r)} className="inline-flex min-h-11 items-center self-start text-[13px] font-bold text-fl-orange-deep hover:underline">
                       {r.is_hidden ? t("venue.reviews.unhide") : t("venue.reviews.hide")}
                     </button>
                   ) : null}
@@ -200,7 +200,7 @@ export function VenueReviews({ venueId }: { venueId: string }) {
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
-              className="self-center inline-flex min-h-11 items-center px-6 py-2.5 rounded-full border border-khelo-border bg-khelo-surface text-[14px] font-bold text-khelo-ink hover:border-khelo-orange hover:text-khelo-orange-label transition-colors"
+              className="self-center inline-flex min-h-11 items-center px-6 py-2.5 rounded-full border border-fl-line-strong bg-fl-white text-[14px] font-bold text-fl-night hover:border-fl-orange hover:text-fl-orange-deep transition-colors"
             >
               {showAll ? t("venue.reviews.fewer") : t("venue.reviews.all", { count: reviews.length })}
             </button>

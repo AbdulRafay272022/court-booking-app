@@ -9,7 +9,7 @@ import { coordsOf, directionsUrl, pointUrl, shareText, whatsappShareUrl } from "
 // Leaflet touches `window` and brings its own CSS, so the map is fetched only in the browser, only on a venue page that has coordinates.
 const VenuePinMap = dynamic(() => import("./venue-pin-map"), {
   ssr: false,
-  loading: () => <div className="h-[260px] w-full animate-pulse rounded-3xl bg-khelo-divider md:h-[340px]" aria-hidden="true" />,
+  loading: () => <div className="h-[260px] w-full animate-pulse rounded-3xl bg-fl-line md:h-[340px]" aria-hidden="true" />,
 });
 
 const subscribeNever = () => () => {};
@@ -55,8 +55,8 @@ export function VenueLocation({
         <h2 id="venue-location-title" className="font-khelo-display text-[26px] font-extrabold tracking-[-0.5px]">
           {t("venue.loc.title")}
         </h2>
-        <p className="text-[15px] text-khelo-muted">
-          <span className="font-bold text-khelo-ink">{name}</span>
+        <p className="text-[15px] text-fl-muted">
+          <span className="font-bold text-fl-night">{name}</span>
           <br />
           {address}
           {place ? <>, {place}</> : null}
@@ -91,9 +91,9 @@ export function VenueLocation({
         {t("venue.loc.title")}
       </h2>
       <VenuePinMap lat={coords.lat} lng={coords.lng} name={name} />
-      <p className="hidden text-[12.5px] text-khelo-muted-2 [@media(pointer:fine)]:block">{t("venue.loc.ctrlHint")}</p>
-      <p className="text-[15px] text-khelo-muted">
-        <span className="font-bold text-khelo-ink">{name}</span>
+      <p className="hidden text-[12.5px] text-fl-muted2 [@media(pointer:fine)]:block">{t("venue.loc.ctrlHint")}</p>
+      <p className="text-[15px] text-fl-muted">
+        <span className="font-bold text-fl-night">{name}</span>
         <br />
         {address}
         {place ? <>, {place}</> : null}
@@ -117,7 +117,7 @@ export function VenueLocation({
           </>
         )}
       </div>
-      <p role="status" aria-live="polite" className="min-h-5 text-[13px] font-bold text-khelo-ink" data-testid="location-status">
+      <p role="status" aria-live="polite" className="min-h-5 text-[13px] font-bold text-fl-night" data-testid="location-status">
         {status}
       </p>
     </section>
