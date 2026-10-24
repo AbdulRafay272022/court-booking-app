@@ -22,3 +22,7 @@ Thumbs.db
 
 # Mobile audit raw screenshots (kept locally, too large to commit)
 docs/mobile-audit/screens/
+
+# QA screenshots live outside the repo: "..\Court Booking App - QA screenshots\" (.md reports, scripts and json stay tracked)
+docs/floodlight-qa/**/*.png
+docs/mobile-audit/p0-after/
