@@ -43,7 +43,7 @@ export default function OwnerPremiumScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
+      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
           <ChevronLeftIcon />
         </Pressable>
@@ -57,7 +57,7 @@ export default function OwnerPremiumScreen() {
       ) : query.isError || !data ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-3.5">
+        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-3.5">
           <Text className="font-plex-medium text-owner-ink-faint text-[13px] leading-[18px]">
             Pick only the features you want and pay only for those. Each one has a {data.trial_days}-day free trial that starts the day
             you switch it on, and you keep the price you switched it on at.

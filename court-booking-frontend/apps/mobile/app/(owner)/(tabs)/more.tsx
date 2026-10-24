@@ -7,30 +7,35 @@ import { confirmLogout } from "@/lib/logout";
 import { openSupportWhatsApp } from "@/lib/support";
 import { OV } from "@/lib/overview";
 import { ChevronRightIcon } from "@/components/icons";
-import { OwnerTabBar } from "@/components/owner-tab-bar";
+import { moreItemAllowed, type MoreItemKey } from "@/lib/owner-access";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 
 interface Item {
   label: string;
   sub?: string;
   onPress: () => void;
   ownerOnly?: boolean;
+  /** Staff see it only with the matching permission (lib/owner-access.ts). */
+  gate?: MoreItemKey;
   danger?: boolean;
 }
 
 /** "Aur": everything that is not one of the four tabs (the old Today icon row lives here now). */
 export default function OwnerMoreScreen() {
   const isOwner = useAuthStore((s) => s.user?.role) === "owner";
+  const staff = useAuthStore((s) => s.user?.role) === "staff";
+  const { can, settled } = useMyPermissions();
   const go = (path: string) => () => router.push(path as never);
   const items: Item[] = [
-    { label: "Bookings history", sub: "Purani bookings, filters aur search", onPress: go("/(owner)/history") },
-    { label: "Add booking", sub: "Walk-in booking", onPress: go("/(owner)/walkin") },
-    { label: "Check-in", sub: "QR scan ya booking code", onPress: go("/(owner)/checkin") },
+    { label: "Bookings history", sub: "Purani bookings, filters aur search", gate: "history", onPress: go("/(owner)/history") },
+    { label: "Add booking", sub: "Walk-in booking", gate: "walkin", onPress: go("/(owner)/walkin") },
+    { label: "Check-in", sub: "QR scan ya booking code", gate: "checkin", onPress: go("/(owner)/checkin") },
     { label: "Notifications", onPress: go("/(owner)/notifications") },
-    { label: "Growth", onPress: go("/(owner)/growth") },
-    { label: "Reviews", onPress: go("/(owner)/reviews") },
+    { label: "Growth", gate: "growth", onPress: go("/(owner)/growth") },
+    { label: "Reviews", gate: "reviews", onPress: go("/(owner)/reviews") },
     { label: "Staff", ownerOnly: true, onPress: go("/(owner)/staff") },
     { label: "Premium", ownerOnly: true, onPress: go("/(owner)/premium") },
-    { label: "Venue settings", sub: "Hold, reminders, cancellation, courts", onPress: go("/(owner)/venue-settings") },
+    { label: "Venue settings", sub: "Hold, reminders, cancellation, courts", gate: "venueSettings", onPress: go("/(owner)/venue-settings") },
     { label: "Shanakhti card (CNIC)", sub: "Venue settings mein", ownerOnly: true, onPress: go("/(owner)/venue-settings") },
     { label: "Account", onPress: go("/(owner)/account") },
     { label: "Madad chahiye? WhatsApp karein", onPress: () => openSupportWhatsApp() },
@@ -48,6 +53,8 @@ export default function OwnerMoreScreen() {
       <ScrollView className="flex-1" contentContainerClassName="px-4 pt-4 pb-8 gap-2.5">
         {items
           .filter((i) => !i.ownerOnly || isOwner)
+          // A staff member's list waits for the permissions answer, so a forbidden entry never flashes.
+          .filter((i) => !i.gate || (staff && !settled ? false : moreItemAllowed(i.gate, can, staff)))
           .map((i) => (
             <Pressable
               key={i.label}
@@ -66,7 +73,6 @@ export default function OwnerMoreScreen() {
             </Pressable>
           ))}
       </ScrollView>
-      <OwnerTabBar active="more" />
     </View>
   );
 }

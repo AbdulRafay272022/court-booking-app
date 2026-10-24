@@ -11,7 +11,10 @@ import { addDays, durationChoices, formatDuration, isValidPkMobile, minSlotsFor,
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTime, formatTimeRange, pktDayTabs } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useMyPermissions } from "@/lib/use-my-permissions";
+import { invalidateOwnerMoney } from "@/lib/owner-cache";
 import { ChevronLeftIcon } from "@/components/icons";
+import { NoAccess } from "@/components/no-access";
 import { Chip, FieldLabel, PrimaryButton, TextField } from "./venue-setup/_components";
 
 /**
@@ -29,6 +32,7 @@ export default function WalkInScreen() {
   const params = useLocalSearchParams<{ courtId?: string; startsAt?: string }>();
   const { activeVenue } = useOwnerVenues();
   const queryClient = useQueryClient();
+  const perms = useMyPermissions();
   const courts = (activeVenue?.courts ?? []).filter((c) => c.is_active);
 
   const [courtId, setCourtId] = useState<string | undefined>(params.courtId);
@@ -159,7 +163,8 @@ export default function WalkInScreen() {
         player_phone: playerPhone.trim() || undefined,
         amount_paid: Number(amount),
       });
-      await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+      // Overview, ledger, history and badges all show the new booking at once (the old ["owner-today"] key was dead).
+      await Promise.all([invalidateOwnerMoney(queryClient), queryClient.invalidateQueries({ queryKey: ["court-availability"] })]);
       router.back();
     } catch (e) {
       if (e instanceof ApiError && e.code === "SLOT_ALREADY_TAKEN") {
@@ -178,10 +183,12 @@ export default function WalkInScreen() {
     }
   }
 
+  if (perms.settled && !perms.can("walkin")) return <NoAccess what="Walk-in booking" />;
+
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
+      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
+        <Pressable onPress={() => router.back()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
           <ChevronLeftIcon />
         </Pressable>
         <View className="gap-0.5">
@@ -190,7 +197,7 @@ export default function WalkInScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4.5 pb-8 gap-5" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1" contentContainerClassName="px-5 pt-5 pb-8 gap-5" keyboardShouldPersistTaps="handled">
         <View className="gap-2">
           <FieldLabel>Court</FieldLabel>
           <View className="flex-row flex-wrap gap-2">
@@ -334,7 +341,7 @@ export default function WalkInScreen() {
         ) : null}
       </ScrollView>
 
-      <View className="px-4.5 pt-3.5 pb-6 bg-owner-surface border-t border-owner-border">
+      <View className="px-5 pt-3.5 pb-6 bg-owner-surface border-t border-owner-border">
         <PrimaryButton label="Save booking" onPress={handleSubmit} loading={submitting} disabled={!isValid} />
       </View>
     </SafeAreaView>

@@ -29,6 +29,9 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { formatWhen } from "@/lib/format";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
+import { NoAccess } from "@/components/no-access";
+import { moreItemAllowed } from "@/lib/owner-access";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
 import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
 import {
@@ -55,6 +58,7 @@ const NEW_COURT_KEY = "__new__";
 
 export default function VenueSettingsScreen() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
+  const perms = useMyPermissions();
   const [section, setSection] = useState<Section>("venue");
   // Only ACTIVE courts are editable here -- a deactivated ("deleted") court shouldn't be a
   // tab in the settings editor. Its history still lives in the ledger (post-batch #2).
@@ -77,10 +81,14 @@ export default function VenueSettingsScreen() {
   const court = courtQuery.data && courtQuery.data.id === activeCourtId ? (courtQuery.data as Court) : undefined;
   const loading = venuesLoading || courtQuery.isLoading || (!!activeCourtId && !court && !courtQuery.isError);
 
+  // Staff need court settings or photos access (or view_ledger, which reads the timers as a summary); without any of them
+  // the whole screen would only 403.
+  if (perms.settled && !moreItemAllowed("venueSettings", perms.can, perms.isStaff)) return <NoAccess what="Venue settings" />;
+
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
+      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
+        <Pressable onPress={() => router.back()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
           <ChevronLeftIcon />
         </Pressable>
         <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px] flex-1">Venue settings</Text>
@@ -88,7 +96,7 @@ export default function VenueSettingsScreen() {
 
       {/* Venue-level settings and court-level settings are two separate sections, so an owner never edits a court's price
           while looking at the venue's bank details (or the other way round). */}
-      <View className="px-4.5 py-3 bg-owner-surface border-b border-owner-border flex-row gap-2">
+      <View className="px-5 py-3 bg-owner-surface border-b border-owner-border flex-row gap-2">
         {(["venue", "courts"] as const).map((k) => (
           <Pressable
             key={k}
@@ -105,7 +113,7 @@ export default function VenueSettingsScreen() {
         ))}
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-4" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-4" keyboardShouldPersistTaps="handled">
         {section === "venue" ? (
           activeVenue ? (
             <>

@@ -9,7 +9,7 @@ import { NotificationsList } from "@/components/notification-row";
 export default function OwnerNotificationsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
+      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"

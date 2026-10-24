@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useIsFocused } from "expo-router";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { notificationText, type NotificationFeedItem, type NotificationFeedPage } from "@court-booking/types";
 
@@ -92,6 +92,7 @@ export function NotificationsList({ tone }: { tone: NotifTone }) {
     getNextPageParam: (last: NotificationFeedPage) => (last.has_more ? last.page + 1 : undefined),
     enabled: !!userId,
     refetchInterval: 15_000,
+    subscribed: useIsFocused(),
   });
   const items = useMemo(() => {
     const seen = new Set<string>();

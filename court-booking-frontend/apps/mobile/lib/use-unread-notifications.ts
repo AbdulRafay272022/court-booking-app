@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
+import { useIsFocused } from "expo-router";
 import { create } from "zustand";
 import { ApiError } from "@court-booking/api-client";
 import type { NotificationFeedPage } from "@court-booking/types";
@@ -81,6 +82,8 @@ export function useUnreadNotifications() {
     enabled: !!userId,
     refetchInterval: POLL_MS,
     staleTime: 0,
+    // Only the visible screen's bell polls; screens kept mounted under a push (or another tab) stop asking.
+    subscribed: useIsFocused(),
   });
 
   const items = useMemo(() => query.data?.items ?? [], [query.data]);

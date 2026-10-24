@@ -34,7 +34,7 @@ export default function GrowthScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
+      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
         <View className="flex-row items-center gap-3">
           <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
             <ChevronLeftIcon />
@@ -73,14 +73,14 @@ export default function GrowthScreen() {
           subtitle="We need a bit more booking history at this venue before we can suggest anything useful."
         />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-6 gap-3">
+        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-6 gap-3">
           {suggestions.map((s) => {
             const growthCourt = activeVenue?.courts.find((c) => c.id === s.court_id);
             const courtName = growthCourt ? courtLabel(growthCourt.name, growthCourt.sport) : "Court";
             return (
               <View
                 key={`${s.court_id}-${s.day_of_week}-${s.hour}`}
-                className="bg-owner-surface border border-owner-border rounded-2xl p-4.5 gap-3.5"
+                className="bg-owner-surface border border-owner-border rounded-2xl p-5 gap-3.5"
               >
                 <View className="flex-row items-start gap-3">
                   <View className="w-[38px] h-[38px] rounded-[10px] items-center justify-center" style={{ backgroundColor: "#FBF0DD" }}>

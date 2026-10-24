@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
@@ -15,12 +15,11 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { PERM } from "@/lib/overview";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
-import { OwnerTabBar } from "@/components/owner-tab-bar";
-import { ChevronLeftIcon } from "@/components/icons";
+import { NoAccess } from "@/components/no-access";
 import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
-import { ApprovalCard, ApproveSheet, DuplicateConfirmSheet, RejectSheet } from "@/components/approval-card";
-import { EmptyState } from "./_dashboard-components";
+import { ApprovalCard, ApproveSheet, DuplicateConfirmSheet, RefundConfirmSheet, RejectSheet } from "@/components/approval-card";
+import { EmptyState } from "../_dashboard-components";
 
 const PAGE_SIZE = 50;
 
@@ -37,7 +36,7 @@ export default function ApprovalsScreen() {
   const [greyed, setGreyed] = useState<Record<string, ApprovalState>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [sheet, setSheet] = useState<{ kind: "approve" | "reject"; id: string } | null>(null);
+  const [sheet, setSheet] = useState<{ kind: "approve" | "reject" | "refund"; id: string } | null>(null);
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,6 +44,7 @@ export default function ApprovalsScreen() {
   // NOT_STAFF_PERMITTED (older backend, or a permission removed meanwhile) still swaps the buttons for the same note.
   const [noPermission, setNoPermission] = useState(false);
   const perms = useMyPermissions();
+  const focused = useIsFocused();
   const locked = noPermission || !perms.can(PERM.approve);
   // Stage 2 (B.a): the separate "used before" confirm, with the amount/mode the owner already chose.
   const [dup, setDup] = useState<{ id: string; usedOn: number; amount: number | undefined; mode: ApproveAcceptMode | undefined } | null>(null);
@@ -56,8 +56,9 @@ export default function ApprovalsScreen() {
     queryFn: ({ pageParam }) =>
       api.owners.approvalsQueue({ venueId: activeVenueId, date: filterDate, courtIds: filterCourts, page: pageParam, pageSize: PAGE_SIZE }),
     getNextPageParam: (last) => (last.page * last.page_size < last.total ? last.page + 1 : undefined),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && perms.can("view_ledger"),
     refetchInterval: (q) => pollInterval(q, 15_000),
+    subscribed: focused,
   });
 
   const fetched = useMemo(() => {
@@ -161,6 +162,7 @@ export default function ApprovalsScreen() {
 
   function acknowledge(item: ApprovalQueueItem, moneyReceived: boolean) {
     act(item.payment_id, () => api.owners.acknowledgeCancelled(item.payment_id, moneyReceived), () => {
+      setSheet(null);
       drop(item.payment_id);
       if (moneyReceived) {
         queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
@@ -171,17 +173,11 @@ export default function ApprovalsScreen() {
 
   const courtText = (it: ApprovalQueueItem) => courtLabel(it.court_name, it.court_sport ?? sportForCourtName(activeVenue?.courts, it.court_name));
 
+  if (perms.settled && !perms.can("view_ledger")) return <NoAccess what="Approvals" withBack={false} />;
+
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
-      <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(owner)/today"))}
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center"
-        >
-          <ChevronLeftIcon />
-        </Pressable>
+      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <View className="flex-1 gap-0.5">
           <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Payment review</Text>
           <Text testID="approvals-count" className="font-plex-bold text-owner-ink text-[17px] -tracking-[0.2px]" accessibilityRole="header">
@@ -195,7 +191,7 @@ export default function ApprovalsScreen() {
         </View>
       </View>
       {filterDate || filterCourts.length ? (
-        <View className="px-4.5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
+        <View className="px-5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
           <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">
             {`Filter: ${filterDate ? formatDayHeader(filterDate) : "Sab din"}${filterCourts.length ? ` - ${filterCourts.length} court(s)` : ""}`}
           </Text>
@@ -205,11 +201,11 @@ export default function ApprovalsScreen() {
         </View>
       ) : null}
       {notice ? (
-        <View className="px-4.5 py-2.5 flex-row items-center justify-between gap-3" style={{ backgroundColor: "#E4F0EA" }}>
+        <View className="px-5 py-2.5 flex-row items-center justify-between gap-3" style={{ backgroundColor: "#E4F0EA" }}>
           <Text className="flex-1 font-plex-semibold text-[12.5px]" style={{ color: "#14563A" }}>
             {notice}
           </Text>
-          <Pressable onPress={() => router.push("/(owner)/refunds")} accessibilityRole="link" style={{ minHeight: 44, justifyContent: "center" }}>
+          <Pressable onPress={() => router.push("/(owner)/(tabs)/refunds")} accessibilityRole="link" style={{ minHeight: 44, justifyContent: "center" }}>
             <Text className="font-plex-bold text-owner-accent text-[13px] underline">Refunds</Text>
           </Pressable>
         </View>
@@ -242,7 +238,12 @@ export default function ApprovalsScreen() {
                 setSheetError(null);
                 setSheet({ kind: "reject", id: it.payment_id });
               }}
-              onAcknowledge={(money) => acknowledge(it, money)}
+              onAcknowledge={(money) => {
+                // Creating a refund is a money action: confirm amount + booking first. "Theek hai" stays one tap.
+                if (!money) return acknowledge(it, false);
+                setSheetError(null);
+                setSheet({ kind: "refund", id: it.payment_id });
+              }}
             />
           ))}
           {query.hasNextPage ? (
@@ -275,6 +276,16 @@ export default function ApprovalsScreen() {
           onConfirm={(reason) => reject(current, reason)}
         />
       ) : null}
+      {sheet?.kind === "refund" && current ? (
+        <RefundConfirmSheet
+          item={current}
+          courtText={courtText(current)}
+          busy={busyId === current.payment_id}
+          error={sheetError}
+          onClose={() => setSheet(null)}
+          onConfirm={() => acknowledge(current, true)}
+        />
+      ) : null}
       {dup && dupItem && dupItem.state === "awaiting" ? (
         <DuplicateConfirmSheet
           item={dupItem}
@@ -286,7 +297,6 @@ export default function ApprovalsScreen() {
         />
       ) : null}
       {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
-      <OwnerTabBar active="approvals" />
     </SafeAreaView>
   );
 }

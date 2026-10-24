@@ -132,7 +132,7 @@ export default function VenueRegisterScreen() {
 
   function handleSaveAndExit() {
     // Draft is already persisted on every keystroke via the zustand persist middleware.
-    router.replace("/(owner)/today");
+    router.replace("/(owner)/(tabs)/today");
   }
 
   return (

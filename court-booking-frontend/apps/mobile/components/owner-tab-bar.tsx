@@ -1,47 +1,57 @@
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import { useIsFocused } from "expo-router";
+import type { BottomTabBarProps } from "expo-router/tabs";
 
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { OV } from "@/lib/overview";
+import { OWNER_TABS, tabAllowed, type OwnerTabKey } from "@/lib/owner-access";
 import { ApprovalsIcon, DotsIcon, GridIcon, LedgerTabIcon } from "@/components/overview/icons";
 import { RefreshIcon } from "@/components/icons";
 
-export type OwnerTab = "overview" | "approvals" | "refunds" | "ledger" | "more";
+export type OwnerTab = OwnerTabKey;
 
 export function badgeText(n: number): string {
   return n > 99 ? "99+" : String(n);
 }
 
-/** Pending counts for the Approvals and Refunds tabs, polled every 15 s. TanStack's focusManager is wired to AppState in
- * lib/query-client.ts, so polling stops while the app is in the background. A 403 (staff without access) just shows no badge. */
-export function useOwnerBadges() {
+/** Pending counts for the Approvals and Refunds tabs, polled every 15 s while the tab bar is on screen (`subscribed`:
+ * a screen pushed over the tabs stops it; TanStack's focusManager stops it in the background, lib/query-client.ts).
+ * Only asked for when this account may see at least one of the two counts, so staff without access cause no 403 noise. */
+export function useOwnerBadges(active = true) {
   const { activeVenueId } = useOwnerVenues();
+  const { can } = useMyPermissions();
+  const mayAsk = can("view_ledger") || can("mark_refunds");
   const q = useQuery({
     queryKey: ["owner-badges", activeVenueId],
     queryFn: () => api.owners.badges(activeVenueId),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && mayAsk,
     refetchInterval: (query) => pollInterval(query, 15_000),
     retry: false,
+    subscribed: active,
   });
   return q.data ?? { approvals: 0, refunds: 0 };
 }
 
-const TABS: { key: OwnerTab; label: string; path: string }[] = [
-  { key: "overview", label: "Overview", path: "/(owner)/today" },
-  { key: "approvals", label: "Approvals", path: "/(owner)/approvals" },
-  { key: "refunds", label: "Refunds", path: "/(owner)/refunds" },
-  { key: "ledger", label: "Ledger", path: "/(owner)/ledger" },
-  { key: "more", label: "Aur", path: "/(owner)/more" },
-];
-
-export function OwnerTabBar({ active }: { active: OwnerTab }) {
-  const badges = useOwnerBadges();
+/** The real tab bar of the owner `Tabs` navigator (app/(owner)/(tabs)/_layout.tsx): switching tabs no longer pushes a
+ * new screen onto a Stack (the old fake tab bar did, so the stack grew and Back walked through tab history). Staff only
+ * see the tabs their permissions open; while a staff account's permissions are still loading only "Aur" is shown, so a
+ * forbidden tab never flashes. */
+export function OwnerTabBar({ state, navigation }: BottomTabBarProps) {
+  const role = useAuthStore((s) => s.user?.role);
+  const { can, settled } = useMyPermissions();
+  // Focus of the whole tab group in the owner Stack: false while walk-in, history, ... are pushed over the tabs.
+  const tabsFocused = useIsFocused();
+  const badges = useOwnerBadges(tabsFocused);
   const insets = useSafeAreaInsets();
   const count: Partial<Record<OwnerTab, number>> = { approvals: badges.approvals, refunds: badges.refunds };
+  const activeRoute = state.routes[state.index]?.name;
+  const staffPending = role === "staff" && !settled;
 
   return (
     <View
@@ -49,15 +59,18 @@ export function OwnerTabBar({ active }: { active: OwnerTab }) {
       className="flex-row bg-owner-surface border-t border-owner-border"
       style={{ paddingBottom: Math.max(insets.bottom, 6) }}
     >
-      {TABS.map((t) => {
-        const on = t.key === active;
+      {OWNER_TABS.filter((t) => (staffPending ? t.key === "more" : tabAllowed(t.key, can))).map((t) => {
+        const on = t.route === activeRoute;
         const color = on ? OV.ink : OV.muted;
         const n = count[t.key] ?? 0;
+        const route = state.routes.find((r) => r.name === t.route);
         return (
           <Pressable
             key={t.key}
             onPress={() => {
-              if (!on) router.navigate(t.path as never);
+              if (!route) return;
+              const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+              if (!on && !event.defaultPrevented) navigation.navigate(route.name, route.params);
             }}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}

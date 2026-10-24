@@ -11,14 +11,14 @@ import { ChevronLeftIcon, ChevronRightIcon, QrIcon } from "@/components/icons";
 export default function CheckinHubScreen() {
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 pt-5 pb-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
+      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
           <ChevronLeftIcon />
         </Pressable>
         <Text className="font-plex-bold text-owner-ink text-[19px] -tracking-[0.3px]">Check-in tools</Text>
       </View>
 
-      <View className="px-4.5 pt-5 gap-3">
+      <View className="px-5 pt-5 gap-3">
         <Pressable
           onPress={() => router.push("/(owner)/checkin-qr")}
           className="bg-owner-surface border border-owner-border rounded-xl p-4 flex-row items-center gap-3.5"

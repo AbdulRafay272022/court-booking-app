@@ -15,7 +15,7 @@ export default function PlayerHomeScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="px-5 pt-6 pb-4.5 bg-player-surface gap-4.5">
+      <View className="px-5 pt-6 pb-5 bg-player-surface gap-5">
         <View className="flex-row items-center justify-between">
           <Logo size={36} />
           <View className="flex-row items-center gap-2.5">

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useIsFocused } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { OwnerBookingRow, OwnerOverview } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
@@ -21,12 +21,13 @@ import { ErrorState } from "@/components/error-state";
 import { PremiumNotices } from "@/components/premium-notices";
 import { CnicBanner } from "@/components/cnic-banner";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
-import { OwnerTabBar } from "@/components/owner-tab-bar";
+import { NoAccess } from "@/components/no-access";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { BookingCard } from "@/components/overview/booking-card";
 import { DateChooserSheet, MultiSelectSheet, courtsSummary } from "@/components/overview/pickers";
 import { SlotsSheet } from "@/components/overview/slots-sheet";
 import { BottomSheet, OrangeButton, OutlineButton, Pill, SelectButton, SmallChip } from "@/components/overview/ui";
-import { VenueStatusBanner, VenueSwitcher } from "./_dashboard-components";
+import { VenueStatusBanner, VenueSwitcher } from "../_dashboard-components";
 
 type Filter = "all" | "booked" | "cancelled" | "refund";
 
@@ -44,6 +45,8 @@ export default function OwnerOverviewScreen() {
   const listY = useRef(0);
   const cardY = useRef(new Map<string, number>());
 
+  const perms = useMyPermissions();
+  const allowed = perms.can("view_ledger");
   const allCourts = (activeVenue?.courts ?? []).filter((c) => c.is_active !== false);
   // A court selection belongs to one venue.
   useEffect(() => setCourtIds([]), [activeVenueId]);
@@ -51,8 +54,10 @@ export default function OwnerOverviewScreen() {
   const query = useQuery({
     queryKey: ["owner-overview", activeVenueId, date, courtIds.join(",")],
     queryFn: () => api.owners.overview({ date, venueId: activeVenueId, courtIds }),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && allowed,
     refetchInterval: (q) => pollInterval(q, 15_000),
+    // Polls only while Overview is the visible screen (a pushed walk-in/history or another tab stops it).
+    subscribed: useIsFocused(),
   });
   const data: OwnerOverview | undefined = query.data;
   const forbidden = query.error instanceof ApiError && query.error.status === 403;
@@ -97,11 +102,13 @@ export default function OwnerOverviewScreen() {
       };
   const slotCourts = (courtIds.length ? allCourts.filter((c) => courtIds.includes(c.id)) : allCourts).map((c) => ({ id: c.id, name: c.name }));
 
+  if (perms.settled && !allowed) return <NoAccess what="Overview" withBack={false} />;
+
   return (
     <View className="flex-1 bg-owner-bg">
       <SafeAreaView edges={["top"]} style={{ backgroundColor: "#0D171B" }}>
         <View className="flex-row items-center justify-between px-4 py-3">
-          <Image source={require("../../assets/brand/khelo-logo-full-dark.png")} style={{ width: 100, height: 32 }} resizeMode="contain" accessibilityLabel="Khelo" />
+          <Image source={require("../../../assets/brand/khelo-logo-full-dark.png")} style={{ width: 100, height: 32 }} resizeMode="contain" accessibilityLabel="Khelo" />
           <Pressable
             onPress={() => router.push("/(owner)/notifications")}
             accessibilityLabel="Notifications"
@@ -155,11 +162,16 @@ export default function OwnerOverviewScreen() {
           />
         ) : null}
 
-        <View className="flex-row gap-2.5">
-          <OutlineButton flex label="Check-in" onPress={() => router.push("/(owner)/checkin")} />
-          <OrangeButton flex label="Add booking" onPress={() => router.push("/(owner)/walkin")} />
-          <OutlineButton flex label="History" onPress={() => goHistory()} />
-        </View>
+        {/* Staff only get the shortcuts their permissions open (walk-in / check-in); History reads like Overview. */}
+        {perms.can("check_in") || perms.can("walkin") ? (
+          <View className="flex-row gap-2.5">
+            {perms.can("check_in") ? <OutlineButton flex label="Check-in" onPress={() => router.push("/(owner)/checkin")} /> : null}
+            {perms.can("walkin") ? <OrangeButton flex label="Add booking" onPress={() => router.push("/(owner)/walkin")} /> : null}
+            <OutlineButton flex label="History" onPress={() => goHistory()} />
+          </View>
+        ) : (
+          <OutlineButton label="History" onPress={() => goHistory()} />
+        )}
 
         <SelectButton label="Tareekh" value={`${formatDayHeader(date)}${date === pktDateString() ? " (Aaj)" : ""}`} onPress={() => setSheet("date")} />
         <SelectButton label="Courts" value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} disabled={allCourts.length === 0} />
@@ -206,7 +218,7 @@ export default function OwnerOverviewScreen() {
                   label={`Pending ${data.slots.pending}`}
                   sub="Is din ke slots"
                   color={OV.bar.pending}
-                  onPress={() => router.push({ pathname: "/(owner)/approvals", params: { date, ...(courtIds.length ? { courts: courtIds.join(",") } : {}) } })}
+                  onPress={() => router.push({ pathname: "/(owner)/(tabs)/approvals", params: { date, ...(courtIds.length ? { courts: courtIds.join(",") } : {}) } })}
                 />
                 <LegendButton label={`Blocked ${data.slots.blocked}`} color={OV.bar.blocked} onPress={() => setSheet("slots")} />
                 <LegendButton label={`Free ${data.slots.free}`} color="#9FC9C2" onPress={() => setSheet("free")} />
@@ -228,7 +240,7 @@ export default function OwnerOverviewScreen() {
 
             <View testID="pending-all-card" className="rounded-2xl overflow-hidden" style={{ backgroundColor: "#FFF1E8", borderWidth: 1.5, borderColor: "#F6C9AE" }}>
               <Pressable
-                onPress={() => router.push({ pathname: "/(owner)/approvals", params: courtIds.length ? { courts: courtIds.join(",") } : {} })}
+                onPress={() => router.push({ pathname: "/(owner)/(tabs)/approvals", params: courtIds.length ? { courts: courtIds.join(",") } : {} })}
                 accessibilityRole="button"
                 accessibilityLabel={`Pending bookings ${pendingAll.count}`}
                 style={{ padding: 16, gap: 4 }}
@@ -335,7 +347,6 @@ export default function OwnerOverviewScreen() {
         ) : null}
       </ScrollView>
 
-      <OwnerTabBar active="overview" />
 
       {sheet === "date" ? (
         <DateChooserSheet

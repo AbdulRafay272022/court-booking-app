@@ -53,7 +53,7 @@ export default function VenueRejectedScreen() {
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
       <ScrollView className="flex-1" contentContainerClassName="px-5 pt-6 pb-8 gap-4">
         {hasLiveVenue ? (
-          <Pressable onPress={() => router.replace("/(owner)/today")} accessibilityRole="button" className="min-h-11 justify-center self-start">
+          <Pressable onPress={() => router.replace("/(owner)/(tabs)/today")} accessibilityRole="button" className="min-h-11 justify-center self-start">
             <Text className="font-plex-bold text-owner-accent text-[13.5px] underline">← Back to your dashboard</Text>
           </Pressable>
         ) : null}

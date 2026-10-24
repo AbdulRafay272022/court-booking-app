@@ -4,6 +4,7 @@ import { approvalSummary, type ApprovalQueueItem, type ApproveAcceptMode } from 
 
 import { formatPKR } from "@/lib/format";
 import { OV } from "@/lib/overview";
+import { refundAmountFor } from "@/lib/refund-confirm";
 import { STATE_CHIP, isGrey, parsePkr, slotWhen } from "@/lib/round2-format";
 import { AlertTriangleIcon, BanIcon, CheckIcon, XIcon } from "@/components/icons";
 import { AlertCircleIcon } from "@/components/overview/icons";
@@ -341,6 +342,50 @@ export function DuplicateConfirmSheet({
       </View>
       <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
         Pehle apne account mein check karein ke ye paisa is booking ke liye alag se aaya hai.
+      </Text>
+      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+    </BottomSheet>
+  );
+}
+
+/** "Paisa aa gaya - Refund banayein" is a money action: confirm it with the amount and the booking first (it used to
+ * create the refund on a single tap). */
+export function RefundConfirmSheet({
+  item,
+  courtText,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  item: ApprovalQueueItem;
+  courtText: string;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const amount = refundAmountFor(item);
+  return (
+    <BottomSheet
+      title="Refund banayein?"
+      subtitle="Player ne booking cancel kar di thi, lekin paisa aap ke account mein aa gaya."
+      onClose={onClose}
+      footer={
+        <View className="flex-row gap-3">
+          <OutlineButton flex label="Wapas" onPress={onClose} />
+          <OrangeButton flex label={busy ? "Ban raha hai" : "Haan, refund banayein"} disabled={busy} onPress={onConfirm} />
+        </View>
+      }
+    >
+      <View testID="refund-confirm" className="rounded-xl p-4 gap-2" style={{ backgroundColor: OV.accentSoft, borderWidth: 1, borderColor: OV.border }}>
+        <Text className="font-plex-semibold text-owner-ink-muted text-[12.5px]">Wapas karna hoga</Text>
+        <Text testID="refund-confirm-amount" className="font-mono-semibold text-owner-ink text-[26px]">{`PKR ${formatPKR(amount)}`}</Text>
+        <Text className="font-plex-bold text-owner-ink text-[14.5px]">{item.player_name ?? "Player"}</Text>
+        <Text className="font-plex-medium text-owner-ink-muted text-[13px]">{`${courtText} - ${slotWhen(item.starts_at, item.ends_at)}`}</Text>
+      </View>
+      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+        Ye refund "Refunds" mein chala jayega. Paisa app ke bahar (JazzCash/bank) bhejein, phir wahan "Paid" mark karein.
       </Text>
       {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
     </BottomSheet>

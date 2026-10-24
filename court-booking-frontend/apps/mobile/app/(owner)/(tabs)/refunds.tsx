@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { refundBreakdown, type OwnerRefund } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
@@ -13,13 +13,13 @@ import { OV, PERM, duplicateCreditText } from "@/lib/overview";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
-import { OwnerTabBar } from "@/components/owner-tab-bar";
-import { AlertTriangleIcon, ChevronLeftIcon } from "@/components/icons";
+import { AlertTriangleIcon } from "@/components/icons";
+import { NoAccess } from "@/components/no-access";
 import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { BookingLinks } from "@/components/booking-links";
 import { RefundSheet } from "@/components/refund-sheet";
-import { EmptyState } from "./_dashboard-components";
+import { EmptyState } from "../_dashboard-components";
 
 /** Section 32 Part 10 + Round 2 (A10): the owner's "Refunds to pay" screen. A refund here was always sent OUTSIDE
  * the app (JazzCash/bank) -- there is no payment gateway. This just records that it happened. */
@@ -39,6 +39,7 @@ export default function RefundsScreen() {
     queryKey: ["owner-refunds", activeVenueId, filterDate, filterCourts.join(",")],
     queryFn: () => api.owners.refunds(activeVenueId, { date: filterDate, courtIds: filterCourts }),
     enabled: !!activeVenueId && allowed && perms.settled,
+    subscribed: useIsFocused(),
   });
 
   const list = query.data ?? [];
@@ -49,17 +50,11 @@ export default function RefundsScreen() {
   const showCount = !loading && !query.isError && !noPermission;
   const courtText = (r: OwnerRefund) => courtLabel(r.court_name, r.court_sport ?? sportForCourtName(activeVenue?.courts, r.court_name));
 
+  if (perms.settled && !allowed) return <NoAccess what="Refunds" withBack={false} />;
+
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
-      <View className="px-4.5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(owner)/today"))}
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center"
-        >
-          <ChevronLeftIcon />
-        </Pressable>
+      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <View className="flex-1 gap-0.5">
           <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px]">Refunds to pay</Text>
           {showCount ? (
@@ -70,7 +65,7 @@ export default function RefundsScreen() {
         </View>
       </View>
       {filterDate ? (
-        <View className="px-4.5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
+        <View className="px-5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
           <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">{`Filter: ${formatDayHeader(filterDate)}${filterCourts.length ? ` - ${filterCourts.length} court(s)` : ""}`}</Text>
           <Pressable onPress={() => router.setParams({ date: undefined, courts: undefined })} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
             <Text className="font-plex-bold text-owner-accent text-[13px] underline">Sab dikhao</Text>
@@ -94,7 +89,7 @@ export default function RefundsScreen() {
       ) : list.length === 0 ? (
         <EmptyState title="Sab hisaab barabar" subtitle="Koi refund bhejna baqi nahi hai." />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-8 gap-3">
+        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-3">
           {list.map((refund) => {
             const b = refundBreakdown(refund);
             return (
@@ -165,7 +160,6 @@ export default function RefundsScreen() {
         />
       ) : null}
       {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
-      <OwnerTabBar active="refunds" />
     </SafeAreaView>
   );
 }
