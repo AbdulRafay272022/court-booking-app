@@ -56,7 +56,7 @@ installed globally on this machine, so the commands use `npx eas-cli@latest`; af
 ```powershell
 cd "C:\Users\Noman Traders\Desktop\Court Booking App\court-booking-frontend\apps\mobile"
 
-# 1. Who am I logged in as? (expect the account that owns "maidan-app")
+# 1. Who am I logged in as? (expect abdulrafay879, owner of the EAS project @abdulrafay879/khelo)
 npx eas-cli@latest whoami
 # if not logged in:
 npx eas-cli@latest login
@@ -92,5 +92,8 @@ The dev-client build itself, gesture/bottom-sheet feel, haptics, blur, expo-imag
 (with a DSN), and receiving an EAS Update. Expo web only proves the JS boots (it does: login renders,
 no gesture/bottom-sheet/sentry errors).
 
-Open naming decision (unchanged on purpose): slug `maidan`, package / bundle id `com.maidan.app`,
-scheme `maidan://`, EAS owner `maidan-app`.
+Identity (decided 2026-10-25, see docs/rename-khelo.md): name `Khelo`, slug `khelo`, package / bundle id
+`com.aftrsolutions.khelo`, schemes `khelo://` (main) and `maidan://` (old links keep working), EAS project
+`@abdulrafay879/khelo` (projectId `e166063a-198d-4bf8-9e12-299a98cd8b18`). The old `maidan-app` project is not used.
+`google-services.json` must contain an Android client for `com.aftrsolutions.khelo` (Firebase console), or the
+Android build fails.

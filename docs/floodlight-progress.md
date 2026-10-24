@@ -15,6 +15,17 @@ Agent brief (env, commands, rules): scratchpad `agent-brief.md` (session temp di
 | D-M2 owner | floodlight-owner | DONE, merged 233b080 (unit →122, live 18/18, board checks 84+84) |
 | E QA | floodlight-qa | DONE, merged 8af03f1 (unit →131, e2e 245/245, web 278/278, journeys pass, contrast 0 fail) |
 
+## Pre-push run (2026-10-25, founder decisions; founder pushes, agent never pushes)
+
+| Step | Status |
+|---|---|
+| 1 screenshots out of history | DONE. backup/pre-cleanup = 9130262 (old main). filter-branch --index-filter over db4db49..main removed 515 PNGs (docs/floodlight-qa/**/*.png, docs/mobile-audit/p0-after/). Copied first to `Desktop\Court Booking App - QA screenshots\` (515 files, 92 MB). .gitignore commit 5848aa5. Push pack 85.2 MB → 2.97 MB. pre-floodlight tag still db4db49. |
+| 2 notifications commit 9fb5bd7 | DONE. tag archive/notifications-phase-0 (local), worktree removed (no junctions), branch kept, not merged. File-by-file present/missing in docs/open-decisions.md. |
+| 3 seed password check | DONE. deploy.yml / infra / docker-compose.prod.yml / Dockerfile / app startup never run seed.py: NAHI. |
+| 4 rename maidan → Khelo (branch rename-khelo) | DONE. app.json identity (com.aftrsolutions.khelo, schemes khelo+maidan), new EAS project @abdulrafay879/khelo e166063a-198d-4bf8-9e12-299a98cd8b18, APNS_BUNDLE_ID default. No visible Maidan text was left. Storage keys/DB/venue untouched. tsc + unit 131/144/96 + apns/fcm 40 pass. BLOCKER for build: google-services.json only has com.maidan.app. List: docs/rename-khelo.md |
+| 5 EAS dev build | pending |
+| 6 final pre-push check | pending |
+
 ## BE key findings
 - Direct hold exists: POST /bookings/hold (api.bookings.hold) → "Book karo" holds directly.
 - Held-by-other: SlotOut.status held|payment_submitted with is_mine=false.
