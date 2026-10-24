@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo · Chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+button,input{font-family:inherit}
+input::placeholder{color:#5B6E6B}
+</style>
+</helmet>
+<div style="width: 900px; height: 1320px; background: #E8ECEB; box-sizing: border-box; padding: 40px; display: flex; gap: 40px; align-items: flex-start; font-variant-numeric: tabular-nums">
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">1 · Chat tab (inbox)</span>
+    <div style="width: 390px; height: 860px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 56px 20px 0 20px; display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.02em">Chat</h1>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <sc-for list="{{threads}}" as="t" hint-placeholder-count="4">
+            <button style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 20px; background: #FFFFFF; border: 0; cursor: pointer; text-align: left; min-height: 76px">
+              <span style="{{t.avatar}}">{{t.initials}}</span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+                <span style="display: flex; justify-content: space-between; gap: 8px"><b style="font-size: 15px; color: #0C1F1D">{{t.name}}</b><span style="flex: none; font-size: 12px; color: #5B6E6B">{{t.time}}</span></span>
+                <span style="font-size: 13px; color: #4A5D5A; line-height: 1.4">{{t.last}}</span>
+                <span style="{{t.chip}}">{{t.status}}</span>
+              </span>
+              <sc-if value="{{t.unread}}" hint-placeholder-val="{{false}}"><span style="flex: none; width: 22px; height: 22px; border-radius: 11px; background: #FF6A2B; color: #0C1F1D; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center">2</span></sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+      <nav aria-label="Main" style="position: absolute; left: 16px; right: 16px; bottom: 22px; height: 70px; border-radius: 26px; background: rgba(255,255,255,0.86); border: 1px solid #FFFFFF; box-shadow: 0 16px 40px rgba(12,31,29,0.18); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; padding: 0 7px; box-sizing: border-box">
+        <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="4">
+          <a href="#" style="{{tab.style}}">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tab.icon}}"></path></svg>{{tab.label}}
+          </a>
+        </sc-for>
+      </nav>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">2 · Booking chat (AI + venue)</span>
+    <div style="width: 390px; height: 1200px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="background: #FFFFFF; padding: 52px 14px 12px 14px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 0 #DDE3E1">
+        <button aria-label="Wapas" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #F4F6F5; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+        </button>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+          <b style="font-size: 16px">Demo Arena</b>
+          <span style="font-size: 12px; color: #4A5D5A; display: flex; align-items: center; gap: 5px"><span style="width: 7px; height: 7px; border-radius: 4px; background: #0E7C74"></span>Booking assistant · fori jawab</span>
+        </div>
+        <button aria-label="WhatsApp par kholein" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #F4F6F5; border: 0; display: flex; align-items: center; justify-content: center; color: #0E7C74; cursor: pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"></path></svg>
+        </button>
+      </div>
+      <div style="margin: 12px 14px 0 14px; display: flex; align-items: center; gap: 10px; background: #FFE7DB; border-radius: 18px; padding: 10px 12px">
+        <span style="flex: none; width: 44px; height: 48px; border-radius: 12px; background: #0C1F1D; color: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center"><span style="font-size: 10px; font-weight: 800; color: #FF6A2B">MON</span><b style="font-size: 17px; line-height: 1.1">26</b></span>
+        <span style="flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; color: #0C1F1D"><b>Court 1 · Padel</b><br>5:30 – 7:30 PM · 2 ghante</span>
+        <b style="flex: none; font-size: 15px">PKR 4,000</b>
+      </div>
+      <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px">
+        <div style="align-self: flex-end; max-width: 78%; background: #FF6A2B; color: #0C1F1D; border-radius: 20px 20px 6px 20px; padding: 12px 14px; font-size: 15px; line-height: 1.45">Kya Court 1 Mon 5:30 PM par 2 ghante ke liye khaali hai?</div>
+        <span style="align-self: flex-end; font-size: 11px; color: #5B6E6B">4:53 PM</span>
+        <div style="align-self: flex-start; max-width: 82%; background: #FFFFFF; border-radius: 20px 20px 20px 6px; padding: 12px 14px; font-size: 15px; line-height: 1.45">Haan, Court 1 Mon 26 Oct 5:30 se 7:30 PM khaali hai. Total PKR 4,000. Book kar doon?</div>
+        <div style="align-self: flex-start; width: 82%; background: #FFFFFF; border: 2px solid #FF6A2B; border-radius: 20px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box">
+          <b style="font-size: 15px">Ye slot hold karein?</b>
+          <span style="font-size: 13px; color: #4A5D5A; line-height: 1.45">15 minute ke liye aap ka. Advance PKR 4,000 · Venue par baqi PKR 0 · Cancel 6 ghante pehle tak free.</span>
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px">
+            <button style="height: 48px; border-radius: 14px; background: #FF6A2B; color: #0C1F1D; border: 0; font-size: 15px; font-weight: 800; cursor: pointer">Haan, hold karo</button>
+            <button style="height: 48px; border-radius: 14px; background: #F4F6F5; color: #0C1F1D; border: 0; font-size: 15px; font-weight: 800; cursor: pointer">Nahi</button>
+          </div>
+        </div>
+        <div style="align-self: center; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 16px; background: #FFF1D6; color: #8A5A00; font-size: 12px; font-weight: 800">Slot hold · 14:56 baqi</div>
+        <div style="align-self: flex-end; width: 62%; background: #FFFFFF; border-radius: 20px 20px 6px 20px; padding: 8px; display: flex; flex-direction: column; gap: 8px">
+          <div style="height: 120px; border-radius: 14px; background: #E8ECEB; display: flex; flex-direction: column; gap: 6px; padding: 12px; box-sizing: border-box">
+            <span style="height: 8px; width: 60%; border-radius: 4px; background: #CFD8D6"></span><span style="height: 14px; width: 80%; border-radius: 4px; background: #5B6E6B"></span><span style="height: 8px; border-radius: 4px; background: #DDE3E1"></span>
+          </div>
+          <span style="font-size: 12px; font-weight: 700; color: #0B6B43; padding: 0 4px 4px 4px">✓ Screenshot bheja · PKR 4,000</span>
+        </div>
+        <div style="align-self: flex-start; max-width: 82%; background: #FFFFFF; border-radius: 20px 20px 20px 6px; padding: 12px 14px; font-size: 15px; line-height: 1.45">Shukriya! Screenshot mil gaya. Venue check kar raha hai, approve hote hi bataunga.</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button style="height: 44px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #CFD8D6; font-size: 13px; font-weight: 700; color: #0C1F1D; cursor: pointer">Parking hai?</button>
+          <button style="height: 44px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #CFD8D6; font-size: 13px; font-weight: 700; color: #0C1F1D; cursor: pointer">Raasta bhejein</button>
+          <button style="height: 44px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #CFD8D6; font-size: 13px; font-weight: 700; color: #0C1F1D; cursor: pointer">Cancel policy</button>
+        </div>
+      </div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; padding: 10px 12px 28px 12px; display: flex; align-items: center; gap: 8px; box-shadow: 0 -1px 0 #DDE3E1">
+        <button aria-label="Screenshot lagayein" style="flex: none; width: 48px; height: 48px; border-radius: 24px; background: #F4F6F5; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 16-5-5-9 9"></path></svg>
+        </button>
+        <label for="ci" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Message</label>
+        <input id="ci" placeholder="Waqt, court ya qeemat poochein…" style="flex: 1; min-width: 0; height: 48px; border-radius: 24px; border: 1.5px solid #CFD8D6; padding: 0 16px; font-size: 15px; outline: none">
+        <button aria-label="Bhejein" style="flex: none; width: 48px; height: 48px; border-radius: 24px; background: #FF6A2B; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":900,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const av = (bg, fg) => 'flex: none; width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; background: ' + bg + '; color: ' + fg + ';';
+    const chip = (bg, fg) => 'align-self: flex-start; height: 24px; padding: 0 8px; border-radius: 8px; display: flex; align-items: center; font-size: 11px; font-weight: 800; background: ' + bg + '; color: ' + fg + ';';
+    const tabStyle = (on) => 'height: 56px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 800; ' + (on ? 'color: #0C1F1D; background: #FF6A2B;' : 'color: #4A5D5A;');
+    return {
+      threads: [
+        { initials: 'DA', name: 'Demo Arena', time: '4:58 PM', last: 'Screenshot mil gaya, venue check kar raha hai.', status: 'Venue check', unread: true, avatar: av('#0E7C74', '#FFFFFF'), chip: chip('#FFF1D6', '#8A5A00') },
+        { initials: 'MC', name: 'Maidan Court', time: 'Kal', last: 'Booking pakki! Gate par QR dikhayein.', status: 'Pakki ✓', unread: false, avatar: av('#0C1F1D', '#FFFFFF'), chip: chip('#DFF5EA', '#0B6B43') },
+        { initials: 'SP', name: 'Smash Point', time: 'Mon', last: 'Hold khatam ho gaya, slot dobara khul gaya.', status: 'Expire', unread: false, avatar: av('#FFE7DB', '#B83E00'), chip: chip('#FDE8E5', '#B42318') },
+        { initials: 'K', name: 'Khelo madad', time: '12 Oct', last: 'Refund 2 kaam ke dino mein aa jayega.', status: 'Support', unread: false, avatar: av('#FF6A2B', '#0C1F1D'), chip: chip('#E8ECEB', '#3B4B48') }
+      ],
+      tabs: [
+        { label: 'Home', icon: 'M3 11 12 4l9 7M5 10v10h14V10' },
+        { label: 'Bookings', icon: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4' },
+        { label: 'Chat', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z', active: true },
+        { label: 'Profile', icon: 'M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM4 21a8 8 0 0 1 16 0' }
+      ].map((t) => ({ ...t, style: tabStyle(t.active) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

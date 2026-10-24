@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo Owner · Approvals</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+a{color:#0E7C74}a:hover{color:#0A5F59}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 1260px; background: #F4F6F5; position: relative; overflow: hidden; font-variant-numeric: tabular-nums">
+
+  <div style="position: relative; background: linear-gradient(165deg, #0E7C74 0%, #0A5F59 55%, #0C1F1D 100%); padding: 52px 16px 48px 16px; overflow: hidden">
+    <div style="position: absolute; width: 280px; height: 200px; border-radius: 140px; background: #FFB020; opacity: 0.22; filter: blur(70px); bottom: -80px; right: -40px"></div>
+    <div style="position: absolute; width: 260px; height: 220px; border-radius: 130px; background: #0E7C74; opacity: 0.3; filter: blur(70px); top: -100px; left: -60px"></div>
+    <div style="position: relative; display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px; color: #FFFFFF">
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 34px; line-height: 1.05; font-weight: 800; letter-spacing: -0.03em">Approvals</h1>
+        <span style="font-size: 14px; color: #FFFFFF">3 payments check karni hain · sab se purani 12 min</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.16)">
+        <button aria-pressed="true" style="height: 44px; border-radius: 12px; border: 0; background: #FFFFFF; font-size: 14px; font-weight: 800; color: #0C1F1D; cursor: pointer">Baqi · 3</button>
+        <button aria-pressed="false" style="height: 44px; border-radius: 12px; border: 0; background: transparent; font-size: 14px; font-weight: 700; color: #FFFFFF; cursor: pointer">Cancel/expire · 1</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: relative; margin-top: -28px; background: #F4F6F5; border-radius: 30px 30px 0 0; padding: 20px 16px 0 16px; display: flex; flex-direction: column; gap: 12px">
+
+    <div style="display: flex; align-items: center; gap: 12px; background: #FFFFFF; border-radius: 22px; padding: 12px 12px 12px 14px; box-shadow: 0 10px 26px rgba(14,26,29,0.06)">
+      <span style="width: 40px; height: 40px; border-radius: 13px; background: #DFF5EA; color: #0B6B43; display: flex; align-items: center; justify-content: center; flex: none">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
+      </span>
+      <span style="flex: 1; font-size: 14px; line-height: 1.35"><b>2 screenshots</b> ka amount bilkul match hai</span>
+      <button style="flex: none; height: 44px; padding: 0 12px; border-radius: 14px; background: #0E7C74; color: #FFFFFF; border: 0; font-size: 13px; font-weight: 800; cursor: pointer">Dono approve</button>
+    </div>
+
+    <sc-for list="{{cards}}" as="c" hint-placeholder-count="3">
+      <div style="background: #FFFFFF; border-radius: 24px; padding: 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 26px rgba(14,26,29,0.06)">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="width: 44px; height: 44px; border-radius: 22px; background: #E3F4F1; color: #0A5F59; display: flex; align-items: center; justify-content: center; font-weight: 800; flex: none">{{c.initials}}</span>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0">
+            <span style="font-size: 16px; font-weight: 800">{{c.name}}</span>
+            <span style="font-size: 13px; color: #4A5D5A">{{c.slot}}</span>
+          </div>
+          <span style="flex: none; font-size: 12px; font-weight: 700; color: #4A5D5A">{{c.waited}}</span>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: stretch">
+          <button aria-label="Open screenshot full size" style="position: relative; flex: none; width: 70px; border-radius: 14px; background: #E8ECEB; border: 0; padding: 0; cursor: pointer; min-height: 88px">
+            <span style="position: absolute; left: 9px; right: 9px; top: 11px; display: flex; flex-direction: column; gap: 5px">
+              <span style="height: 6px; border-radius: 3px; background: #CFD8D6; width: 70%"></span>
+              <span style="height: 10px; border-radius: 3px; background: #5B6E6B"></span>
+              <span style="height: 5px; border-radius: 3px; background: #DDE3E1"></span>
+            </span>
+            <span style="position: absolute; right: 5px; bottom: 5px; width: 26px; height: 26px; border-radius: 8px; background: rgba(14,26,29,0.72); color: #FFFFFF; display: flex; align-items: center; justify-content: center">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"></path></svg>
+            </span>
+          </button>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+              <div style="background: #F4F6F5; border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 11px; font-weight: 700; color: #4A5D5A">Chahiye</span>
+                <span style="font-size: 15px; font-weight: 800">PKR {{c.amount}}</span>
+              </div>
+              <div style="{{c.readBox}}">
+                <span style="font-size: 11px; font-weight: 700">Screenshot mein</span>
+                <span style="font-size: 15px; font-weight: 800">{{c.read}}</span>
+              </div>
+            </div>
+            <sc-if value="{{c.hasWarn}}" hint-placeholder-val="{{false}}">
+              <span style="font-size: 13px; font-weight: 700; background: #FDE8E5; color: #B42318; padding: 7px 10px; border-radius: 10px; line-height: 1.3">Ye screenshot pehle 6 bookings par use ho chuka hai</span>
+            </sc-if>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px">
+          <button style="height: 50px; border-radius: 16px; background: #0E7C74; color: #FFFFFF; border: 0; font-size: 15px; font-weight: 800; cursor: pointer">Approve</button>
+          <button style="height: 50px; border-radius: 16px; background: #FFFFFF; color: #B42318; border: 1px solid #F0C3BD; font-size: 15px; font-weight: 800; cursor: pointer">Reject</button>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <nav aria-label="Owner" style="position: absolute; left: 14px; right: 14px; bottom: 22px; height: 72px; border-radius: 26px; background: rgba(255,255,255,0.74); border: 1px solid rgba(255,255,255,0.9); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: 0 16px 40px rgba(14,26,29,0.18); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; padding: 0 6px; box-sizing: border-box">
+    <a href="OwnerToday.dc.html" style="height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 700; color: #3B4B48">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>Aaj
+    </a>
+    <a href="#" style="height: 58px; border-radius: 20px; background: #0E7C74; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 800; color: #FFFFFF">
+      <span style="position: relative; display: flex">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+        <span style="position: absolute; top: -5px; right: -10px; min-width: 18px; height: 18px; border-radius: 9px; background: #FF6A2B; color: #0C1F1D; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center">3</span>
+      </span>Approvals
+    </a>
+    <div style="display: flex; justify-content: center">
+      <button aria-label="Add walk-in booking" style="width: 52px; height: 52px; border-radius: 18px; background: #0E7C74; color: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 8px 18px rgba(14,124,116,0.4)">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      </button>
+    </div>
+    <a href="#" style="height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 700; color: #3B4B48">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h13v4"></path><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"></path><circle cx="16" cy="14.5" r="1.2"></circle></svg>Paisa
+    </a>
+    <a href="OwnerMore.dc.html" style="height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 700; color: #3B4B48">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="19" cy="12" r="1.4"></circle></svg>Aur
+    </a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1260}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const box = (kind) => 'border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; ' +
+      (kind === 'ok' ? 'background: #DFF5EA; color: #0B6B43;' : 'background: #FFF1D6; color: #8A5A00;');
+    return {
+      cards: [
+        { initials: 'FP', name: 'Fresh Player', slot: 'Court 1 · Mon 26 Oct · 5:30–7:30 PM', amount: '4,000', waited: '12 min', read: 'Parha nahi gaya', readBox: box('warn'), hasWarn: true },
+        { initials: 'AR', name: 'Ali Raza', slot: 'Court 2 · Aaj · 9:00–10:00 PM', amount: '1,250', waited: '7 min', read: 'PKR 1,250 ✓', readBox: box('ok'), hasWarn: false },
+        { initials: 'HK', name: 'Hamza Khan', slot: 'Court 1 · Sun 25 Oct · 8:00–9:00 PM', amount: '2,000', waited: '3 min', read: 'PKR 2,000 ✓', readBox: box('ok'), hasWarn: false }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Khelo Sign Up</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D;background:#fff;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.btn{transition:transform .15s ease, box-shadow .15s ease}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(12,31,29,.22)}
+.field{width:100%;box-sizing:border-box;padding:17px 18px;border-radius:14px;border:1.5px solid #CFD8D6;font-size:16px;font-family:inherit;background:#fff;color:#0C1F1D}
+.field:focus{outline:3px solid rgba(255,106,43,.3);border-color:#FF6A2B}
+@media (max-width:860px){.brandpanel{display:none !important}.hide-sm{display:none !important}}
+</style>
+</helmet>
+
+<header style="background:#0C1F1D;color:#fff;border-bottom:1px solid rgba(255,255,255,.08)">
+<div style="max-width:1240px;margin:0 auto;padding:16px 24px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px">
+<a href="Main.dc.html" style="display:flex;align-items:center;gap:10px;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:28px;letter-spacing:-0.5px">
+<svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true"><rect width="34" height="34" rx="10" fill="#FF6A2B"/><rect x="7" y="9" width="20" height="16" rx="2" stroke="#0C1F1D" stroke-width="2.2"/><path d="M17 9v16M7 17h20" stroke="#0C1F1D" stroke-width="2.2"/></svg>
+Khelo
+</a>
+<nav aria-label="Main" class="hide-sm" style="display:flex;flex-wrap:wrap;gap:28px;font-size:15px;font-weight:600">
+<a href="Features.dc.html">Features</a>
+<a href="Owners.dc.html">For Owners</a>
+<a href="About.dc.html">About</a>
+<a href="Blog.dc.html">Blog</a>
+<a href="Contact.dc.html">Contact</a>
+</nav>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<a href="Login.dc.html" style="padding:12px 14px;font-weight:700;font-size:14px">Log in</a>
+<a class="hide-sm" href="Signup.dc.html" style="padding:12px 20px;border-radius:999px;border:1.5px solid #FF6A2B;color:#FF6A2B;font-weight:700;font-size:14px">Sign up</a>
+<a class="hide-sm" href="Owners.dc.html" style="padding:12px 20px;border-radius:999px;border:1.5px solid rgba(255,255,255,.35);font-weight:700;font-size:14px">List your venue</a>
+<a href="Search.dc.html" style="padding:12px 22px;border-radius:999px;background:#FF6A2B;color:#0C1F1D;font-weight:800;font-size:14px">Start playing</a>
+</div>
+</div>
+</header>
+<div style="min-height:840px;display:flex;flex-wrap:nowrap">
+
+<!-- BRAND PANEL -->
+<div class="brandpanel" style="flex:1 1 42%;min-width:0;background:{{panelBg}};color:#fff;position:relative;overflow:hidden;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
+<svg aria-hidden="true" width="900" height="700" viewBox="0 0 900 700" fill="none" style="position:absolute;right:-300px;bottom:-120px;opacity:.1;pointer-events:none">
+<rect x="40" y="60" width="800" height="560" rx="24" stroke="#fff" stroke-width="3"/>
+<line x1="440" y1="60" x2="440" y2="620" stroke="#fff" stroke-width="3"/>
+<circle cx="440" cy="340" r="100" stroke="#fff" stroke-width="3"/>
+</svg>
+<div></div>
+<div style="position:relative">
+<h2 style="margin:0;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:54px;line-height:1;letter-spacing:-1.8px;white-space:pre-line">{{panelTitle}}</h2>
+<p style="margin:20px 0 0;font-size:18px;line-height:1.6;color:rgba(255,255,255,.8);max-width:400px">{{panelText}}</p>
+</div>
+<div style="position:relative;font-size:13px;color:rgba(255,255,255,.55)">&copy; 2026 Khelo, a Logic Link System product</div>
+</div>
+
+<!-- FORM PANEL -->
+<div style="flex:1 1 58%;min-width:0;background:#F4F6F5;display:flex;align-items:center;justify-content:center;padding:40px 24px">
+<div style="width:100%;max-width:460px">
+
+<div style="display:flex;gap:10px;background:#fff;border-radius:999px;padding:6px;border:1.5px solid #E1E7E5">
+<button type="button" onClick="{{setPlayer}}" style="flex:1;padding:14px 10px;border-radius:999px;border:0;font-family:inherit;font-weight:800;font-size:15px;cursor:pointer;min-height:44px;background:{{playerBg}};color:{{playerFg}}">Player</button>
+<button type="button" onClick="{{setOwner}}" style="flex:1;padding:14px 10px;border-radius:999px;border:0;font-family:inherit;font-weight:800;font-size:15px;cursor:pointer;min-height:44px;background:{{ownerBg}};color:{{ownerFg}}">Venue owner</button>
+</div>
+
+<h1 style="margin:28px 0 0;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:40px;letter-spacing:-1.2px;line-height:1.05">{{heading}}</h1>
+<p style="margin:10px 0 0;font-size:16px;line-height:1.6;color:#4A5D5A">WhatsApp par aapka number verify karenge.</p>
+
+<!-- progress -->
+<div style="margin-top:24px">
+<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:#4A5D5A"><span>{{stepLabel}}</span><span>{{stepName}}</span></div>
+<div style="margin-top:8px;height:8px;border-radius:999px;background:#DDE3E1;overflow:hidden"><div style="height:100%;width:{{bar}};background:{{ac}};border-radius:999px;transition:width .3s ease"></div></div>
+</div>
+
+<form style="margin-top:28px;display:flex;flex-direction:column;gap:20px">
+
+<sc-if value="{{step1}}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:8px">
+<label for="s-phone" style="font-weight:700;font-size:14px">Mobile number</label>
+<div style="display:flex;gap:10px">
+<div style="flex:none;padding:17px 16px;border-radius:14px;border:1.5px solid #CFD8D6;background:#fff;font-weight:700">+92</div>
+<input id="s-phone" class="field" type="tel" placeholder="300 1234567" inputmode="numeric">
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<label for="s-pass" style="font-weight:700;font-size:14px">Password</label>
+<div style="position:relative">
+<input id="s-pass" class="field" type="{{inputType}}" placeholder="Kam az kam 8 characters" style="padding-right:80px">
+<button type="button" onClick="{{toggle}}" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);border:0;background:transparent;font-family:inherit;font-weight:700;font-size:14px;color:#0E7C74;cursor:pointer;padding:10px 12px;min-height:44px">{{toggleLabel}}</button>
+</div>
+</div>
+<button type="button" class="btn" onClick="{{next}}" style="margin-top:4px;padding:18px 24px;border-radius:14px;border:0;background:{{ac}};color:{{acText}};font-weight:800;font-size:17px;font-family:inherit;cursor:pointer">Aage chalo</button>
+</sc-if>
+
+<sc-if value="{{step2}}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:8px">
+<label for="s-name" style="font-weight:700;font-size:14px">Poora naam</label>
+<input id="s-name" class="field" type="text" placeholder="Bilal Ahmed">
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-weight:700;font-size:14px">Shehar</span>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+<span style="padding:12px 18px;border-radius:999px;background:#0C1F1D;color:#fff;font-weight:700;font-size:14px">Karachi</span>
+<span style="padding:12px 18px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Lahore</span>
+<span style="padding:12px 18px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Islamabad</span>
+<span style="padding:12px 18px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Aur shehar</span>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<label for="s-email" style="font-weight:700;font-size:14px">Email <span style="font-weight:500;color:#8A9996">(optional)</span></label>
+<input id="s-email" class="field" type="email" placeholder="aap@email.com">
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-weight:700;font-size:14px">Gender</span>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<span style="padding:12px 20px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Male</span>
+<span style="padding:12px 20px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Female</span>
+<span style="padding:12px 20px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Other</span>
+</div>
+</div>
+<label style="display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.5;color:#4A5D5A"><input type="checkbox" style="width:22px;height:22px;margin:0;flex:none;accent-color:#FF6A2B"><span>Main <a href="Contact.dc.html" style="font-weight:700;text-decoration:underline">Terms</a> aur <a href="Contact.dc.html" style="font-weight:700;text-decoration:underline">Privacy Policy</a> se ittefaq karta hoon.</span></label>
+<div style="display:flex;gap:12px">
+<button type="button" onClick="{{back}}" style="padding:18px 22px;border-radius:14px;border:1.5px solid #0C1F1D;background:transparent;font-weight:800;font-size:16px;font-family:inherit;cursor:pointer">Wapas</button>
+<button type="button" class="btn" style="flex:1;padding:18px 24px;border-radius:14px;border:0;background:{{ac}};color:{{acText}};font-weight:800;font-size:17px;font-family:inherit;cursor:pointer">Account banao</button>
+</div>
+</sc-if>
+
+</form>
+
+<p style="margin:26px 0 0;text-align:center;font-size:14px;color:#4A5D5A">Pehle se account hai? <a href="Login.dc.html" style="font-weight:800;color:#0C1F1D;text-decoration:underline">Log in</a></p>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const owner = !!this.state.owner;
+const step = this.state.step || 1;
+const show = !!this.state.show;
+const ac = owner ? '#0E7C74' : '#FF6A2B';
+return {
+owner,
+step1: step === 1,
+step2: step === 2,
+ac,
+acText: owner ? '#FFFFFF' : '#0C1F1D',
+panelBg: owner ? '#0E7C74' : '#0C1F1D',
+panelTitle: owner ? 'Apna court\nlist karo.' : 'Pehla match,\nek tap door.',
+panelText: owner ? 'Bookings, payments aur khali slots, sab ek dashboard mein.' : 'Futsal, padel, cricket aur bohat kuch. Khali slot dhoondo aur chat se book karo.',
+heading: owner ? 'Venue owner account' : 'Apna account banao',
+playerBg: owner ? 'transparent' : '#0C1F1D',
+playerFg: owner ? '#0C1F1D' : '#FFFFFF',
+ownerBg: owner ? '#0E7C74' : 'transparent',
+ownerFg: owner ? '#FFFFFF' : '#0C1F1D',
+stepLabel: 'Step ' + step + ' of 2',
+stepName: step === 1 ? 'Number aur password' : 'Aapki details',
+bar: step === 1 ? '50%' : '100%',
+inputType: show ? 'text' : 'password',
+toggleLabel: show ? 'Hide' : 'Show',
+toggle: () => this.setState({ show: !show }),
+setPlayer: () => this.setState({ owner: false }),
+setOwner: () => this.setState({ owner: true }),
+next: () => this.setState({ step: 2 }),
+back: () => this.setState({ step: 1 })
+};
+}
+}
+</script>
+</body>
+</html>

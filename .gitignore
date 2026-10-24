@@ -19,3 +19,6 @@ infra/tfplan*
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Mobile audit raw screenshots (kept locally, too large to commit)
+docs/mobile-audit/screens/

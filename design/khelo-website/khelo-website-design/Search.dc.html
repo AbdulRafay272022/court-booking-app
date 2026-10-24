@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Khelo Find a Court</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D;background:#F4F6F5;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+.card{transition:transform .2s ease, box-shadow .2s ease}
+.card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(12,31,29,.14)}
+.sel{padding:12px 16px;border-radius:12px;border:1.5px solid #CFD8D6;background:#fff;font-family:inherit;font-weight:600;font-size:15px;color:#0C1F1D;min-height:44px}
+.sel:focus{outline:3px solid rgba(255,106,43,.3);border-color:#FF6A2B}
+.chipscroll{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+@media (max-width:760px){.hide-sm{display:none !important}}
+</style>
+</helmet>
+
+<div style="width:100%;box-sizing:border-box">
+
+<!-- APP HEADER -->
+<header style="background:#0C1F1D;color:#fff;border-bottom:1px solid rgba(255,255,255,.08)">
+<div style="max-width:1240px;margin:0 auto;padding:16px 24px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px">
+<a href="Main.dc.html" style="display:flex;align-items:center;gap:10px;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:28px;letter-spacing:-0.5px">
+<svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true"><rect width="34" height="34" rx="10" fill="#FF6A2B"/><rect x="7" y="9" width="20" height="16" rx="2" stroke="#0C1F1D" stroke-width="2.2"/><path d="M17 9v16M7 17h20" stroke="#0C1F1D" stroke-width="2.2"/></svg>
+Khelo
+</a>
+<nav aria-label="Main" class="hide-sm" style="display:flex;flex-wrap:wrap;gap:28px;font-size:15px;font-weight:600">
+<a href="Features.dc.html">Features</a>
+<a href="Owners.dc.html">For Owners</a>
+<a href="About.dc.html">About</a>
+<a href="Blog.dc.html">Blog</a>
+<a href="Contact.dc.html">Contact</a>
+</nav>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<a href="Login.dc.html" style="padding:12px 14px;font-weight:700;font-size:14px">Log in</a>
+<a class="hide-sm" href="Signup.dc.html" style="padding:12px 20px;border-radius:999px;border:1.5px solid rgba(255,255,255,.35);font-weight:700;font-size:14px">Sign up</a>
+<a class="hide-sm" href="Owners.dc.html" style="padding:12px 20px;border-radius:999px;border:1.5px solid rgba(255,255,255,.35);font-weight:700;font-size:14px">List your venue</a>
+<a href="Search.dc.html" style="padding:12px 22px;border-radius:999px;background:#FF6A2B;color:#0C1F1D;font-weight:800;font-size:14px">Start playing</a>
+</div>
+</div>
+</header>
+
+<!-- COMPACT TITLE -->
+<section style="background:#0C1F1D;color:#fff">
+<div style="max-width:1240px;margin:0 auto;padding:28px 24px 30px;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px">
+<div>
+<div style="font-size:12px;font-weight:800;letter-spacing:1.5px;color:#FF6A2B">FIND A COURT</div>
+<h1 style="margin:8px 0 0;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:38px;letter-spacing:-1.2px;line-height:1.05">Karachi mein courts</h1>
+</div>
+<a href="#" style="display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border-radius:999px;border:1.5px solid rgba(255,255,255,.35);font-weight:700;font-size:14px;min-height:44px;box-sizing:border-box">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6-7-11a7 7 0 0114 0c0 5-7 11-7 11z"/></svg>
+Mere qareeb
+</a>
+</div>
+</section>
+
+<!-- STICKY FILTER BAR -->
+<div style="position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #E1E7E5;box-shadow:0 6px 20px rgba(12,31,29,.06)">
+<div style="max-width:1240px;margin:0 auto;padding:14px 24px">
+<div class="chipscroll" role="group" aria-label="Sport">
+<sc-for list="{{sports}}" as="sp" hint-placeholder-count="8">
+<button type="button" onClick="{{sp.pick}}" style="flex:none;padding:12px 20px;border-radius:999px;font-family:inherit;font-weight:700;font-size:15px;cursor:pointer;min-height:44px;background:{{sp.bg}};color:{{sp.fg}};border:1.5px solid {{sp.bd}}">{{sp.name}}</button>
+</sc-for>
+</div>
+<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+<select class="sel" aria-label="Area"><option>Saare areas</option><option>DHA</option><option>Clifton</option><option>Gulshan</option><option>North Nazimabad</option></select>
+<select class="sel" aria-label="Price"><option>Koi bhi price</option><option>PKR 3,000 tak</option><option>PKR 5,000 tak</option><option>PKR 8,000 tak</option></select>
+<input class="sel" type="date" aria-label="Date">
+<button type="button" onClick="{{toggleMore}}" style="display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border-radius:12px;border:1.5px solid #0C1F1D;background:{{moreBg}};color:{{moreFg}};font-family:inherit;font-weight:800;font-size:15px;cursor:pointer;min-height:44px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+More filters
+</button>
+</div>
+
+<sc-if value="{{showMore}}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:14px;padding:18px;border-radius:18px;background:#F4F6F5;display:flex;flex-wrap:wrap;gap:28px">
+<div><div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#5B6E6B">SETTING</div>
+<div style="margin-top:8px;display:flex;gap:8px"><span style="padding:10px 16px;border-radius:999px;background:#0C1F1D;color:#fff;font-weight:700;font-size:14px">Any</span><span style="padding:10px 16px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Indoor</span><span style="padding:10px 16px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Outdoor</span></div></div>
+<div><div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#5B6E6B">AMENITIES</div>
+<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><span style="padding:10px 16px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Floodlights</span><span style="padding:10px 16px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Parking</span><span style="padding:10px 16px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Washrooms</span><span style="padding:10px 16px;border-radius:999px;background:#fff;border:1.5px solid #CFD8D6;font-weight:700;font-size:14px">Changing room</span></div></div>
+<div><div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#5B6E6B">START TIME</div>
+<div style="margin-top:8px;font-size:14px;color:#5B6E6B;max-width:220px;line-height:1.5">Pehle date chuno, phir time yahan khul jayega.</div></div>
+</div>
+</sc-if>
+</div>
+</div>
+
+<!-- RESULTS -->
+<main style="max-width:1240px;margin:0 auto;padding:28px 24px 72px">
+<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px">
+<div style="font-weight:800;font-size:18px">6 venues <span style="font-weight:500;color:#5B6E6B;font-size:14px">&middot; sample data</span></div>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<select class="sel" aria-label="Sort by"><option>Best match</option><option>Price: low to high</option><option>Rating</option></select>
+<div style="display:flex;background:#fff;border-radius:12px;border:1.5px solid #CFD8D6;overflow:hidden">
+<button type="button" onClick="{{setList}}" style="padding:12px 18px;border:0;font-family:inherit;font-weight:800;font-size:14px;cursor:pointer;min-height:44px;background:{{listBg}};color:{{listFg}}">List</button>
+<button type="button" onClick="{{setMap}}" style="padding:12px 18px;border:0;font-family:inherit;font-weight:800;font-size:14px;cursor:pointer;min-height:44px;background:{{mapBg}};color:{{mapFg}}">Map</button>
+</div>
+</div>
+</div>
+
+<div style="margin-top:22px;display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+<div style="flex:1 1 560px;min-width:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px">
+<sc-for list="{{venues}}" as="v" hint-placeholder-count="6">
+<a class="card" href="Main.dc.html" style="background:#fff;border-radius:24px;overflow:hidden;display:flex;flex-direction:column">
+<div style="height:170px;background:{{v.bg}};position:relative">
+<svg aria-hidden="true" width="100%" height="170" viewBox="0 0 280 170" fill="none" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;opacity:.25"><rect x="30" y="25" width="220" height="120" rx="10" stroke="#fff" stroke-width="3"/><line x1="140" y1="25" x2="140" y2="145" stroke="#fff" stroke-width="3"/><circle cx="140" cy="85" r="22" stroke="#fff" stroke-width="3"/></svg>
+<span style="position:absolute;top:14px;left:14px;padding:7px 12px;border-radius:999px;background:rgba(12,31,29,.8);color:#fff;font-size:12px;font-weight:700">{{v.sports}}</span>
+<span style="position:absolute;top:14px;right:14px;width:44px;height:44px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0C1F1D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.500-9-9.200C1.700 8 4 5 7 5c2 0 3.500 1 5 3 1.500-2 3-3 5-3 3 0 5.300 3 4 6.800-2 4.700-9 9.200-9 9.200z"/></svg></span>
+</div>
+<div style="padding:20px 22px 22px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+<div style="font-weight:800;font-size:20px;line-height:1.2">{{v.name}}</div>
+<div style="flex:none;font-weight:800;font-size:14px;display:flex;align-items:center;gap:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="#FFB020" aria-hidden="true"><path d="M12 3l2.800 5.700 6.200.9-4.500 4.400 1.100 6.200L12 17.200 6.400 20.200l1.100-6.200L3 9.600l6.200-.9z"/></svg>{{v.rating}}</div>
+</div>
+<div style="font-size:14px;color:#5B6E6B">{{v.area}}</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<span style="padding:6px 10px;border-radius:999px;background:{{v.tagBg}};color:{{v.tagFg}};font-size:12px;font-weight:800">{{v.tag}}</span>
+<span style="padding:6px 10px;border-radius:999px;background:#F4F6F5;color:#4A5D5A;font-size:12px;font-weight:700">{{v.setting}}</span>
+</div>
+<div style="margin-top:6px;padding-top:14px;border-top:1px solid #E8ECEB;display:flex;justify-content:space-between;align-items:center">
+<div><div style="font-size:11px;font-weight:700;letter-spacing:.8px;color:#8A9996">FROM</div><div style="font-weight:800;font-size:18px">PKR {{v.price}} <span style="font-weight:500;font-size:13px;color:#5B6E6B">/ slot</span></div></div>
+<span style="font-weight:800;font-size:14px;color:#D9480F">View &rarr;</span>
+</div>
+</div>
+</a>
+</sc-for>
+</div>
+
+<sc-if value="{{mapView}}" hint-placeholder-val="{{ false }}">
+<div style="flex:1 1 380px;min-width:0;position:sticky;top:150px;height:640px;border-radius:24px;overflow:hidden;background:#DCE9E6;border:1.5px solid #CFD8D6">
+<svg width="100%" height="100%" viewBox="0 0 400 640" preserveAspectRatio="xMidYMid slice" fill="none" aria-label="Map placeholder" role="img">
+<path d="M0 120 C120 100 200 180 400 140" stroke="#fff" stroke-width="14"/>
+<path d="M60 0 C90 200 40 400 120 640" stroke="#fff" stroke-width="12"/>
+<path d="M0 420 C160 380 260 470 400 400" stroke="#fff" stroke-width="10"/>
+<path d="M300 0 C280 240 340 380 300 640" stroke="#fff" stroke-width="10"/>
+<g fill="#FF6A2B" stroke="#0C1F1D" stroke-width="2"><circle cx="110" cy="190" r="12"/><circle cx="250" cy="260" r="12"/><circle cx="180" cy="420" r="12"/><circle cx="320" cy="150" r="12"/><circle cx="90" cy="500" r="12"/></g>
+</svg>
+</div>
+</sc-if>
+</div>
+</main>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":1700}}'>
+class Component extends DCLogic {
+renderVals() {
+const picked = this.state.sport || 'All sports';
+const showMore = !!this.state.more;
+const view = this.state.view || 'list';
+const names = ['All sports','Futsal','Padel','Cricket','Tennis','Badminton','Basketball','Squash','Pickleball'];
+const sports = names.map((n) => {
+const on = n === picked;
+return {
+name: n,
+bg: on ? '#FF6A2B' : '#FFFFFF',
+fg: '#0C1F1D',
+bd: on ? '#FF6A2B' : '#CFD8D6',
+pick: () => this.setState({ sport: n })
+};
+});
+const open = { tag: 'Aaj khali', tagBg: '#DFF5EA', tagFg: '#0B6B43' };
+const busy = { tag: 'Kam slots', tagBg: '#FFF1D6', tagFg: '#8A5A00' };
+const venues = [
+{ name: 'Arena One', area: 'DHA Phase 6', sports: 'Futsal · Padel', rating: '4.8', price: '3,000', setting: 'Indoor', bg: '#0C1F1D', ...open },
+{ name: 'Sea View Courts', area: 'Clifton', sports: 'Padel', rating: '4.6', price: '6,500', setting: 'Outdoor', bg: '#0E7C74', ...open },
+{ name: 'Turf Nation', area: 'Gulshan-e-Iqbal', sports: 'Futsal · Cricket', rating: '4.5', price: '3,500', setting: 'Outdoor', bg: '#D9480F', ...busy },
+{ name: 'Smash Club', area: 'North Nazimabad', sports: 'Badminton · Tennis', rating: '4.7', price: '2,000', setting: 'Indoor', bg: '#3B5BDB', ...open },
+{ name: 'Net Practice Hub', area: 'PECHS', sports: 'Cricket', rating: '4.4', price: '2,500', setting: 'Indoor', bg: '#1C3B38', ...busy },
+{ name: 'Hoops Garage', area: 'Bahria Town', sports: 'Basketball', rating: '4.3', price: '2,800', setting: 'Outdoor', bg: '#B83E00', ...open }
+];
+return {
+sports,
+venues,
+showMore,
+mapView: view === 'map',
+toggleMore: () => this.setState({ more: !showMore }),
+moreBg: showMore ? '#0C1F1D' : '#FFFFFF',
+moreFg: showMore ? '#FFFFFF' : '#0C1F1D',
+setList: () => this.setState({ view: 'list' }),
+setMap: () => this.setState({ view: 'map' }),
+listBg: view === 'list' ? '#0C1F1D' : '#FFFFFF',
+listFg: view === 'list' ? '#FFFFFF' : '#0C1F1D',
+mapBg: view === 'map' ? '#0C1F1D' : '#FFFFFF',
+mapFg: view === 'map' ? '#FFFFFF' : '#0C1F1D'
+};
+}
+}
+</script>
+</body>
+</html>

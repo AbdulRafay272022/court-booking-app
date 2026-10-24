@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Khelo · Floodlight system</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1800px; height: 1560px; background: #FFFFFF; box-sizing: border-box; padding: 40px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-content: start; font-variant-numeric: tabular-nums">
+
+  <section style="position: relative; overflow: hidden; background: #0C1F1D; border-radius: 28px; padding: 32px; color: #FFFFFF; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box">
+    <div style="position: absolute; width: 220px; height: 420px; border-radius: 110px; background: #FFF1D0; opacity: 0.16; filter: blur(50px); transform: rotate(32deg); top: -180px; left: -30px"></div>
+    <div style="position: absolute; width: 220px; height: 420px; border-radius: 110px; background: #FFF1D0; opacity: 0.16; filter: blur(50px); transform: rotate(-32deg); top: -180px; right: -30px"></div>
+    <span style="position: relative; font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #FFB48F">KHELO · FLOODLIGHT</span>
+    <h2 style="position: relative; margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 56px; line-height: 0.98; font-weight: 800; letter-spacing: -0.04em">Court dhoondo.<br>Slot lo. Khelo.</h2>
+    <p style="position: relative; margin: 0; font-size: 17px; line-height: 1.55; color: #B9C6C3">100% the Khelo website palette and fonts: night #0C1F1D, teal #0E7C74, orange #FF6A2B, ground #F4F6F5. Floodlight layout: calm night hero with soft light, one orange spot for the next step.</p>
+  </section>
+
+  <section style="background: #F4F6F5; border-radius: 28px; padding: 32px; display: flex; flex-direction: column; gap: 18px">
+    <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #4A5D5A">COLOUR ROLES · 60 / 30 / 10</span>
+    <div style="display: flex; height: 64px; border-radius: 18px; overflow: hidden; border: 1px solid #DDE3E1">
+      <div style="flex: 6; background: #F4F6F5; display: flex; align-items: flex-end; padding: 10px; font-size: 13px; font-weight: 800">Ground 60%</div>
+      <div style="flex: 3; background: #0C1F1D; color: #FFFFFF; display: flex; align-items: flex-end; padding: 10px; font-size: 13px; font-weight: 800">Night 30%</div>
+      <div style="flex: 1; background: #FF6A2B; color: #0C1F1D; display: flex; align-items: flex-end; padding: 10px; font-size: 13px; font-weight: 800">10%</div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{roles}}" as="r" hint-placeholder-count="8">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="flex: none; width: 38px; height: 38px; border-radius: 11px; background: {{r.hex}}; border: 1px solid rgba(0,0,0,0.1)"></span>
+          <span style="display: flex; flex-direction: column; min-width: 0"><b style="font-size: 14px">{{r.name}} · {{r.hex}}</b><span style="font-size: 12px; color: #4A5D5A; line-height: 1.35">{{r.job}}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="background: #F4F6F5; border-radius: 28px; padding: 32px; display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #4A5D5A">TESTED CONTRAST (WCAG 2.2 AA)</span>
+    <sc-for list="{{checks}}" as="c" hint-placeholder-count="8">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #DDE3E1">
+        <span style="{{c.sample}}">Aa 4,000</span>
+        <span style="flex: 1; font-size: 13px; color: #3B4B48; line-height: 1.35">{{c.pair}}</span>
+        <b style="{{c.badge}}">{{c.ratio}}</b>
+      </div>
+    </sc-for>
+  </section>
+
+  <section style="background: #F4F6F5; border-radius: 28px; padding: 32px; display: flex; flex-direction: column; gap: 14px; grid-column: span 2">
+    <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #4A5D5A">EVERY STATE, NEVER BY COLOUR ALONE</span>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px">
+      <sc-for list="{{states}}" as="st" hint-placeholder-count="6">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span style="{{st.chip}}">{{st.label}}</span>
+          <b style="font-size: 14px">{{st.name}}</b>
+          <span style="font-size: 12px; color: #4A5D5A; line-height: 1.4">{{st.cue}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height: 1px; background: #DDE3E1"></div>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px">
+      <sc-for list="{{journey}}" as="j" hint-placeholder-count="5">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="{{j.chip}}">{{j.label}}</span>
+          <span style="font-size: 12px; color: #4A5D5A; line-height: 1.4">{{j.note}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="background: #F4F6F5; border-radius: 28px; padding: 32px; display: flex; flex-direction: column; gap: 14px">
+    <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #4A5D5A">TYPE + BUTTONS</span>
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 48px; line-height: 1; font-weight: 800; letter-spacing: -0.035em">PKR 4,000</span>
+    <span style="font-size: 16px; line-height: 1.5; color: #3B4B48">Bricolage Grotesque for brand moments and big numbers. Plus Jakarta Sans for reading and tapping. Scale 12 · 14 · 16 · 20 · 24 · 34 · 44. Tabular figures, never monospace.</span>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap">
+      <button style="height: 56px; padding: 0 24px; border-radius: 18px; background: #FF6A2B; color: #0C1F1D; border: 0; font-size: 16px; font-weight: 800">Book karo</button>
+      <button style="height: 56px; padding: 0 20px; border-radius: 18px; background: #0C1F1D; color: #FFFFFF; border: 0; font-size: 16px; font-weight: 800">Wahi slot</button>
+      <button style="height: 56px; padding: 0 20px; border-radius: 18px; background: #FFFFFF; color: #B42318; border: 1px solid #F0C3BD; font-size: 16px; font-weight: 800">Reject</button>
+    </div>
+  </section>
+
+  <section style="position: relative; overflow: hidden; background: #0C1F1D; border-radius: 28px; padding: 32px; color: #FFFFFF; display: flex; flex-direction: column; gap: 14px">
+    <div style="position: absolute; width: 320px; height: 220px; border-radius: 160px; background: #0E7C74; opacity: 0.5; filter: blur(70px); bottom: -80px; left: 60px"></div>
+    <span style="position: relative; font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #B9C6C3">GLASS · ONLY ON FLOATING THINGS</span>
+    <div style="position: relative; border-radius: 22px; padding: 16px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px)">
+      <b style="font-size: 16px">Dark glass</b>
+      <p style="margin: 6px 0 0 0; font-size: 14px; color: #D5E0DE; line-height: 1.5">Pills and buttons on night heroes and photos.</p>
+    </div>
+    <div style="position: relative; border-radius: 22px; padding: 16px; background: rgba(255,255,255,0.76); border: 1px solid rgba(255,255,255,0.9); color: #0C1F1D">
+      <b style="font-size: 16px">Light glass</b>
+      <p style="margin: 6px 0 0 0; font-size: 14px; color: #3B4B48; line-height: 1.5">Tab bar and Book bar. Never behind money or body text. Solid fallback on low-end Android and with reduced transparency.</p>
+    </div>
+  </section>
+
+  <section style="background: #F4F6F5; border-radius: 28px; padding: 32px; display: flex; flex-direction: column; gap: 10px">
+    <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #4A5D5A">SIZE · SPACE · MOTION</span>
+    <sc-for list="{{sizes}}" as="z" hint-placeholder-count="6">
+      <div style="display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #DDE3E1">
+        <b style="font-size: 14px">{{z.k}}</b><span style="font-size: 14px; color: #3B4B48; text-align: right">{{z.v}}</span>
+      </div>
+    </sc-for>
+  </section>
+
+  <section style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+    <sc-for list="{{laws}}" as="l" hint-placeholder-count="8">
+      <div style="background: #FFFFFF; border: 1px solid #DDE3E1; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: #B83E00">{{l.law}}</span>
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 21px; font-weight: 800; letter-spacing: -0.01em">{{l.rule}}</span>
+        <span style="font-size: 14px; color: #3B4B48; line-height: 1.5">{{l.where}}</span>
+      </div>
+    </sc-for>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1800,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const chip = (bg, fg, extra) => 'height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; box-sizing: border-box; background: ' + bg + '; color: ' + fg + '; ' + (extra || '');
+    const pill = (bg, fg) => 'height: 34px; padding: 0 12px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; background: ' + bg + '; color: ' + fg + ';';
+    const ok = 'font-size: 13px; padding: 4px 8px; border-radius: 8px; background: #DFF5EA; color: #0B6B43;';
+    const sample = (bg, fg) => 'flex: none; width: 92px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; background: ' + bg + '; color: ' + fg + '; border: 1px solid #DDE3E1;';
+    return {
+      roles: [
+        { name: 'Action', hex: '#FF6A2B', job: 'Next step only. Always ink text, never white.' },
+        { name: 'Night', hex: '#0C1F1D', job: 'Hero stage, ink text, active tab' },
+        { name: 'Teal', hex: '#0E7C74', job: 'Brand secondary, booked blocks, data' },
+        { name: 'Ground', hex: '#F4F6F5', job: 'Calm surface, 60% of the screen' },
+        { name: 'Open', hex: '#0B6B43', job: 'Available, paid, confirmed text' },
+        { name: 'Waiting', hex: '#8A5A00', job: 'Held, venue checking, not an error' },
+        { name: 'Danger', hex: '#B42318', job: 'Reject, cancel, duplicate warning' },
+        { name: 'Deep orange', hex: '#B83E00', job: 'Orange-family text on light' },
+        { name: 'Mint', hex: '#3DDC97', job: 'Live dot on dark (abhi khaali)' },
+        { name: 'Amber', hex: '#FFB020', job: 'Hold border, hourglass, never text' }
+      ],
+      checks: [
+        { pair: 'Ink on Action orange (buttons)', ratio: '5.98', sample: sample('#FF6A2B', '#0C1F1D'), badge: ok },
+        { pair: 'White on Action orange (banned)', ratio: '2.86 ✗', sample: sample('#FF6A2B', '#FFFFFF'), badge: 'font-size: 13px; padding: 4px 8px; border-radius: 8px; background: #FDE8E5; color: #B42318;' },
+        { pair: 'White on Teal', ratio: '5.06', sample: sample('#0E7C74', '#FFFFFF'), badge: ok },
+        { pair: 'Ink on Ground', ratio: '15.74', sample: sample('#F4F6F5', '#0C1F1D'), badge: ok },
+        { pair: 'Muted #4A5D5A on Ground', ratio: '6.44', sample: sample('#F4F6F5', '#4A5D5A'), badge: ok },
+        { pair: 'Open #0B6B43 on #DFF5EA', ratio: '5.75', sample: sample('#DFF5EA', '#0B6B43'), badge: ok },
+        { pair: 'Waiting #8A5A00 on #FFF1D6', ratio: '5.31', sample: sample('#FFF1D6', '#8A5A00'), badge: ok },
+        { pair: 'Grey #8A9996 on white (old web meta text)', ratio: '2.97 ✗', sample: sample('#FFFFFF', '#8A9996'), badge: 'font-size: 13px; padding: 4px 8px; border-radius: 8px; background: #FDE8E5; color: #B42318;' }
+      ],
+      states: [
+        { name: 'Khaali', label: '8:00 PM', cue: 'Solid fill, tappable', chip: chip('#F4F6F5', '#0C1F1D', 'border: 1px solid #DDE3E1;') },
+        { name: 'Aap ka chuna', label: '✓ 8:00 PM', cue: 'Orange + tick + ink outline', chip: chip('#FF6A2B', '#0C1F1D', 'border: 2px solid #0C1F1D;') },
+        { name: 'Booking ke andar', label: '8:30 PM', cue: 'Tint + peach outline', chip: chip('#FFE7DB', '#B83E00', 'border: 2px solid #FFB48F;') },
+        { name: 'Kisi ne hold kiya', label: '9:00 PM', cue: 'Dashed amber border, disabled', chip: chip('#FFF1D6', '#8A5A00', 'border: 1px dashed #B87300;') },
+        { name: 'Booked', label: '9:30 PM', cue: 'Grey + strikethrough, disabled', chip: chip('#E1E7E5', '#4A5D5A', 'text-decoration: line-through;') },
+        { name: 'Lambai ke liye jagah nahi', label: '10:30 PM', cue: 'Dashed grey, disabled + reason in label', chip: chip('transparent', '#5B6E6B', 'border: 1px dashed #CFD8D6;') }
+      ],
+      journey: [
+        { label: '1 · Hold', note: 'Ring countdown. Slot is yours for 15 min.', chip: pill('#FFF1D6', '#8A5A00') },
+        { label: '2 · Screenshot bheja', note: 'Proof sent. Nothing confirmed yet.', chip: pill('#FFF1D6', '#8A5A00') },
+        { label: '3 · Venue check', note: 'Hourglass + timeline. Never says "confirmed".', chip: pill('#FFF1D6', '#8A5A00') },
+        { label: '4 · Pakki ✓', note: 'Only after the backend says booked.', chip: pill('#DFF5EA', '#0B6B43') },
+        { label: '✕ Reject / expire', note: 'Reason shown + what to do next.', chip: pill('#FDE8E5', '#B42318') }
+      ],
+      sizes: [
+        { k: 'Tap target', v: '44 pt min · CTA 52–58' },
+        { k: 'Spacing', v: '4 · 8 · 12 · 16 · 20 · 24 · 32' },
+        { k: 'Radius', v: 'chip 999 · button 18 · card 24–28 · sheet 30' },
+        { k: 'Gutter', v: '20 player · 16 owner' },
+        { k: 'Motion', v: '150–250 ms, off when reduce-motion is on' },
+        { k: 'Cropping', v: 'grids and wrapping; no "…" on money or time' }
+      ],
+      laws: [
+        { law: "HICK'S LAW", rule: 'Fewer choices, faster choice', where: '4 player tabs. Search is 3 fields. 3 time chips per card, then "+3".' },
+        { law: "FITTS'S LAW", rule: 'Big and close to the thumb', where: 'Book, Pay and Approve live in the bottom bar at 52–58 pt.' },
+        { law: 'VON RESTORFF', rule: 'One orange action per screen', where: 'Everything else stays calm, so the eye lands on the next step first.' },
+        { law: "JAKOB'S LAW", rule: 'Feels like apps they know', where: 'Search pill like Airbnb, chat like WhatsApp, ticket like a cinema app.' },
+        { law: 'VISIBILITY OF STATUS', rule: 'Always say what happened', where: 'Hold → Screenshot → Venue check → Pakki. Never "confirmed" before the backend.' },
+        { law: 'PEAK–END RULE', rule: 'End on a high', where: '"Court aap ka hai!" with QR ticket and "Team ko batao".' },
+        { law: 'RECOGNITION > RECALL', rule: 'Show, don’t make them remember', where: 'Owner sees "Chahiye PKR 4,000" next to "Screenshot mein PKR 4,000".' },
+        { law: 'ERROR PREVENTION', rule: 'Rules before money moves', where: 'Advance, baqi and cancellation shown in the confirm sheet, before Pay.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

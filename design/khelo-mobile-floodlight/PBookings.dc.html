@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo · My bookings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+a{color:#B83E00}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1330px; height: 1420px; background: #E8ECEB; box-sizing: border-box; padding: 40px; display: flex; gap: 40px; align-items: flex-start; font-variant-numeric: tabular-nums">
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">1 · Bookings tab</span>
+    <div style="width: 390px; height: 1300px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 56px 20px 0 20px; display: flex; flex-direction: column; gap: 16px">
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.02em">Meri bookings</h1>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; background: #E8ECEB; padding: 4px; border-radius: 16px">
+          <button aria-pressed="true" style="height: 44px; border-radius: 12px; border: 0; background: #FFFFFF; font-size: 15px; font-weight: 800; color: #0C1F1D; cursor: pointer; box-shadow: 0 2px 8px rgba(12,31,29,0.1)">Aane wali · 3</button>
+          <button aria-pressed="false" style="height: 44px; border-radius: 12px; border: 0; background: transparent; font-size: 15px; font-weight: 700; color: #4A5D5A; cursor: pointer">Purani · 6</button>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+            <button style="{{f.style}}">{{f.label}}</button>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px">
+          <sc-for list="{{list}}" as="b" hint-placeholder-count="3">
+            <div style="background: #FFFFFF; border-radius: 22px; padding: 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 22px rgba(12,31,29,0.05)">
+              <div style="display: flex; gap: 12px">
+                <span style="{{b.tile}}"><span style="font-size: 11px; font-weight: 800">{{b.wd}}</span><b style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 22px; line-height: 1.1">{{b.d}}</b><span style="font-size: 10px; font-weight: 800">OCT</span></span>
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+                  <span style="{{b.pill}}">{{b.status}}</span>
+                  <b style="font-size: 16px">{{b.venue}}</b>
+                  <span style="font-size: 13px; color: #4A5D5A; line-height: 1.4">{{b.meta}}</span>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                <sc-for list="{{b.actions}}" as="a" hint-placeholder-count="2">
+                  <button style="{{a.style}}">{{a.label}}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <nav aria-label="Main" style="position: absolute; left: 16px; right: 16px; bottom: 22px; height: 70px; border-radius: 26px; background: rgba(255,255,255,0.86); border: 1px solid #FFFFFF; box-shadow: 0 16px 40px rgba(12,31,29,0.18); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; padding: 0 7px; box-sizing: border-box">
+        <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="4">
+          <a href="#" style="{{tab.style}}">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tab.icon}}"></path></svg>{{tab.label}}
+          </a>
+        </sc-for>
+      </nav>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">2 · Booking detail (pakki)</span>
+    <div style="width: 390px; height: 1300px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 52px 16px 0 16px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button aria-label="Wapas" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <b style="flex: 1; font-size: 18px">Booking KH-3B9A41D7</b>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 26px; overflow: hidden; box-shadow: 0 12px 30px rgba(12,31,29,0.08)">
+          <div style="background: #0C1F1D; color: #FFFFFF; padding: 18px; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden">
+            <div style="position: absolute; width: 220px; height: 160px; border-radius: 110px; background: #FF6A2B; opacity: 0.3; filter: blur(60px); right: -60px; top: -60px"></div>
+            <span style="position: relative; align-self: flex-start; height: 28px; padding: 0 10px; border-radius: 14px; background: #DFF5EA; color: #0B6B43; font-size: 12px; font-weight: 800; display: flex; align-items: center">✓ Pakki</span>
+            <b style="position: relative; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px">Demo Arena</b>
+            <span style="position: relative; font-size: 14px; color: #B9C6C3">Court 1 · Padel · Indoor</span>
+          </div>
+          <div style="padding: 16px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; color: #5B6E6B">Din</span><b style="font-size: 16px">Sat, 24 Oct</b></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; color: #5B6E6B">Waqt</span><b style="font-size: 16px">7:00 – 8:00 PM</b></div>
+          </div>
+          <div style="position: relative; height: 22px; display: flex; align-items: center">
+            <span style="position: absolute; left: -11px; width: 22px; height: 22px; border-radius: 11px; background: #F4F6F5"></span>
+            <span style="flex: 1; margin: 0 18px; border-top: 2px dashed #DDE3E1"></span>
+            <span style="position: absolute; right: -11px; width: 22px; height: 22px; border-radius: 11px; background: #F4F6F5"></span>
+          </div>
+          <div style="padding: 14px 18px 18px 18px; display: flex; align-items: center; gap: 16px">
+            <div role="img" aria-label="Check-in QR" style="flex: none; width: 104px; height: 104px; padding: 6px; box-sizing: border-box; border: 1px solid #DDE3E1; border-radius: 14px; display: grid; grid-template-columns: repeat(13, minmax(0, 1fr))">
+              <sc-for list="{{qr}}" as="q" hint-placeholder-count="20"><span style="background: {{q}}"></span></sc-for>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px"><b style="font-size: 15px">Gate par ye dikhayein</b><span style="font-size: 13px; color: #4A5D5A; line-height: 1.4">Ya code batayein: 4821</span></div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{quick}}" as="q" hint-placeholder-count="3">
+            <button style="height: 72px; border-radius: 18px; background: #FFFFFF; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 800; color: #0C1F1D; cursor: pointer">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{q.icon}}"></path></svg>{{q.label}}
+            </button>
+          </sc-for>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+          <b style="font-size: 15px">Paisa</b>
+          <sc-for list="{{money}}" as="m" hint-placeholder-count="3">
+            <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 14px"><span style="color: #4A5D5A">{{m.k}}</span><b style="{{m.vs}}">{{m.v}}</b></div>
+          </sc-for>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+          <b style="font-size: 15px">Cancel policy</b>
+          <span style="font-size: 14px; color: #4A5D5A; line-height: 1.5">6 ghante pehle tak cancel: poora paisa wapas. Us ke baad: wapas nahi. Refund 2 kaam ke dino mein.</span>
+          <button style="align-self: flex-start; height: 44px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #F0C3BD; color: #B42318; font-size: 14px; font-weight: 800; cursor: pointer">Booking cancel karein</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">3 · Cancel confirm (sheet)</span>
+    <div style="width: 390px; height: 860px; border-radius: 30px; overflow: hidden; position: relative; background: rgba(12,31,29,0.45)">
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-radius: 30px 30px 0 0; padding: 10px 20px 30px 20px; display: flex; flex-direction: column; gap: 16px">
+        <span style="width: 40px; height: 5px; border-radius: 3px; background: #CFD8D6; align-self: center"></span>
+        <span style="width: 56px; height: 56px; border-radius: 18px; background: #FDE8E5; color: #B42318; display: flex; align-items: center; justify-content: center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20z"></path><path d="M12 10v4M12 17h.01"></path></svg>
+        </span>
+        <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 800; line-height: 1.15">Booking cancel karein?</h2>
+        <div style="background: #F4F6F5; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 14px"><span style="color: #4A5D5A">Booking</span><b>Demo Arena · Sat 7 PM</b></div>
+          <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 14px"><span style="color: #4A5D5A">Aap ne diye</span><b>PKR 2,000</b></div>
+          <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 14px"><span style="color: #4A5D5A">Wapas milega</span><b style="color: #0B6B43">PKR 2,000</b></div>
+          <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 14px"><span style="color: #4A5D5A">Kab tak</span><b>2 kaam ke din</b></div>
+        </div>
+        <span style="font-size: 13px; color: #4A5D5A; line-height: 1.45">Slot dobara khul jayega aur dilchaspi rakhne walon ko khabar milegi.</span>
+        <button style="height: 56px; border-radius: 18px; background: #B42318; color: #FFFFFF; border: 0; font-size: 16px; font-weight: 800; cursor: pointer">Haan, cancel karein</button>
+        <button style="height: 52px; border-radius: 18px; background: #F4F6F5; color: #0C1F1D; border: 0; font-size: 16px; font-weight: 800; cursor: pointer">Nahi, booking rakhein</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1330,"height":1420}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const pill = (bg, fg) => 'align-self: flex-start; height: 26px; padding: 0 9px; border-radius: 13px; display: flex; align-items: center; font-size: 12px; font-weight: 800; background: ' + bg + '; color: ' + fg + ';';
+    const tile = (bg, fg) => 'flex: none; width: 58px; height: 70px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: ' + bg + '; color: ' + fg + ';';
+    const btn = (kind) => 'height: 44px; padding: 0 14px; border-radius: 14px; font-size: 14px; font-weight: 800; cursor: pointer; ' +
+      (kind === 'primary' ? 'background: #FF6A2B; color: #0C1F1D; border: 0;' : kind === 'dark' ? 'background: #0C1F1D; color: #FFFFFF; border: 0;' : 'background: #FFFFFF; color: #0C1F1D; border: 1.5px solid #CFD8D6;');
+    const fchip = (on) => 'height: 44px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 800; cursor: pointer; ' + (on ? 'background: #0C1F1D; color: #FFFFFF; border: 0;' : 'background: #FFFFFF; color: #0C1F1D; border: 1.5px solid #CFD8D6;');
+    const tabStyle = (on) => 'height: 56px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 800; ' + (on ? 'color: #0C1F1D; background: #FF6A2B;' : 'color: #4A5D5A;');
+    const qr = [];
+    for (let r = 0; r < 13; r++) for (let c = 0; c < 13; c++) {
+      const f = (a, b) => a >= 0 && a < 4 && b >= 0 && b < 4;
+      const hit = [[r, c], [r, c - 9], [r - 9, c]].find(([a, b]) => f(a, b));
+      const on = hit ? (hit[0] === 0 || hit[0] === 3 || hit[1] === 0 || hit[1] === 3) : ((r * 5 + c * 7 + r * c) % 4) < 2;
+      qr.push(on ? '#0C1F1D' : 'transparent');
+    }
+    return {
+      qr,
+      filters: [{ label: 'Sab · 3', style: fchip(true) }, { label: 'Pakki · 1', style: fchip(false) }, { label: 'Check ho rahi · 1', style: fchip(false) }, { label: 'Pay baqi · 1', style: fchip(false) }],
+      list: [
+        { wd: 'SAT', d: '24', venue: 'Demo Arena · Court 1', meta: '7:00 – 8:00 PM · Padel · PKR 2,000 diye', status: '✓ Pakki', pill: pill('#DFF5EA', '#0B6B43'), tile: tile('#FF6A2B', '#0C1F1D'),
+          actions: [{ label: 'QR dikhao', style: btn('dark') }, { label: 'Raasta', style: btn('outline') }, { label: 'Tafseel', style: btn('outline') }] },
+        { wd: 'MON', d: '26', venue: 'Demo Arena · Court 1', meta: '5:30 – 7:30 PM · Padel · PKR 4,000 bheje', status: '⧗ Venue check kar raha hai', pill: pill('#FFF1D6', '#8A5A00'), tile: tile('#0C1F1D', '#FFFFFF'),
+          actions: [{ label: 'Chat', style: btn('outline') }, { label: 'Tafseel', style: btn('outline') }] },
+        { wd: 'WED', d: '28', venue: 'Maidan Court · Court A', meta: '9:00 – 10:00 PM · Futsal · Hold 11:20 baqi', status: '! Pay karna baqi', pill: pill('#FFE7DB', '#B83E00'), tile: tile('#0C1F1D', '#FFFFFF'),
+          actions: [{ label: 'Abhi pay karein', style: btn('primary') }, { label: 'Cancel', style: btn('outline') }] }
+      ],
+      quick: [
+        { label: 'Raasta', icon: 'M3 11l18-8-8 18-2-8z' },
+        { label: 'Calendar', icon: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4' },
+        { label: 'Chat', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z' }
+      ],
+      money: [
+        { k: 'Total', v: 'PKR 2,000', vs: 'font-size: 14px;' },
+        { k: 'Aap ne diye', v: 'PKR 2,000', vs: 'font-size: 14px;' },
+        { k: 'Venue par baqi', v: 'PKR 0', vs: 'font-size: 14px; color: #0B6B43;' }
+      ],
+      tabs: [
+        { label: 'Home', icon: 'M3 11 12 4l9 7M5 10v10h14V10' },
+        { label: 'Bookings', icon: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4', active: true },
+        { label: 'Chat', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z' },
+        { label: 'Profile', icon: 'M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM4 21a8 8 0 0 1 16 0' }
+      ].map((t) => ({ ...t, style: tabStyle(t.active) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

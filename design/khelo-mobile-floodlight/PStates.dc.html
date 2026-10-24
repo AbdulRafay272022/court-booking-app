@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo · Loading, error, offline</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1760px; height: 900px; background: #E8ECEB; box-sizing: border-box; padding: 40px; display: flex; gap: 40px; align-items: flex-start">
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">1 · Loading (skeleton, never "0")</span>
+    <div style="width: 390px; height: 780px; border-radius: 30px; overflow: hidden; background: #F4F6F5; padding: 56px 20px 0 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+      <span style="width: 60%; height: 30px; border-radius: 10px; background: #DDE3E1"></span>
+      <span style="width: 100%; height: 56px; border-radius: 18px; background: #DDE3E1"></span>
+      <sc-for list="{{sk}}" as="s" hint-placeholder-count="2">
+        <div style="background: #FFFFFF; border-radius: 24px; overflow: hidden">
+          <span style="display: block; height: 140px; background: #E1E7E5"></span>
+          <div style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+            <span style="width: 55%; height: 20px; border-radius: 8px; background: #DDE3E1"></span>
+            <span style="width: 80%; height: 14px; border-radius: 6px; background: #E8ECEB"></span>
+            <div style="display: flex; gap: 8px"><span style="width: 76px; height: 40px; border-radius: 12px; background: #E8ECEB"></span><span style="width: 76px; height: 40px; border-radius: 12px; background: #E8ECEB"></span><span style="width: 76px; height: 40px; border-radius: 12px; background: #E8ECEB"></span></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">2 · Error (retry + wapas)</span>
+    <div style="width: 390px; height: 780px; border-radius: 30px; overflow: hidden; background: #F4F6F5; padding: 52px 20px 0 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+      <button aria-label="Wapas" style="width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+      </button>
+      <div style="padding-top: 60px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center">
+        <span style="width: 88px; height: 88px; border-radius: 28px; background: #FDE8E5; color: #B42318; display: flex; align-items: center; justify-content: center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5h.01"></path></svg>
+        </span>
+        <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">Kuch gadbad ho gayi</h2>
+        <p style="margin: 0; font-size: 15px; color: #4A5D5A; line-height: 1.5">Venue load nahi ho saka. Aap ki booking aur paisa mehfooz hain.</p>
+        <button style="width: 100%; height: 54px; border-radius: 18px; background: #FF6A2B; color: #0C1F1D; border: 0; font-size: 16px; font-weight: 800; cursor: pointer">Dobara koshish</button>
+        <button style="width: 100%; height: 52px; border-radius: 18px; background: #FFFFFF; color: #0C1F1D; border: 1.5px solid #CFD8D6; font-size: 15px; font-weight: 800; cursor: pointer">Home par jayein</button>
+        <span style="font-size: 12px; color: #5B6E6B">Code: VEN-500 · WhatsApp madad mein batayein</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">3 · Offline banner</span>
+    <div style="width: 390px; height: 780px; border-radius: 30px; overflow: hidden; background: #F4F6F5; position: relative">
+      <div style="position: absolute; left: 12px; right: 12px; top: 50px; display: flex; align-items: center; gap: 10px; background: #0C1F1D; color: #FFFFFF; border-radius: 16px; padding: 12px 14px; z-index: 2">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFB020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M2 8.8a15 15 0 0 1 20 0M5 12.6a10 10 0 0 1 14 0M8.5 16.4a5 5 0 0 1 7 0M12 20h.01M3 3l18 18"></path></svg>
+        <span style="flex: 1; font-size: 14px; line-height: 1.4">Internet nahi hai. Purani info dikh rahi hai.</span>
+        <button style="flex: none; height: 44px; padding: 0 12px; border-radius: 12px; background: #FF6A2B; border: 0; color: #0C1F1D; font-size: 13px; font-weight: 800; cursor: pointer">Retry</button>
+      </div>
+      <div style="padding: 130px 20px 0 20px; display: flex; flex-direction: column; gap: 12px; opacity: 0.75">
+        <b style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px">Meri bookings</b>
+        <div style="background: #FFFFFF; border-radius: 22px; padding: 14px; display: flex; gap: 12px">
+          <span style="flex: none; width: 58px; height: 70px; border-radius: 16px; background: #FF6A2B; color: #0C1F1D; display: flex; flex-direction: column; align-items: center; justify-content: center"><span style="font-size: 11px; font-weight: 800">SAT</span><b style="font-size: 22px">24</b></span>
+          <div style="display: flex; flex-direction: column; gap: 4px"><b style="font-size: 16px">Demo Arena · Court 1</b><span style="font-size: 13px; color: #4A5D5A">7:00 – 8:00 PM · Pakki</span><span style="font-size: 12px; color: #5B6E6B">Aakhri update 4:52 PM</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">4 · Nahi mila (404)</span>
+    <div style="width: 390px; height: 780px; border-radius: 30px; overflow: hidden; background: #0C1F1D; position: relative; color: #FFFFFF">
+      <div style="position: absolute; width: 300px; height: 300px; border-radius: 150px; background: #FF6A2B; opacity: 0.25; filter: blur(80px); left: 45px; top: 200px"></div>
+      <div style="position: relative; padding: 180px 28px 0 28px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center">
+        <b style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 90px; line-height: 1; letter-spacing: -4px; color: #FF6A2B">Out!</b>
+        <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">Ye page court se bahar chala gaya</h2>
+        <p style="margin: 0; font-size: 15px; color: #B9C6C3; line-height: 1.5">Link purana ho sakta hai ya venue band ho gaya hai.</p>
+        <button style="width: 100%; height: 54px; border-radius: 18px; background: #FF6A2B; color: #0C1F1D; border: 0; font-size: 16px; font-weight: 800; cursor: pointer">Home par jayein</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1760,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { sk: [1, 2] };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo · Profile and alerts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+a{color:#B83E00}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1330px; height: 1220px; background: #E8ECEB; box-sizing: border-box; padding: 40px; display: flex; gap: 40px; align-items: flex-start; font-variant-numeric: tabular-nums">
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">1 · Profile tab</span>
+    <div style="width: 390px; height: 1100px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="position: relative; background: #0C1F1D; padding: 56px 20px 50px 20px; overflow: hidden; color: #FFFFFF">
+        <div style="position: absolute; width: 260px; height: 200px; border-radius: 130px; background: #FF6A2B; opacity: 0.3; filter: blur(70px); right: -80px; bottom: -80px"></div>
+        <div style="position: relative; display: flex; align-items: center; gap: 14px">
+          <span style="flex: none; width: 68px; height: 68px; border-radius: 34px; background: #FF6A2B; color: #0C1F1D; display: flex; align-items: center; justify-content: center; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">AR</span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <b style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px">Ali Raza</b>
+            <span style="font-size: 14px; color: #B9C6C3">+92 300 1234567 · Karachi</span>
+          </div>
+          <button aria-label="Profile edit karein" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg>
+          </button>
+        </div>
+        <div style="position: relative; margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{stats}}" as="s" hint-placeholder-count="3">
+            <div style="border-radius: 16px; padding: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); display: flex; flex-direction: column; gap: 2px">
+              <b style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 22px">{{s.n}}</b><span style="font-size: 12px; color: #B9C6C3">{{s.l}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="position: relative; margin-top: -26px; background: #F4F6F5; border-radius: 28px 28px 0 0; padding: 20px 16px 0 16px; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <b style="font-size: 15px; padding-left: 4px">Saved venues</b>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+            <sc-for list="{{saved}}" as="v" hint-placeholder-count="2">
+              <button style="height: 92px; border-radius: 20px; border: 0; background: {{v.bg}}; color: #FFFFFF; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; cursor: pointer; text-align: left">
+                <span style="height: 24px; padding: 0 8px; border-radius: 12px; background: rgba(255,255,255,0.18); font-size: 11px; font-weight: 800; display: flex; align-items: center">{{v.sport}}</span>
+                <b style="font-size: 15px">{{v.name}}</b>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 22px; overflow: hidden">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+            <a href="#" style="{{r.style}}">
+              <span style="flex: none; width: 40px; height: 40px; border-radius: 13px; background: {{r.tile}}; color: {{r.ic}}; display: flex; align-items: center; justify-content: center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.icon}}"></path></svg>
+              </span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px"><b style="font-size: 15px; color: #0C1F1D">{{r.label}}</b><span style="font-size: 12px; color: #4A5D5A">{{r.sub}}</span></span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6E6B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="m9 6 6 6-6 6"></path></svg>
+            </a>
+          </sc-for>
+        </div>
+        <button style="height: 52px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #F0C3BD; color: #B42318; font-size: 15px; font-weight: 800; cursor: pointer">Logout</button>
+      </div>
+      <nav aria-label="Main" style="position: absolute; left: 16px; right: 16px; bottom: 22px; height: 70px; border-radius: 26px; background: rgba(255,255,255,0.86); border: 1px solid #FFFFFF; box-shadow: 0 16px 40px rgba(12,31,29,0.18); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; padding: 0 7px; box-sizing: border-box">
+        <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="4">
+          <a href="#" style="{{tab.style}}">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tab.icon}}"></path></svg>{{tab.label}}
+          </a>
+        </sc-for>
+      </nav>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">2 · Notifications</span>
+    <div style="width: 390px; height: 1100px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 52px 16px 0 16px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button aria-label="Wapas" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <h1 style="flex: 1; margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">Notifications</h1>
+          <button style="flex: none; height: 44px; padding: 0 10px; border: 0; background: transparent; font-size: 13px; font-weight: 800; color: #B83E00; cursor: pointer">Sab parh liye</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; background: #FFE7DB; border-radius: 18px; padding: 12px 14px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B83E00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path></svg>
+          <span style="flex: 1; font-size: 13px; line-height: 1.4; color: #0C1F1D">Push band hai. On karein taake approval fori pata chale.</span>
+          <button style="flex: none; height: 44px; padding: 0 12px; border-radius: 12px; background: #FF6A2B; border: 0; color: #0C1F1D; font-size: 13px; font-weight: 800; cursor: pointer">On karein</button>
+        </div>
+        <span style="font-size: 12px; font-weight: 800; letter-spacing: 0.1em; color: #5B6E6B; padding-left: 4px">AAJ</span>
+        <sc-for list="{{notes}}" as="n" hint-placeholder-count="5">
+          <button style="{{n.style}}">
+            <span style="{{n.icon}}">{{n.glyph}}</span>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-align: left">
+              <b style="font-size: 15px; color: #0C1F1D">{{n.title}}</b>
+              <span style="font-size: 13px; color: #4A5D5A; line-height: 1.4">{{n.body}}</span>
+              <span style="font-size: 12px; color: #5B6E6B">{{n.time}}</span>
+            </span>
+            <sc-if value="{{n.unread}}" hint-placeholder-val="{{false}}"><span style="flex: none; width: 10px; height: 10px; border-radius: 5px; background: #FF6A2B; margin-top: 6px"></span></sc-if>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">3 · Profile edit</span>
+    <div style="width: 390px; height: 1100px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 52px 20px 0 20px; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button aria-label="Wapas" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">Profile</h1>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px">
+          <span style="flex: none; width: 80px; height: 80px; border-radius: 40px; background: #FF6A2B; color: #0C1F1D; display: flex; align-items: center; justify-content: center; font-family: 'Bricolage Grotesque', sans-serif; font-size: 30px; font-weight: 800">AR</span>
+          <button style="height: 44px; padding: 0 16px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #CFD8D6; font-size: 14px; font-weight: 800; color: #0C1F1D; cursor: pointer">Tasveer badlein</button>
+        </div>
+        <sc-for list="{{form}}" as="f" hint-placeholder-count="4">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label style="font-size: 13px; font-weight: 800">{{f.label}}</label>
+            <div style="min-height: 54px; border-radius: 16px; background: #FFFFFF; border: 1.5px solid #CFD8D6; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; font-size: 16px">
+              <span>{{f.value}}</span>
+              <sc-if value="{{f.link}}" hint-placeholder-val="{{false}}"><a href="#" style="flex: none; font-size: 13px; font-weight: 800; text-decoration: none; min-height: 44px; display: flex; align-items: center">Badlein</a></sc-if>
+            </div>
+          </div>
+        </sc-for>
+        <b style="font-size: 15px; padding-top: 4px">Zabaan</b>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; background: #E8ECEB; padding: 4px; border-radius: 16px">
+          <button aria-pressed="true" style="height: 46px; border-radius: 12px; border: 0; background: #FFFFFF; font-size: 15px; font-weight: 800; color: #0C1F1D; cursor: pointer">Roman Urdu</button>
+          <button aria-pressed="false" style="height: 46px; border-radius: 12px; border: 0; background: transparent; font-size: 15px; font-weight: 700; color: #4A5D5A; cursor: pointer">English</button>
+        </div>
+        <button style="height: 56px; border-radius: 18px; background: #FF6A2B; color: #0C1F1D; border: 0; font-size: 17px; font-weight: 800; cursor: pointer">Save karein</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1330,"height":1220}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const row = (i, n) => 'display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 64px; box-sizing: border-box; text-decoration: none; ' + (i < n - 1 ? 'border-bottom: 1px solid #EEF2F1;' : '');
+    const rowsData = [
+      { label: 'Slot alerts', sub: '2 slots par "khulne par batao" laga hai', icon: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0', tile: '#FFE7DB', ic: '#B83E00' },
+      { label: 'Notifications', sub: 'Push, WhatsApp', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z', tile: '#E3F4F1', ic: '#0A5F59' },
+      { label: 'Password badlein', sub: '', icon: 'M6 11h12v9H6zM9 11V8a3 3 0 0 1 6 0v3', tile: '#E8ECEB', ic: '#0C1F1D' },
+      { label: 'Madad · WhatsApp', sub: 'Khelo team se baat', icon: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2', tile: '#E3F4F1', ic: '#0A5F59' },
+      { label: 'Terms aur Privacy', sub: '', icon: 'M6 3h9l4 4v14H6zM9 12h7M9 16h7', tile: '#E8ECEB', ic: '#0C1F1D' }
+    ];
+    const note = (kind, glyph, title, body, time, unread) => {
+      const c = { ok: ['#DFF5EA', '#0B6B43'], wait: ['#FFF1D6', '#8A5A00'], bad: ['#FDE8E5', '#B42318'], open: ['#FFE7DB', '#B83E00'] }[kind];
+      return { title, body, time, unread, glyph,
+        icon: 'flex: none; width: 40px; height: 40px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; background: ' + c[0] + '; color: ' + c[1] + ';',
+        style: 'display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-radius: 20px; border: 0; cursor: pointer; width: 100%; box-sizing: border-box; ' + (unread ? 'background: #FFFFFF; box-shadow: 0 6px 18px rgba(12,31,29,0.06);' : 'background: transparent;') };
+    };
+    const tabStyle = (on) => 'height: 56px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 800; ' + (on ? 'color: #0C1F1D; background: #FF6A2B;' : 'color: #4A5D5A;');
+    return {
+      stats: [{ n: '12', l: 'Games' }, { n: '3', l: 'Venues' }, { n: '0', l: 'No-show' }],
+      saved: [{ name: 'Demo Arena', sport: 'Padel', bg: '#0E7C74' }, { name: 'Maidan Court', sport: 'Futsal', bg: '#0C1F1D' }],
+      rows: rowsData.map((r, i) => ({ ...r, style: row(i, rowsData.length) })),
+      notes: [
+        note('ok', '✓', 'Booking pakki!', 'Demo Arena ne Sat 7 PM ki payment approve kar di.', '5:20 PM', true),
+        note('open', '●', 'Slot khul gaya', 'Maidan Court Thu 9 PM ab khaali hai. Pehle aao, pehle pao.', '4:10 PM', true),
+        note('wait', '⧗', 'Payment check ho rahi hai', 'Demo Arena Mon 5:30 PM · PKR 4,000.', '4:58 PM', false),
+        note('bad', '✕', 'Payment wapas ki gayi', 'Smash Point: amount match nahi hua. Wajah dekhein.', 'Kal', false),
+        note('wait', '⏰', 'Yaad dahani', 'Kal 7 PM Demo Arena. Raasta dekhein.', 'Kal', false)
+      ],
+      form: [
+        { label: 'Poora naam', value: 'Ali Raza', link: false },
+        { label: 'Mobile number', value: '+92 300 1234567', link: true },
+        { label: 'Shehar', value: 'Karachi', link: false },
+        { label: 'Pasandida khel', value: 'Padel, Futsal', link: false }
+      ],
+      tabs: [
+        { label: 'Home', icon: 'M3 11 12 4l9 7M5 10v10h14V10' },
+        { label: 'Bookings', icon: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4' },
+        { label: 'Chat', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z' },
+        { label: 'Profile', icon: 'M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM4 21a8 8 0 0 1 16 0', active: true }
+      ].map((t) => ({ ...t, style: tabStyle(t.active) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

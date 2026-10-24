@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo · Color Lab</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1180px; height: 1240px; background: #FFFFFF; box-sizing: border-box; padding: 40px; display: flex; gap: 40px; font-variant-numeric: tabular-nums">
+
+  <div style="{{phoneStyle}}">
+    <div style="{{heroStyle}}">
+      <div style="{{glow1}}"></div>
+      <div style="{{glow2}}"></div>
+      <div style="position: relative; display: flex; flex-direction: column; gap: 20px">
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span style="{{pillStyle}}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>DHA Phase 6
+          </span>
+          <span style="{{avatarStyle}}">DE</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="{{eyebrowStyle}}">Salam, Demo</span>
+          <span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 40px; line-height: 1.02; font-weight: 800; letter-spacing: -0.035em; color: #FFFFFF">Aaj raat<br>khelna hai?</span>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 22px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 18px 40px rgba(0,0,0,0.3)">
+          <div style="flex: 1; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: #5B6E6B">KHEL</span><span style="font-size: 15px; font-weight: 800; color: #0C1F1D">Padel</span></div>
+          <div style="flex: 1; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: #5B6E6B">KAB</span><span style="font-size: 15px; font-weight: 800; color: #0C1F1D">Aaj raat</span></div>
+          <span style="{{searchBtn}}">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          </span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{sports}}" as="s" hint-placeholder-count="4">
+            <span style="{{s.style}}">
+              <span style="{{s.dot}}"></span>{{s.label}}
+            </span>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="{{bodyStyle}}">
+      <div style="{{cardStyle}}">
+        <div style="position: relative; height: 150px; background: {{courtBg}}; overflow: hidden">
+          <div style="position: absolute; width: 160px; height: 260px; border-radius: 80px; background: #FFF6DE; opacity: 0.22; filter: blur(34px); transform: rotate(28deg); top: -120px; left: 10px"></div>
+          <div style="position: absolute; width: 160px; height: 260px; border-radius: 80px; background: #FFF6DE; opacity: 0.22; filter: blur(34px); transform: rotate(-28deg); top: -120px; right: 10px"></div>
+          <svg width="350" height="150" viewBox="0 0 350 150" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" aria-hidden="true" style="position: absolute; left: 0; top: 0"><path d="M70 130 100 34h150l30 96z"></path><path d="M175 34v96M85 82h180"></path></svg>
+          <span style="position: absolute; left: 12px; top: 12px; height: 28px; padding: 0 10px; display: flex; align-items: center; border-radius: 14px; background: rgba(255,255,255,0.22); border: 1px solid rgba(255,255,255,0.35); color: #FFFFFF; font-size: 12px; font-weight: 800">Padel</span>
+          <span style="{{liveStyle}}"><span style="{{liveDot}}"></span>3 slot baqi</span>
+        </div>
+        <div style="padding: 14px 16px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; gap: 10px">
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span style="{{titleStyle}}">Demo Arena</span>
+              <span style="{{mutedStyle}}">4.0 ★ · DHA Phase 6 · 1.2 km</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-end">
+              <span style="{{mutedStyle}}">shuru</span>
+              <span style="{{priceStyle}}">PKR 2,000</span>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+            <span style="{{chipOpen}}">8:00 PM</span>
+            <span style="{{chipPick}}">✓ 9:00 PM</span>
+            <span style="{{chipBooked}}">10 PM</span>
+            <span style="{{chipOpen}}">+3</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="{{barStyle}}">
+        <div style="flex: 1; display: flex; flex-direction: column">
+          <span style="{{barPrice}}">PKR 2,000</span>
+          <span style="{{barSub}}">Mon 26 · Court 1 · 9–10 PM</span>
+        </div>
+        <span style="{{bookBtn}}">Book karo</span>
+      </div>
+
+      <div style="{{ownerStyle}}">
+        <div style="{{ownerGlow}}"></div>
+        <span style="position: relative; font-size: 13px; font-weight: 700; color: {{ownerMuted}}">Owner · Aaj aaya</span>
+        <span style="position: relative; font-family: 'Bricolage Grotesque', sans-serif; font-size: 38px; font-weight: 800; letter-spacing: -0.03em; color: #FFFFFF">PKR 7,000</span>
+        <div style="position: relative; display: flex; gap: 8px">
+          <span style="{{ownerChip}}">6 bookings</span>
+          <span style="{{ownerApprove}}">3 approve karni hain</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.16em; color: #B83E00">COLOR LAB · EK CLICK SE BADLEIN</span>
+      <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 40px; line-height: 1.05; font-weight: 800; letter-spacing: -0.03em">Kaunsa combination?</h1>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{options}}" as="o" hint-placeholder-count="4">
+        <button onClick="{{o.pick}}" aria-pressed="{{o.on}}" style="{{o.style}}">
+          <span style="display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%">
+            <b style="font-size: 17px">{{o.name}}</b>
+            <sc-if value="{{o.rec}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; font-weight: 800; letter-spacing: 0.06em; padding: 4px 8px; border-radius: 8px; background: #FF6A2B; color: #0C1F1D">CHUNA GAYA ✓</span></sc-if>
+          </span>
+          <span style="display: flex; gap: 6px">
+            <sc-for list="{{o.swatches}}" as="sw" hint-placeholder-count="4">
+              <span style="width: 30px; height: 30px; border-radius: 9px; background: {{sw}}; border: 1px solid rgba(0,0,0,0.12)"></span>
+            </sc-for>
+          </span>
+          <span style="font-size: 13px; color: #3B4B48; line-height: 1.45; text-align: left">{{o.tag}}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="background: #F4F6F5; border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.14em; color: #4A5D5A">KYUN · {{cur.nameCaps}}</span>
+      <sc-for list="{{cur.why}}" as="w" hint-placeholder-count="3">
+        <div style="display: flex; gap: 10px; font-size: 15px; line-height: 1.5; color: #0C1F1D">
+          <span style="flex: none; width: 22px; height: 22px; border-radius: 11px; background: #DFF5EA; color: #0B6B43; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 2px">✓</span>
+          <span>{{w}}</span>
+        </div>
+      </sc-for>
+      <sc-for list="{{cur.risk}}" as="rk" hint-placeholder-count="1">
+        <div style="display: flex; gap: 10px; font-size: 15px; line-height: 1.5; color: #0C1F1D">
+          <span style="flex: none; width: 22px; height: 22px; border-radius: 11px; background: #FFF1D6; color: #8A5A00; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 2px">!</span>
+          <span>{{rk}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border: 1px solid #DDE3E1; border-radius: 22px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.14em; color: #4A5D5A">CONTRAST TEST (TEXT KO 4.5 CHAHIYE)</span>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px">
+        <sc-for list="{{cur.tests}}" as="t" hint-placeholder-count="4">
+          <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 14px; padding: 6px 0; border-bottom: 1px solid #EEF2F1">
+            <span style="color: #3B4B48">{{t.n}}</span><b style="color: #0B6B43">{{t.r}} ✓</b>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"palette":{"editor":"enum","options":["floodlight","courtblue","volt","emerald"],"default":"floodlight"},"$preview":{"width":1180,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { pal: null };
+  }
+  renderVals() {
+    const P = {
+      floodlight: {
+        name: 'A · Khelo website brand', tag: 'Aap ki website ke rang: night, orange, teal. Final: Floodlight layout isi rang mein.',
+        swatches: ['#0C1F1D', '#FF6A2B', '#0E7C74', '#F4F6F5'],
+        hero: '#0C1F1D', hero2: '#12302C', g1: '#FFF1D0', g1o: 0.16, g2: '#FF6A2B', g2o: 0.2,
+        ground: '#F4F6F5', card: '#FFFFFF', ink: '#0C1F1D', muted: '#4A5D5A', accent: '#FF6A2B', accentInk: '#0C1F1D',
+        eyebrow: '#FFB48F', court: '#1D4E7A', dark: false,
+        ownerHero: '#0C1F1D', ownerGlow: '#0E7C74', ownerMuted: '#B9C6C3',
+        why: ['Logo aur website se 100% match.', 'Sab contrast pass.'],
+        risk: ['Orange sirf ek agla qadam par, warna screen shor wali lagti hai.'],
+        tests: [{ n: 'Ink on orange', r: '5.98' }, { n: 'White on night', r: '15.8' }, { n: 'Muted on ground', r: '6.44' }, { n: 'Open chip', r: '5.75' }]
+      },
+      courtblue: {
+        name: 'B · Court Blue', tag: 'Gehra padel-court neela + Khelo orange. Neela aur orange ek doosre ke ulte (complementary) rang hain, is liye orange button sab se zyada chamakta hai.',
+        swatches: ['#0B1E3F', '#FF6A2B', '#2457E6', '#F3F5FA'],
+        hero: '#0B1E3F', hero2: '#1A3A7A', g1: '#2F6BFF', g1o: 0.45, g2: '#FF6A2B', g2o: 0.3,
+        ground: '#F3F5FA', card: '#FFFFFF', ink: '#0B1E3F', muted: '#4B5A78', accent: '#FF6A2B', accentInk: '#0B1E3F',
+        eyebrow: '#FFB48F', court: '#2457E6', dark: false,
+        ownerHero: '#0B1E3F', ownerGlow: '#2F6BFF', ownerMuted: '#A9B8D6',
+        why: ['Logo ka orange wahi rehta hai, sirf peeche ka rang zinda ho jata hai.', 'Neela-orange complementary jodi: rang ke pahiye par aamne saamne, is liye "Book karo" pehli nazar mein dikhta hai.', 'Padel aur tennis courts asal mein neele hote hain: rang khel se juda hua lagta hai.', 'Neela bharose ka aam rang hai (bank, payments) — paise wali app ke liye munasib.'],
+        risk: ['Website ko bhi neele par lana hoga (sirf rang badlenge, layout nahi).'],
+        tests: [{ n: 'Navy text on orange', r: '5.78' }, { n: 'White on navy', r: '16.5' }, { n: 'Muted on ground', r: '6.35' }, { n: 'White on blue', r: '5.86' }]
+      },
+      volt: {
+        name: 'C · Volt Night', tag: 'Poori app dark, neon-lime action. Bohot energetic (Nike jaisa), raat ko aankhon par halka.',
+        swatches: ['#0A0F0D', '#C8F542', '#18211D', '#FF6A2B'],
+        hero: '#0A0F0D', hero2: '#17211C', g1: '#C8F542', g1o: 0.18, g2: '#3BAA6B', g2o: 0.2,
+        ground: '#0F1512', card: '#18211D', ink: '#F2F6EF', muted: '#A6B3AA', accent: '#C8F542', accentInk: '#0A0F0D',
+        eyebrow: '#C8F542', court: '#1E6B43', dark: true,
+        ownerHero: '#0A0F0D', ownerGlow: '#C8F542', ownerMuted: '#A6B3AA',
+        why: ['Sab se zyada "wow": lime dark par 15:1 contrast se chamakta hai.', 'Raat ke khel ke mood se match.'],
+        risk: ['Lime orange logo se takrata hai: do tez rang = brand confuse.', 'Lime safed par nazar hi nahi aata (1.14), is liye har screen dark rakhni padegi, dhoop mein phone par parhna mushkil.'],
+        tests: [{ n: 'Ink on volt', r: '15.3' }, { n: 'Text on card', r: '15.1' }, { n: 'Muted on card', r: '7.57' }, { n: 'Open chip', r: '8.46' }]
+      },
+      emerald: {
+        name: 'D · Emerald Turf', tag: 'Gehra ghaas jaisa hara + orange + cream. Garam, premium, futsal/cricket ka ehsaas.',
+        swatches: ['#053B2F', '#FF6A2B', '#10B981', '#F5F2EA'],
+        hero: '#053B2F', hero2: '#0B5A46', g1: '#10B981', g1o: 0.4, g2: '#FF6A2B', g2o: 0.22,
+        ground: '#F5F2EA', card: '#FFFFFF', ink: '#0C1F1D', muted: '#55605A', accent: '#FF6A2B', accentInk: '#0C1F1D',
+        eyebrow: '#FFC9A8', court: '#0B5A46', dark: false,
+        ownerHero: '#053B2F', ownerGlow: '#10B981', ownerMuted: '#9FD9C3',
+        why: ['Website ke hare-teal brand ke qareeb.', 'Ghaas aur turf ka seedha ehsaas.'],
+        risk: ['"Khaali" slot ka hara aur brand ka hara aapas mein mil jate hain, availability kam saaf.'],
+        tests: [{ n: 'Ink on orange', r: '5.98' }, { n: 'White on emerald', r: '12.6' }, { n: 'Muted on cream', r: '5.85' }, { n: 'Label on emerald', r: '8.47' }]
+      }
+    };
+    const key = this.state.pal || this.props.palette || 'floodlight';
+    const p = P[key];
+    const options = Object.keys(P).map((k) => {
+      const on = k === key;
+      return { name: P[k].name, tag: P[k].tag, swatches: P[k].swatches, rec: k === 'floodlight', on,
+        pick: () => this.setState({ pal: k }),
+        style: 'display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; border-radius: 20px; cursor: pointer; text-align: left; color: #0C1F1D; ' +
+          (on ? 'background: #FFFFFF; border: 2px solid #0C1F1D; box-shadow: 0 10px 26px rgba(12,31,29,0.12);' : 'background: #F4F6F5; border: 2px solid transparent;') };
+    });
+    const sportList = [['Padel', '#4F8DFF'], ['Futsal', '#2FBF71'], ['Cricket', '#F2B04C'], ['Aur', '#FF8A57']];
+    const sports = sportList.map(([label, c], i) => ({
+      label,
+      dot: 'width: 8px; height: 8px; border-radius: 4px; background: ' + c + ';',
+      style: 'height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 800; ' +
+        (i === 0 ? 'background: #FFFFFF; color: ' + p.hero + ';' : 'background: rgba(255,255,255,0.1); color: #FFFFFF; border: 1px solid rgba(255,255,255,0.16);')
+    }));
+    const blob = (c, o, pos) => 'position: absolute; width: 300px; height: 300px; border-radius: 150px; background: ' + c + '; opacity: ' + o + '; filter: blur(70px); ' + pos;
+    const chip = (bg, fg, extra) => 'height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; box-sizing: border-box; background: ' + bg + '; color: ' + fg + '; ' + (extra || '');
+    const nameCaps = p.name.toUpperCase();
+    return {
+      sports, options,
+      cur: { nameCaps, why: p.why, risk: p.risk, tests: p.tests },
+      courtBg: p.court,
+      phoneStyle: 'flex: none; width: 390px; height: 1160px; border-radius: 40px; overflow: hidden; position: relative; background: ' + p.ground + '; box-shadow: 0 30px 70px rgba(12,31,29,0.22); border: 8px solid #0C1F1D; box-sizing: border-box;',
+      heroStyle: 'position: relative; overflow: hidden; padding: 44px 18px 46px 18px; background: linear-gradient(160deg, ' + p.hero + ' 0%, ' + p.hero + ' 45%, ' + p.hero2 + ' 100%);',
+      glow1: blob(p.g1, p.g1o, 'top: -120px; right: -120px;'),
+      glow2: blob(p.g2, p.g2o, 'bottom: -170px; left: -60px;'),
+      pillStyle: 'display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 20px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); color: #FFFFFF; font-size: 14px; font-weight: 700;',
+      avatarStyle: 'width: 40px; height: 40px; border-radius: 20px; background: #FFFFFF; color: ' + p.hero + '; font-size: 14px; font-weight: 800; display: flex; align-items: center; justify-content: center;',
+      eyebrowStyle: 'font-size: 15px; font-weight: 700; color: ' + p.eyebrow + ';',
+      searchBtn: 'flex: none; width: 54px; border-radius: 16px; background: ' + p.accent + '; color: ' + p.accentInk + '; display: flex; align-items: center; justify-content: center;',
+      bodyStyle: 'position: relative; margin-top: -26px; border-radius: 28px 28px 0 0; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; background: ' + p.ground + ';',
+      cardStyle: 'border-radius: 24px; overflow: hidden; background: ' + p.card + '; box-shadow: 0 10px 28px rgba(12,31,29,' + (p.dark ? '0.4' : '0.08') + ');',
+      liveStyle: 'position: absolute; right: 12px; bottom: 12px; height: 28px; padding: 0 10px; display: flex; align-items: center; gap: 6px; border-radius: 14px; background: ' + (p.dark ? p.accent : '#FFFFFF') + '; color: ' + (p.dark ? p.accentInk : '#B83E00') + '; font-size: 12px; font-weight: 800;',
+      liveDot: 'width: 7px; height: 7px; border-radius: 4px; background: ' + (p.dark ? p.accentInk : '#FF6A2B') + ';',
+      titleStyle: "font-family: 'Bricolage Grotesque', sans-serif; font-size: 20px; font-weight: 800; color: " + p.ink + ';',
+      mutedStyle: 'font-size: 13px; color: ' + p.muted + ';',
+      priceStyle: 'font-size: 16px; font-weight: 800; color: ' + p.ink + ';',
+      chipOpen: p.dark ? chip('#1C3A2B', '#8BE8B4') : chip('#DFF5EA', '#0B6B43'),
+      chipPick: chip(p.accent, p.accentInk, 'border: 2px solid ' + (p.dark ? '#FFFFFF' : p.ink) + ';'),
+      chipBooked: p.dark ? chip('#232D28', '#A6B3AA', 'text-decoration: line-through;') : chip('#E1E7E5', '#4A5D5A', 'text-decoration: line-through;'),
+      barStyle: 'display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; border-radius: 24px; ' + (p.dark ? 'background: rgba(28,38,33,0.92); border: 1px solid rgba(255,255,255,0.08);' : 'background: rgba(255,255,255,0.86); border: 1px solid #FFFFFF;') + ' box-shadow: 0 14px 34px rgba(12,31,29,0.18);',
+      barPrice: "font-family: 'Bricolage Grotesque', sans-serif; font-size: 20px; font-weight: 800; color: " + p.ink + ';',
+      barSub: 'font-size: 12px; color: ' + p.muted + ';',
+      bookBtn: 'height: 50px; padding: 0 22px; border-radius: 16px; display: flex; align-items: center; font-size: 16px; font-weight: 800; background: ' + p.accent + '; color: ' + p.accentInk + '; box-shadow: 0 8px 20px rgba(0,0,0,0.18);',
+      ownerStyle: 'position: relative; overflow: hidden; border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 6px; background: ' + p.ownerHero + ';',
+      ownerGlow: blob(p.ownerGlow, 0.4, 'bottom: -200px; right: -80px;'),
+      ownerMuted: p.ownerMuted,
+      ownerChip: 'height: 32px; padding: 0 12px; border-radius: 16px; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: #FFFFFF; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);',
+      ownerApprove: 'height: 32px; padding: 0 12px; border-radius: 16px; display: flex; align-items: center; font-size: 13px; font-weight: 800; background: ' + p.accent + '; color: ' + p.accentInk + ';'
+    };
+  }
+}
+</script>
+</body>
+</html>

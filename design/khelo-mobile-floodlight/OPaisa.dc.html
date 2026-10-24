@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo Owner · Paisa and history</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+a{color:#0A5F59}
+button,input{font-family:inherit}
+input::placeholder{color:#5B6E6B}
+</style>
+</helmet>
+<div style="width: 1330px; height: 1500px; background: #E8ECEB; box-sizing: border-box; padding: 40px; display: flex; gap: 40px; align-items: flex-start; font-variant-numeric: tabular-nums">
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">1 · Paisa (ledger)</span>
+    <div style="width: 390px; height: 1380px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="position: relative; background: linear-gradient(165deg, #0E7C74 0%, #0A5F59 55%, #0C1F1D 100%); padding: 52px 16px 48px 16px; overflow: hidden; color: #FFFFFF">
+        <div style="position: relative; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px">
+            <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 30px; font-weight: 800">Paisa</h1>
+            <button style="height: 44px; padding: 0 14px; border-radius: 14px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.24); color: #FFFFFF; font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 6px; cursor: pointer">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>CSV
+            </button>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 14px; font-weight: 700; color: #FFFFFF">Pichle 30 din mein mila</span>
+            <b style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 44px; letter-spacing: -1px; line-height: 1.05">PKR 14,000</b>
+            <span style="font-size: 13px; color: #FFFFFF">8 payments</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+            <sc-for list="{{tiles}}" as="t" hint-placeholder-count="3">
+              <div style="border-radius: 16px; padding: 10px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22); display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700">{{t.l}}</span><b style="font-size: 15px">{{t.v}}</b></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      <div style="position: relative; margin-top: -26px; background: #F4F6F5; border-radius: 28px 28px 0 0; padding: 18px 16px 0 16px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <a href="#" style="background: #FFF1D6; border-radius: 16px; padding: 12px; text-decoration: none; color: #8A5A00; display: flex; flex-direction: column; gap: 2px; min-height: 44px"><span style="font-size: 12px; font-weight: 700">Bookings par baqi</span><b style="font-size: 16px">PKR 3,750</b></a>
+          <a href="#" style="background: #FDE8E5; border-radius: 16px; padding: 12px; text-decoration: none; color: #B42318; display: flex; flex-direction: column; gap: 2px; min-height: 44px"><span style="font-size: 12px; font-weight: 700">Refund dena hai</span><b style="font-size: 16px">PKR 2,000 →</b></a>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <sc-for list="{{range}}" as="r" hint-placeholder-count="3"><button style="{{r.style}}">{{r.label}}</button></sc-for>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <sc-for list="{{courts}}" as="r" hint-placeholder-count="3"><button style="{{r.style}}">{{r.label}}</button></sc-for>
+        </div>
+        <div style="background: #FFFFFF; border-radius: 22px; overflow: hidden">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+            <div style="{{r.wrap}}">
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+                <b style="font-size: 15px">{{r.name}}</b>
+                <span style="font-size: 12px; color: #4A5D5A">{{r.meta}}</span>
+                <span style="{{r.pill}}">{{r.status}}</span>
+              </div>
+              <div style="flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+                <b style="font-size: 16px">{{r.amt}}</b>
+                <button style="height: 44px; padding: 0 12px; border-radius: 12px; background: #F4F6F5; border: 0; font-size: 13px; font-weight: 800; color: #0C1F1D; cursor: pointer">Theek karein</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <nav aria-label="Owner" style="position: absolute; left: 14px; right: 14px; bottom: 22px; height: 72px; border-radius: 26px; background: rgba(255,255,255,0.86); border: 1px solid #FFFFFF; box-shadow: 0 16px 40px rgba(12,31,29,0.18); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; padding: 0 6px; box-sizing: border-box">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+          <sc-if value="{{t.fab}}" hint-placeholder-val="{{false}}">
+            <div style="display: flex; justify-content: center"><button aria-label="Walk-in booking" style="width: 52px; height: 52px; border-radius: 18px; background: #0E7C74; color: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 8px 18px rgba(14,124,116,0.4)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+          </sc-if>
+          <sc-if value="{{t.tab}}" hint-placeholder-val="{{true}}">
+            <a href="#" style="{{t.style}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"></path></svg>{{t.label}}</a>
+          </sc-if>
+        </sc-for>
+      </nav>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">2 · Refunds dene hain</span>
+    <div style="width: 390px; height: 1000px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 52px 16px 0 16px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button aria-label="Wapas" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">Refunds</h1>
+        </div>
+        <div style="background: #FDE8E5; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 2px; color: #B42318"><span style="font-size: 13px; font-weight: 700">Kul wapas dena hai</span><b style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 30px">PKR 2,000</b><span style="font-size: 13px">1 player · sab se purana 2 din</span></div>
+        <div style="background: #FFFFFF; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; gap: 10px"><div style="display: flex; flex-direction: column; gap: 3px"><b style="font-size: 16px">Bilal Raza</b><span style="font-size: 13px; color: #4A5D5A">Court 3 · Sat 5 PM · KH-7F3A91C2</span></div><b style="font-size: 18px">PKR 2,000</b></div>
+          <span style="font-size: 13px; color: #3B4B48; background: #F4F6F5; border-radius: 12px; padding: 10px 12px; line-height: 1.45">Wajah: player ne 8 ghante pehle cancel kiya (policy: 6 ghante tak poora paisa wapas).</span>
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 13px"><span style="color: #4A5D5A">Kahan bhejein</span><b>JazzCash · 0300 XXX 4567 · Bilal Raza</b></div>
+          <button style="height: 50px; border-radius: 16px; background: #0E7C74; color: #FFFFFF; border: 0; font-size: 15px; font-weight: 800; cursor: pointer">Bhej diya · screenshot lagayein</button>
+          <span style="font-size: 12px; color: #5B6E6B">Tap karne par confirm sheet aayegi (amount + player dobara dikhega).</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">3 · Bookings history</span>
+    <div style="width: 390px; height: 1200px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 52px 16px 0 16px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <button aria-label="Wapas" style="flex: none; width: 44px; height: 44px; border-radius: 22px; background: #FFFFFF; border: 0; display: flex; align-items: center; justify-content: center; color: #0C1F1D; cursor: pointer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <h1 style="flex: 1; margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">History</h1>
+          <button style="flex: none; height: 44px; padding: 0 12px; border-radius: 14px; background: #FFFFFF; border: 0; font-size: 13px; font-weight: 800; color: #0C1F1D; cursor: pointer">CSV</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 52px; border-radius: 16px; background: #FFFFFF; border: 1.5px solid #CFD8D6; padding: 0 14px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5D5A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          <label for="hs" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Search</label>
+          <input id="hs" placeholder="Naam, phone ya booking ID" style="flex: 1; min-width: 0; border: 0; outline: none; font-size: 15px; background: transparent">
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <sc-for list="{{hf}}" as="r" hint-placeholder-count="5"><button style="{{r.style}}">{{r.label}}</button></sc-for>
+        </div>
+        <sc-for list="{{hist}}" as="h" hint-placeholder-count="5">
+          <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; gap: 12px; align-items: center">
+            <span style="flex: none; width: 50px; height: 56px; border-radius: 14px; background: #E3F4F1; color: #0A5F59; display: flex; flex-direction: column; align-items: center; justify-content: center"><span style="font-size: 10px; font-weight: 800">{{h.wd}}</span><b style="font-size: 18px">{{h.d}}</b></span>
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px"><b style="font-size: 15px">{{h.name}}</b><span style="font-size: 12px; color: #4A5D5A">{{h.meta}}</span></div>
+            <span style="{{h.pill}}">{{h.status}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1330,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const chip = (on) => 'height: 44px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 800; cursor: pointer; ' + (on ? 'background: #0E7C74; color: #FFFFFF; border: 0;' : 'background: #FFFFFF; color: #0C1F1D; border: 1.5px solid #CFD8D6;');
+    const pill = (bg, fg) => 'align-self: flex-start; flex: none; height: 26px; padding: 0 9px; border-radius: 13px; display: flex; align-items: center; font-size: 12px; font-weight: 800; background: ' + bg + '; color: ' + fg + ';';
+    const P = { paid: ['Paid', '#DFF5EA', '#0B6B43'], cancel: ['Cancelled', '#FDE8E5', '#B42318'], noshow: ['No-show', '#ECE8F6', '#4B3A86'], due: ['Baqi', '#FFF1D6', '#8A5A00'], done: ['Mukammal', '#E3F4F1', '#0A5F59'] };
+    const rowsD = [['Demo Player', 'Sat 24 Oct · 4:47 PM · Court 1 · Bank', 'PKR 2,000', 'cancel'], ['Demo Player', 'Sat 24 Oct · 4:47 PM · Court 2 · Bank', 'PKR 1,250', 'noshow'], ['Ali Raza', 'Sat 24 Oct · 3:10 PM · Court 2 · JazzCash', 'PKR 1,250', 'paid'], ['Ahmed (walk-in)', 'Sat 24 Oct · 5:00 PM · Court 1 · Cash', 'PKR 2,000', 'paid'], ['Usman Tariq', 'Fri 23 Oct · 6:05 PM · Court 1 · Bank', 'PKR 1,500', 'due']];
+    const rows = rowsD.map((r, i) => ({ name: r[0], meta: r[1], amt: r[2], status: P[r[3]][0], pill: pill(P[r[3]][1], P[r[3]][2]),
+      wrap: 'display: flex; gap: 12px; padding: 14px; ' + (i < rowsD.length - 1 ? 'border-bottom: 1px solid #EEF2F1;' : '') }));
+    const histD = [['SAT', '24', 'Usman Tariq', 'Court 1 · 6–7 PM · KH-3B9A41D7', 'done'], ['SAT', '24', 'Ayesha Khan', 'Court 2 · 8–9:30 PM · KH-91C07E2A', 'due'], ['SAT', '24', 'Bilal Raza', 'Court 3 · 5–6 PM · KH-7F3A91C2', 'cancel'], ['FRI', '23', 'Hamza Ali', 'Court 1 · 9:30–10:30 PM', 'noshow'], ['FRI', '23', 'Sana Malik', 'Court 4 · 11 PM–12 AM', 'done']];
+    const tabStyle = (on) => 'height: 58px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 800; ' + (on ? 'color: #FFFFFF; background: #0E7C74;' : 'color: #3B4B48;');
+    return {
+      tiles: [{ l: 'Aaj', v: '7,000' }, { l: 'Is hafte', v: '14,000' }, { l: 'Is mahine', v: '14,000' }],
+      range: [{ label: '7 din', style: chip(false) }, { label: '✓ 30 din', style: chip(true) }, { label: 'Is mahine', style: chip(false) }],
+      courts: [{ label: '✓ Sab courts', style: chip(true) }, { label: 'Court 1', style: chip(false) }, { label: 'Court 2', style: chip(false) }],
+      rows,
+      hf: [{ label: '✓ Sab', style: chip(true) }, { label: 'Mukammal', style: chip(false) }, { label: 'Baqi', style: chip(false) }, { label: 'Cancelled', style: chip(false) }, { label: 'Is hafte', style: chip(false) }],
+      hist: histD.map((h) => ({ wd: h[0], d: h[1], name: h[2], meta: h[3], status: P[h[4]][0], pill: pill(P[h[4]][1], P[h[4]][2]) })),
+      tabs: [
+        { tab: true, label: 'Aaj', icon: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4' },
+        { tab: true, label: 'Approvals', icon: 'M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6zM9 12l2 2 4-4' },
+        { fab: true },
+        { tab: true, label: 'Paisa', active: true, icon: 'M3 7a2 2 0 0 1 2-2h13v4M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z' },
+        { tab: true, label: 'Aur', icon: 'M5 12h.01M12 12h.01M19 12h.01' }
+      ].map((t) => ({ ...t, fab: !!t.fab, tab: !!t.tab, style: tabStyle(t.active) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

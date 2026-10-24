@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo · Booking status</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+a{color:#B83E00}a:hover{color:#8F3000}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 1200px; background: #F4F6F5; position: relative; overflow: hidden; font-variant-numeric: tabular-nums">
+
+  <sc-if value="{{waiting}}" hint-placeholder-val="{{true}}">
+    <div style="position: relative; background: #0C1F1D; padding: 52px 20px 52px 20px; overflow: hidden">
+      <div style="position: absolute; width: 280px; height: 280px; border-radius: 140px; background: #FFB020; opacity: 0.22; filter: blur(70px); top: 40px; left: 55px"></div>
+      <div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center">
+        <div style="align-self: stretch; display: flex; justify-content: space-between">
+          <a href="Pay.dc.html" aria-label="Back" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; color: #FFFFFF">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          </a>
+          <button onClick="{{approve}}" style="height: 44px; padding: 0 14px; border-radius: 22px; background: transparent; border: 1px dashed rgba(255,255,255,0.4); color: #B9C6C3; font-size: 12px; font-weight: 700; cursor: pointer">Prototype: venue approves</button>
+        </div>
+        <div style="position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center">
+          <span style="position: absolute; inset: 0; border-radius: 60px; border: 2px solid rgba(255,196,110,0.18)"></span>
+          <span style="position: absolute; inset: 14px; border-radius: 46px; border: 2px solid rgba(255,196,110,0.32)"></span>
+          <span style="width: 64px; height: 64px; border-radius: 32px; background: #FFB020; color: #0C1F1D; display: flex; align-items: center; justify-content: center">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"></path></svg>
+          </span>
+        </div>
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 36px; line-height: 1.05; font-weight: 800; letter-spacing: -0.03em; color: #FFFFFF">Payment bhej di</h1>
+        <p style="margin: 0; font-size: 16px; color: #B9C6C3; line-height: 1.45">Demo Arena abhi check kar raha hai.<br>Tab tak slot aap ka hi hai.</p>
+      </div>
+    </div>
+
+    <div style="position: relative; margin-top: -28px; background: #F4F6F5; border-radius: 30px 30px 0 0; padding: 22px 20px 0 20px; display: flex; flex-direction: column; gap: 14px">
+      <div style="background: #FFFFFF; border-radius: 26px; padding: 18px; box-shadow: 0 8px 24px rgba(14,20,18,0.06); display: flex; flex-direction: column">
+        <sc-for list="{{steps}}" as="st" hint-placeholder-count="4">
+          <div style="display: flex; gap: 14px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 28px; flex: none">
+              <span style="{{st.dotStyle}}">
+                <sc-if value="{{st.done}}" hint-placeholder-val="{{true}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg></sc-if>
+              </span>
+              <span style="{{st.lineStyle}}"></span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px; padding-bottom: 18px; padding-top: 3px">
+              <span style="{{st.titleStyle}}">{{st.title}}</span>
+              <span style="font-size: 13px; color: #4A5D5A">{{st.sub}}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 14px; background: #FFFFFF; border-radius: 22px; padding: 14px; box-shadow: 0 8px 24px rgba(14,20,18,0.06)">
+        <div style="flex: none; width: 56px; height: 60px; border-radius: 16px; background: #0C1F1D; color: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center">
+          <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: #FF6A2B">MON</span>
+          <span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 22px; font-weight: 800; line-height: 1.1">26</span>
+        </div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 16px; font-weight: 800">Demo Arena · Court 1</span>
+          <span style="font-size: 13px; color: #4A5D5A">5:30 – 7:30 PM · PKR 4,000 bheje</span>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+        <button style="height: 52px; border-radius: 18px; background: #FFFFFF; border: 0; color: #0C1F1D; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(14,20,18,0.05)">Venue se baat</button>
+        <button style="height: 52px; border-radius: 18px; background: #0C1F1D; border: 0; color: #FFFFFF; font-size: 15px; font-weight: 800; cursor: pointer">Meri bookings</button>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #4A5D5A; text-align: center; line-height: 1.45">Venue ke approve karte hi hum aap ko bata denge.</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{booked}}" hint-placeholder-val="{{false}}">
+    <div style="position: relative; background: #0C1F1D; padding: 52px 20px 56px 20px; overflow: hidden">
+      <div style="position: absolute; width: 300px; height: 300px; border-radius: 150px; background: #0E7C74; opacity: 0.35; filter: blur(70px); top: 30px; left: 45px"></div>
+      <sc-for list="{{confetti}}" as="cf" hint-placeholder-count="14">
+        <span style="{{cf.style}}"></span>
+      </sc-for>
+      <div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center">
+        <div style="align-self: stretch; display: flex; justify-content: space-between">
+          <a href="Main.dc.html" aria-label="Close" style="width: 44px; height: 44px; border-radius: 22px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; color: #FFFFFF">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </a>
+          <button onClick="{{reset}}" style="height: 44px; padding: 0 14px; border-radius: 22px; background: transparent; border: 1px dashed rgba(255,255,255,0.4); color: #B9C6C3; font-size: 12px; font-weight: 700; cursor: pointer">Prototype: back to waiting</button>
+        </div>
+        <span style="width: 92px; height: 92px; border-radius: 46px; background: #0E7C74; color: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 10px rgba(31,138,85,0.22), 0 0 0 22px rgba(31,138,85,0.1)">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"></path></svg>
+        </span>
+        <h1 style="margin: 8px 0 0 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 42px; line-height: 1; font-weight: 800; letter-spacing: -0.035em; color: #FFFFFF">Court aap ka hai!</h1>
+        <p style="margin: 0; font-size: 16px; color: #B9C6C3">Demo Arena ne payment approve kar di.</p>
+      </div>
+    </div>
+
+    <div style="position: relative; margin-top: -30px; padding: 0 20px; display: flex; flex-direction: column; gap: 14px">
+      <div style="background: #FFFFFF; border-radius: 28px; box-shadow: 0 16px 40px rgba(14,20,18,0.12); overflow: hidden">
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px">
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 12px; font-weight: 800; letter-spacing: 0.1em; color: #5B6E6B">PADEL · COURT 1</span>
+              <span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 800">Demo Arena</span>
+            </div>
+            <span style="flex: none; height: 30px; padding: 0 10px; border-radius: 15px; background: #DFF5EA; color: #0B6B43; font-size: 13px; font-weight: 800; display: flex; align-items: center">Paid</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5B6E6B; font-weight: 700">Din</span><span style="font-size: 16px; font-weight: 800">Mon, 26 Oct</span></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5B6E6B; font-weight: 700">Waqt</span><span style="font-size: 16px; font-weight: 800">5:30 – 7:30 PM</span></div>
+          </div>
+        </div>
+        <div style="position: relative; height: 22px; display: flex; align-items: center">
+          <span style="position: absolute; left: -11px; width: 22px; height: 22px; border-radius: 11px; background: #F4F6F5"></span>
+          <span style="flex: 1; margin: 0 18px; border-top: 2px dashed #DDE3E1"></span>
+          <span style="position: absolute; right: -11px; width: 22px; height: 22px; border-radius: 11px; background: #F4F6F5"></span>
+        </div>
+        <div style="padding: 16px 20px 20px 20px; display: flex; align-items: center; gap: 16px">
+          <div role="img" aria-label="Check-in QR code" style="flex: none; width: 112px; height: 112px; padding: 6px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #DDE3E1; border-radius: 14px; display: grid; grid-template-columns: repeat(17, minmax(0, 1fr))">
+            <sc-for list="{{qr}}" as="q" hint-placeholder-count="20">
+              <span style="background: {{q}}"></span>
+            </sc-for>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <span style="font-size: 16px; font-weight: 800">Gate par ye dikhayein</span>
+            <span style="font-size: 13px; color: #4A5D5A; line-height: 1.4">Venue scan karega aur aap ka check-in ho jayega.</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <sc-for list="{{actions}}" as="ac" hint-placeholder-count="3">
+          <button style="height: 76px; border-radius: 20px; background: #FFFFFF; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 800; color: #0C1F1D; cursor: pointer; box-shadow: 0 4px 12px rgba(14,20,18,0.05)">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{ac.color}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ac.icon}}"></path></svg>{{ac.label}}
+          </button>
+        </sc-for>
+      </div>
+      <a href="Main.dc.html" style="height: 56px; border-radius: 18px; background: #0C1F1D; color: #FFFFFF; font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; text-decoration: none">Theek hai</a>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"stage":{"editor":"enum","options":["waiting","booked"],"default":"waiting"},"$preview":{"width":390,"height":1200}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { stage: null };
+  }
+  renderVals() {
+    const stage = this.state.stage || this.props.stage || 'waiting';
+    const step = (title, sub, kind, last) => {
+      const dot = 'width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; ';
+      let dotStyle = dot, titleStyle = 'font-size: 15px; font-weight: 800; color: #0C1F1D;';
+      if (kind === 'done') dotStyle += 'background: #0E7C74; color: #FFFFFF;';
+      if (kind === 'now') { dotStyle += 'background: #FFF1D6; border: 3px solid #FFB020;'; titleStyle = 'font-size: 15px; font-weight: 800; color: #8A5A00;'; }
+      if (kind === 'next') { dotStyle += 'background: #FFFFFF; border: 2px solid #CFD8D6;'; titleStyle = 'font-size: 15px; font-weight: 700; color: #5B6E6B;'; }
+      const lineStyle = last ? 'display: none;' : 'flex: 1; width: 2px; min-height: 18px; background: ' + (kind === 'done' ? '#0E7C74' : '#DDE3E1') + ';';
+      return { title, sub, done: kind === 'done', dotStyle, titleStyle, lineStyle };
+    };
+    const colors = ['#FF6A2B', '#FF6A2B', '#0E7C74', '#FFB020', '#FFFFFF', '#3DDC97'];
+    const confetti = [];
+    for (let i = 0; i < 16; i++) {
+      const x = (i * 53 + 17) % 370;
+      const y = (i * 37 + 40) % 300;
+      const r = (i * 47) % 180;
+      const w = i % 3 === 0 ? 10 : 6;
+      confetti.push({ style: 'position: absolute; left: ' + x + 'px; top: ' + y + 'px; width: ' + w + 'px; height: ' + (w === 10 ? 4 : 10) + 'px; border-radius: 2px; background: ' + colors[i % colors.length] + '; opacity: 0.85; transform: rotate(' + r + 'deg);' });
+    }
+    const qr = [];
+    for (let r = 0; r < 17; r++) {
+      for (let c = 0; c < 17; c++) {
+        const inFinder = (rr, cc) => rr >= 0 && rr < 5 && cc >= 0 && cc < 5;
+        let on;
+        const f = [[r, c], [r, c - 12], [r - 12, c]].find(([a, b]) => inFinder(a, b));
+        if (f) { const [a, b] = f; on = a === 0 || a === 4 || b === 0 || b === 4 || (a === 2 && b === 2); }
+        else on = ((r * 7 + c * 13 + r * c) % 5) < 2;
+        qr.push(on ? '#0C1F1D' : 'transparent');
+      }
+    }
+    return {
+      waiting: stage === 'waiting',
+      booked: stage === 'booked',
+      approve: () => this.setState({ stage: 'booked' }),
+      reset: () => this.setState({ stage: 'waiting' }),
+      steps: [
+        step('Slot hold hua', '4:52 PM', 'done'),
+        step('Screenshot bheja', '4:58 PM · PKR 4,000', 'done'),
+        step('Venue check kar raha hai', 'Abhi', 'now'),
+        step('Booking pakki', 'Hote hi notification aayega', 'next', true)
+      ],
+      confetti, qr,
+      actions: [
+        { label: 'Calendar', color: '#0C1F1D', icon: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4M12 13v4M10 15h4' },
+        { label: 'Raasta', color: '#0C1F1D', icon: 'M3 11l18-8-8 18-2-8z' },
+        { label: 'Team ko batao', color: '#0E7C74', icon: 'M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

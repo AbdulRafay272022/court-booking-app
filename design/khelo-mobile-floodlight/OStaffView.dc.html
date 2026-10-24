@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ur-Latn">
+<head>
+<meta charset="utf-8">
+<title>Khelo Staff · Limited view</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0C1F1D}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 900px; height: 1000px; background: #E8ECEB; box-sizing: border-box; padding: 40px; display: flex; gap: 40px; align-items: flex-start; font-variant-numeric: tabular-nums">
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">1 · Staff (sirf Check-in + Walk-in)</span>
+    <div style="width: 390px; height: 880px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="position: relative; background: linear-gradient(165deg, #0E7C74 0%, #0A5F59 55%, #0C1F1D 100%); padding: 52px 16px 46px 16px; color: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 700">Demo Arena · Staff: Saad</span>
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 30px; font-weight: 800">Aaj · Sat 24 Oct</h1>
+      </div>
+      <div style="position: relative; margin-top: -26px; background: #F4F6F5; border-radius: 28px 28px 0 0; padding: 18px 16px 0 16px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+          <button style="height: 100px; border-radius: 22px; background: #0E7C74; color: #FFFFFF; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 800; cursor: pointer"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"></path></svg>Check-in scan</button>
+          <button style="height: 100px; border-radius: 22px; background: #FFFFFF; color: #0C1F1D; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 800; cursor: pointer"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7C74" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Walk-in</button>
+        </div>
+        <b style="font-size: 16px; padding: 6px 4px 0 4px">Aane wale players</b>
+        <sc-for list="{{arrivals}}" as="a" hint-placeholder-count="3">
+          <div style="background: #FFFFFF; border-radius: 18px; padding: 12px 14px; display: flex; align-items: center; gap: 12px">
+            <span style="flex: none; width: 56px; height: 44px; border-radius: 12px; background: #E3F4F1; color: #0A5F59; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800">{{a.t}}</span>
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column"><b style="font-size: 15px">{{a.n}}</b><span style="font-size: 12px; color: #4A5D5A">{{a.c}}</span></div>
+            <span style="{{a.pill}}">{{a.s}}</span>
+          </div>
+        </sc-for>
+        <span style="font-size: 12px; color: #4A5D5A; padding: 0 4px; line-height: 1.45">Paisa aur settings sirf owner dekh sakta hai. Zyada access ke liye owner se kahein.</span>
+      </div>
+      <nav aria-label="Staff" style="position: absolute; left: 14px; right: 14px; bottom: 22px; height: 72px; border-radius: 26px; background: rgba(255,255,255,0.86); border: 1px solid #FFFFFF; box-shadow: 0 16px 40px rgba(12,31,29,0.18); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; padding: 0 6px; box-sizing: border-box">
+        <a href="#" style="height: 58px; border-radius: 20px; background: #0E7C74; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 800; color: #FFFFFF"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4"></path></svg>Aaj</a>
+        <a href="#" style="height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 800; color: #3B4B48"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM4 21a8 8 0 0 1 16 0"></path></svg>Profile</a>
+      </nav>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; width: 390px">
+    <span style="font-size: 15px; font-weight: 800">2 · Ijazat nahi (ek hi style)</span>
+    <div style="width: 390px; height: 880px; border-radius: 30px; overflow: hidden; position: relative; background: #F4F6F5">
+      <div style="padding: 150px 28px 0 28px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center">
+        <span style="width: 88px; height: 88px; border-radius: 28px; background: #E3F4F1; color: #0A5F59; display: flex; align-items: center; justify-content: center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h12v9H6zM9 11V8a3 3 0 0 1 6 0v3"></path></svg></span>
+        <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 26px; font-weight: 800">Ye hissa aap ke liye band hai</h2>
+        <p style="margin: 0; font-size: 15px; color: #4A5D5A; line-height: 1.5">"Paisa dekhna" ki ijazat owner ke paas hai. Owner Staff settings mein de sakta hai.</p>
+        <button style="width: 100%; height: 54px; border-radius: 18px; background: #0E7C74; color: #FFFFFF; border: 0; font-size: 16px; font-weight: 800; cursor: pointer">Aaj par wapas</button>
+        <button style="width: 100%; height: 52px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid #CFD8D6; color: #0C1F1D; font-size: 15px; font-weight: 800; cursor: pointer">Owner ko WhatsApp</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":900,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const pill = (bg, fg) => 'flex: none; height: 26px; padding: 0 9px; border-radius: 13px; display: flex; align-items: center; font-size: 12px; font-weight: 800; background: ' + bg + '; color: ' + fg + ';';
+    return {
+      arrivals: [
+        { t: '7 PM', n: 'Demo Player', c: 'Court 1 · Paid', s: 'Aane wala', pill: pill('#E8ECEB', '#3B4B48') },
+        { t: '6 PM', n: 'Bilal', c: 'Court 2 · Baqi 1,250', s: '✓ Aa gaya', pill: pill('#DFF5EA', '#0B6B43') },
+        { t: '9 PM', n: 'Ali Raza', c: 'Court 2 · Approval baqi', s: 'Check baqi', pill: pill('#FFF1D6', '#8A5A00') }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
