@@ -1,4 +1,7 @@
 /** @type {import('tailwindcss').Config} */
+// Floodlight tokens (packages/ui-tokens): `bg-fl-night`, `text-fl-orange-deep`, `font-fl-body-black`, `rounded-fl-card`.
+const fl = require("@court-booking/ui-tokens/tailwind");
+
 module.exports = {
   darkMode: "class",
   content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
@@ -6,6 +9,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        fl: fl.colors,
         // Player-facing system (auth, player app, public web) — orange/Figtree.
         player: {
           bg: "#FAF8F6",
@@ -62,7 +66,9 @@ module.exports = {
           "internal-bg": "#0D171B",
         },
       },
+      borderRadius: fl.borderRadius,
       fontFamily: {
+        ...fl.fontFamily,
         figtree: ["Figtree_400Regular"],
         "figtree-medium": ["Figtree_500Medium"],
         "figtree-semibold": ["Figtree_600SemiBold"],

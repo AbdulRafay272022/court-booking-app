@@ -1,0 +1,24 @@
+{
+  "name": "@court-booking/ui-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Floodlight design tokens (colours, role themes, type, space, radius, shadow, motion) shared by mobile and web. The ONLY place hex values live.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tailwind": "./generated/tailwind.cjs",
+    "./theme.css": "./generated/theme.css",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "generate": "tsx scripts/generate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@court-booking/types": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

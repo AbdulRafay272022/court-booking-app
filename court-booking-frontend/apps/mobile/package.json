@@ -5,6 +5,7 @@
   "dependencies": {
     "@court-booking/api-client": "*",
     "@court-booking/types": "*",
+    "@court-booking/ui-tokens": "*",
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
     "@expo-google-fonts/figtree": "^0.4.1",
     "@expo-google-fonts/ibm-plex-mono": "^0.4.1",

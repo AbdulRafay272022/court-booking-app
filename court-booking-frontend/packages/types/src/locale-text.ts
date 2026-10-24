@@ -87,7 +87,20 @@ export const WORDS = {
 
 /** Amenity labels by key. Sports are never translated; amenities only where a natural Roman Urdu term exists. */
 export const AMENITY_LABELS: Record<TextLang, Record<string, string>> = {
-  en: { floodlights: "Floodlights", parking: "Parking", washrooms: "Washrooms", changing_room: "Changing room" },
+  en: {
+    floodlights: "Floodlights",
+    parking: "Parking",
+    washrooms: "Washrooms",
+    changing_room: "Changing room",
+    // Floodlight venue card keys (frontend-only; Venue.amenities holds free strings, so no migration).
+    drinking_water: "Drinking water",
+    cafe: "Cafe",
+    indoor: "Indoor",
+    seating: "Seating",
+    wifi: "Wi-Fi",
+    equipment_rent: "Equipment on rent",
+    prayer_area: "Prayer area",
+  },
   ru: {
     floodlights: "Roshni (floodlights)",
     parking: "Parking ki jagah",
@@ -95,5 +108,10 @@ export const AMENITY_LABELS: Record<TextLang, Record<string, string>> = {
     changing_room: "Kapray badalne ka kamra",
     drinking_water: "Peene ka paani",
     seating: "Baithne ki jagah",
+    cafe: "Cafe",
+    indoor: "Indoor",
+    wifi: "Wi-Fi",
+    equipment_rent: "Racket kiraye par",
+    prayer_area: "Namaz ki jagah",
   },
 };
