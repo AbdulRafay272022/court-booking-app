@@ -48,7 +48,7 @@ export default function OwnerOverviewPage() {
 }
 
 function Skeleton({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-2xl bg-khelo-divider ${className}`} aria-hidden="true" />;
+  return <div className={`animate-pulse rounded-2xl bg-fl-line ${className}`} aria-hidden="true" />;
 }
 
 function OverviewSkeleton() {
@@ -209,18 +209,18 @@ function OverviewScreen() {
   const subtitle = [fmt.dateString(date), activeVenue?.name].filter(Boolean).join(" \u00b7 ");
 
   return (
-    <div className="px-4 py-6 sm:px-8 sm:py-8 flex flex-col gap-5 md:gap-6 max-w-[1240px] [&_*:focus-visible]:outline-2 [&_*:focus-visible]:outline-offset-2 [&_*:focus-visible]:outline-khelo-teal">
+    <div className="px-4 py-6 sm:px-8 sm:py-8 flex flex-col gap-5 md:gap-6 max-w-[1240px] [&_*:focus-visible]:outline-2 [&_*:focus-visible]:outline-offset-2 [&_*:focus-visible]:outline-fl-teal">
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
-          <h1 className="font-khelo-display font-extrabold text-4xl md:text-5xl text-khelo-ink leading-tight">{t("ovw.title")}</h1>
-          <p className="mt-1 text-[15px] text-khelo-muted" data-testid="ovw-subtitle">
+          <h1 className="font-khelo-display font-extrabold text-4xl md:text-5xl text-fl-night leading-tight">{t("ovw.title")}</h1>
+          <p className="mt-1 text-[15px] text-fl-muted" data-testid="ovw-subtitle">
             {subtitle}
           </p>
         </div>
         <nav className="flex flex-wrap gap-2.5 w-full sm:w-auto">
           <Link
             href="/dashboard/owner/checkin"
-            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl border-[1.5px] border-khelo-ink bg-khelo-surface font-bold text-khelo-ink whitespace-nowrap"
+            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl border-[1.5px] border-fl-night bg-fl-white font-bold text-fl-night whitespace-nowrap"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M5 12l5 5 9-10" />
@@ -230,7 +230,7 @@ function OverviewScreen() {
           <Link
             href="/dashboard/owner/walkin"
             data-testid="ovw-add-booking"
-            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl bg-khelo-orange font-bold text-khelo-ink whitespace-nowrap"
+            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl bg-fl-teal font-bold text-fl-white whitespace-nowrap"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true">
               <path d="M12 5v14M5 12h14" />
@@ -240,7 +240,7 @@ function OverviewScreen() {
           <Link
             href={historyHref({ date, courts: courtsValue })}
             data-testid="ovw-history-link"
-            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl border-[1.5px] border-khelo-ink bg-khelo-surface font-bold text-khelo-ink whitespace-nowrap"
+            className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 rounded-xl border-[1.5px] border-fl-night bg-fl-white font-bold text-fl-night whitespace-nowrap"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />
@@ -262,7 +262,7 @@ function OverviewScreen() {
                 router.push(`${pathname}${date === today ? "" : `?date=${date}`}`, { scroll: false });
               }}
               className={`min-h-11 px-4 rounded-full text-sm font-bold whitespace-nowrap ${
-                v.id === activeVenueId ? "bg-khelo-ink text-white" : "bg-khelo-surface border border-khelo-border text-khelo-ink"
+                v.id === activeVenueId ? "bg-fl-night text-white" : "bg-fl-white border border-fl-line-strong text-fl-night"
               }`}
             >
               {v.name}
@@ -271,7 +271,7 @@ function OverviewScreen() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-khelo-border bg-khelo-surface p-4 md:p-5 flex flex-wrap items-end gap-x-5 gap-y-4" data-testid="ovw-filters">
+      <section className="rounded-2xl border border-fl-line-strong bg-fl-white p-4 md:p-5 flex flex-wrap items-end gap-x-5 gap-y-4" data-testid="ovw-filters">
         <div className="w-full sm:w-auto">
           <DateSelect date={date} today={today} onChange={(d) => go(d, selected)} />
         </div>
@@ -280,15 +280,15 @@ function OverviewScreen() {
             <CourtSelect courts={courts.map((c) => ({ id: c.id, name: c.name, sport: c.sport }))} selected={selected} onChange={(ids) => go(date, ids)} />
           </div>
         ) : null}
-        <p className="flex-1 min-w-[14rem] text-sm text-khelo-muted pb-2.5">{t("ovw.filters.hint")}</p>
+        <p className="flex-1 min-w-[14rem] text-sm text-fl-muted pb-2.5">{t("ovw.filters.hint")}</p>
       </section>
 
       {activeVenueId && courts.length === 0 && !venuesLoading ? (
-        <p className="rounded-2xl border border-khelo-border bg-khelo-surface px-6 py-12 text-center text-khelo-muted">{t("ovw.state.noCourts")}</p>
+        <p className="rounded-2xl border border-fl-line-strong bg-fl-white px-6 py-12 text-center text-fl-muted">{t("ovw.state.noCourts")}</p>
       ) : loading ? (
         <OverviewSkeleton />
       ) : overviewQuery.isError && !data ? (
-        <div className="rounded-2xl border border-khelo-border bg-khelo-surface">
+        <div className="rounded-2xl border border-fl-line-strong bg-fl-white">
           <ErrorState message={friendlyErrorMessage(overviewQuery.error, t)} onRetry={() => overviewQuery.refetch()} tone="owner" />
         </div>
       ) : data ? (

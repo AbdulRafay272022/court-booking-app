@@ -48,7 +48,7 @@ export const ruSearch = {
   "search.more.indoor": "Andar (Indoor)",
   "search.more.outdoor": "Bahar (Outdoor)",
   "search.more.amenities": "Amenities",
-  "search.more.amenitiesHint": "(venue has all you pick)",
+  "search.more.amenitiesHint": "(jo chunein, venue mein sab hon)",
   "search.more.startTime": "Start time",
   "search.more.anyStart": "Any start time",
   "search.more.duration": "Duration",

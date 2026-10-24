@@ -1,40 +1,65 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Platform, Pressable, View } from "react-native";
+import { Image } from "expo-image";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Camera, Check, CircleHelp, Hourglass, ImagePlus, Landmark } from "lucide-react-native";
+import { ApiError } from "@court-booking/api-client";
+import { formatDate, formatTimeRange } from "@court-booking/types";
+import { formatPkr, palette, radius, space, windowMs } from "@court-booking/ui-tokens";
 
+import {
+  Banner,
+  Button,
+  Card,
+  CopyField,
+  CountdownRing,
+  EmptyState,
+  ErrorState,
+  Header,
+  Hero,
+  IconButton,
+  Screen,
+  Sheet,
+  Skeleton,
+  StepBar,
+  Text,
+  useCopy,
+  useLang,
+  useToast,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { safeBack } from "@/lib/safe-back";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { hasPayableDetails } from "@/lib/booking-flow-rules";
 import { prepareProofImage, type PreparedProof } from "@/lib/proof-image";
 import { isRetryableUploadError } from "@/lib/proof-image-rules";
 import { openSupportWhatsApp } from "@/lib/support";
-import { ChevronLeftIcon } from "@/components/icons";
-import { ErrorState } from "@/components/error-state";
-import { cancellationPolicyText } from "@court-booking/api-client";
+import { cancelErrorCopy, cancelPolicyShort } from "@/lib/player-flow";
+import { PlayerOfflineBanner, StepHeading, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
 
-function useCountdown(target: string | null | undefined) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!target) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [target]);
-  if (!target) return null;
-  return Math.max(0, Math.floor((new Date(target).getTime() - now) / 1000));
-}
-
-export default function PaymentProofScreen() {
+/**
+ * Pay board: countdown ring from the REAL hold expiry (booking.held_until), the bank details saved from the hold response
+ * (lib/booking-flow-store, persisted: no endpoint returns them again, contract B5), Copy + haptic, a compressed screenshot
+ * (lib/proof-image) with an upload bar capped at 100% and an honest retry after a timeout. Anything that is not an open
+ * hold goes to the Status screen (done.tsx), which owns the waiting / booked / rejected / expired states.
+ */
+export default function PayScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const copy = useCopy();
+  const lang = useLang();
+  const toast = useToast();
   const queryClient = useQueryClient();
+  const focused = useIsFocused();
+  const now = useNow(1000);
+  const insets = useSafeAreaInsets();
+  useLightStatusBar();
+
   const paymentInstructions = useBookingFlowStore((s) => s.paymentInstructionsByBookingId[id]);
-  // The store is persisted (AsyncStorage): wait for it before saying "no payment details", or a reopened pay screen
-  // flashes the fallback for a frame.
+  // Persisted store: wait for it before saying "no payment details", or a reopened pay screen flashes the fallback.
   const [instructionsReady, setInstructionsReady] = useState(() => useBookingFlowStore.persist.hasHydrated());
   useEffect(() => {
     if (instructionsReady) return;
@@ -46,9 +71,11 @@ export default function PaymentProofScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<{ message: string; retryable: boolean } | null>(null);
-  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  const [permissionNote, setPermissionNote] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
-  const focused = useIsFocused();
   const bookingQuery = useQuery({
     queryKey: ["booking", id],
     queryFn: () => api.bookings.get(id),
@@ -59,41 +86,22 @@ export default function PaymentProofScreen() {
     subscribed: focused,
   });
   const booking = bookingQuery.data;
-  const secondsLeft = useCountdown(booking?.status === "held" ? booking.held_until : null);
-  const expired = booking?.status === "held" && secondsLeft === 0;
+  const place = useBookingPlace(booking);
+  const expired = booking?.status === "held" && !!booking.held_until && Date.parse(booking.held_until) <= now;
 
-  // Section 29 Part C: a real pre-purchase disclosure -- the player should know the venue's
-  // cancellation policy before paying, not discover it later if they try to cancel and can't.
-  const courtQuery = useQuery({
-    queryKey: ["court", booking?.court_id],
-    queryFn: () => api.courts.get(booking!.court_id),
-    enabled: !!booking?.court_id,
-  });
-  const policyText = cancellationPolicyText(courtQuery.data);
-
+  // Not an open hold any more (screenshot sent, booked, cancelled, rejected): the Status screen tells the honest story.
   useEffect(() => {
-    if (booking?.status === "cancelled" && booking.cancelled_by === "owner" && !rejectionReason) {
-      api.payments
-        .listForBooking(id)
-        .then((payments) => {
-          const rejected = payments.find((p) => p.review_verdict === "rejected");
-          setRejectionReason(rejected?.rejection_reason ?? booking.cancellation_reason ?? "The venue couldn't confirm your payment.");
-        })
-        .catch(() => setRejectionReason(booking.cancellation_reason ?? "The venue couldn't confirm your payment."));
-    }
-  }, [booking, id, rejectionReason]);
+    if (booking && booking.status !== "held") router.replace({ pathname: "/(player)/booking/[id]/done", params: { id } });
+  }, [booking?.status, id]);
 
   async function pickImage(fromCamera: boolean) {
-    const perm = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    setPermissionNote(null);
+    const perm = fromCamera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== "granted") {
-      Alert.alert("Permission needed", "Allow access so you can attach your payment screenshot.");
+      setPermissionNote(copy("Screenshot lagane ke liye photos ki ijazat dein (phone Settings).", "Allow photo access in your phone Settings to attach the screenshot."));
       return;
     }
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({ quality: 1 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
+    const result = fromCamera ? await ImagePicker.launchCameraAsync({ quality: 1 }) : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
     if (result.canceled || !result.assets[0]) return;
     // Long side <= 1600 px, JPEG 0.7: a few hundred KB instead of 3-8 MB, so it finishes on slow 3G (P0-4).
     setPreparing(true);
@@ -118,30 +126,21 @@ export default function PaymentProofScreen() {
         queryClient.setQueryData(["booking", id], fresh);
         if (fresh.status !== "held") return;
       }
-      const result = await api.bookings.submitPaymentProof(
-        id,
-        picked.blob ?? picked.uri,
-        picked.name,
-        picked.type,
-        setUploadProgress,
-      );
+      const result = await api.bookings.submitPaymentProof(id, picked.blob ?? picked.uri, picked.name, picked.type, setUploadProgress);
       queryClient.setQueryData(["booking", id], result.booking);
-      if (result.booking.status === "booked") {
-        router.replace({ pathname: "/(player)/booking/[id]/done", params: { id } });
-      } else if (result.payment.ocr_verdict === "mismatch") {
-        Alert.alert(
-          "We noticed a mismatch",
-          "The amount in your screenshot doesn't quite match — the venue will review this manually, it may take a bit longer.",
-        );
+      void queryClient.invalidateQueries({ queryKey: ["bookings-mine"] });
+      if (result.payment.ocr_verdict === "mismatch") {
+        toast.show({ message: copy("Screenshot ki raqam thori mukhtalif lagi. Venue khud check karega, thora waqt lag sakta hai.", "The amount looks different. The venue will check it by hand; it may take a bit longer."), duration: 6000 });
       } else if (result.payment.ocr_verdict === "unreadable") {
-        Alert.alert("Couldn't read the screenshot", "The venue will review it manually.");
+        toast.show({ message: copy("Screenshot parha nahi gaya. Venue khud check karega.", "Couldn't read the screenshot. The venue will check it by hand."), duration: 6000 });
       }
+      router.replace({ pathname: "/(player)/booking/[id]/done", params: { id } });
     } catch (e) {
       const retryable = isRetryableUploadError(e);
       setUploadError({
         retryable,
         message: retryable
-          ? "The upload didn't finish — your connection may be slow. Your screenshot is still here, tap Try again."
+          ? copy("Upload poora nahi hua, internet slow ho sakta hai. Screenshot yahin hai: Dobara bhejein dabayein.", "The upload didn't finish; your connection may be slow. Your screenshot is still here: tap Send again.")
           : friendlyErrorMessage(e),
       });
     } finally {
@@ -150,266 +149,266 @@ export default function PaymentProofScreen() {
     }
   }
 
-  useEffect(() => {
-    if (booking?.status === "booked") {
-      router.replace({ pathname: "/(player)/booking/[id]/done", params: { id } });
+  async function cancelHold() {
+    if (cancelling) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const { booking: b } = await api.bookings.cancel(id);
+      queryClient.setQueryData(["booking", id], b);
+      void queryClient.invalidateQueries({ queryKey: ["bookings-mine"] });
+      setCancelOpen(false);
+    } catch (e) {
+      setCancelError(cancelErrorCopy(e instanceof ApiError ? e.code : null, lang, friendlyErrorMessage(e)));
+    } finally {
+      setCancelling(false);
     }
-  }, [booking?.status, id]);
-
-  const minutes = secondsLeft != null ? Math.floor(secondsLeft / 60) : null;
-  const seconds = secondsLeft != null ? secondsLeft % 60 : null;
+  }
 
   if (!booking && bookingQuery.isError) {
     return (
-      <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-        <ErrorState message={friendlyErrorMessage(bookingQuery.error)} onRetry={() => bookingQuery.refetch()} tone="player" />
-      </SafeAreaView>
+      <Screen>
+        <ErrorState
+          showTopBack
+          title={copy("Booking load nahi hui", "Couldn't load the booking")}
+          message={friendlyErrorMessage(bookingQuery.error)}
+          onRetry={() => bookingQuery.refetch()}
+          onBack={() => safeBack()}
+          backLabel={copy("Meri bookings", "My bookings")}
+        />
+      </Screen>
     );
   }
 
-  if (bookingQuery.isLoading || !booking) {
+  if (!booking || booking.status !== "held") {
     return (
-      <SafeAreaView className="flex-1 bg-player-bg items-center justify-center" edges={["top", "bottom"]}>
-        <ActivityIndicator color="#EF5A2C" />
-      </SafeAreaView>
-    );
-  }
-
-  if (booking.status === "cancelled" && booking.cancelled_by === "owner") {
-    return (
-      <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-        <View className="px-5 py-5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-          <Pressable onPress={() => router.replace("/")} className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
-            <ChevronLeftIcon />
-          </Pressable>
-          <Text className="font-figtree-bold text-player-ink text-[17px]">Payment review</Text>
-        </View>
-        <ScrollView contentContainerClassName="p-5 gap-4">
-          <View className="items-center gap-3 pt-4 pb-2">
-            <View className="w-[60px] h-[60px] rounded-full items-center justify-center" style={{ backgroundColor: "#F8E5E0" }}>
-              <Text style={{ fontSize: 26 }}>✕</Text>
-            </View>
-            <Text className="font-figtree-extrabold text-player-ink text-[22px] -tracking-[0.3px] text-center">
-              Payment not confirmed
-            </Text>
-            <Text className="font-figtree-medium text-player-ink-muted text-[15px] text-center leading-[1.5]">
-              The venue couldn't match your screenshot.
-            </Text>
+      <Screen gutter={false} edgeToEdgeTop>
+        <Hero topInset={insets.top} roundedBottom>
+          <View style={{ alignItems: "center", gap: space[4], paddingTop: space[8] }} accessibilityLabel={copy("Load ho raha hai", "Loading")}>
+            <Skeleton width={150} height={150} r={75} />
+            <Skeleton width={160} height={30} />
           </View>
-          <View className="bg-player-surface border-[1.5px] rounded-2xl p-5 gap-3" style={{ borderColor: "#DDBAB1" }}>
-            <Text className="font-figtree-bold text-[11px] tracking-[0.1em]" style={{ color: "#8C3823" }}>
-              WHAT THE VENUE SAID
-            </Text>
-            <Text className="font-figtree-semibold text-player-ink text-[15px] leading-[1.5]">"{rejectionReason ?? "…"}"</Text>
-          </View>
-          <Text className="font-figtree-medium text-player-ink-muted text-sm text-center leading-[1.5]">
-            Your slot is open again — you're welcome to try booking it once more.
-          </Text>
-        </ScrollView>
-        <View className="px-5 pt-4 pb-6 bg-player-surface border-t border-player-border-light">
-          <Pressable onPress={() => router.replace("/(player)/search")} className="h-[54px] rounded-2xl bg-player-accent items-center justify-center">
-            <Text className="font-figtree-bold text-white text-base">Find another slot</Text>
-          </Pressable>
+        </Hero>
+        <View style={{ paddingHorizontal: space[5], gap: space[3] }}>
+          <Skeleton height={220} r={radius.cardL} />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
-  if (booking.status === "cancelled" || expired) {
+  if (expired) {
     return (
-      <SafeAreaView className="flex-1 bg-player-bg items-center justify-center px-8 gap-4" edges={["top", "bottom"]}>
-        <Text className="font-figtree-extrabold text-player-ink text-xl text-center">
-          {expired ? "This hold expired" : "This booking was cancelled"}
-        </Text>
-        <Text className="font-figtree-medium text-player-ink-muted text-[15px] text-center leading-[1.5]">
-          {expired
-            ? "You didn't complete payment in time, so the slot was released."
-            : "This slot is available for someone else to book now."}
-        </Text>
-        <Pressable onPress={() => router.replace("/(player)/search")} className="h-12 px-6 rounded-2xl bg-player-accent items-center justify-center">
-          <Text className="font-figtree-bold text-white text-[14.5px]">Try again</Text>
-        </Pressable>
-      </SafeAreaView>
+      <Screen>
+        <Header title={copy("Hold ka waqt khatam", "The hold expired")} onBack={() => safeBack()} />
+        <EmptyState
+          icon={Hourglass}
+          title={copy("Ye slot ab aap ke liye hold nahi", "This slot is no longer held for you")}
+          body={copy(
+            "Waqt par screenshot nahi aaya, is liye slot dobara khul gaya hai. Agar paisa bhej diya tha to venue se baat karein.",
+            "The screenshot didn't arrive in time, so the slot opened again. If you already sent money, talk to the venue.",
+          )}
+          actionLabel={copy("Naya slot dhoondein", "Find another slot")}
+          onAction={() => router.replace("/(player)/search")}
+        />
+        <Button label={copy("Venue se baat", "Talk to the venue")} variant="soft" size="md" block onPress={() => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id } })} />
+      </Screen>
     );
   }
 
-  const isWaitingReview = booking.status === "payment_submitted";
+  const venueName = place.venue?.name;
+  const courtName = place.court?.name;
+  const amount = formatPkr(booking.advance_amount);
+  const pct = Math.min(100, Math.max(6, Math.round(uploadProgress * 100)));
 
   return (
-    <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="px-5 py-5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-        <Pressable onPress={() => safeBack()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-figtree-bold text-player-ink text-[17px] flex-1">{isWaitingReview ? "Waiting for the venue" : "Pay to hold your slot"}</Text>
-        <Pressable
-          onPress={() => openSupportWhatsApp(`I need help with a payment for booking ${id}`)}
-          accessibilityLabel="Need help? WhatsApp us"
-        >
-          <Text className="font-figtree-semibold text-player-accent text-[13px]">Need help?</Text>
-        </Pressable>
-      </View>
-
-      <ScrollView className="flex-1" contentContainerClassName="p-5 gap-4">
-        {booking.status === "held" && secondsLeft != null ? (
-          <View
-            className="flex-row items-center justify-center gap-2 py-2.5 rounded-xl"
-            style={{ backgroundColor: secondsLeft < 120 ? "#F8E5E0" : "#FDF6E9" }}
-          >
-            <Text className="font-mono-semibold text-[13px]" style={{ color: secondsLeft < 120 ? "#8C3823" : "#8A5A0A" }}>
-              Held · {minutes}:{String(seconds).padStart(2, "0")} left
+    <Screen gutter={false} edgeToEdgeTop testID="pay-screen">
+      <Hero topInset={insets.top} roundedBottom>
+        <Header
+          size="compact"
+          tone="dark"
+          title={copy("Slot aap ke liye hold hai", "Your slot is on hold")}
+          onBack={() => safeBack()}
+          right={
+            <IconButton
+              icon={CircleHelp}
+              variant="onDark"
+              accessibilityLabel={copy("Madad (WhatsApp)", "Help (WhatsApp)")}
+              onPress={() => openSupportWhatsApp(`I need help with a payment for booking ${id}`)}
+            />
+          }
+        />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[4], flexWrap: "wrap", justifyContent: "center" }}>
+          <CountdownRing
+            expiresAt={booking.held_until}
+            totalMs={windowMs(booking.created_at, booking.held_until)}
+            caption={copy("pay karne ke liye", "left to pay")}
+            diameter={140}
+            testID="pay-countdown"
+          />
+          <View style={{ flex: 1, minWidth: 150, gap: 4 }}>
+            <Text variant="h2" tone="hero" testID="pay-amount">
+              {amount}
+            </Text>
+            <Text variant="meta" tone="heroMuted">
+              {[venueName, courtName].filter(Boolean).join(" · ")}
+            </Text>
+            <Text variant="meta" tone="heroMuted">
+              {`${formatDate(booking.starts_at, new Date(), lang)} · ${formatTimeRange(booking.starts_at, booking.ends_at, lang)}`}
             </Text>
           </View>
-        ) : null}
-
-        <View className="bg-player-ink rounded-2xl p-6 gap-1.5">
-          <Text className="font-figtree-bold text-[11px] tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
-            {isWaitingReview ? "SENT" : "ADVANCE DUE NOW"}
-          </Text>
-          <Text className="font-mono-semibold text-white text-[38px] -tracking-[0.5px]">
-            PKR {formatPKR(booking.advance_amount)}
-          </Text>
-          {/* A 0 balance read as "Balance PKR 0 payable": only mention it when something is really left to pay. */}
-          {booking.balance_due > 0 ? (
-            <Text className="font-figtree-medium text-[13.5px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-              Balance PKR {formatPKR(booking.balance_due)} payable at the venue
-            </Text>
-          ) : null}
         </View>
+        <StepBar labels={[copy("Hold", "Hold"), copy("Pay", "Pay"), copy("Venue check", "Venue check"), copy("Booked", "Booked")]} current={1} />
+      </Hero>
 
-        {isWaitingReview ? (
-          <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 flex-row items-center gap-3">
-            <ActivityIndicator color="#8A5A0A" />
-            <Text className="font-figtree-medium text-player-ink-muted text-sm flex-1 leading-[1.4]">
-              The venue is reviewing your screenshot. This page will update automatically.
-            </Text>
-          </View>
-        ) : (
-          <>
-            {!instructionsReady ? null : hasPayableDetails(paymentInstructions) ? (
-              <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 gap-3.5">
-                <Text className="font-figtree-bold text-[11px] tracking-[0.1em] text-player-ink-fainter">SEND TO</Text>
-                {paymentInstructions.bank ? <PayRow label="Bank" value={paymentInstructions.bank} /> : null}
-                {paymentInstructions.account_title ? <PayRow label="Account title" value={paymentInstructions.account_title} /> : null}
-                {paymentInstructions.account_number ? <PayRow label="Account number" value={paymentInstructions.account_number} mono /> : null}
-                {paymentInstructions.iban ? <PayRow label="IBAN" value={paymentInstructions.iban} mono /> : null}
-              </View>
-            ) : (
-              <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 gap-3">
-                <Text className="font-figtree-medium text-player-ink-muted text-[13.5px] leading-[1.5]">
-                  This phone doesn't have the venue's bank details for this hold (it may have been made on WhatsApp or another
-                  device). They are in your chat with the venue, or we can send them to you.
-                </Text>
-                <Pressable
-                  onPress={() => openSupportWhatsApp(`Please send me the payment details for booking ${id}`)}
-                  accessibilityRole="button"
-                  className="h-11 rounded-xl border border-player-border items-center justify-center active:opacity-80"
-                >
-                  <Text className="font-figtree-semibold text-player-ink text-[14px]">Get payment details on WhatsApp</Text>
-                </Pressable>
-              </View>
-            )}
-
-            {preparing ? (
-              <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 flex-row items-center gap-3">
-                <ActivityIndicator color="#EF5A2C" />
-                <Text className="font-figtree-medium text-player-ink-muted text-sm">Preparing your screenshot…</Text>
-              </View>
-            ) : picked ? (
-              <View className="bg-player-surface border border-player-border-light rounded-2xl p-3 items-center">
-                <Image source={{ uri: picked.uri }} style={{ width: "100%", height: 220, borderRadius: 12 }} resizeMode="contain" />
-                <Pressable
-                  onPress={() => {
-                    setPicked(null);
-                    setUploadError(null);
-                  }}
-                  disabled={submitting}
-                  accessibilityRole="button"
-                  className="mt-1 px-4 justify-center"
-                  style={{ minHeight: 44 }}
-                >
-                  <Text className="font-figtree-semibold text-player-danger text-[13px]">Remove and choose another</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <View className="gap-2.5">
-                <Pressable
-                  onPress={() => pickImage(false)}
-                  className="border-2 rounded-2xl p-7 items-center gap-2"
-                  style={{ borderStyle: "dashed", borderColor: "#E0D9D4" }}
-                >
-                  <Text className="font-figtree-bold text-player-ink text-[15px]">Attach payment screenshot</Text>
-                  <Text className="font-figtree-medium text-player-ink-muted text-[13px] text-center leading-[1.4]">
-                    We read the amount automatically, so approval is usually instant
-                  </Text>
-                </Pressable>
-                {Platform.OS !== "web" ? (
-                  <Pressable onPress={() => pickImage(true)} className="h-12 rounded-2xl border border-player-border items-center justify-center">
-                    <Text className="font-figtree-semibold text-player-ink-muted text-[14px]">Use camera instead</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            )}
-
-            {policyText ? (
-              <Text className="font-figtree-medium text-player-ink-faint text-[12.5px] text-center leading-[1.4] px-2">
-                {policyText}
+      <View style={{ paddingHorizontal: space[5], gap: space[4] }}>
+        <PlayerOfflineBanner />
+        <Card padding={4} radiusSize="cardL" style={{ gap: space[3] }} testID="pay-bank">
+          <StepHeading n={1} label={copy(`${amount} bhejein`, `Send ${amount}`)} />
+          {!instructionsReady ? (
+            <Skeleton height={120} r={radius.input} />
+          ) : hasPayableDetails(paymentInstructions) ? (
+            <>
+              {paymentInstructions.bank || paymentInstructions.account_title ? (
+                <View style={{ flexDirection: "row", gap: space[3], alignItems: "center" }}>
+                  <View style={{ width: 44, height: 44, borderRadius: radius.sm, backgroundColor: palette.tealTint, alignItems: "center", justifyContent: "center" }}>
+                    <Landmark size={20} color={palette.tealDeep} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    {paymentInstructions.bank ? <Text variant="bodyStrong">{paymentInstructions.bank}</Text> : null}
+                    {paymentInstructions.account_title ? (
+                      <Text variant="meta" tone="muted">
+                        {copy(`Account ka naam: ${paymentInstructions.account_title}`, `Account name: ${paymentInstructions.account_title}`)}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+              {paymentInstructions.account_number ? (
+                <CopyField label={copy("Account number", "Account number")} value={paymentInstructions.account_number} copyLabel={copy("Account number copy karein", "Copy account number")} testID="pay-account" />
+              ) : null}
+              {paymentInstructions.iban ? <CopyField label="IBAN" value={paymentInstructions.iban} copyLabel={copy("IBAN copy karein", "Copy IBAN")} testID="pay-iban" /> : null}
+              <Text variant="meta" tone="muted">
+                {[
+                  copy("JazzCash, Easypaisa ya kisi bhi bank app se bhejein, phir yahan wapas aayein.", "Send it from JazzCash, Easypaisa or any bank app, then come back here."),
+                  booking.balance_due > 0 ? copy(`Venue par baqi: ${formatPkr(booking.balance_due)}.`, `Due at the venue: ${formatPkr(booking.balance_due)}.`) : null,
+                  place.venue && cancelPolicyShort(place.venue, lang) ? `${copy("Cancel", "Cancel")}: ${cancelPolicyShort(place.venue, lang)}.` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
               </Text>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
+            </>
+          ) : (
+            <>
+              <Banner
+                tone="waiting"
+                title={copy("Bank details is phone par nahi", "No bank details on this phone")}
+                body={copy(
+                  "Ye hold shayad WhatsApp ya kisi aur device se bana tha. Details aap ki chat mein hain, ya hum bhej dete hain.",
+                  "This hold may have been made on WhatsApp or another device. The details are in your chat, or we can send them.",
+                )}
+              />
+              <Button label={copy("Details WhatsApp par mangwayein", "Get the details on WhatsApp")} variant="soft" size="md" block onPress={() => openSupportWhatsApp(`Please send me the payment details for booking ${id}`)} />
+            </>
+          )}
+        </Card>
 
-      {!isWaitingReview ? (
-        <View className="px-5 pt-4 pb-6 bg-player-surface border-t border-player-border-light gap-2.5">
-          {uploadError ? (
-            <View
-              accessibilityRole="alert"
-              className="rounded-xl px-4 py-3 border"
-              style={{ backgroundColor: "#F8E5E0", borderColor: "#DDBAB1" }}
-            >
-              <Text className="font-figtree-semibold text-[13.5px] leading-[1.45]" style={{ color: "#8C3823" }}>
-                {uploadError.message}
+        <Card padding={4} radiusSize="cardL" style={{ gap: space[3] }} testID="pay-proof">
+          <StepHeading n={2} label={copy("Payment ka screenshot lagayein", "Attach the payment screenshot")} />
+          {preparing ? (
+            <View style={{ flexDirection: "row", gap: space[3], alignItems: "center" }}>
+              <Skeleton width={64} height={84} r={radius.sm} />
+              <Text variant="meta" tone="muted">
+                {copy("Screenshot tayyar ho raha hai…", "Preparing your screenshot…")}
               </Text>
             </View>
-          ) : null}
-          {submitting ? (
-            <View className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "#F4EFEC" }}>
-              <View
-                className="h-full rounded-full bg-player-accent"
-                style={{ width: `${Math.max(6, Math.round(uploadProgress * 100))}%` }}
+          ) : picked ? (
+            <View style={{ flexDirection: "row", gap: space[3], alignItems: "center", flexWrap: "wrap" }} testID="pay-picked">
+              <Image source={{ uri: picked.uri }} style={{ width: 64, height: 84, borderRadius: radius.sm, backgroundColor: palette.mist }} contentFit="cover" accessibilityLabel={copy("Lagaya hua screenshot", "Attached screenshot")} />
+              <View style={{ flex: 1, minWidth: 140, gap: 2 }}>
+                <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                  <Check size={16} color={palette.open} strokeWidth={3} />
+                  <Text variant="bodyBold" tone="open">
+                    {copy("Screenshot lag gaya", "Screenshot attached")}
+                  </Text>
+                </View>
+                <Text variant="caption" tone="muted">
+                  {copy("Chhota kar diya, jaldi upload hoga", "Made smaller so it uploads fast")}
+                </Text>
+              </View>
+              <Button
+                label={copy("Badlein", "Change")}
+                variant="soft"
+                size="sm"
+                disabled={submitting}
+                onPress={() => {
+                  setPicked(null);
+                  setUploadError(null);
+                }}
               />
             </View>
-          ) : null}
-          <Pressable
-            onPress={submitProof}
-            disabled={!picked || submitting || preparing}
-            accessibilityRole="button"
-            className="h-[54px] rounded-2xl bg-player-accent items-center justify-center flex-row gap-2"
-            style={{ opacity: !picked || submitting || preparing ? 0.5 : 1 }}
-          >
-            {submitting ? <ActivityIndicator color="#FFFFFF" /> : null}
-            <Text className="font-figtree-bold text-white text-base">
-              {submitting
-                ? `Uploading… ${Math.round(uploadProgress * 100)}%`
-                : uploadError?.retryable
-                  ? "Try again"
-                  : "Submit payment proof"}
-            </Text>
-          </Pressable>
+          ) : (
+            <View style={{ gap: space[2] }}>
+              <Pressable
+                testID="pay-pick"
+                accessibilityRole="button"
+                accessibilityLabel={copy("Gallery se screenshot chunein", "Choose the screenshot from your gallery")}
+                onPress={() => pickImage(false)}
+                style={({ pressed }) => ({ minHeight: 112, borderRadius: radius.tile, borderWidth: 2, borderStyle: "dashed", borderColor: palette.lineStrong, alignItems: "center", justifyContent: "center", gap: space[2], padding: space[4], opacity: pressed ? 0.8 : 1 })}
+              >
+                <ImagePlus size={26} color={palette.night} />
+                <Text variant="bodyBold" align="center">
+                  {copy("Screenshot chunein", "Choose screenshot")}
+                </Text>
+                <Text variant="caption" tone="muted" align="center">
+                  {copy("Raqam khud parh li jati hai, approve aksar jaldi hota hai", "We read the amount automatically, so approval is usually quick")}
+                </Text>
+              </Pressable>
+              {Platform.OS !== "web" ? <Button label={copy("Camera se lein", "Use the camera")} variant="soft" size="md" block icon={<Camera size={16} color={palette.night} />} onPress={() => pickImage(true)} /> : null}
+            </View>
+          )}
+          {permissionNote ? <Banner tone="waiting" body={permissionNote} /> : null}
+        </Card>
+
+        {uploadError ? <Banner tone="danger" body={uploadError.message} testID="pay-upload-error" /> : null}
+        {submitting ? (
+          <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }} style={{ height: 8, borderRadius: 4, backgroundColor: palette.mist, overflow: "hidden" }}>
+            <View style={{ width: `${pct}%`, height: "100%", borderRadius: 4, backgroundColor: palette.orange }} />
+          </View>
+        ) : null}
+        <Button
+          testID="pay-submit"
+          label={submitting ? copy(`Bhej rahe hain… ${pct}%`, `Sending… ${pct}%`) : uploadError?.retryable ? copy("Dobara bhejein", "Send again") : copy("Venue ko bhejein", "Send to the venue")}
+          block
+          loading={submitting}
+          disabled={!picked || preparing}
+          onPress={submitProof}
+        />
+        <View style={{ flexDirection: "row", gap: space[3], justifyContent: "center", flexWrap: "wrap" }}>
+          <Button label={copy("Venue se baat", "Talk to the venue")} variant="soft" size="sm" onPress={() => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id } })} />
+          <Button label={copy("Booking cancel", "Cancel booking")} variant="danger" size="sm" onPress={() => setCancelOpen(true)} testID="pay-cancel" />
         </View>
-      ) : null}
-    </SafeAreaView>
+      </View>
+
+      <Sheet
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title={copy("Hold cancel karein?", "Cancel this hold?")}
+        footer={
+          <View style={{ gap: space[3] }}>
+            <Button label={copy("Haan, cancel karein", "Yes, cancel")} variant="dangerSolid" block loading={cancelling} onPress={cancelHold} testID="pay-cancel-confirm" />
+            <Button label={copy("Nahi, booking rakhein", "No, keep it")} variant="soft" size="md" block onPress={() => setCancelOpen(false)} />
+          </View>
+        }
+      >
+        {cancelError ? <Banner tone="danger" body={cancelError} /> : null}
+        <Text variant="body">
+          {copy(
+            "Slot chhor diya jayega aur doosre log book kar sakenge. Agar aap paisa bhej chuke hain to pehle venue se baat karein.",
+            "The slot will be released for others. If you already sent money, talk to the venue first.",
+          )}
+        </Text>
+      </Sheet>
+    </Screen>
   );
 }
 
-function PayRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <View className="flex-row items-center justify-between">
-      <Text className="font-figtree-medium text-player-ink-faint text-[14px]">{label}</Text>
-      <Text className={mono ? "font-mono-semibold text-player-ink text-[14px]" : "font-figtree-semibold text-player-ink text-[14px]"}>
-        {value}
-      </Text>
-    </View>
-  );
-}

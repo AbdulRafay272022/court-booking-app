@@ -82,7 +82,7 @@ function rowTone(row: OwnerBookingRow): string {
 function avatarTone(row: OwnerBookingRow): string {
   if (row.kind === "refund") return "bg-owner-warn";
   if (row.kind === "cancelled") return "bg-owner-ink-muted";
-  return "bg-khelo-teal";
+  return "bg-fl-teal";
 }
 
 function rowKey(row: OwnerBookingRow): string {
@@ -259,7 +259,7 @@ export function BookingRowsTable(props: BookingRowsTableProps) {
   );
 
   const newBadge = (row: OwnerBookingRow) =>
-    isNew?.(row) ? <span className="ml-2 rounded-full bg-khelo-orange px-2 py-0.5 text-[11px] font-bold text-khelo-ink">{t("hist.new")}</span> : null;
+    isNew?.(row) ? <span className="ml-2 rounded-full bg-fl-orange px-2 py-0.5 text-[11px] font-bold text-fl-night">{t("hist.new")}</span> : null;
 
   return (
     <div ref={wrapRef} className="min-w-0">

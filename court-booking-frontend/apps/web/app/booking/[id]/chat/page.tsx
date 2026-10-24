@@ -43,7 +43,7 @@ function AssistantAvatar() {
   return (
     <span
       aria-hidden="true"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-player-accent-soft-border bg-player-accent-soft text-player-accent"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-fl-orange-peach bg-fl-orange-tint text-fl-orange-deep"
     >
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
@@ -58,9 +58,9 @@ function TypingBubble() {
   return (
     <div className="flex items-end gap-2" role="status" aria-label={t("play.chat.typing")} data-testid="typing-indicator">
       <AssistantAvatar />
-      <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-player-border-light bg-player-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(20,26,29,0.05)]">
+      <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-fl-line bg-fl-white px-4 py-3.5 shadow-fl-card-soft">
         {[0, 1, 2].map((i) => (
-          <span key={i} className="h-2 w-2 animate-bounce rounded-full bg-player-ink-fainter" style={{ animationDelay: `${i * 150}ms` }} />
+          <span key={i} className="h-2 w-2 animate-bounce rounded-full bg-fl-muted2" style={{ animationDelay: `${i * 150}ms` }} />
         ))}
       </div>
     </div>
@@ -205,34 +205,34 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
   const showQuickReplies = !sending && !holdingKey && !bootError && last?.sender === "ai" && !(last.actions && last.actions.length > 0);
 
   return (
-    <main className="mx-auto flex h-dvh max-w-2xl flex-col bg-player-bg sm:border-x border-player-border-light">
-      <header className="flex items-center gap-3 border-b border-player-border-light bg-player-surface px-4 sm:px-6 py-3.5">
+    <main className="mx-auto flex h-dvh max-w-2xl flex-col bg-fl-ground sm:border-x border-fl-line">
+      <header className="flex items-center gap-3 border-b border-fl-line bg-fl-white px-4 sm:px-6 py-3.5">
         <button
           onClick={() => router.back()}
           aria-label={t("play.chat.back")}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-player-surface-2 text-player-ink transition-colors hover:bg-player-accent-soft hover:text-player-accent-hover"
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-fl-ground text-fl-night transition-colors hover:bg-fl-orange-tint hover:text-fl-orange-deep"
         >
           ←
         </button>
         <AssistantAvatar />
         <div className="flex min-w-0 flex-col leading-tight">
           <span className="truncate text-[16px] font-bold">{venueName ?? t("play.chat.assistant")}</span>
-          <span className="flex items-center gap-1.5 text-[12.5px] text-player-ink-faint">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-player-success" /> {t("play.chat.assistantSub")}
+          <span className="flex items-center gap-1.5 text-[12.5px] text-fl-muted2">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-fl-open" /> {t("play.chat.assistantSub")}
           </span>
         </div>
       </header>
 
       {courtName && when ? (
-        <div className="flex items-center justify-between gap-3 border-b border-player-accent-soft-border bg-player-accent-soft px-4 sm:px-6 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-fl-orange-peach bg-fl-orange-tint px-4 sm:px-6 py-3">
           <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] font-bold tracking-widest text-player-accent-hover">{t("play.chat.selectedSlot")}</span>
-            <span className="font-mono text-[14px] font-semibold">
+            <span className="text-[11px] font-bold tracking-widest text-fl-orange-deep">{t("play.chat.selectedSlot")}</span>
+            <span className="text-[14px] font-bold tabular-nums">
               {courtLabel(courtName, courtSport)} · {fmt.date(when)}, {minutes ? fmt.timeRange(when, new Date(when.getTime() + minutes * 60_000)) : fmt.time(when)}
               {minutes ? ` · ${fmt.duration(minutes)}` : ""}
             </span>
           </div>
-          {price ? <span className="shrink-0 rounded-full bg-player-surface px-3 py-1 font-mono text-[14px] font-bold">PKR {formatPKR(Number(price))}</span> : null}
+          {price ? <span className="shrink-0 rounded-full bg-fl-white px-3 py-1 text-[14px] font-bold tabular-nums">PKR {formatPKR(Number(price))}</span> : null}
         </div>
       ) : null}
 
@@ -244,16 +244,16 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
               <div className={`flex max-w-[88%] items-end gap-2 ${mine ? "flex-row-reverse" : ""}`}>
                 {mine ? null : <AssistantAvatar />}
                 <div
-                  className={`px-4 py-2.5 shadow-[0_1px_2px_rgba(20,26,29,0.06)] ${
+                  className={`px-4 py-2.5 shadow-fl-card-soft ${
                     mine
-                      ? "rounded-2xl rounded-br-md bg-player-accent text-white"
-                      : "rounded-2xl rounded-bl-md border border-player-border-light bg-player-surface text-player-ink"
+                      ? "rounded-2xl rounded-br-md bg-fl-orange text-fl-night"
+                      : "rounded-2xl rounded-bl-md border border-fl-line bg-fl-white text-fl-night"
                   }`}
                 >
                   <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{turn.content}</p>
                 </div>
               </div>
-              <span className={`text-[11.5px] text-player-ink-fainter ${mine ? "pr-1" : "pl-10"}`}>{stamp(turn.at, fmt)}</span>
+              <span className={`text-[11.5px] text-fl-muted2 ${mine ? "pr-1" : "pl-10"}`}>{stamp(turn.at, fmt)}</span>
               {turn.actions && turn.actions.length > 0 ? (
                 <div className="mt-1 flex flex-wrap gap-2 pl-10">
                   {turn.actions.map((action) => {
@@ -267,8 +267,8 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
                         disabled={!!holdingKey}
                         className={`min-h-11 rounded-xl px-4 py-2 text-[13.5px] font-bold transition-all disabled:opacity-50 ${
                           confirm
-                            ? "bg-player-accent text-white shadow-[0_6px_16px_-6px_rgba(239,90,44,0.7)] hover:bg-player-accent-hover"
-                            : "border border-player-border bg-player-surface text-player-ink-muted hover:border-player-ink-fainter"
+                            ? "bg-fl-orange text-fl-night shadow-fl-cta-orange hover:opacity-90"
+                            : "border border-fl-line bg-fl-white text-fl-muted hover:border-fl-muted2"
                         }`}
                       >
                         {isHolding ? t("play.chat.holding") : actionLabel(action, t)}
@@ -288,19 +288,19 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
                 key={q}
                 type="button"
                 onClick={() => sendMessage(q)}
-                className="rounded-full border border-player-accent-soft-border bg-player-surface px-3.5 py-2 text-[13px] font-semibold text-player-accent-hover transition-colors hover:bg-player-accent-soft"
+                className="rounded-full border border-fl-orange-peach bg-fl-white px-3.5 py-2 text-[13px] font-semibold text-fl-orange-deep transition-colors hover:bg-fl-orange-tint"
               >
                 {q}
               </button>
             ))}
           </div>
         ) : null}
-        {bootError ? <p className="text-center text-sm text-player-danger">{bootError}</p> : null}
+        {bootError ? <p className="text-center text-sm text-fl-danger">{bootError}</p> : null}
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-player-border-light bg-player-surface px-4 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div className="flex items-center gap-2 rounded-full border border-player-border bg-player-bg py-1.5 pl-5 pr-1.5 transition focus-within:border-player-accent focus-within:ring-4 focus-within:ring-player-accent-soft">
+      <div className="border-t border-fl-line bg-fl-white px-4 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-center gap-2 rounded-full border border-fl-line bg-fl-ground py-1.5 pl-5 pr-1.5 transition focus-within:border-fl-orange focus-within:ring-4 focus-within:ring-fl-orange-tint">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -308,13 +308,13 @@ function ChatInner({ params }: { params: Promise<{ id: string }> }) {
             placeholder={t("play.chat.placeholder")}
             aria-label={t("play.chat.inputAria")}
             disabled={sending}
-            className="h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-player-ink-fainter"
+            className="h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-fl-muted2"
           />
           <button
             onClick={() => sendMessage()}
             disabled={sending || !input.trim()}
             aria-label={t("play.chat.sendAria")}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-player-accent text-white transition-colors hover:bg-player-accent-hover disabled:bg-player-border"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-fl-orange text-fl-night transition-colors hover:bg-fl-orange-deep disabled:bg-fl-line"
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M5 12h14M13 6l6 6-6 6" />

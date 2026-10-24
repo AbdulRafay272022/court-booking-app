@@ -77,16 +77,16 @@ export default function VenuePinMap({ lat, lng, name }: { lat: number; lng: numb
         role="region"
         aria-label={t("venue.loc.mapLabel", { name })}
         data-testid="venue-pin-map"
-        className="z-0 h-[260px] w-full overflow-hidden rounded-3xl bg-khelo-page md:h-[340px]"
+        className="z-0 h-[260px] w-full overflow-hidden rounded-3xl bg-fl-ground md:h-[340px]"
       />
       {touch && !active ? (
         <button
           type="button"
           onClick={() => setLocked(false)}
           data-testid="map-activate"
-          className="absolute inset-0 z-[1100] flex items-end justify-center rounded-3xl bg-transparent p-3 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-khelo-orange"
+          className="absolute inset-0 z-[1100] flex items-end justify-center rounded-3xl bg-transparent p-3 focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-fl-orange"
         >
-          <span className="rounded-full bg-khelo-ink/85 px-4 py-2.5 text-[13px] font-bold text-white">{t("venue.loc.tapToUse")}</span>
+          <span className="rounded-full bg-fl-night px-4 py-2.5 text-[13px] font-bold text-fl-white">{t("venue.loc.tapToUse")}</span>
         </button>
       ) : null}
       {touch && active ? (
@@ -94,7 +94,7 @@ export default function VenuePinMap({ lat, lng, name }: { lat: number; lng: numb
           type="button"
           onClick={() => setLocked(true)}
           data-testid="map-lock"
-          className="khelo-btn absolute right-3 top-3 z-[1100] inline-flex min-h-11 items-center rounded-full bg-khelo-ink px-4 text-[13px] font-extrabold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-khelo-orange"
+          className="khelo-btn absolute right-3 top-3 z-[1100] inline-flex min-h-11 items-center rounded-full bg-fl-night px-4 text-[13px] font-extrabold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-orange"
         >
           {t("venue.loc.lockMap")}
         </button>

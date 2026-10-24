@@ -49,5 +49,5 @@ export default function VenueMap({ pins }: { pins: MapVenue[] }) {
     };
   }, [pins, t]);
 
-  return <div ref={el} role="region" aria-label={t("venue.map.label")} data-testid="venue-map" className="z-0 h-[min(70vh,560px)] w-full overflow-hidden rounded-3xl bg-khelo-page" />;
+  return <div ref={el} role="region" aria-label={t("venue.map.label")} data-testid="venue-map" className="z-0 h-[min(70vh,560px)] w-full overflow-hidden rounded-3xl bg-fl-ground" />;
 }

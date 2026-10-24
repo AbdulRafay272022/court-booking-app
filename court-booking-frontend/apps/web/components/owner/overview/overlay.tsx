@@ -69,7 +69,7 @@ function CloseButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label={t("ovw.kpi.close")}
-      className="shrink-0 w-11 h-11 -mr-2 -mt-2 flex items-center justify-center rounded-full text-khelo-muted hover:bg-khelo-page"
+      className="shrink-0 w-11 h-11 -mr-2 -mt-2 flex items-center justify-center rounded-full text-fl-muted hover:bg-fl-ground"
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true">
         <path d="M6 6l12 12M18 6L6 18" />
@@ -102,21 +102,21 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" data-testid={testId}>
-      <div className="absolute inset-0 bg-khelo-ink/45" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-fl-night/45" onClick={onClose} aria-hidden="true" />
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative w-full ${size === "lg" ? "md:max-w-4xl" : "md:max-w-lg"} max-h-[92vh] md:max-h-[88vh] overflow-y-auto overscroll-contain bg-khelo-surface rounded-t-3xl md:rounded-3xl p-5 md:p-7 shadow-2xl outline-none`}
+        className={`relative w-full ${size === "lg" ? "md:max-w-4xl" : "md:max-w-lg"} max-h-[92vh] md:max-h-[88vh] overflow-y-auto overscroll-contain bg-fl-white rounded-t-3xl md:rounded-3xl p-5 md:p-7 shadow-2xl outline-none`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={titleId} className="font-khelo-display font-extrabold text-2xl text-khelo-ink leading-tight">
+            <h2 id={titleId} className="font-khelo-display font-extrabold text-2xl text-fl-night leading-tight">
               {title}
             </h2>
-            {subtitle ? <p className="mt-1 text-sm text-khelo-muted">{subtitle}</p> : null}
+            {subtitle ? <p className="mt-1 text-sm text-fl-muted">{subtitle}</p> : null}
           </div>
           <CloseButton onClick={onClose} />
         </div>
@@ -169,17 +169,17 @@ export function Popover({
   if (narrow) {
     return (
       <div className="fixed inset-0 z-50 flex items-end" data-testid={testId}>
-        <div className="absolute inset-0 bg-khelo-ink/45" onClick={onClose} aria-hidden="true" />
+        <div className="absolute inset-0 bg-fl-night/45" onClick={onClose} aria-hidden="true" />
         <div
           ref={ref}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className="relative w-full max-h-[80vh] overflow-y-auto overscroll-contain bg-khelo-surface rounded-t-3xl p-5 shadow-2xl outline-none"
+          className="relative w-full max-h-[80vh] overflow-y-auto overscroll-contain bg-fl-white rounded-t-3xl p-5 shadow-2xl outline-none"
         >
           <div className="flex items-start justify-between gap-3">
-            <h2 id={titleId} className="font-khelo-display font-extrabold text-xl text-khelo-ink">
+            <h2 id={titleId} className="font-khelo-display font-extrabold text-xl text-fl-night">
               {title}
             </h2>
             <CloseButton onClick={onClose} />
@@ -196,9 +196,9 @@ export function Popover({
       aria-labelledby={titleId}
       tabIndex={-1}
       data-testid={testId}
-      className={`absolute z-40 top-full mt-2 ${align === "right" ? "right-0" : "left-0"} ${width} max-w-[90vw] max-h-[70vh] overflow-y-auto bg-khelo-surface border border-khelo-border rounded-2xl shadow-xl p-4 outline-none`}
+      className={`absolute z-40 top-full mt-2 ${align === "right" ? "right-0" : "left-0"} ${width} max-w-[90vw] max-h-[70vh] overflow-y-auto bg-fl-white border border-fl-line-strong rounded-2xl shadow-xl p-4 outline-none`}
     >
-      <p id={titleId} className="font-khelo-display font-extrabold text-base text-khelo-ink mb-2">
+      <p id={titleId} className="font-khelo-display font-extrabold text-base text-fl-night mb-2">
         {title}
       </p>
       {children}

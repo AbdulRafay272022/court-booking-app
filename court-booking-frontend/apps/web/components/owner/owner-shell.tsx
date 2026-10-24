@@ -131,18 +131,17 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
               aria-current={active ? "page" : undefined}
               aria-label={badge ? t("notif.nav.pendingAria", { label: item.label, n: badge }) : undefined}
               data-testid={`nav-${item.href.split("/").pop()}`}
-              className="flex min-h-11 items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg text-[14px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-owner-accent"
-              style={{
-                background: active ? "#EBF2F4" : "transparent",
-                color: active ? "#0E6274" : "#5B7079",
-              }}
+              data-fl-role="owner"
+              className={`flex min-h-11 items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg text-[14px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-owner-accent ${
+                active ? "bg-fl-role-tab-active text-fl-role-on-tab-active" : "text-fl-muted hover:bg-fl-ground"
+              }`}
             >
               <span>{item.label}</span>
               {badge ? (
                 <span
                   data-testid={`nav-badge-${item.href.split("/").pop()}`}
                   aria-hidden="true"
-                  className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-khelo-orange px-1.5 text-[12px] font-extrabold leading-none text-khelo-ink"
+                  className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-fl-role-badge px-1.5 text-[12px] font-extrabold leading-none text-fl-role-on-badge"
                 >
                   {badge}
                 </span>
@@ -190,7 +189,7 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
               <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
             </svg>
-            {pendingTotal > 0 ? <span aria-hidden="true" data-testid="menu-pending-dot" className="absolute right-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-owner-surface bg-khelo-orange" /> : null}
+            {pendingTotal > 0 ? <span aria-hidden="true" data-testid="menu-pending-dot" className="absolute right-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-owner-surface bg-fl-orange" /> : null}
           </button>
         </div>
       </header>

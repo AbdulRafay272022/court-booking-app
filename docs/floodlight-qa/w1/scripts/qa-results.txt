@@ -1,0 +1,280 @@
+PASS search 390: Floodlight VenueCards rendered :: 5 cards
+PASS search 390: no horizontal page scroll :: overflow 0px
+PASS search 390: card shows the venue's real uploaded photo
+PASS search 390: 6-photo card has 6 dots :: 6
+PASS search 390: 0-photo card = placeholder (no img)
+PASS search 390: 1-photo card has no arrows/dots
+PASS search 390: autoplay advances (3.5 s) while visible :: translateX(0%) -> translateX(-14.2857%)
+PASS search 390: amenities popover opens (card #1, last in row)
+PASS search 390: popover inside viewport + not clipped/covered (card #1) :: inside=true onTop=true
+PASS search 390: Esc closes the popover (card #1)
+PASS search 390: amenities popover opens (card #5, last card)
+PASS search 390: popover inside viewport + not clipped/covered (card #5) :: inside=true onTop=true
+PASS search 390: Esc closes the popover (card #5)
+PASS search 390: keyboard focus on the chip opens the list
+PASS search 390: Esc closes it from the keyboard
+PASS search 390: keyboard focus inside the card pauses autoplay :: translateX(-14.2857%) -> translateX(-14.2857%)
+PASS contrast search 390: text >= 4.5 (large 3) [45 checked]
+PASS contrast search 390: no white on orange
+PASS venue 390: no horizontal page scroll :: overflow 0px
+PASS venue 390: hero counter shows 1/6 :: 1/6
+PASS venue 390: hero does not autoplay
+PASS venue 390: next arrow -> 2/6
+PASS contrast venue 390: text >= 4.5 (large 3) [87 checked]
+PASS contrast venue 390: no white on orange
+PASS venue 390: click opens full-screen gallery
+PASS venue 390: arrow key moves photo in full screen
+PASS venue 390: Esc closes full-screen gallery
+PASS venue 390: slot list has open/held/booked/blocked/mine rows :: {"open":11,"held":4,"booked":2,"blocked":2,"mine":6,"noRoom":5}
+PASS venue 390: held by someone else = dashed + icon + "Kisi ne hold kiya" :: {"dashed":true,"icon":true,"text":"6:00 PM se 6:30 PM\nKisi ne hold kiya"}
+PASS venue 390: booked = strikethrough :: line-through
+PASS venue 390: own rows honest (Pakki only on the booked one: 4 rows of 30 min = 2 slots x 1 booking) :: pakki rows 2; 3:00 PM se 3:30 PM Pakki ✓ | 3:30 PM se 4:00 PM Pakki ✓ | 8:00 PM se 8:30 PM Hold · Pay baqi | 8:30 PM se 9:00 PM Hold · Pay baqi | 9:00 PM se 9:30 PM Venue check | 9:30 PM se 10:00 PM Venue check
+PASS contrast venue 390 day popup: text >= 4.5 (large 3) [151 checked]
+PASS contrast venue 390 day popup: no white on orange
+PASS venue 390: confirm sheet shows Total / advance / balance from the quote :: Court 1 · padelMangal, 27 Oct8:00 AM se 9:00 AM✕Kitni der khelna hai?✓ 1 ghanta1.5 ghante2 ghanteTotal1 ghanta ka totalPKR 1,500Abhi advancePKR 750Venue par baq
+PASS venue 390: confirm sheet shows the venue cancel policy
+PASS venue 390: player primary = orange with ink text :: rgb(255, 106, 43) / rgb(12, 31, 29)
+PASS contrast venue 390 confirm sheet: text >= 4.5 (large 3) [170 checked]
+PASS contrast venue 390 confirm sheet: no white on orange
+PASS status 390 held: honest label :: Slot hold karne ke liye pay karo Madad chahiye? Hold · Pay baqi 14:28 hold baqi ABHI ADVANCE DENA HAI PKR 750 Balance PKR 750 venue par dena
+PASS status 390 held: "Court aapka hai"/QR only when booked
+PASS status 390 held: countdown ring from held_until
+PASS status 390 held: journey Hold -> Screenshot -> Venue check -> Pakki
+PASS status 390 held: no horizontal page scroll :: overflow 0px
+PASS contrast status 390 held: text >= 4.5 (large 3) [16 checked]
+PASS contrast status 390 held: no white on orange
+PASS status 390 submitted-pay: honest label :: Venue ka intezar Madad chahiye? Venue check BHEJ DIYA PKR 750 Balance PKR 750 venue par dena hoga Slot hold hua , ho gaya Screenshot bheja ,
+PASS status 390 submitted-pay: "Court aapka hai"/QR only when booked
+PASS status 390 submitted-pay: no horizontal page scroll :: overflow 0px
+PASS contrast status 390 submitted-pay: text >= 4.5 (large 3) [11 checked]
+PASS contrast status 390 submitted-pay: no white on orange
+PASS status 390 submitted-done: honest label :: Booking abhi pakki nahi Venue ke approve karne par hi booking pakki hogi. Yeh page khud update hota rahega. AAP KI BOOKING Gulberg Padel Clu
+PASS status 390 submitted-done: "Court aapka hai"/QR only when booked
+PASS status 390 submitted-done: no horizontal page scroll :: overflow 0px
+PASS contrast status 390 submitted-done: text >= 4.5 (large 3) [25 checked]
+PASS contrast status 390 submitted-done: no white on orange
+PASS status 390 booked: honest label :: Court aapka hai Venue ne confirm kar diya AAP KI BOOKING Gulberg Padel Club Pakki ✓ TAREEKH Mangal, 27 Oct WAQT 3:00 PM se 4:00 PM Court Cou
+PASS status 390 booked: "Court aapka hai"/QR only when booked
+PASS status 390 booked: no horizontal page scroll :: overflow 0px
+PASS contrast status 390 booked: text >= 4.5 (large 3) [20 checked]
+PASS contrast status 390 booked: no white on orange
+PASS contrast bookings 390: text >= 4.5 (large 3) [304 checked]
+PASS contrast bookings 390: no white on orange
+PASS owner 390 today: no orange primary action
+PASS owner 390 today: no horizontal page scroll :: overflow 0px
+PASS contrast owner 390 today: text >= 4.5 (large 3) [138 checked]
+PASS contrast owner 390 today: no white on orange
+PASS owner 390 approvals: no orange primary action
+PASS owner 390 approvals: no horizontal page scroll :: overflow 0px
+PASS contrast owner 390 approvals: text >= 4.5 (large 3) [129 checked]
+PASS contrast owner 390 approvals: no white on orange
+PASS owner 390 ledger: no orange primary action
+PASS owner 390 ledger: no horizontal page scroll :: overflow 0px
+PASS contrast owner 390 ledger: text >= 4.5 (large 3) [138 checked]
+PASS contrast owner 390 ledger: no white on orange
+PASS owner 390 walkin: no orange primary action
+PASS owner 390 walkin: selected chips are aria-pressed Chips
+PASS owner 390 walkin: no horizontal page scroll :: overflow 0px
+PASS contrast owner 390 walkin: text >= 4.5 (large 3) [32 checked]
+PASS contrast owner 390 walkin: no white on orange
+PASS owner 390 refunds: no orange primary action
+PASS owner 390 refunds: no horizontal page scroll :: overflow 0px
+PASS contrast owner 390 refunds: text >= 4.5 (large 3) [37 checked]
+PASS contrast owner 390 refunds: no white on orange
+PASS owner 390 growth: no orange primary action
+PASS owner 390 growth: no horizontal page scroll :: overflow 0px
+PASS contrast owner 390 growth: text >= 4.5 (large 3) [8 checked]
+PASS contrast owner 390 growth: no white on orange
+PASS owner 390 staff: no orange primary action
+PASS owner 390 staff: no horizontal page scroll :: overflow 0px
+PASS contrast owner 390 staff: text >= 4.5 (large 3) [35 checked]
+PASS contrast owner 390 staff: no white on orange
+PASS search 768: Floodlight VenueCards rendered :: 5 cards
+PASS search 768: no horizontal page scroll :: overflow 0px
+PASS search 768: card shows the venue's real uploaded photo
+PASS search 768: 6-photo card has 6 dots :: 6
+PASS search 768: 0-photo card = placeholder (no img)
+PASS search 768: 1-photo card has no arrows/dots
+PASS search 768: autoplay advances (3.5 s) while visible :: translateX(0%) -> translateX(-14.2857%)
+PASS search 768: hover shows 44px arrows :: opacity 1
+PASS search 768: hover pauses autoplay :: translateX(-14.2857%) -> translateX(-14.2857%)
+PASS search 768: next arrow moves the photo
+PASS search 768: card #2 has no amenities -> chip hidden
+PASS search 768: amenities popover opens (card #5, last card)
+PASS search 768: popover inside viewport + not clipped/covered (card #5) :: inside=true onTop=true
+PASS search 768: Esc closes the popover (card #5)
+PASS search 768: keyboard focus on the chip opens the list
+PASS search 768: Esc closes it from the keyboard
+PASS search 768: keyboard focus inside the card pauses autoplay :: translateX(-28.5714%) -> translateX(-28.5714%)
+PASS contrast search 768: text >= 4.5 (large 3) [45 checked]
+PASS contrast search 768: no white on orange
+PASS venue 768: no horizontal page scroll :: overflow 0px
+PASS venue 768: hero counter shows 1/6 :: 1/6
+PASS venue 768: hero does not autoplay
+PASS venue 768: next arrow -> 2/6
+PASS contrast venue 768: text >= 4.5 (large 3) [87 checked]
+PASS contrast venue 768: no white on orange
+PASS venue 768: click opens full-screen gallery
+PASS venue 768: arrow key moves photo in full screen
+PASS venue 768: Esc closes full-screen gallery
+PASS venue 768: slot list has open/held/booked/blocked/mine rows :: {"open":11,"held":4,"booked":2,"blocked":2,"mine":6,"noRoom":5}
+PASS venue 768: held by someone else = dashed + icon + "Kisi ne hold kiya" :: {"dashed":true,"icon":true,"text":"6:00 PM se 6:30 PM\nKisi ne hold kiya"}
+PASS venue 768: booked = strikethrough :: line-through
+PASS venue 768: own rows honest (Pakki only on the booked one: 4 rows of 30 min = 2 slots x 1 booking) :: pakki rows 2; 3:00 PM se 3:30 PM Pakki ✓ | 3:30 PM se 4:00 PM Pakki ✓ | 8:00 PM se 8:30 PM Hold · Pay baqi | 8:30 PM se 9:00 PM Hold · Pay baqi | 9:00 PM se 9:30 PM Venue check | 9:30 PM se 10:00 PM Venue check
+PASS contrast venue 768 day popup: text >= 4.5 (large 3) [151 checked]
+PASS contrast venue 768 day popup: no white on orange
+PASS venue 768: confirm sheet shows Total / advance / balance from the quote :: Court 1 · padelMangal, 27 Oct8:00 AM se 9:00 AM✕Kitni der khelna hai?✓ 1 ghanta1.5 ghante2 ghanteTotal1 ghanta ka totalPKR 1,500Abhi advancePKR 750Venue par baq
+PASS venue 768: confirm sheet shows the venue cancel policy
+PASS venue 768: player primary = orange with ink text :: rgb(255, 106, 43) / rgb(12, 31, 29)
+PASS contrast venue 768 confirm sheet: text >= 4.5 (large 3) [170 checked]
+PASS contrast venue 768 confirm sheet: no white on orange
+PASS status 768 held: honest label :: Slot hold karne ke liye pay karo Madad chahiye? Hold · Pay baqi 13:10 hold baqi ABHI ADVANCE DENA HAI PKR 750 Balance PKR 750 venue par dena
+PASS status 768 held: "Court aapka hai"/QR only when booked
+PASS status 768 held: countdown ring from held_until
+PASS status 768 held: journey Hold -> Screenshot -> Venue check -> Pakki
+PASS status 768 held: no horizontal page scroll :: overflow 0px
+PASS contrast status 768 held: text >= 4.5 (large 3) [16 checked]
+PASS contrast status 768 held: no white on orange
+PASS status 768 submitted-pay: honest label :: Venue ka intezar Madad chahiye? Venue check BHEJ DIYA PKR 750 Balance PKR 750 venue par dena hoga Slot hold hua , ho gaya Screenshot bheja ,
+PASS status 768 submitted-pay: "Court aapka hai"/QR only when booked
+PASS status 768 submitted-pay: no horizontal page scroll :: overflow 0px
+PASS contrast status 768 submitted-pay: text >= 4.5 (large 3) [11 checked]
+PASS contrast status 768 submitted-pay: no white on orange
+PASS status 768 submitted-done: honest label :: Booking abhi pakki nahi Venue ke approve karne par hi booking pakki hogi. Yeh page khud update hota rahega. AAP KI BOOKING Gulberg Padel Clu
+PASS status 768 submitted-done: "Court aapka hai"/QR only when booked
+PASS status 768 submitted-done: no horizontal page scroll :: overflow 0px
+PASS contrast status 768 submitted-done: text >= 4.5 (large 3) [25 checked]
+PASS contrast status 768 submitted-done: no white on orange
+PASS status 768 booked: honest label :: Court aapka hai Venue ne confirm kar diya AAP KI BOOKING Gulberg Padel Club Pakki ✓ TAREEKH Mangal, 27 Oct WAQT 3:00 PM se 4:00 PM Court Cou
+PASS status 768 booked: "Court aapka hai"/QR only when booked
+PASS status 768 booked: no horizontal page scroll :: overflow 0px
+PASS contrast status 768 booked: text >= 4.5 (large 3) [20 checked]
+PASS contrast status 768 booked: no white on orange
+PASS contrast bookings 768: text >= 4.5 (large 3) [304 checked]
+PASS contrast bookings 768: no white on orange
+PASS owner 768 today: no orange primary action
+PASS owner 768 today: no horizontal page scroll :: overflow 0px
+PASS contrast owner 768 today: text >= 4.5 (large 3) [139 checked]
+PASS contrast owner 768 today: no white on orange
+PASS owner 768 approvals: no orange primary action
+PASS owner 768 approvals: no horizontal page scroll :: overflow 0px
+PASS contrast owner 768 approvals: text >= 4.5 (large 3) [147 checked]
+PASS contrast owner 768 approvals: no white on orange
+PASS owner 768 ledger: no orange primary action
+PASS owner 768 ledger: no horizontal page scroll :: overflow 0px
+PASS contrast owner 768 ledger: text >= 4.5 (large 3) [156 checked]
+PASS contrast owner 768 ledger: no white on orange
+PASS owner 768 walkin: no orange primary action
+PASS owner 768 walkin: selected chips are aria-pressed Chips
+PASS owner 768 walkin: no horizontal page scroll :: overflow 0px
+PASS contrast owner 768 walkin: text >= 4.5 (large 3) [50 checked]
+PASS contrast owner 768 walkin: no white on orange
+PASS owner 768 refunds: no orange primary action
+PASS owner 768 refunds: no horizontal page scroll :: overflow 0px
+PASS contrast owner 768 refunds: text >= 4.5 (large 3) [55 checked]
+PASS contrast owner 768 refunds: no white on orange
+PASS owner 768 growth: no orange primary action
+PASS owner 768 growth: no horizontal page scroll :: overflow 0px
+PASS contrast owner 768 growth: text >= 4.5 (large 3) [26 checked]
+PASS contrast owner 768 growth: no white on orange
+PASS owner 768 staff: no orange primary action
+PASS owner 768 staff: no horizontal page scroll :: overflow 0px
+PASS contrast owner 768 staff: text >= 4.5 (large 3) [53 checked]
+PASS contrast owner 768 staff: no white on orange
+PASS search 1280: Floodlight VenueCards rendered :: 5 cards
+PASS search 1280: no horizontal page scroll :: overflow 0px
+PASS search 1280: card shows the venue's real uploaded photo
+PASS search 1280: 6-photo card has 6 dots :: 6
+PASS search 1280: 0-photo card = placeholder (no img)
+PASS search 1280: 1-photo card has no arrows/dots
+PASS search 1280: autoplay advances (3.5 s) while visible :: translateX(0%) -> translateX(-14.2857%)
+PASS search 1280: hover shows 44px arrows :: opacity 1
+PASS search 1280: hover pauses autoplay :: translateX(-14.2857%) -> translateX(-14.2857%)
+PASS search 1280: next arrow moves the photo
+PASS search 1280: amenities popover opens (card #4, last in row)
+PASS search 1280: popover inside viewport + not clipped/covered (card #4) :: inside=true onTop=true
+PASS search 1280: Esc closes the popover (card #4)
+PASS search 1280: amenities popover opens (card #5, last card)
+PASS search 1280: popover inside viewport + not clipped/covered (card #5) :: inside=true onTop=true
+PASS search 1280: Esc closes the popover (card #5)
+PASS search 1280: keyboard focus on the chip opens the list
+PASS search 1280: Esc closes it from the keyboard
+PASS search 1280: keyboard focus inside the card pauses autoplay :: translateX(-28.5714%) -> translateX(-28.5714%)
+PASS contrast search 1280: text >= 4.5 (large 3) [54 checked]
+PASS contrast search 1280: no white on orange
+PASS venue 1280: no horizontal page scroll :: overflow 0px
+PASS venue 1280: hero counter shows 1/6 :: 1/6
+PASS venue 1280: hero does not autoplay
+PASS venue 1280: next arrow -> 2/6
+PASS contrast venue 1280: text >= 4.5 (large 3) [97 checked]
+PASS contrast venue 1280: no white on orange
+PASS venue 1280: click opens full-screen gallery
+PASS venue 1280: arrow key moves photo in full screen
+PASS venue 1280: Esc closes full-screen gallery
+PASS venue 1280: slot list has open/held/booked/blocked/mine rows :: {"open":11,"held":4,"booked":2,"blocked":2,"mine":6,"noRoom":5}
+PASS venue 1280: held by someone else = dashed + icon + "Kisi ne hold kiya" :: {"dashed":true,"icon":true,"text":"6:00 PM se 6:30 PM\nKisi ne hold kiya"}
+PASS venue 1280: booked = strikethrough :: line-through
+PASS venue 1280: own rows honest (Pakki only on the booked one: 4 rows of 30 min = 2 slots x 1 booking) :: pakki rows 2; 3:00 PM se 3:30 PM Pakki ✓ | 3:30 PM se 4:00 PM Pakki ✓ | 8:00 PM se 8:30 PM Hold · Pay baqi | 8:30 PM se 9:00 PM Hold · Pay baqi | 9:00 PM se 9:30 PM Venue check | 9:30 PM se 10:00 PM Venue check
+PASS contrast venue 1280 day popup: text >= 4.5 (large 3) [161 checked]
+PASS contrast venue 1280 day popup: no white on orange
+PASS venue 1280: confirm sheet shows Total / advance / balance from the quote :: Court 1 · padelMangal, 27 Oct8:00 AM se 9:00 AM✕Kitni der khelna hai?✓ 1 ghanta1.5 ghante2 ghanteTotal1 ghanta ka totalPKR 1,500Abhi advancePKR 750Venue par baq
+PASS venue 1280: confirm sheet shows the venue cancel policy
+PASS venue 1280: player primary = orange with ink text :: rgb(255, 106, 43) / rgb(12, 31, 29)
+PASS contrast venue 1280 confirm sheet: text >= 4.5 (large 3) [180 checked]
+PASS contrast venue 1280 confirm sheet: no white on orange
+PASS status 1280 held: honest label :: Slot hold karne ke liye pay karo Madad chahiye? Hold · Pay baqi 11:57 hold baqi ABHI ADVANCE DENA HAI PKR 750 Balance PKR 750 venue par dena
+PASS status 1280 held: "Court aapka hai"/QR only when booked
+PASS status 1280 held: countdown ring from held_until
+PASS status 1280 held: journey Hold -> Screenshot -> Venue check -> Pakki
+PASS status 1280 held: no horizontal page scroll :: overflow 0px
+PASS contrast status 1280 held: text >= 4.5 (large 3) [16 checked]
+PASS contrast status 1280 held: no white on orange
+PASS status 1280 submitted-pay: honest label :: Venue ka intezar Madad chahiye? Venue check BHEJ DIYA PKR 750 Balance PKR 750 venue par dena hoga Slot hold hua , ho gaya Screenshot bheja ,
+PASS status 1280 submitted-pay: "Court aapka hai"/QR only when booked
+PASS status 1280 submitted-pay: no horizontal page scroll :: overflow 0px
+PASS contrast status 1280 submitted-pay: text >= 4.5 (large 3) [11 checked]
+PASS contrast status 1280 submitted-pay: no white on orange
+PASS status 1280 submitted-done: honest label :: Booking abhi pakki nahi Venue ke approve karne par hi booking pakki hogi. Yeh page khud update hota rahega. AAP KI BOOKING Gulberg Padel Clu
+PASS status 1280 submitted-done: "Court aapka hai"/QR only when booked
+PASS status 1280 submitted-done: no horizontal page scroll :: overflow 0px
+PASS contrast status 1280 submitted-done: text >= 4.5 (large 3) [25 checked]
+PASS contrast status 1280 submitted-done: no white on orange
+PASS status 1280 booked: honest label :: Court aapka hai Venue ne confirm kar diya AAP KI BOOKING Gulberg Padel Club Pakki ✓ TAREEKH Mangal, 27 Oct WAQT 3:00 PM se 4:00 PM Court Cou
+PASS status 1280 booked: "Court aapka hai"/QR only when booked
+PASS status 1280 booked: no horizontal page scroll :: overflow 0px
+PASS contrast status 1280 booked: text >= 4.5 (large 3) [20 checked]
+PASS contrast status 1280 booked: no white on orange
+PASS contrast bookings 1280: text >= 4.5 (large 3) [313 checked]
+PASS contrast bookings 1280: no white on orange
+PASS owner 1280: active nav is the teal role pill (white text) :: rgb(14, 124, 116) / rgb(255, 255, 255)
+PASS owner 1280 today: no orange primary action
+PASS owner 1280 today: no horizontal page scroll :: overflow 0px
+PASS contrast owner 1280 today: text >= 4.5 (large 3) [139 checked]
+PASS contrast owner 1280 today: no white on orange
+PASS owner 1280 approvals: no orange primary action
+PASS owner 1280 approvals: no horizontal page scroll :: overflow 0px
+PASS contrast owner 1280 approvals: text >= 4.5 (large 3) [147 checked]
+PASS contrast owner 1280 approvals: no white on orange
+PASS owner 1280 ledger: no orange primary action
+PASS owner 1280 ledger: no horizontal page scroll :: overflow 0px
+PASS contrast owner 1280 ledger: text >= 4.5 (large 3) [165 checked]
+PASS contrast owner 1280 ledger: no white on orange
+PASS owner 1280 walkin: no orange primary action
+PASS owner 1280 walkin: selected chips are aria-pressed Chips
+PASS owner 1280 walkin: no horizontal page scroll :: overflow 0px
+PASS contrast owner 1280 walkin: text >= 4.5 (large 3) [50 checked]
+PASS contrast owner 1280 walkin: no white on orange
+PASS owner 1280 refunds: no orange primary action
+PASS owner 1280 refunds: no horizontal page scroll :: overflow 0px
+PASS contrast owner 1280 refunds: text >= 4.5 (large 3) [55 checked]
+PASS contrast owner 1280 refunds: no white on orange
+PASS owner 1280 growth: no orange primary action
+PASS owner 1280 growth: no horizontal page scroll :: overflow 0px
+PASS contrast owner 1280 growth: text >= 4.5 (large 3) [26 checked]
+PASS contrast owner 1280 growth: no white on orange
+PASS owner 1280 staff: no orange primary action
+PASS owner 1280 staff: no horizontal page scroll :: overflow 0px
+PASS contrast owner 1280 staff: text >= 4.5 (large 3) [53 checked]
+PASS contrast owner 1280 staff: no white on orange
+
+TOTAL 278 checks, 278 pass, 0 fail

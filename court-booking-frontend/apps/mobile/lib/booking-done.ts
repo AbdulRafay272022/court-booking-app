@@ -16,7 +16,8 @@ export interface DoneCopy {
 /** What the confirmation screen says for each booking status. "Court is yours / Confirmed by the venue" is ONLY for a
  * booking the venue has really confirmed: the pay screen also lands here while the owner is still reviewing the
  * screenshot, and that used to read as confirmed (docs/mobile-audit-2026-10.md P0-2). */
-export function doneCopy(status: BookingStatus, cancelledBy: CancelledBy | null = null): DoneCopy {
+export function doneCopy(status: BookingStatus, cancelledBy: CancelledBy | null = null, lang: "en" | "ru" = "en"): DoneCopy {
+  if (lang === "ru") return doneCopyRu(status, cancelledBy);
   const toBookings = { action: "bookings" as const, actionLabel: "Done" };
   switch (status) {
     case "booked":
@@ -53,6 +54,51 @@ export function doneCopy(status: BookingStatus, cancelledBy: CancelledBy | null 
               : cancelledBy === "system"
                 ? "Payment didn't arrive in time, so the slot was released."
                 : "This booking was cancelled.",
+        tone: "ended",
+        icon: "x",
+        ...toBookings,
+      };
+  }
+}
+
+/** Roman Urdu copy (Floodlight Status board). Same honesty rule: "Court aap ka hai" ONLY for booked. */
+function doneCopyRu(status: BookingStatus, cancelledBy: CancelledBy | null): DoneCopy {
+  const toBookings = { action: "bookings" as const, actionLabel: "Theek hai" };
+  switch (status) {
+    case "booked":
+      return { title: "Court aap ka hai!", subtitle: "Venue ne payment approve kar di.", tone: "confirmed", icon: "check", ...toBookings };
+    case "completed":
+      return { title: "Game ho gaya", subtitle: "Ye booking mukammal hai. Khelne ka shukriya!", tone: "confirmed", icon: "check", ...toBookings };
+    case "payment_submitted":
+      return {
+        title: "Payment bhej di",
+        subtitle: "Venue abhi check kar raha hai. Tab tak ye slot kisi aur ko nahi milega.",
+        tone: "waiting",
+        icon: "clock",
+        ...toBookings,
+      };
+    case "held":
+      return {
+        title: "Payment baqi hai",
+        subtitle: "Slot hold par hai. Advance bhej kar payment ka screenshot lagayein.",
+        tone: "waiting",
+        icon: "clock",
+        action: "pay",
+        actionLabel: "Screenshot lagayein",
+      };
+    case "no_show":
+      return { title: "No-show mark hua", subtitle: "Venue ne is booking ko no-show mark kiya.", tone: "ended", icon: "x", ...toBookings };
+    case "cancelled":
+      return {
+        title: cancelledBy === "system" ? "Waqt khatam ho gaya" : cancelledBy === "owner" ? "Venue ne booking nahi li" : "Booking cancel ho gayi",
+        subtitle:
+          cancelledBy === "owner"
+            ? "Venue ne ye booking reject ya cancel kar di."
+            : cancelledBy === "player"
+              ? "Aap ne ye booking cancel ki."
+              : cancelledBy === "system"
+                ? "Waqt par payment ya check nahi hua, is liye slot chhor diya gaya."
+                : "Ye booking cancel ho gayi.",
         tone: "ended",
         icon: "x",
         ...toBookings,

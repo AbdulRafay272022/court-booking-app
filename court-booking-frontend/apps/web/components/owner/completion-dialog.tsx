@@ -189,7 +189,7 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
             onClick={save}
             disabled={saving}
             data-testid="ovw-completion-save"
-            className="min-h-12 rounded-xl bg-khelo-orange px-6 text-[15px] font-bold text-khelo-ink disabled:opacity-60"
+            className="min-h-12 rounded-xl bg-fl-teal px-6 text-[15px] font-bold text-fl-white disabled:opacity-60"
           >
             {saving ? t("ovw.cmp.saving") : plan?.outcome === "yes" ? t("ovw.cmp.saveFull") : t("ovw.cmp.save")}
           </button>

@@ -37,30 +37,32 @@
   --color-player-teal: #0e6274;
   --color-player-teal-soft: #ebf2f4;
 
-  /* Owner/business-facing system (owner app, venue onboarding, admin, owner web) -- teal/IBM Plex Sans. */
-  --color-owner-bg: #f4f6f7;
-  --color-owner-surface: #ffffff;
-  --color-owner-border: #dce3e6;
-  --color-owner-border-light: #edf1f2;
-  --color-owner-ink: #101c21;
-  --color-owner-ink-muted: #5b7079;
-  --color-owner-ink-faint: #8399a1;
-  --color-owner-ink-fainter: #a6b6bc;
-  --color-owner-accent: #0e6274;
-  --color-owner-accent-hover: #0a4a58;
-  --color-owner-accent-soft: #ebf2f4;
-  --color-owner-accent-soft-border: #b8d4db;
-  --color-owner-success: #1f7a52;
-  --color-owner-success-soft: #e4f0ea;
-  --color-owner-success-soft-border: #a9cfbd;
-  --color-owner-success-dark: #14563a;
-  --color-owner-warn: #9c5c0a;
-  --color-owner-warn-soft: #fbf0dd;
-  --color-owner-warn-soft-border: #e8d3a8;
-  --color-owner-warn-dark: #7a480a;
-  --color-owner-danger: #8c3823;
-  --color-owner-danger-soft: #f8e5e0;
-  --color-owner-danger-soft-border: #ddbab1;
+  /* Owner/business-facing system (owner app, venue onboarding, admin, owner web). Floodlight (2026-10): these names now
+     resolve to the shared ui-tokens palette (packages/ui-tokens, the only place with hex), so every owner screen is teal-led
+     (#0E7C74 + white) and its small text clears 4.5:1 (the old faint greys #8399A1 / #A6B6BC failed; they map to muted2). */
+  --color-owner-bg: var(--color-fl-ground);
+  --color-owner-surface: var(--color-fl-white);
+  --color-owner-border: var(--color-fl-line);
+  --color-owner-border-light: var(--color-fl-divider);
+  --color-owner-ink: var(--color-fl-night);
+  --color-owner-ink-muted: var(--color-fl-muted);
+  --color-owner-ink-faint: var(--color-fl-muted2);
+  --color-owner-ink-fainter: var(--color-fl-muted2);
+  --color-owner-accent: var(--color-fl-teal);
+  --color-owner-accent-hover: var(--color-fl-teal-deep);
+  --color-owner-accent-soft: var(--color-fl-teal-tint);
+  --color-owner-accent-soft-border: var(--color-fl-teal-half);
+  --color-owner-success: var(--color-fl-open);
+  --color-owner-success-soft: var(--color-fl-open-tint);
+  --color-owner-success-soft-border: var(--color-fl-open);
+  --color-owner-success-dark: var(--color-fl-open);
+  --color-owner-warn: var(--color-fl-waiting);
+  --color-owner-warn-soft: var(--color-fl-waiting-tint);
+  --color-owner-warn-soft-border: var(--color-fl-waiting-border);
+  --color-owner-warn-dark: var(--color-fl-waiting);
+  --color-owner-danger: var(--color-fl-danger);
+  --color-owner-danger-soft: var(--color-fl-danger-tint);
+  --color-owner-danger-soft-border: var(--color-fl-danger-border);
 
   /* Khelo website + app screens (the 2026-10 redesign). The ONE place these hexes live; components use the utilities
      (bg-khelo-ink, text-khelo-teal, ...). Text on orange is always ink, never white. */

@@ -1,64 +1,60 @@
 import { useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { MessageCircle } from "lucide-react-native";
 import { isValidOtp } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { palette, radius, space } from "@court-booking/ui-tokens";
 
+import { Banner, Button, OtpInput, Text, useCopy } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { getDeviceName, getOrCreateDeviceId, getPlatform } from "@/lib/device";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { usePendingAuth } from "@/lib/pending-auth";
 import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
-import { AuthScreen, FormMessage, OtpControls, SubmitButton, TextField, toneColors, useOtpFlow } from "@/components/auth/kit";
+import { useOtpFlow } from "@/components/auth/kit";
+import { AuthShell, OtpStatus, TextLink } from "./_fl";
 
-/** One OTP screen, two purposes -- and the copy says which:
- *  - purpose=signup:   "Verify your new account" (finishes signup and signs the user in)
- *  - purpose=reverify: "Verify your phone" (365 days passed, or signup was never finished; proves
- *                      the phone, then retries the password login with the password just typed) */
+/** PAuth board frame 3 (WhatsApp code). One screen, two purposes:
+ *  - purpose=signup:   finishes signup and signs the user in
+ *  - purpose=reverify: proves the phone again, then retries the password login with the password just typed */
 export default function VerifyScreen() {
-  const { phone = "", purpose: rawPurpose, role: rawRole, pending } = useLocalSearchParams<{ phone?: string; purpose?: string; role?: string; pending?: string }>();
+  const copy = useCopy();
+  const { phone = "", purpose: rawPurpose, pending } = useLocalSearchParams<{ phone?: string; purpose?: string; role?: string; pending?: string }>();
   const purpose = rawPurpose === "reverify" ? "reverify" : "signup";
-  const isPending = pending === "1"; // arrived because a signup was already in progress (item E)
-  const tone = purpose === "signup" && rawRole === "owner" ? "owner" : "player";
-  const c = toneColors(tone);
+  const isPending = pending === "1"; // arrived because a signup was already in progress
 
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [alreadyVerified, setAlreadyVerified] = useState(false); // QA #2
-  const submitting = useRef(false); // QA #8: block a rapid double-tap
-  const lock = useCountdown(); // QA #5
+  const [alreadyVerified, setAlreadyVerified] = useState(false);
+  const submitting = useRef(false); // block a rapid double-tap
+  const lock = useCountdown();
 
   const flow = useOtpFlow(
     purpose,
     phone,
     async () => (await api.auth.requestOtp({ phone })).expires_in,
     () => {
-      setError(null); // QA #5: clear a stale banner after a successful resend
+      setError(null);
       lock.start(0);
     },
   );
   const ready = isValidOtp(code) && !flow.expired && !alreadyVerified && lock.seconds === 0;
 
   async function handleVerify() {
-    if (submitting.current) return; // QA #8
+    if (submitting.current || !ready) return;
     submitting.current = true;
     setBusy(true);
     setError(null);
     try {
-      const device = {
-        device_id: await getOrCreateDeviceId(),
-        device_name: getDeviceName(),
-        platform: getPlatform(),
-      };
+      const device = { device_id: await getOrCreateDeviceId(), device_name: getDeviceName(), platform: getPlatform() };
       if (purpose === "signup") {
         const res = await api.auth.verifySignupOtp({ phone, otp: code, ...device });
-        // The root layout swaps to the role's group; a new owner lands on the venue-setup gate.
         await useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
         return;
       }
-
       await api.auth.reverifyPhone({ phone, otp: code });
       const password = usePendingAuth.getState().password;
       usePendingAuth.getState().setPassword(null);
@@ -70,15 +66,12 @@ export default function VerifyScreen() {
       await useAuthStore.getState().signIn(res.token, res.user, res.expires_at);
     } catch (err) {
       if (err instanceof ApiError && err.code === "ALREADY_VERIFIED") {
-        setAlreadyVerified(true); // QA #2: offer Log in, not a dead-end expired error
-        setError("This number is already verified — please log in.");
-      } else if (
-        err instanceof ApiError &&
-        (err.code === "OTP_RATE_LIMITED" || err.code === "LOGIN_RATE_LIMITED" || err.code === "OTP_IP_RATE_LIMITED")
-      ) {
-        lock.start(retryAfterSeconds(err.details) || 60); // QA #5
+        setAlreadyVerified(true);
+        setError(copy("Ye number pehle se verify hai. Login karein.", "This number is already verified. Please log in."));
+      } else if (err instanceof ApiError && (err.code === "OTP_RATE_LIMITED" || err.code === "LOGIN_RATE_LIMITED" || err.code === "OTP_IP_RATE_LIMITED")) {
+        lock.start(retryAfterSeconds(err.details) || 60);
       } else {
-        setError(friendlyErrorMessage(err));
+        setError(err instanceof ApiError && err.code === "INVALID_OTP" ? copy("Code galat hai. WhatsApp dekh kar dobara likhein.", "That code isn't right. Check WhatsApp and try again.") : friendlyErrorMessage(err));
         if (err instanceof ApiError && ["INVALID_OTP", "OTP_EXPIRED", "OTP_SUPERSEDED"].includes(err.code)) setCode("");
       }
     } finally {
@@ -87,85 +80,57 @@ export default function VerifyScreen() {
     }
   }
 
-  const link = tone === "owner" ? "font-plex-bold" : "font-figtree-bold";
   return (
-    <AuthScreen
-      tone={tone}
-      title={purpose === "signup" ? "Verify your new account" : "Verify your phone"}
+    <AuthShell
+      testID="verify-screen"
+      title={purpose === "signup" ? copy("WhatsApp par code bheja", "We sent a code on WhatsApp") : copy("Apna number verify karein", "Verify your phone")}
       subtitle={
-        <>
-          {purpose === "signup"
-            ? "Almost there. We sent a 6-digit code on WhatsApp to "
-            : "For your security we need to confirm this number again. We sent a 6-digit code on WhatsApp to "}
-          <Text className="font-mono-semibold" style={{ color: c.ink }}>
-            {phone}
-          </Text>
-          .
-        </>
+        purpose === "signup"
+          ? copy(`${phone} par 6 hindson ka code aaya hoga.`, `A 6-digit code was sent to ${phone}.`)
+          : copy(`Hifazat ke liye number dobara verify karna hai. ${phone} par 6 hindson ka code bheja.`, `For your security we need to confirm this number again. We sent a 6-digit code to ${phone}.`)
       }
+      onBack={() => (purpose === "signup" ? router.replace("/(auth)/signup") : router.replace("/(auth)/login"))}
       footer={
-        <Text
+        <TextLink
+          label={purpose === "signup" ? copy("Number badlein", "Use a different number") : copy("Login par wapas", "Back to log in")}
           onPress={() => (purpose === "signup" ? router.replace("/(auth)/signup") : router.replace("/(auth)/login"))}
-          className={link}
-          style={{ fontSize: 14, color: c.inkMuted, textDecorationLine: "underline" }}
-        >
-          {purpose === "signup" ? "Wrong number? Start again" : "Back to log in"}
-        </Text>
+        />
       }
     >
-      {isPending ? (
-        <FormMessage kind="info" tone={tone}>
-          You already have a signup in progress for this number — check WhatsApp for your code, or tap Resend below. (Any details you just re-entered weren&apos;t saved.)
-        </FormMessage>
-      ) : null}
-      <TextField
-        label="Verification code"
-        tone={tone}
-        mono
-        keyboardType="number-pad"
-        autoComplete="one-time-code"
-        textContentType="oneTimeCode"
-        autoFocus
-        maxLength={6}
-        value={code}
-        editable={!flow.expired}
-        onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))}
-        placeholder="••••••"
-        style={{ textAlign: "center", fontSize: 22, letterSpacing: 8 }}
-      />
-
-      <OtpControls flow={flow} tone={tone} />
-
-      {/* QA #8 / QA round 4 item 3: reserve the banner's space so it never shifts the button below.
-          Sized to comfortably fit a rendered FormMessage on one line -- the earlier 44 still let a
-          ~19px shift through when the banner actually rendered. */}
-      <View style={{ minHeight: 60, justifyContent: "center" }}>
-        {lock.seconds > 0 ? (
-          <FormMessage kind="error" tone={tone}>{`Too many attempts. Please try again in ${lock.seconds}s.`}</FormMessage>
-        ) : error ? (
-          <FormMessage kind="error" tone={tone}>{error}</FormMessage>
-        ) : null}
+      <View style={{ width: 64, height: 64, borderRadius: radius.tile, backgroundColor: palette.openTint, alignItems: "center", justifyContent: "center" }} accessibilityElementsHidden importantForAccessibility="no">
+        <MessageCircle size={30} color={palette.open} />
       </View>
-
-      {alreadyVerified ? (
-        <SubmitButton
-          tone={tone}
-          ready
-          busy={false}
-          label="Log in"
-          busyLabel=""
-          onPress={() => router.replace({ pathname: "/(auth)/login", params: { phone, notice: "phone-verified" } })}
+      {isPending ? (
+        <Banner
+          tone="info"
+          body={copy(
+            "Is number ka signup pehle se chal raha hai. WhatsApp mein code dekhein ya neeche dobara bhejein. (Abhi daali gayi details save nahi huin.)",
+            "A signup is already in progress for this number. Check WhatsApp for your code, or resend below. (The details you just entered weren't saved.)",
+          )}
         />
+      ) : null}
+      <OtpInput value={code} onChange={setCode} error={!!error && !alreadyVerified} disabled={flow.expired} autoFocus />
+      <OtpStatus flow={flow} />
+      {lock.seconds > 0 ? (
+        <Banner tone="danger" body={copy(`Bohat zyada koshishein. ${lock.seconds}s baad dobara.`, `Too many attempts. Try again in ${lock.seconds}s.`)} />
+      ) : error ? (
+        <Banner tone={alreadyVerified ? "info" : "danger"} body={error} testID="verify-error" />
+      ) : null}
+      {alreadyVerified ? (
+        <Button label={copy("Login karein", "Log in")} block onPress={() => router.replace({ pathname: "/(auth)/login", params: { phone, notice: "phone-verified" } })} />
       ) : (
-        <SubmitButton
-          tone={tone}
-          ready={ready}
-          busy={busy}
-          label={lock.seconds > 0 ? `Try again in ${lock.seconds}s` : purpose === "signup" ? "Verify and continue" : "Verify"}
-          busyLabel="Verifying…"
+        <Button
+          label={lock.seconds > 0 ? copy(`${lock.seconds}s baad`, `Try again in ${lock.seconds}s`) : copy("Verify karein", "Verify")}
+          block
+          loading={busy}
+          disabled={!ready}
           onPress={handleVerify}
+          testID="verify-submit"
         />
       )}
-    </AuthScreen>
+      <Text variant="caption" tone="muted" align="center">
+        {copy("Code sirf WhatsApp par aata hai. Kisi ko na batayein.", "The code only comes on WhatsApp. Never share it.")}
+      </Text>
+    </AuthShell>
   );
 }

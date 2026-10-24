@@ -24,12 +24,14 @@ export function VenueScheduleClient({
   sports,
   courts,
   horizonDays,
+  cancellation,
 }: {
   venueId: string;
   venueName: string;
   sports: string[];
   courts: Court[];
   horizonDays?: number | null;
+  cancellation?: { cancellation_allowed: boolean; cancellation_cutoff_hours: number | null } | null;
 }) {
   const t = useT();
   const fmt = useFmt();
@@ -65,7 +67,7 @@ export function VenueScheduleClient({
               aria-pressed={activeSport === s}
               data-testid={`sport-tab-${s}`}
               className={`khelo-btn inline-flex min-h-11 shrink-0 items-center rounded-full border-[1.5px] px-[18px] py-2.5 text-[14px] font-bold ${
-                activeSport === s ? "border-khelo-ink bg-khelo-ink text-white" : "border-khelo-border bg-khelo-surface text-khelo-ink"
+                activeSport === s ? "border-fl-night bg-fl-night text-white" : "border-fl-line-strong bg-fl-white text-fl-night"
               }`}
             >
               {s[0].toUpperCase() + s.slice(1)}
@@ -75,25 +77,25 @@ export function VenueScheduleClient({
       ) : null}
 
       {activeCourts.length === 0 ? (
-        <p className="text-center py-10 text-khelo-muted-2 text-sm">{t("venue.avail.noCourts")}</p>
+        <p className="text-center py-10 text-fl-muted2 text-sm">{t("venue.avail.noCourts")}</p>
       ) : (
         <div className={`grid gap-4 ${activeCourts.length > 1 ? "md:grid-cols-2" : ""}`}>
           {activeCourts.map((court) => {
             const price = prices[court.id];
             return (
-              <section key={court.id} className="bg-khelo-surface rounded-3xl p-3.5 sm:p-5 flex flex-col gap-3.5" data-testid={`court-card-${court.name}`}>
-                <div className="flex flex-col gap-1.5 rounded-2xl bg-khelo-page px-4 py-3">
-                  <h3 className="font-khelo-display text-[18px] font-extrabold text-khelo-ink" data-testid="court-card-title">
-                    <CourtLabel name={court.name} sport={court.sport} badgeClassName="bg-khelo-mint! text-khelo-teal! opacity-100!" />
+              <section key={court.id} className="bg-fl-white rounded-3xl p-3.5 sm:p-5 flex flex-col gap-3.5" data-testid={`court-card-${court.name}`}>
+                <div className="flex flex-col gap-1.5 rounded-2xl bg-fl-ground px-4 py-3">
+                  <h3 className="font-khelo-display text-[18px] font-extrabold text-fl-night" data-testid="court-card-title">
+                    <CourtLabel name={court.name} sport={court.sport} badgeClassName="bg-fl-teal-tint! text-fl-teal-deep! opacity-100!" />
                   </h3>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-khelo-muted">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-fl-muted">
                     <span>{court.is_indoor ? t("venue.card.indoor") : t("venue.card.outdoor")}</span>
                     <span aria-hidden="true">·</span>
                     <span>{t("venue.avail.minimum", { duration: fmt.duration(court.slot_minutes) })}</span>
                     {price != null ? (
                       <>
                         <span aria-hidden="true">·</span>
-                        <span className="font-extrabold text-khelo-ink">{t("venue.avail.fromPrice", { price: formatPKR(price) })}</span>
+                        <span className="font-extrabold text-fl-night">{t("venue.avail.fromPrice", { price: formatPKR(price) })}</span>
                       </>
                     ) : null}
                   </div>
@@ -122,6 +124,7 @@ export function VenueScheduleClient({
           venueId={venueId}
           venueName={venueName}
           initialDate={popup.date}
+          cancellation={cancellation}
           onClose={() => setPopup(null)}
         />
       ) : null}

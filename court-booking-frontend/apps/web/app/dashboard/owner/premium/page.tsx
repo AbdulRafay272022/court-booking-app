@@ -82,7 +82,7 @@ export default function OwnerPremiumPage() {
       </div>
 
       {!data.enforced ? (
-        <p className="text-sm rounded-lg px-4 py-3" style={{ background: "#E7F2F5", color: "#0E6274" }}>
+        <p className="text-sm rounded-lg px-4 py-3" style={{ background: "var(--color-fl-teal-tint)", color: "var(--color-fl-teal-deep)" }}>
           {t("odash.premium.notEnforced")}
         </p>
       ) : null}
@@ -110,11 +110,11 @@ export default function OwnerPremiumPage() {
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm">{f.label}</p>
                   {f.description ? <p className="text-xs text-owner-ink-faint mt-0.5">{f.description}</p> : null}
-                  <p className="text-xs mt-1.5" style={{ color: f.entitled || !f.enabled ? "#5B7079" : "#B3261E" }}>
+                  <p className="text-xs mt-1.5" style={{ color: f.entitled || !f.enabled ? "var(--color-fl-muted)" : "var(--color-fl-danger)" }}>
                     {stateText(t, fmt, f, data.enforced, data.trial_days)}
                   </p>
                 </div>
-                <p className="font-mono text-sm font-bold whitespace-nowrap">
+                <p className="tabular-nums text-sm font-bold whitespace-nowrap">
                   PKR {formatPKR(f.enabled ? (f.your_price_pkr ?? f.monthly_price_pkr) : f.monthly_price_pkr)}
                   <span className="text-owner-ink-faint font-normal">{t("odash.premium.perMonth")}</span>
                 </p>
@@ -126,14 +126,14 @@ export default function OwnerPremiumPage() {
 
       <div className="flex flex-wrap items-center gap-4">
         <p className="text-sm">
-          {t("odash.premium.total")} <span data-testid="premium-total" className="font-mono font-extrabold text-lg">PKR {formatPKR(total)}</span>
+          {t("odash.premium.total")} <span data-testid="premium-total" className="tabular-nums font-extrabold text-lg">PKR {formatPKR(total)}</span>
         </p>
         <button
           data-testid="premium-save"
           disabled={!changed || save.isPending}
           onClick={() => save.mutate([...selected])}
           className="h-11 px-5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
-          style={{ background: "#0E6274" }}
+          style={{ background: "var(--color-fl-teal)" }}
         >
           {save.isPending ? t("odash.premium.saving") : t("odash.premium.save")}
         </button>
@@ -155,7 +155,7 @@ export default function OwnerPremiumPage() {
                 <p className="font-semibold text-sm">
                   {t("odash.premium.period", { from: fmt.dateString(inv.period_start), to: fmt.dateString(inv.period_end) })}
                 </p>
-                <p className="font-mono font-bold">PKR {formatPKR(inv.total_pkr)}</p>
+                <p className="tabular-nums font-bold">PKR {formatPKR(inv.total_pkr)}</p>
               </div>
               <p className="text-xs text-owner-ink-faint">
                 {t("odash.premium.due", { status: t(`odash.premium.inv.${inv.status}` as MessageKey), date: fmt.dateString(inv.due_date) })}
@@ -201,7 +201,7 @@ function PayBox({
   });
 
   return (
-    <div className="mt-2 rounded-lg border border-owner-border px-4 py-3 flex flex-col gap-2" style={{ background: "#F7FAFB" }}>
+    <div className="mt-2 rounded-lg border border-owner-border px-4 py-3 flex flex-col gap-2" style={{ background: "var(--color-fl-ground)" }}>
       {invoice.last_rejection_reason ? (
         <p role="alert" className="text-xs font-semibold text-owner-danger">
           {t("odash.premium.rejected", { reason: invoice.last_rejection_reason })}
@@ -210,10 +210,10 @@ function PayBox({
       <p className="text-sm font-semibold">{t("odash.premium.payInstr", { amount: formatPKR(invoice.total_pkr) })}</p>
       {instructions ? (
         <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-          {instructions.bank ? (<><dt className="text-owner-ink-faint">{t("odash.premium.bank")}</dt><dd className="font-mono">{instructions.bank}</dd></>) : null}
-          {instructions.account_title ? (<><dt className="text-owner-ink-faint">{t("odash.premium.accTitle")}</dt><dd className="font-mono">{instructions.account_title}</dd></>) : null}
-          {instructions.account_number ? (<><dt className="text-owner-ink-faint">{t("odash.premium.accNumber")}</dt><dd className="font-mono">{instructions.account_number}</dd></>) : null}
-          {instructions.iban ? (<><dt className="text-owner-ink-faint">{t("odash.premium.iban")}</dt><dd className="font-mono">{instructions.iban}</dd></>) : null}
+          {instructions.bank ? (<><dt className="text-owner-ink-faint">{t("odash.premium.bank")}</dt><dd className="tabular-nums">{instructions.bank}</dd></>) : null}
+          {instructions.account_title ? (<><dt className="text-owner-ink-faint">{t("odash.premium.accTitle")}</dt><dd className="tabular-nums">{instructions.account_title}</dd></>) : null}
+          {instructions.account_number ? (<><dt className="text-owner-ink-faint">{t("odash.premium.accNumber")}</dt><dd className="tabular-nums">{instructions.account_number}</dd></>) : null}
+          {instructions.iban ? (<><dt className="text-owner-ink-faint">{t("odash.premium.iban")}</dt><dd className="tabular-nums">{instructions.iban}</dd></>) : null}
         </dl>
       ) : (
         <p className="text-xs text-owner-ink-faint">{t("odash.premium.noDetails")}</p>
@@ -231,7 +231,7 @@ function PayBox({
           disabled={!file || upload.isPending}
           onClick={() => file && upload.mutate(file)}
           className="h-10 px-4 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
-          style={{ background: "#0E6274" }}
+          style={{ background: "var(--color-fl-teal)" }}
         >
           {upload.isPending ? t("odash.premium.sending", { pct: Math.round(progress * 100) }) : t("odash.premium.send")}
         </button>

@@ -465,7 +465,7 @@ function AwaitingCard({
               <h2 id={nameId} className="break-words text-[16.5px] font-bold text-owner-ink">
                 {who}
               </h2>
-              {item.player_phone ? <p className="font-mono text-[12.5px] text-owner-ink-muted">{item.player_phone}</p> : null}
+              {item.player_phone ? <p className="tabular-nums text-[12.5px] text-owner-ink-muted">{item.player_phone}</p> : null}
             </div>
             {naya ? <NayaChip /> : null}
           </div>
@@ -594,7 +594,7 @@ function ClosedCard({ item, state, locked, onAck }: { item: ApprovalQueueItem; s
             <button type="button" data-testid="ack-no" onClick={() => onAck(false)} className={`${btn} flex-1 basis-48 border-2 border-owner-ink bg-owner-surface text-owner-ink`}>
               {t("appr.ack.no")}
             </button>
-            <button type="button" data-testid="ack-yes" onClick={() => onAck(true)} className={`${btn} flex-1 basis-48 bg-khelo-orange text-khelo-ink`}>
+            <button type="button" data-testid="ack-yes" onClick={() => onAck(true)} className={`${btn} flex-1 basis-48 bg-fl-teal text-fl-white`}>
               {t("appr.ack.yes")}
             </button>
           </div>
@@ -612,16 +612,16 @@ function ClosedCard({ item, state, locked, onAck }: { item: ApprovalQueueItem; s
 
 /** Section 32 Part 7: tick / warning / cross for the plain-language checks; the dot never carries meaning alone (the text does). */
 const CHECK_COLORS: Record<string, string> = {
-  match: "#1F7A52",
-  mismatch: "#A8432C",
-  warning: "#B8860B",
-  not_available: "#8399A1",
-  not_configured: "#8399A1",
+  match: "var(--color-fl-open)",
+  mismatch: "var(--color-fl-danger)",
+  warning: "var(--color-fl-waiting)",
+  not_available: "var(--color-fl-muted2)",
+  not_configured: "var(--color-fl-muted2)",
 };
 const CHECK_ICONS: Record<string, string> = { match: "\u2713", mismatch: "\u2715", warning: "!" };
 
 function CheckRow({ check }: { check: { verdict: string; text: string } }) {
-  const color = CHECK_COLORS[check.verdict] ?? "#8399A1";
+  const color = CHECK_COLORS[check.verdict] ?? "var(--color-fl-muted2)";
   return (
     <li className="flex items-start gap-2.5">
       <span aria-hidden="true" className="mt-0.5 w-4 shrink-0 text-center text-[13px] font-extrabold" style={{ color }}>
@@ -695,7 +695,7 @@ function ApproveDialog({ item, onCancel, onConfirm }: { item: ApprovalQueueItem;
               aria-describedby={`${titleId}-amt-help`}
               onChange={(e) => setText(e.target.value)}
               onBlur={() => setTouched(true)}
-              className="min-h-11 rounded-xl border border-owner-border px-3.5 font-mono text-[15px] text-owner-ink"
+              className="min-h-11 rounded-xl border border-owner-border px-3.5 tabular-nums text-[15px] text-owner-ink"
             />
             <p id={`${titleId}-amt-help`} className="text-[12.5px] text-owner-ink-muted">
               {t("appr.dlg.amountHelp")}
@@ -710,7 +710,7 @@ function ApproveDialog({ item, onCancel, onConfirm }: { item: ApprovalQueueItem;
                 <p className={`text-[14px] font-bold ${summary.status === "paid_in_full" ? "text-owner-success-dark" : summary.status === "overpaid" ? "text-owner-warn-dark" : "text-owner-danger"}`}>
                   {summaryText}
                 </p>
-                <p className="font-mono text-[12.5px] text-owner-ink-muted">
+                <p className="tabular-nums text-[12.5px] text-owner-ink-muted">
                   {t("odash.approvals.totals", { total: formatPKR(summary.totalAfter + summary.balanceAfter), paid: formatPKR(summary.totalAfter), balance: formatPKR(summary.balanceAfter) })}
                 </p>
                 {summary.excess > 0 && !choice ? <p className="text-[12.5px] text-owner-warn-dark">{t("odash.approvals.excess", { amount: formatPKR(summary.excess) })}</p> : null}

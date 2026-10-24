@@ -37,7 +37,7 @@ export function DateSelect({ date, today, onChange }: { date: string; today: str
 
   return (
     <div className="relative min-w-0">
-      <span id={labelId} className="block text-xs font-semibold text-khelo-muted mb-1.5">
+      <span id={labelId} className="block text-xs font-semibold text-fl-muted mb-1.5">
         {t("ovw.filters.date")}
       </span>
       <button
@@ -50,7 +50,7 @@ export function DateSelect({ date, today, onChange }: { date: string; today: str
           setMonth(monthOf(date));
           setOpen((o) => !o);
         }}
-        className="h-11 w-full min-w-[15rem] flex items-center justify-between gap-3 px-4 rounded-xl border-[1.5px] border-khelo-border bg-khelo-surface text-khelo-ink font-semibold text-[15px] whitespace-nowrap"
+        className="h-11 w-full min-w-[15rem] flex items-center justify-between gap-3 px-4 rounded-xl border-[1.5px] border-fl-line-strong bg-fl-white text-fl-night font-semibold text-[15px] whitespace-nowrap"
       >
         <span id={valueId}>
           {fmt.dateString(date)}
@@ -70,7 +70,7 @@ export function DateSelect({ date, today, onChange }: { date: string; today: str
               aria-pressed={date === p.value}
               onClick={() => pick(p.value)}
               className={`h-11 px-4 rounded-full text-sm font-bold border-[1.5px] whitespace-nowrap ${
-                date === p.value ? "bg-khelo-ink text-white border-khelo-ink" : "bg-khelo-surface text-khelo-ink border-khelo-border"
+                date === p.value ? "bg-fl-night text-white border-fl-night" : "bg-fl-white text-fl-night border-fl-line-strong"
               }`}
             >
               {p.label}
@@ -82,27 +82,27 @@ export function DateSelect({ date, today, onChange }: { date: string; today: str
             type="button"
             aria-label={t("ovw.filters.prevMonth")}
             onClick={() => setMonth(addMonths(month, -1))}
-            className="w-11 h-11 rounded-full flex items-center justify-center text-khelo-ink hover:bg-khelo-page"
+            className="w-11 h-11 rounded-full flex items-center justify-center text-fl-night hover:bg-fl-ground"
           >
             <span aria-hidden="true" className="rotate-90 inline-flex">
               <Chevron />
             </span>
           </button>
-          <p className="font-bold text-sm text-khelo-ink" aria-live="polite">
+          <p className="font-bold text-sm text-fl-night" aria-live="polite">
             {fmt.month(month)}
           </p>
           <button
             type="button"
             aria-label={t("ovw.filters.nextMonth")}
             onClick={() => setMonth(addMonths(month, 1))}
-            className="w-11 h-11 rounded-full flex items-center justify-center text-khelo-ink hover:bg-khelo-page"
+            className="w-11 h-11 rounded-full flex items-center justify-center text-fl-night hover:bg-fl-ground"
           >
             <span aria-hidden="true" className="-rotate-90 inline-flex">
               <Chevron />
             </span>
           </button>
         </div>
-        <div className="grid grid-cols-7 text-center text-[11px] font-bold text-khelo-muted mb-1" aria-hidden="true">
+        <div className="grid grid-cols-7 text-center text-[11px] font-bold text-fl-muted mb-1" aria-hidden="true">
           {Array.from({ length: 7 }, (_, i) => (
             <span key={i}>{fmt.weekday(i, "short")}</span>
           ))}
@@ -123,10 +123,10 @@ export function DateSelect({ date, today, onChange }: { date: string; today: str
                 onClick={() => pick(d)}
                 className={`h-11 w-full rounded-xl text-sm font-semibold ${
                   selected
-                    ? "bg-khelo-ink text-white"
+                    ? "bg-fl-night text-white"
                     : d === today
-                      ? "border-[1.5px] border-khelo-teal text-khelo-ink"
-                      : "text-khelo-ink hover:bg-khelo-page"
+                      ? "border-[1.5px] border-fl-teal text-fl-night"
+                      : "text-fl-night hover:bg-fl-ground"
                 }`}
               >
                 {Number(d.slice(8))}

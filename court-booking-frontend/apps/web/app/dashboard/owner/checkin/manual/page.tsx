@@ -40,12 +40,12 @@ export default function OwnerCheckinManualPage() {
         value={code}
         onChange={(e) => setCode(e.target.value)}
         placeholder={t("odash.checkin.code.placeholder")}
-        className="border border-owner-border rounded-lg px-4 py-3 font-mono text-sm"
+        className="border border-owner-border rounded-lg px-4 py-3 tabular-nums text-sm"
         onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
       />
 
-      {error ? <p className="text-[13px] font-semibold" style={{ color: "#8C3823" }}>{error}</p> : null}
-      {result ? <p className="text-[13px] font-semibold" style={{ color: "#1F7A52" }}>{result}</p> : null}
+      {error ? <p className="text-[13px] font-semibold" style={{ color: "var(--color-fl-danger)" }}>{error}</p> : null}
+      {result ? <p className="text-[13px] font-semibold" style={{ color: "var(--color-fl-open)" }}>{result}</p> : null}
 
       <button
         onClick={handleSubmit}

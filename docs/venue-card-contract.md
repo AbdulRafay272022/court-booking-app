@@ -64,3 +64,29 @@ The component props and the list of replaced files are for the screen agents (W1
 | `photos: string[]` | `photo_urls` |
 | `amenities: string[]` | `amenities`, labelled with `amenityLabel(key, lang)` |
 | extras | `has_indoor`, `has_outdoor` (court-derived) |
+
+## Web screens using VenueCard (agent W1, branch `floodlight-web`)
+
+| Surface | File | How |
+|---|---|---|
+| /search results grid | `apps/web/app/search/page.tsx` | `components/discovery/venue-card.tsx` wraps the fl `VenueCard`: `venueCardData(summary, { sport: filters.sport })`, `eager` for the first 2 cards, heart = `useFavoriteToggle()` (hidden for owners/admins, signed out goes to login), opening a card remembers the search for "Back to results". |
+| Saved venues (Account > Saved, bookings strip) | `apps/web/components/bookings/saved-venues.tsx` | same wrapper, data from `GET /users/me/favorites`. |
+| Search loading | `apps/web/app/search/loading.tsx` | fl `SkeletonCard`. |
+| Venue detail hero | `apps/web/components/photo-gallery.tsx` | NO autoplay: swipe (touch), 44px arrows, arrow keys, thumbnails, "1/6" counter; click the photo = full-screen gallery (Esc / Close / backdrop). Pure helpers in `lib/gallery-nav.ts` (tested). |
+| Venue page amenities | `apps/web/components/amenity-badges.tsx` | full list with the same `amenityItems()` + `AMENITY_ICONS` as the popover. |
+
+Home has no venue list on web (marketing sections only), so nothing to replace there. "Sahooliat"/"Sahulatein" copy is now "Amenities" (RU + EN).
+Old card (`venue-card.tsx` v1 with sport/area/Open-in-Maps links and the availability tags) is gone; those links still exist on the venue page.
+Local QA note: the local backend has no `CLOUDFRONT_DOMAIN`, so `photo_urls` use the S3 URL format; the W1 Playwright run serves those URLs from localstack via a route handler (the browser never contacts AWS).
+
+## Mobile screens using `VenueCard` (agent M1, branch `floodlight-player`)
+
+| Surface | File | Data | Notes |
+|---|---|---|---|
+| Home "Aaj raat khaali" | `apps/mobile/app/(player)/(tabs)/index.tsx` | `GET /venues?city=Karachi&date=<today>` (sorted by `today_free_slots`, 0 hidden) | `times` = real open starts from 5 PM PKT today for the first 3 cards (`GET /venues/:id/availability?date=today`, `lib/player-flow.ts tonightStarts`). FlatList + `useVenueCardViewability`. |
+| Search results | `apps/mobile/app/(player)/search.tsx` | `GET /venues` with the route-param filters | FlatList + `useVenueCardViewability`; sport from the active filter. |
+| Saved venues | `apps/mobile/app/(player)/(tabs)/profile.tsx` | `GET /users/me/favorites` | compact photo tiles (not the full card) in a horizontal strip, per the PAccount board. |
+| Map ("Naqsha") | not built | — | the app has no map module (needs `react-native-maps`, a native dependency). |
+
+Replaced (deleted, player-only): `components/saved-venues.tsx`, `components/favorite-button.tsx`, `components/amenity-badges.tsx`, `components/photo-gallery.tsx` and the old `VenueCard` in `app/(player)/_components.tsx`.
+The venue DETAIL hero (`app/(player)/venue/[slug].tsx`, `PhotoHero` in `app/(player)/_components.tsx`) never autoplays: swipe + "1 / N tasveerein" + tap = full-screen gallery.

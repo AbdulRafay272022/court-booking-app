@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { courtLabel } from "@/components/court-label";
-import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
-import Svg, { Path } from "react-native-svg";
-
-import { api } from "@/lib/api";
-import { safeBack } from "@/lib/safe-back";
+import { KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useIsFocused, useLocalSearchParams } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Check, Hourglass, MessageCircle, Paperclip, Send } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatDate, formatPKR, formatTime, formatTimeRange } from "@/lib/format";
-import { formatDuration } from "@court-booking/types";
+import { chatActionLabel, formatDate, formatDuration, formatTime, formatTimeRange, type ChatAction } from "@court-booking/types";
+import { countdown, fontFamily, formatPkr, palette, radius, shadow, size, space, type as typeScale } from "@court-booking/ui-tokens";
+
+import { Avatar, Banner, Button, Chip, IconButton, Skeleton, Text, useCopy, useFontScale, useLang, useRoleTheme } from "@/components/ui";
+import { api } from "@/lib/api";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
-import { ChevronLeftIcon } from "@/components/icons";
-import { chatActionLabel, type ChatAction } from "@court-booking/types";
+import { friendlyErrorMessage } from "@/lib/error-messages";
+import { holdErrorCopy } from "@/lib/player-flow";
+import { safeBack } from "@/lib/safe-back";
+import { DateTile, PlayerOfflineBanner, openVenueWhatsApp, sportLabel, useBookingPlace, useNow, venueWhatsApp } from "../../_components";
 
 interface Turn {
   id: string;
@@ -30,66 +31,12 @@ function stamp(at: number): string {
   return formatDate(d) === formatDate(new Date()) ? formatTime(d) : `${formatDate(d)} · ${formatTime(d)}`;
 }
 
-/** Offered under an assistant reply that carries no buttons, so a player is never stuck typing from scratch. */
-const QUICK_REPLIES = ["What other times are free?", "Show me tomorrow", "Is another court open then?"];
-
-function AssistantAvatar() {
-  return (
-    <View
-      className="w-8 h-8 rounded-full items-center justify-center border border-player-accent-soft-border bg-player-accent-soft"
-      accessibilityElementsHidden
-      importantForAccessibility="no"
-    >
-      <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
-        <Path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" stroke="#EF5A2C" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
-        <Path d="M8.5 12h.01M12 12h.01M15.5 12h.01" stroke="#EF5A2C" strokeWidth={2.2} strokeLinecap="round" />
-      </Svg>
-    </View>
-  );
-}
-
-/** Three bouncing dots in an assistant bubble while a reply is on its way. */
-function TypingBubble() {
-  const dots = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
-  useEffect(() => {
-    const loops = dots.map((v, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 150),
-          Animated.timing(v, { toValue: 1, duration: 280, useNativeDriver: true }),
-          Animated.timing(v, { toValue: 0, duration: 280, useNativeDriver: true }),
-          Animated.delay(450 - i * 150),
-        ]),
-      ),
-    );
-    loops.forEach((l) => l.start());
-    return () => loops.forEach((l) => l.stop());
-  }, [dots]);
-  return (
-    <View className="flex-row items-end gap-2" accessibilityLabel="The assistant is typing">
-      <AssistantAvatar />
-      <View
-        className="flex-row items-center gap-1.5 px-4 py-3.5 bg-player-surface border border-player-border-light"
-        style={{ borderRadius: 18, borderBottomLeftRadius: 6 }}
-      >
-        {dots.map((v, i) => (
-          // explicit sizes: NativeWind does not style an Animated.View from className
-          <Animated.View
-            key={i}
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: "#9A9791",
-              transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }],
-            }}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
-
+/**
+ * PChat board frame 2: the booking chat with the AI booking assistant (the same backend chat as the WhatsApp flow, no new
+ * chat logic). Slot context bar, hold-proposal card (its Yes calls the direct hold, then Pay), hold timer pill from the
+ * booking's real held_until, a "screenshot sent" note only when the booking really has one, quick replies and a
+ * keyboard-aware composer. id = "new" starts a fresh question about a slot picked on the venue page.
+ */
 export default function BookingChatScreen() {
   const params = useLocalSearchParams<{
     id: string;
@@ -100,18 +47,38 @@ export default function BookingChatScreen() {
     courtSport?: string;
     startsAt?: string;
     price?: string;
-    // How long the player chose in the duration sheet (Section 32 Part 4); absent means one slot.
+    // How long the player chose on the venue page; absent means one slot.
     slotCount?: string;
     minutes?: string;
   }>();
+  const copy = useCopy();
+  const lang = useLang();
+  const t = useRoleTheme();
+  const scale = useFontScale();
+  const insets = useSafeAreaInsets();
+  const focused = useIsFocused();
+  const queryClient = useQueryClient();
+  const now = useNow(1000);
   const slotCount = Math.max(1, Number(params.slotCount ?? 1) || 1);
   const minutes = Number(params.minutes ?? 0) || undefined;
   const isNew = params.id === "new";
   const setPaymentInstructions = useBookingFlowStore((s) => s.setPaymentInstructions);
 
+  // An existing booking's chat: its real status / hold / venue for the context bar and the timer pill.
+  const bookingQuery = useQuery({
+    queryKey: ["booking", params.id],
+    queryFn: () => api.bookings.get(params.id),
+    enabled: !isNew,
+    refetchInterval: (q) => (q.state.data?.status === "held" || q.state.data?.status === "payment_submitted" ? 10_000 : false),
+    subscribed: focused,
+  });
+  const booking = bookingQuery.data;
+  const place = useBookingPlace(booking);
+
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(!isNew);
   const [holdingActionKey, setHoldingActionKey] = useState<string | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -126,37 +93,27 @@ export default function BookingChatScreen() {
       if (!isNew) {
         try {
           const history = await api.chat.history({ booking_id: params.id });
-          setTurns(
-            history.map((h) => ({
-              id: h.id,
-              sender: h.sender_type === "player" ? "player" : "ai",
-              content: h.content,
-              at: new Date(h.created_at).getTime(),
-            })),
-          );
+          setTurns(history.map((h) => ({ id: h.id, sender: h.sender_type === "player" ? "player" : "ai", content: h.content, at: new Date(h.created_at).getTime() })));
         } catch (e) {
           setBootError(friendlyErrorMessage(e));
+        } finally {
+          setHistoryLoading(false);
         }
         return;
       }
-      // Fresh context from a slot tap -- ask the AI about this exact slot rather than
-      // faking a canned opening line, so the reply (and its actions[]) is real. venue_id
-      // is only used for chat-history filtering, not fed to the model, so the venue name
-      // has to be spelled out in the message itself or the AI can't resolve which venue.
-      // A relative phrase like "Wednesday" is ambiguous to the model (it isn't told
-      // today's date) and can resolve to the wrong week entirely -- spell out the exact
-      // calendar date instead.
+      // Fresh context from a slot tap: ask the AI about this exact slot so the reply (and its actions[]) is real. venue_id
+      // is only used for history filtering, so the venue name is spelled out; the exact date avoids a wrong "Wednesday".
       const when = params.startsAt ? new Date(params.startsAt) : null;
       const question = when
-        ? `Is ${params.courtName || "a court"} at ${params.venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}${
-            minutes ? ` for ${formatDuration(minutes)}` : ""
-          }?`
-        : "What's available?";
+        ? `Is ${params.courtName || "a court"} at ${params.venueName || "this venue"} available on ${formatDate(when)} at ${formatTime(when)}${minutes ? ` for ${formatDuration(minutes)}` : ""}?`
+        : params.venueName
+          ? `What's available at ${params.venueName}?`
+          : "What's available?";
       setTurns([{ id: "local-0", sender: "player", content: question, at: Date.now() }]);
       setSending(true);
       try {
         const res = await api.chat.send({ message: question, venue_id: params.venueId, channel: "app" });
-        setTurns((t) => [...t, { id: "local-1", sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
+        setTurns((x) => [...x, { id: "local-1", sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
       } catch (e) {
         setBootError(friendlyErrorMessage(e));
       } finally {
@@ -174,18 +131,14 @@ export default function BookingChatScreen() {
     const text = (override ?? input).trim();
     if (!text || sending) return;
     setInput("");
-    setTurns((t) => [...t, { id: `local-${Date.now()}`, sender: "player", content: text, at: Date.now() }]);
+    setTurns((x) => [...x, { id: `local-${Date.now()}`, sender: "player", content: text, at: Date.now() }]);
     setSending(true);
     try {
-      const res = await api.chat.send({
-        message: text,
-        venue_id: params.venueId,
-        booking_id: isNew ? undefined : params.id,
-        channel: "app",
-      });
-      setTurns((t) => [...t, { id: `local-${Date.now()}-ai`, sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
+      const res = await api.chat.send({ message: text, venue_id: params.venueId ?? place.venue?.id, booking_id: isNew ? undefined : params.id, channel: "app" });
+      setTurns((x) => [...x, { id: `local-${Date.now()}-ai`, sender: "ai", content: res.reply, actions: res.actions, at: Date.now() }]);
+      void queryClient.invalidateQueries({ queryKey: ["chat-history", params.id] });
     } catch (e) {
-      setTurns((t) => [...t, { id: `local-${Date.now()}-err`, sender: "ai", content: friendlyErrorMessage(e), at: Date.now() }]);
+      setTurns((x) => [...x, { id: `local-${Date.now()}-err`, sender: "ai", content: friendlyErrorMessage(e), at: Date.now() }]);
     } finally {
       setSending(false);
     }
@@ -193,10 +146,7 @@ export default function BookingChatScreen() {
 
   async function handleAction(turnId: string, action: ChatAction) {
     if (action.type === "decline") {
-      setTurns((t) => [
-        ...t,
-        { id: `local-${Date.now()}`, sender: "ai", content: "No problem — let me know if you want to look at another time.", at: Date.now() },
-      ]);
+      setTurns((x) => [...x, { id: `local-${Date.now()}`, sender: "ai", content: copy("Koi baat nahi. Koi aur waqt dekhna ho to batayein.", "No problem. Tell me if you want to look at another time."), at: Date.now() }]);
       return;
     }
     if (action.type !== "confirm_booking") return;
@@ -205,11 +155,11 @@ export default function BookingChatScreen() {
     try {
       const courtId = String(action.data.court_id ?? params.courtId);
       const startsAt = String(action.data.starts_at ?? params.startsAt);
-      // The Yes button the assistant showed carries the length it quoted; fall back to what was picked before the chat.
+      // The Yes button carries the length the assistant quoted; fall back to what was picked before the chat.
       const holdSlotCount = Number(action.data.slot_count ?? slotCount) || 1;
       // A name the player gave in the chat (their own or a friend's) rides on the Yes button; the server tidies it.
       const holdPlayerName = typeof action.data.player_name === "string" ? action.data.player_name.trim() : "";
-      const { booking, payment_instructions } = await api.bookings.hold({
+      const { booking: b, payment_instructions } = await api.bookings.hold({
         court_id: courtId,
         starts_at: startsAt,
         slot_count: holdSlotCount,
@@ -217,173 +167,196 @@ export default function BookingChatScreen() {
         // The server saves the name on the account only when this hold is created AND it is the player's own name.
         ...(holdPlayerName && action.data.name_is_players_own === true ? { name_is_own: true } : {}),
       });
-      if (payment_instructions) setPaymentInstructions(booking.id, payment_instructions);
-      router.replace({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } });
+      if (payment_instructions) setPaymentInstructions(b.id, payment_instructions);
+      queryClient.setQueryData(["booking", b.id], b);
+      void queryClient.invalidateQueries({ queryKey: ["bookings-mine"] });
+      router.replace({ pathname: "/(player)/booking/[id]/pay", params: { id: b.id } });
     } catch (e) {
-      const message =
-        e instanceof ApiError && e.code === "SLOT_ALREADY_TAKEN"
-          ? "Someone just booked this slot first — pick another time."
-          : friendlyErrorMessage(e);
-      setTurns((t) => [...t, { id: `local-${Date.now()}-holderr`, sender: "ai", content: message, at: Date.now() }]);
+      const c = holdErrorCopy(e instanceof ApiError ? e.code : null, lang, friendlyErrorMessage(e));
+      setTurns((x) => [...x, { id: `local-${Date.now()}-holderr`, sender: "ai", content: `${c.title}. ${c.body}`, at: Date.now() }]);
     } finally {
       setHoldingActionKey(null);
     }
   }
 
-  const when = params.startsAt ? new Date(params.startsAt) : null;
+  // Context bar: an existing booking's real slot, or the slot picked on the venue page.
+  const ctxStart = booking?.starts_at ?? params.startsAt ?? null;
+  const ctxEnd = booking?.ends_at ?? (params.startsAt && minutes ? new Date(Date.parse(params.startsAt) + minutes * 60_000).toISOString() : null);
+  const ctxCourt = place.court ? `${place.court.name} · ${sportLabel(place.court.sport)}` : params.courtName ? `${params.courtName}${params.courtSport ? ` · ${sportLabel(params.courtSport)}` : ""}` : null;
+  const ctxPrice = booking ? booking.price : params.price ? Number(params.price) : null;
+  const venueName = place.venue?.name ?? params.venueName ?? copy("Booking assistant", "Booking assistant");
+  const wa = venueWhatsApp(place.venue);
+  const hold = booking?.status === "held" && booking.held_until ? countdown(booking.held_until, now) : null;
+
   const last = turns[turns.length - 1];
   const showQuickReplies = !sending && !holdingActionKey && !bootError && last?.sender === "ai" && !(last.actions && last.actions.length > 0);
+  const quickReplies = [copy("Aur kaun se waqt khaali hain?", "What other times are free?"), copy("Kal ka dikhayein", "Show me tomorrow"), copy("Cancel policy kya hai?", "What's the cancel policy?")];
   const canSend = !sending && input.trim().length > 0;
 
   return (
-    <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View className="px-5 py-3.5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-          <Pressable
-            onPress={() => safeBack()}
-            accessibilityLabel="Back"
-            accessibilityRole="button"
-            className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center active:opacity-70"
-          >
-            <ChevronLeftIcon />
-          </Pressable>
-          <AssistantAvatar />
-          <View className="flex-1 gap-0.5">
-            <Text className="font-figtree-bold text-player-ink text-base" numberOfLines={1}>
-              {params.venueName ?? "Booking assistant"}
-            </Text>
-            <View className="flex-row items-center gap-1.5">
-              <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#1F7A52" }} />
-              <Text className="font-figtree-medium text-player-ink-faint text-[12.5px]">Booking assistant · replies instantly</Text>
+    <View style={{ flex: 1, backgroundColor: palette.ground }} testID="chat-screen">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={{ paddingTop: insets.top + space[2], paddingHorizontal: space[4], paddingBottom: space[3], backgroundColor: palette.white, borderBottomWidth: 1, borderBottomColor: palette.line, gap: space[3] }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+            <IconButton icon={ArrowLeft} variant="mist" accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack()} testID="chat-back" />
+            <Avatar name={venueName} size={40} tone="orange" />
+            <View style={{ flex: 1, gap: 1 }}>
+              <Text variant="bodyStrong" accessibilityRole="header">
+                {venueName}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.open }} />
+                <Text variant="caption" tone="muted">
+                  {copy("Booking assistant · fori jawab", "Booking assistant · replies instantly")}
+                </Text>
+              </View>
             </View>
+            {wa ? <IconButton icon={MessageCircle} variant="mist" accessibilityLabel={copy("Venue ko WhatsApp par likhein", "Message the venue on WhatsApp")} onPress={() => openVenueWhatsApp(wa)} /> : null}
           </View>
+          {ctxStart ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.ground, borderRadius: radius.input, padding: space[2], flexWrap: "wrap" }} testID="chat-context">
+              <DateTile iso={ctxStart} variant="orange" />
+              <View style={{ flex: 1, minWidth: 140, gap: 2 }}>
+                {ctxCourt ? <Text variant="bodyBold">{ctxCourt}</Text> : null}
+                <Text variant="meta" tone="muted">
+                  {[ctxEnd ? formatTimeRange(ctxStart, ctxEnd, lang) : formatTime(ctxStart), minutes ? formatDuration(minutes, lang) : null].filter(Boolean).join(" · ")}
+                </Text>
+              </View>
+              {ctxPrice != null && Number.isFinite(ctxPrice) ? <Text variant="bodyStrong">{formatPkr(ctxPrice)}</Text> : null}
+            </View>
+          ) : null}
         </View>
 
-        {params.courtName && when ? (
-          <View className="px-5 py-3 bg-player-accent-soft border-b border-player-accent-soft-border flex-row items-center justify-between gap-3">
-            <View className="flex-1 gap-0.5">
-              <Text className="font-figtree-bold text-[11px] tracking-[0.1em]" style={{ color: "#C8431C" }}>
-                SELECTED SLOT
-              </Text>
-              <Text className="font-mono-semibold text-player-ink text-[13.5px]">
-                {courtLabel(params.courtName, params.courtSport)} · {formatDate(when)}, {minutes ? formatTimeRange(when, new Date(when.getTime() + minutes * 60_000)) : formatTime(when)}
-                {minutes ? ` · ${formatDuration(minutes)}` : ""}
-              </Text>
+        <View style={{ paddingHorizontal: space[4], paddingTop: space[2] }}>
+          <PlayerOfflineBanner />
+        </View>
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: space[4], gap: space[3] }} keyboardShouldPersistTaps="handled">
+          {historyLoading ? (
+            <View style={{ gap: space[3] }}>
+              <Skeleton width="70%" height={52} r={radius.button} />
+              <Skeleton width="60%" height={52} r={radius.button} style={{ alignSelf: "flex-end" }} />
             </View>
-            {params.price ? (
-              <View className="px-3 py-1 rounded-full bg-player-surface">
-                <Text className="font-mono-semibold text-player-ink text-[13.5px]">PKR {formatPKR(Number(params.price))}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        <ScrollView ref={scrollRef} className="flex-1" contentContainerClassName="px-5 py-5 gap-4" keyboardShouldPersistTaps="handled">
+          ) : null}
+          {!historyLoading && !isNew && turns.length === 0 && !bootError ? (
+            <Text variant="meta" tone="muted" align="center">
+              {copy("Is booking ke baare mein abhi koi baat nahi hui. Neeche likh kar poochein.", "No messages about this booking yet. Ask below.")}
+            </Text>
+          ) : null}
           {turns.map((turn) => {
             const mine = turn.sender === "player";
             return (
-              <View key={turn.id} style={{ alignItems: mine ? "flex-end" : "flex-start" }} className="gap-1.5" accessibilityLabel={mine ? "Your message" : "Assistant message"}>
-                <View className="flex-row items-end gap-2" style={{ maxWidth: "88%", flexDirection: mine ? "row-reverse" : "row" }}>
-                  {mine ? null : <AssistantAvatar />}
-                  <View
-                    className="px-4 py-2.5"
-                    style={{
-                      backgroundColor: mine ? "#EF5A2C" : "#FFFFFF",
-                      borderRadius: 18,
-                      borderBottomRightRadius: mine ? 6 : 18,
-                      borderBottomLeftRadius: mine ? 18 : 6,
-                      borderWidth: mine ? 0 : 1,
-                      borderColor: "#EBE5E1",
-                      flexShrink: 1,
-                    }}
-                  >
-                    <Text className="font-figtree-medium text-[15px] leading-[22px]" style={{ color: mine ? "#FFFFFF" : "#141A1D" }}>
-                      {turn.content}
-                    </Text>
-                  </View>
+              <View key={turn.id} style={{ alignItems: mine ? "flex-end" : "flex-start", gap: 4 }} accessibilityLabel={mine ? copy("Aap ka message", "Your message") : copy("Assistant ka message", "Assistant message")}>
+                <View
+                  style={{
+                    maxWidth: "86%",
+                    paddingHorizontal: space[4],
+                    paddingVertical: space[3],
+                    backgroundColor: mine ? t.primary.bg : palette.white,
+                    borderRadius: radius.button,
+                    borderBottomRightRadius: mine ? 6 : radius.button,
+                    borderBottomLeftRadius: mine ? radius.button : 6,
+                    boxShadow: mine ? undefined : shadow.card,
+                  }}
+                >
+                  <Text variant="bodyL" color={mine ? t.primary.fg : palette.night}>
+                    {turn.content}
+                  </Text>
                 </View>
-                <Text className="font-figtree-medium text-player-ink-fainter text-[11.5px]" style={{ paddingLeft: mine ? 0 : 40, paddingRight: mine ? 4 : 0 }}>
+                <Text variant="caption" tone="muted">
                   {stamp(turn.at)}
                 </Text>
-                {turn.actions && turn.actions.length > 0 ? (
-                  <View className="flex-row flex-wrap gap-2 mt-1" style={{ paddingLeft: 40 }}>
-                    {turn.actions.map((action) => {
-                      const key = `${turn.id}-${action.label}`;
-                      const isHolding = holdingActionKey === key;
-                      const confirm = action.type === "confirm_booking";
-                      return (
-                        <Pressable
-                          key={key}
-                          onPress={() => handleAction(turn.id, action)}
-                          disabled={!!holdingActionKey}
-                          className="px-4 min-h-11 py-2 rounded-xl items-center justify-center flex-row gap-2 active:opacity-80"
-                          style={{
-                            backgroundColor: confirm ? "#EF5A2C" : "#FFFFFF",
-                            borderWidth: confirm ? 0 : 1,
-                            borderColor: "#E0D9D4",
-                            opacity: holdingActionKey && !isHolding ? 0.5 : 1,
-                            ...(confirm ? { shadowColor: "#EF5A2C", shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 } : null),
-                          }}
-                        >
-                          {isHolding ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
-                          <Text className="font-figtree-bold text-[13.5px]" style={{ color: confirm ? "#FFFFFF" : "#5C544D" }}>
-                            {isHolding ? "Holding…" : chatActionLabel(action)}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ) : null}
+                {turn.actions && turn.actions.length > 0 ? <ProposalCard turnId={turn.id} actions={turn.actions} holdingKey={holdingActionKey} onAction={handleAction} /> : null}
               </View>
             );
           })}
-          {sending ? <TypingBubble /> : null}
+          {hold && !hold.expired ? (
+            <View style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32, paddingHorizontal: space[3], borderRadius: radius.pill, backgroundColor: palette.waitingTint }} testID="chat-hold-pill">
+              <Hourglass size={14} color={palette.waiting} />
+              <Text variant="caption" weight="black" tone="waiting">
+                {copy(`Slot hold · ${hold.label} baqi`, `Slot held · ${hold.label} left`)}
+              </Text>
+            </View>
+          ) : null}
+          {booking?.status === "payment_submitted" ? (
+            <View style={{ alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36, paddingHorizontal: space[3], borderRadius: radius.md, backgroundColor: palette.openTint }} testID="chat-proof-note">
+              <Check size={14} color={palette.open} strokeWidth={3} />
+              <Text variant="caption" weight="black" tone="open">
+                {copy("Screenshot bheja", "Screenshot sent")}
+              </Text>
+            </View>
+          ) : null}
+          {sending ? (
+            <View style={{ alignSelf: "flex-start", paddingHorizontal: space[4], paddingVertical: space[3], backgroundColor: palette.white, borderRadius: radius.button }} accessibilityLabel={copy("Assistant likh raha hai", "The assistant is typing")}>
+              <Skeleton width={46} height={10} r={5} />
+            </View>
+          ) : null}
           {showQuickReplies ? (
-            <View className="flex-row flex-wrap gap-2" style={{ paddingLeft: 40 }} accessibilityLabel="Quick replies">
-              {QUICK_REPLIES.map((q) => (
-                <Pressable
-                  key={q}
-                  onPress={() => sendMessage(q)}
-                  className="px-3.5 py-2 rounded-full bg-player-surface border border-player-accent-soft-border active:bg-player-accent-soft"
-                >
-                  <Text className="font-figtree-semibold text-[13px]" style={{ color: "#C8431C" }}>
-                    {q}
-                  </Text>
-                </Pressable>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel={copy("Fori jawab", "Quick replies")}>
+              {quickReplies.map((q) => (
+                <Chip key={q} label={q} onPress={() => sendMessage(q)} />
               ))}
             </View>
           ) : null}
-          {bootError ? <Text className="font-figtree-medium text-player-danger text-sm text-center">{bootError}</Text> : null}
+          {bootError ? <Banner tone="danger" body={bootError} /> : null}
         </ScrollView>
 
-        <View className="px-4 pt-3 pb-3 bg-player-surface border-t border-player-border-light">
-          <View className="flex-row items-center gap-2 rounded-full border border-player-border bg-player-bg pl-5 pr-1.5 py-1.5">
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Ask about times, courts or prices…"
-              placeholderTextColor="#9A9791"
-              accessibilityLabel="Message"
-              className="flex-1 font-figtree-medium"
-              style={{ height: 40, fontSize: 15, color: "#141A1D" }}
-              onSubmitEditing={() => sendMessage()}
-              editable={!sending}
-              returnKeyType="send"
-            />
-            <Pressable
-              onPress={() => sendMessage()}
-              disabled={!canSend}
-              accessibilityLabel="Send message"
-              className="w-10 h-10 rounded-full items-center justify-center active:opacity-80"
-              style={{ backgroundColor: canSend ? "#EF5A2C" : "#E5DED8" }}
-            >
-              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                <Path d="M5 12h14M13 6l6 6-6 6" stroke="#FFFFFF" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-              </Svg>
-            </Pressable>
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: space[2], paddingHorizontal: space[3], paddingTop: space[2], paddingBottom: Math.max(insets.bottom, space[3]), backgroundColor: palette.white, borderTopWidth: 1, borderTopColor: palette.line }}>
+          {booking?.status === "held" ? (
+            <IconButton icon={Paperclip} variant="mist" accessibilityLabel={copy("Payment screenshot lagayein", "Attach the payment screenshot")} onPress={() => router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } })} />
+          ) : null}
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder={copy("Waqt, court ya qeemat poochein…", "Ask about times, courts or prices…")}
+            placeholderTextColor={palette.muted2}
+            accessibilityLabel={copy("Message", "Message")}
+            onSubmitEditing={() => sendMessage()}
+            editable={!sending}
+            returnKeyType="send"
+            multiline
+            testID="chat-input"
+            style={{ flex: 1, minHeight: size.tap, maxHeight: 120, borderRadius: radius.button, borderWidth: 1.5, borderColor: palette.lineStrong, backgroundColor: palette.ground, paddingHorizontal: space[4], paddingVertical: 10, fontFamily: fontFamily.mobile.body, fontSize: typeScale.bodyL.size * scale, color: palette.night, outlineStyle: "none" } as never}
+          />
+          <IconButton icon={Send} variant={canSend ? "primary" : "mist"} disabled={!canSend} accessibilityLabel={copy("Bhejein", "Send")} onPress={() => sendMessage()} testID="chat-send" />
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
+
+/** The assistant's hold proposal (confirm_booking action): its own card, honest about what "hold" means. */
+function ProposalCard({ turnId, actions, holdingKey, onAction }: { turnId: string; actions: ChatAction[]; holdingKey: string | null; onAction: (turnId: string, a: ChatAction) => void }) {
+  const copy = useCopy();
+  const confirm = actions.find((a) => a.type === "confirm_booking");
+  const others = actions.filter((a) => a !== confirm);
+  return (
+    <View style={{ maxWidth: "92%", backgroundColor: palette.white, borderRadius: radius.tile, borderWidth: 2, borderColor: palette.orangeTint, padding: space[4], gap: space[3] }} testID="chat-proposal">
+      {confirm ? (
+        <>
+          <Text variant="bodyStrong">{copy("Ye slot hold karein?", "Hold this slot?")}</Text>
+          <Text variant="meta" tone="muted">
+            {typeof confirm.data.label === "string" && confirm.data.label ? `${confirm.data.label}. ` : ""}
+            {copy("Hold ke baad Pay screen par bank details aur waqt milega. Booking tab pakki hogi jab venue approve kare.", "After the hold, the Pay screen shows the bank details and how long you have. It is confirmed only when the venue approves.")}
+          </Text>
+        </>
+      ) : null}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+        {confirm ? (
+          <Button
+            label={copy("Haan, hold karo", "Yes, hold it")}
+            accessibilityLabel={chatActionLabel(confirm)}
+            size="sm"
+            loading={holdingKey === `${turnId}-${confirm.label}`}
+            disabled={!!holdingKey && holdingKey !== `${turnId}-${confirm.label}`}
+            onPress={() => onAction(turnId, confirm)}
+            testID="chat-hold-yes"
+          />
+        ) : null}
+        {others.map((a) => (
+          <Button key={a.label} label={a.type === "decline" ? copy("Nahi", "No") : chatActionLabel(a)} variant="soft" size="sm" disabled={!!holdingKey} onPress={() => onAction(turnId, a)} />
+        ))}
+      </View>
+    </View>
+  );
+}
+

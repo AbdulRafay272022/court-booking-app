@@ -1,43 +1,23 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { router } from "expo-router";
-import {
-  CITY_OPTIONS,
-  GENDER_OPTIONS,
-  pkNationalDigits,
-  toE164,
-  validateSignup,
-  type City,
-  type Gender,
-  type SignupFields,
-  type SignupRole,
-} from "@court-booking/types";
+import { CITY_OPTIONS, GENDER_OPTIONS, pkNationalDigits, toE164, validateSignup, type City, type Gender, type SignupFields, type SignupRole } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { palette, radius, size, space } from "@court-booking/ui-tokens";
 
+import { Banner, Button, Checkbox, Chip, Input, Text, useCopy, useRoleTheme } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { usePendingAuth } from "@/lib/pending-auth";
 import { openPrivacy, openTerms } from "@/lib/web-links";
-import {
-  AuthScreen,
-  ChoicePills,
-  FormMessage,
-  PasswordField,
-  SelectField,
-  SubmitButton,
-  TextField,
-  toneColors,
-} from "@/components/auth/kit";
-
-const ROLE_OPTIONS = [
-  { value: "player", label: "Player" },
-  { value: "owner", label: "Venue owner" },
-];
+import { AuthShell, SelectSheetField, TextLink } from "./_fl";
 
 const EMPTY: SignupFields = { name: "", email: "", phone: "", city: "", gender: "", password: "", confirmPassword: "" };
 
-/** Player and owner signup are ONE form; the toggle only changes the role sent (and the palette). */
+/** PAuth board frame 2: ONE signup form for both roles (the Player / Owner toggle only changes the role sent). */
 export default function SignupScreen() {
+  const copy = useCopy();
+  const t = useRoleTheme();
   const [role, setRole] = useState<SignupRole>("player");
   const [f, setF] = useState<SignupFields>(EMPTY);
   const [touched, setTouched] = useState<Partial<Record<keyof SignupFields, boolean>>>({});
@@ -45,25 +25,21 @@ export default function SignupScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [phoneTaken, setPhoneTaken] = useState(false);
   const [emailTaken, setEmailTaken] = useState(false);
-  // QA signup-venue round item 9: real gate + server-recorded acceptance.
+  // Real gate + server-recorded acceptance.
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  const tone = role === "owner" ? "owner" : "player";
-  const c = toneColors(tone);
   const errors = validateSignup(f);
   const valid = Object.keys(errors).length === 0 && termsAccepted;
-
   const set = <K extends keyof SignupFields>(key: K, value: SignupFields[K]) => {
     setF((p) => ({ ...p, [key]: value }));
     if (key === "phone") setPhoneTaken(false);
     if (key === "email") setEmailTaken(false);
   };
   const touch = (key: keyof SignupFields) => setTouched((p) => ({ ...p, [key]: true }));
-  const show = (key: keyof SignupFields) => !!touched[key];
-  const font = tone === "owner" ? "font-plex-medium" : "font-figtree-medium";
-  const fontBold = tone === "owner" ? "font-plex-bold" : "font-figtree-bold";
+  const err = (key: keyof SignupFields) => (touched[key] ? errors[key] : null);
 
   async function handleSubmit() {
+    if (!valid) return;
     setBusy(true);
     setFormError(null);
     try {
@@ -81,200 +57,143 @@ export default function SignupScreen() {
       });
       usePendingAuth.getState().rememberOtpExpiry("signup", phone, res.expires_in);
       router.push({ pathname: "/(auth)/verify", params: { purpose: "signup", phone, role } });
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "PHONE_ALREADY_REGISTERED") setPhoneTaken(true);
-      else if (err instanceof ApiError && err.code === "EMAIL_ALREADY_IN_USE") setEmailTaken(true);
-      else if (err instanceof ApiError && err.code === "SIGNUP_ALREADY_PENDING") {
-        // Item E: a signup is already in progress for this number. Do NOT seed a countdown from
-        // retry_after (that's the retention window, not a fresh code) and do NOT imply the re-entered
-        // details were saved -- they weren't. Route to Verify for the ORIGINAL pending signup with an
-        // honest notice; the Verify screen fetches the real code status via otp-status.
-        const phone = toE164(f.phone);
-        router.push({ pathname: "/(auth)/verify", params: { purpose: "signup", phone, role, pending: "1" } });
-      } else setFormError(friendlyErrorMessage(err));
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "PHONE_ALREADY_REGISTERED") setPhoneTaken(true);
+      else if (e instanceof ApiError && e.code === "EMAIL_ALREADY_IN_USE") setEmailTaken(true);
+      else if (e instanceof ApiError && e.code === "SIGNUP_ALREADY_PENDING") {
+        // A signup is already in progress: go to Verify for the ORIGINAL pending signup with an honest notice.
+        router.push({ pathname: "/(auth)/verify", params: { purpose: "signup", phone: toE164(f.phone), role, pending: "1" } });
+      } else setFormError(friendlyErrorMessage(e));
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <AuthScreen
-      tone={tone}
-      title={role === "owner" ? "List your venue" : "Create your account"}
-      subtitle={
-        role === "owner"
-          ? "Set up your account first — you'll add your courts, hours and prices right after."
-          : "Book courts near you in a minute. We'll verify your number on WhatsApp."
-      }
-      footer={
-        <Text className={font} style={{ fontSize: 14, color: c.inkMuted }}>
-          Already have an account?{" "}
-          <Text onPress={() => router.replace("/(auth)/login")} className={fontBold} style={{ color: c.accent, textDecorationLine: "underline" }}>
-            Log in
-          </Text>
-        </Text>
-      }
-    >
-      <ChoicePills label="Signing up as" tone={tone} value={role} onChange={(v) => setRole(v as SignupRole)} options={ROLE_OPTIONS} />
+  const roles: { value: SignupRole; title: string; sub: string }[] = [
+    { value: "player", title: copy("Main khelta hoon", "I play"), sub: copy("Court book karna", "Book courts") },
+    { value: "owner", title: copy("Mera venue hai", "I own a venue"), sub: copy("Court list karna", "List my courts") },
+  ];
 
-      <TextField
-        label="Full name"
-        tone={tone}
-        value={f.name}
-        onChangeText={(v) => set("name", v)}
-        onBlur={() => touch("name")}
-        error={errors.name}
-        showError={show("name")}
-        placeholder="Bilal Ahmed"
-        autoComplete="name"
-        autoCapitalize="words"
-      />
-      <TextField
-        label="Email address"
-        tone={tone}
+  return (
+    <AuthShell
+      testID="signup-screen"
+      title={copy("Account banayein", "Create your account")}
+      subtitle={copy("Number WhatsApp par verify hoga.", "We'll verify your number on WhatsApp.")}
+      onBack={() => (router.canGoBack() ? router.back() : router.replace("/(auth)/login"))}
+      footer={<TextLink before={copy("Pehle se account hai?", "Already have an account?")} label={copy("Login", "Log in")} onPress={() => router.replace("/(auth)/login")} />}
+    >
+      <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }} accessibilityRole="radiogroup" accessibilityLabel={copy("Account kis liye", "Account type")}>
+        {roles.map((r) => {
+          const on = role === r.value;
+          return (
+            <Pressable
+              key={r.value}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              accessibilityLabel={`${r.title}, ${r.sub}`}
+              onPress={() => setRole(r.value)}
+              testID={`signup-role-${r.value}`}
+              style={{ flexGrow: 1, flexBasis: 130, minHeight: 64, borderRadius: radius.input, padding: space[3], backgroundColor: on ? t.selected.bg : palette.white, borderWidth: 2, borderColor: on ? t.selected.border : palette.line, gap: 2, justifyContent: "center" }}
+            >
+              <Text variant="bodyBold" weight="black" color={on ? t.selected.fg : palette.night}>
+                {on ? "✓ " : ""}
+                {r.title}
+              </Text>
+              <Text variant="caption" tone="muted">
+                {r.sub}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Input label={copy("Poora naam", "Full name")} value={f.name} onChangeText={(v) => set("name", v)} onBlur={() => touch("name")} error={err("name")} placeholder="Bilal Ahmed" autoComplete="name" autoCapitalize="words" testID="signup-name" />
+      <Input
+        label={copy("Email", "Email address")}
         value={f.email}
         onChangeText={(v) => set("email", v)}
         onBlur={() => touch("email")}
-        error={emailTaken ? "That email address is already in use." : errors.email}
-        showError={emailTaken || show("email")}
+        error={emailTaken ? copy("Ye email pehle se istemal mein hai.", "That email address is already in use.") : err("email")}
         placeholder="you@example.com"
         keyboardType="email-address"
         autoCapitalize="none"
         autoComplete="email"
+        testID="signup-email"
       />
-      <View style={{ gap: 6 }}>
-        <TextField
-          label="Mobile number"
-          tone={tone}
-          mono
-          keyboardType="number-pad"
-          value={f.phone}
-          onChangeText={(v) => set("phone", pkNationalDigits(v).slice(0, 10))}
-          onBlur={() => touch("phone")}
-          error={phoneTaken ? "This number already has an account." : errors.phone}
-          showError={phoneTaken || show("phone")}
-          placeholder="300 4408817"
-          autoComplete="tel-national"
-          prefix={
-            <Text className="font-mono-semibold" style={{ fontSize: 15, color: c.inkMuted }}>
-              +92
-            </Text>
-          }
-        />
-        {phoneTaken ? (
-          <Text className={font} style={{ fontSize: 13, color: c.inkMuted }}>
-            <Text onPress={() => router.replace("/(auth)/login")} className={fontBold} style={{ color: c.accent, textDecorationLine: "underline" }}>
-              Log in
-            </Text>{" "}
-            or{" "}
-            <Text
-              onPress={() => router.push({ pathname: "/(auth)/forgot-password", params: { phone: toE164(f.phone) } })}
-              className={fontBold}
-              style={{ color: c.accent, textDecorationLine: "underline" }}
-            >
-              reset your password
-            </Text>
-            .
-          </Text>
-        ) : null}
-      </View>
-      <SelectField
-        label="City"
-        tone={tone}
-        value={f.city}
+      <Input
+        label={copy("Mobile number", "Mobile number")}
+        prefix="+92"
+        keyboardType="number-pad"
+        value={f.phone}
+        onChangeText={(v) => set("phone", pkNationalDigits(v).slice(0, 10))}
+        onBlur={() => touch("phone")}
+        error={phoneTaken ? copy("Is number ka account pehle se hai.", "This number already has an account.") : err("phone")}
+        help={copy("Is par WhatsApp code aayega", "The WhatsApp code comes to this number")}
+        placeholder="300 1234567"
+        autoComplete="tel-national"
+        testID="signup-phone"
+      />
+      {phoneTaken ? (
+        <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }}>
+          <Button label={copy("Login karein", "Log in")} variant="soft" size="sm" onPress={() => router.replace("/(auth)/login")} />
+          <Button label={copy("Password reset", "Reset password")} variant="soft" size="sm" onPress={() => router.push({ pathname: "/(auth)/forgot-password", params: { phone: toE164(f.phone) } })} />
+        </View>
+      ) : null}
+      <SelectSheetField
+        label={copy("Shehar", "City")}
+        value={f.city as City | ""}
+        options={CITY_OPTIONS}
+        placeholder={copy("Shehar chunein", "Select your city")}
+        error={err("city")}
         onChange={(v) => {
           set("city", v);
           touch("city");
         }}
-        error={errors.city}
-        showError={show("city")}
-        placeholder="Select your city"
-        options={CITY_OPTIONS}
+        testID="signup-city"
       />
-      <ChoicePills
-        label="Gender"
-        tone={tone}
-        value={f.gender}
-        onChange={(v) => {
-          set("gender", v);
-          touch("gender");
-        }}
-        options={GENDER_OPTIONS}
-        error={errors.gender}
-        showError={show("gender")}
-      />
-      <PasswordField
-        label="Password"
-        tone={tone}
-        value={f.password}
-        onChangeText={(v) => set("password", v)}
-        onBlur={() => touch("password")}
-        error={errors.password}
-        showError={show("password")}
-        placeholder="At least 8 characters"
-        autoComplete="new-password"
-      />
-      <PasswordField
-        label="Confirm password"
-        tone={tone}
-        value={f.confirmPassword}
-        onChangeText={(v) => set("confirmPassword", v)}
-        onBlur={() => touch("confirmPassword")}
-        error={errors.confirmPassword}
-        showError={show("confirmPassword")}
-        placeholder="Type it again"
-        autoComplete="new-password"
-      />
-
-      {formError ? <FormMessage kind="error" tone={tone}>{formError}</FormMessage> : null}
-
-      {/* QA signup-venue round item 9: real checkbox that gates submit and drives the server's
-          terms_accepted field. Uses a Pressable-styled box because React Native has no native
-          <input type="checkbox">. */}
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: termsAccepted }}
-        onPress={() => setTermsAccepted((v) => !v)}
-        style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}
-      >
-        <View
-          style={{
-            width: 20,
-            height: 20,
-            marginTop: 2,
-            borderRadius: 4,
-            borderWidth: 1.5,
-            borderColor: termsAccepted ? c.accent : c.inkFainter,
-            backgroundColor: termsAccepted ? c.accent : "transparent",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {termsAccepted ? (
-            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "800" }}>✓</Text>
-          ) : null}
+      <View style={{ gap: space[2] }}>
+        <Text variant="label">{copy("Gender", "Gender")}</Text>
+        <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }}>
+          {GENDER_OPTIONS.map((g) => (
+            <Chip
+              key={g.value}
+              label={g.label}
+              selected={f.gender === g.value}
+              onPress={() => {
+                set("gender", g.value);
+                touch("gender");
+              }}
+              testID={`signup-gender-${g.value}`}
+            />
+          ))}
         </View>
-        <Text className={font} style={{ fontSize: 13.5, lineHeight: 20, color: c.inkMuted, flex: 1 }}>
-          I agree to the{" "}
-          <Text onPress={openTerms} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
-            Terms of Service
-          </Text>{" "}
-          and{" "}
-          <Text onPress={openPrivacy} style={{ color: c.accent, fontWeight: "700", textDecorationLine: "underline" }}>
-            Privacy Policy
+        {err("gender") ? (
+          <Text variant="caption" weight="bold" tone="danger">
+            {err("gender")}
           </Text>
-          .
-        </Text>
-      </Pressable>
+        ) : null}
+      </View>
+      <Input label={copy("Password", "Password")} secureToggle value={f.password} onChangeText={(v) => set("password", v)} onBlur={() => touch("password")} error={err("password")} placeholder={copy("Kam se kam 8 huroof", "At least 8 characters")} autoComplete="new-password" testID="signup-password" />
+      <Input label={copy("Password dobara", "Confirm password")} secureToggle value={f.confirmPassword} onChangeText={(v) => set("confirmPassword", v)} onBlur={() => touch("confirmPassword")} error={err("confirmPassword")} placeholder={copy("Wahi password", "Type it again")} autoComplete="new-password" testID="signup-confirm" />
 
-      <SubmitButton
-        tone={tone}
-        ready={valid}
-        busy={busy}
-        label={role === "owner" ? "Create owner account" : "Create account"}
-        busyLabel="Creating account…"
-        onPress={handleSubmit}
-      />
-    </AuthScreen>
+      {formError ? <Banner tone="danger" body={formError} /> : null}
+
+      <Checkbox checked={termsAccepted} onChange={setTermsAccepted} testID="signup-terms">
+        <Text variant="body">
+          {copy("Main ", "I agree to the ")}
+          <Text variant="bodyBold" tone="link" onPress={openTerms} accessibilityRole="link">
+            Terms
+          </Text>
+          {copy(" aur ", " and ")}
+          <Text variant="bodyBold" tone="link" onPress={openPrivacy} accessibilityRole="link">
+            Privacy
+          </Text>
+          {copy(" se mutafiq hoon", "")}
+        </Text>
+      </Checkbox>
+
+      <Button label={copy("WhatsApp code bhejein", "Send WhatsApp code")} block loading={busy} disabled={!valid} onPress={handleSubmit} testID="signup-submit" />
+      <View style={{ height: size.tap / 4 }} />
+    </AuthShell>
   );
 }

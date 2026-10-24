@@ -82,8 +82,8 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
               pins={map.offerMap ? map.pins : null}
               list={
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-[22px]">
-                  {venues.map((v) => (
-                    <VenueCard key={v.id} venue={v} href={hrefFor(v)} />
+                  {venues.map((v, i) => (
+                    <VenueCard key={v.id} venue={v} href={hrefFor(v)} sport={filters.sport} eager={i < 2} />
                   ))}
                 </div>
               }

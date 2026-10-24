@@ -6,18 +6,33 @@ import { use } from "react";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { isConfirmed, journeySteps } from "@court-booking/ui-tokens";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
+import { Button, Check, ErrorState, MoneyRows, StatusPill, Ticket, Timeline, useFlLang } from "@/components/fl";
 
+/**
+ * Booking status page (Status.dc.html). Honest by construction: the celebration, "Court aapka hai" and the QR ticket appear ONLY
+ * when the backend status is `booked` (isConfirmed). Any other status shows the real status pill + the journey
+ * (Hold -> Screenshot bheja -> Venue check -> Pakki) and keeps polling while the venue checks.
+ */
 function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   const { id } = use(params);
   const t = useT();
   const fmt = useFmt();
+  const lang = useFlLang();
   const router = useRouter();
-  const bookingQuery = useQuery({ queryKey: ["booking", id], queryFn: () => api.bookings.get(id) });
+  const bookingQuery = useQuery({
+    queryKey: ["booking", id],
+    queryFn: () => api.bookings.get(id),
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === "held" || s === "payment_submitted" ? 4000 : false;
+    },
+  });
   const courtQuery = useQuery({
     queryKey: ["court", bookingQuery.data?.court_id],
     queryFn: () => api.courts.get(bookingQuery.data!.court_id),
@@ -32,71 +47,79 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
 
   if (!booking && bookingQuery.isError) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-3 px-8 text-center text-white" style={{ background: "#0F2D22" }}>
-        <p className="font-bold">{t("play.done.loadError")}</p>
-        <p className="text-sm" style={{ color: "#9BC4B1" }}>{friendlyErrorMessage(bookingQuery.error)}</p>
-        <button onClick={() => bookingQuery.refetch()} className="px-4 h-11 rounded-xl bg-white text-player-ink font-semibold text-[13.5px] mt-1">
-          {t("play.tryAgain")}
-        </button>
+      <main className="flex min-h-screen items-center justify-center bg-fl-ground px-6 font-fl-body text-fl-night">
+        <ErrorState title={t("play.done.loadError")} message={friendlyErrorMessage(bookingQuery.error)} onRetry={() => bookingQuery.refetch()} />
       </main>
     );
   }
 
   if (!booking) {
     return (
-      <main className="min-h-screen flex items-center justify-center text-white" style={{ background: "#0F2D22" }}>
+      <main className="flex min-h-screen items-center justify-center bg-fl-night font-fl-body text-fl-white" role="status">
         {t("play.loading")}
       </main>
     );
   }
 
+  const confirmed = isConfirmed(booking.status);
+  const venueName = venueQuery.data?.name ?? t("play.done.venue");
+  const court = courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : t("play.done.court");
+  const place = venueQuery.data ? venueQuery.data.area ?? venueQuery.data.city : "";
+  const fields = [
+    { label: t("play.done.date"), value: fmt.date(booking.starts_at) },
+    { label: t("play.done.time"), value: fmt.timeRange(booking.starts_at, booking.ends_at) },
+    { label: t("play.done.court"), value: court },
+    ...(place ? [{ label: t("play.done.venue"), value: place }] : []),
+  ];
+
   return (
-    <main className="min-h-screen flex flex-col items-center px-6 pt-16 gap-6" style={{ background: "#0F2D22" }}>
-      <div className="w-16 h-16 rounded-full flex items-center justify-center text-3xl text-white" style={{ background: "#1F7A52" }}>
-        ✓
-      </div>
-      <div className="flex flex-col items-center gap-1.5 text-center">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">{t("play.done.title")}</h1>
-        <p className="text-[14.5px]" style={{ color: "#9BC4B1" }}>
-          {t("play.done.confirmedBy")}
-        </p>
-      </div>
-
-      <div className="w-full max-w-md bg-white rounded-3xl p-7 flex flex-col gap-5">
-        <div className="flex flex-col gap-1">
-          <span className="font-bold text-[19px]">
-            {venueQuery.data?.name ?? t("play.done.venue")} · {courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : t("play.done.court")}
-          </span>
-          <span className="text-player-ink-faint text-sm">{venueQuery.data ? venueQuery.data.area ?? venueQuery.data.city : ""}</span>
+    <main className="flex min-h-screen flex-col items-center gap-6 bg-fl-night px-4 pb-10 pt-12 font-fl-body sm:px-6" data-testid={confirmed ? "status-booked-page" : "status-pending-page"}>
+      {confirmed ? (
+        <>
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-fl-mint text-fl-night" aria-hidden>
+            <Check size={30} strokeWidth={3} />
+          </div>
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <h1 className="font-fl-display text-3xl font-extrabold tracking-tight text-fl-white">{t("play.done.title")}</h1>
+            <p className="text-[15px] text-fl-on-dark-muted">{t("play.done.confirmedBy")}</p>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center gap-2 text-center">
+          <h1 className="font-fl-display text-3xl font-extrabold tracking-tight text-fl-white">{t("play.done.notYetTitle")}</h1>
+          <p className="max-w-md text-[15px] text-fl-on-dark-muted">{t("play.done.notYetBody")}</p>
         </div>
-        <div className="grid grid-cols-2 gap-y-4">
-          <Stat label={t("play.done.date")} value={fmt.date(booking.starts_at)} />
-          <Stat label={t("play.done.time")} value={fmt.timeRange(booking.starts_at, booking.ends_at)} />
-          <Stat label={t("play.done.paid")} value={`PKR ${formatPKR(booking.amount_paid)}`} />
-          {/* "AT VENUE 0" read like a broken "Venue 0"; say what it means. */}
-          <Stat
-            label={t("play.done.dueAtVenue")}
-            value={booking.balance_due > 0 ? `PKR ${formatPKR(booking.balance_due)}` : t("play.done.nothingDue")}
-            accent={booking.balance_due > 0}
-          />
-        </div>
-      </div>
+      )}
 
-      <button onClick={() => router.push("/bookings")} className="w-full max-w-md h-13 rounded-2xl bg-white font-bold" style={{ height: 52 }}>
-        {t("play.done.done")}
-      </button>
+      <div className="flex w-full max-w-md flex-col gap-4">
+        <Ticket bookingId={booking.id} booking={booking} venueName={venueName} eyebrow={t("play.done.ticketEyebrow")} fields={fields} />
+
+        <MoneyRows
+          rows={[
+            { label: t("play.done.paid"), value: `PKR ${formatPKR(booking.amount_paid)}`, tone: "open" },
+            {
+              label: t("play.done.dueAtVenue"),
+              value: booking.balance_due > 0 ? `PKR ${formatPKR(booking.balance_due)}` : t("play.done.nothingDue"),
+              strong: booking.balance_due > 0,
+              tone: booking.balance_due > 0 ? "waiting" : "default",
+            },
+          ]}
+        />
+
+        {!confirmed ? (
+          <div className="flex flex-col gap-4 rounded-fl-card bg-fl-white p-5" data-testid="status-journey">
+            <StatusPill booking={booking} />
+            <Timeline steps={journeySteps(booking, lang)} />
+          </div>
+        ) : null}
+
+        {!confirmed && (booking.status === "held" || booking.status === "payment_submitted") ? (
+          <Button label={t("play.done.openPay")} block onClick={() => router.push(`/booking/${id}/pay`)} />
+        ) : (
+          <Button label={t("play.done.done")} block variant={confirmed ? "primary" : "secondary"} onClick={() => router.push("/bookings")} />
+        )}
+      </div>
     </main>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10.5px] font-bold tracking-widest text-player-ink-fainter">{label}</span>
-      <span className="font-mono text-[15px] font-semibold" style={{ color: accent ? "#B5730B" : "#141A1D" }}>
-        {value}
-      </span>
-    </div>
   );
 }
 

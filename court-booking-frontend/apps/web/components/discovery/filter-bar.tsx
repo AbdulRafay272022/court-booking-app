@@ -18,7 +18,7 @@ const DURATIONS = [60, 90, 120, 180];
 const PRICE_PRESETS = [3000, 5000, 8000];
 
 const field =
-  "khelo-input min-h-11 w-full min-w-0 rounded-xl border-[1.5px] border-khelo-border bg-khelo-surface px-4 py-2.5 text-[15px] font-semibold text-khelo-ink disabled:bg-khelo-page disabled:text-khelo-muted-3";
+  "khelo-input min-h-11 w-full min-w-0 rounded-xl border-[1.5px] border-khelo-border bg-khelo-surface px-4 py-2.5 text-[15px] font-semibold text-khelo-ink disabled:bg-khelo-page disabled:text-fl-muted2";
 const smallLabel = "text-[12px] font-extrabold uppercase tracking-[1px] text-khelo-muted-2";
 const toggle = (on: boolean) =>
   `khelo-btn min-h-11 rounded-full border-[1.5px] px-4 py-2 text-[14px] font-bold ${
@@ -186,7 +186,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
       </section>
 
       {/* STICKY FILTER BAR */}
-      <div className="sticky top-0 z-10 border-b border-khelo-divider bg-khelo-surface shadow-[0_6px_20px_rgba(12,31,29,0.06)]" data-testid="filter-bar" aria-busy={pending}>
+      <div className="sticky top-0 z-10 border-b border-khelo-divider bg-khelo-surface shadow-fl-card" data-testid="filter-bar" aria-busy={pending}>
         <div className="mx-auto w-full max-w-[1288px] px-6 py-3.5">
           <div className="-mx-0.5 flex gap-2.5 overflow-x-auto -my-1 px-0.5 py-1.5 [scrollbar-width:none]" role="group" aria-label={t("search.sport.group")}>
             <button type="button" className={`${toggle(!filters.sport)} shrink-0 !px-5 !py-3 !text-[15px] ${!filters.sport ? "!border-khelo-orange !bg-khelo-orange !text-khelo-ink" : ""}`} aria-pressed={!filters.sport} onClick={() => set({ sport: undefined })}>
@@ -363,7 +363,7 @@ export function FilterBar({ areas, city, total, children }: { areas: string[]; c
                     onBlur={commitPrice}
                     onKeyDown={(e) => e.key === "Enter" && commitPrice()}
                   />
-                  <span className="text-khelo-muted-3" aria-hidden="true">
+                  <span className="text-fl-muted2" aria-hidden="true">
                     –
                   </span>
                   <input

@@ -55,7 +55,7 @@ export default function StaffPage() {
         }}
       />
       {justAdded ? (
-        <p role="status" aria-live="polite" className="text-[13px] font-semibold" style={{ color: "#1F7A52" }}>
+        <p role="status" aria-live="polite" className="text-[13px] font-semibold" style={{ color: "var(--color-fl-open)" }}>
           {t("odash.staff.added")}
         </p>
       ) : null}
@@ -315,7 +315,7 @@ function AddStaffCard({
           disabled={!valid || create.isPending}
           aria-busy={create.isPending}
           className="min-h-11 px-4 py-2.5 rounded-lg font-semibold text-sm text-white disabled:cursor-not-allowed"
-          style={{ background: valid && !create.isPending ? "#0E6274" : "#C6D2D7" }}
+          style={{ background: valid && !create.isPending ? "var(--color-fl-teal)" : "var(--color-fl-line-strong)" }}
         >
           {create.isPending ? t("odash.staff.adding") : t("odash.staff.addBtn")}
         </button>
@@ -368,7 +368,7 @@ function StaffRow({ member, catalog }: { member: StaffMember; catalog: StaffPerm
             }}
             disabled={toggleActive.isPending}
             className="min-h-11 whitespace-nowrap text-[13px] font-semibold"
-            style={{ color: member.is_active ? "#B23B3B" : "#1F7A52" }}
+            style={{ color: member.is_active ? "var(--color-fl-danger)" : "var(--color-fl-open)" }}
           >
             {member.is_active ? t("odash.staff.deactivate") : t("odash.staff.reactivate")}
           </button>
