@@ -332,6 +332,8 @@ export default function WalkInScreen() {
       </View>
 
       {problem ? <Banner tone="danger" title={problem.title} body={problem.body} testID="walkin-problem" /> : null}
+      {/* the save bar wraps to two lines at 320 pt + large font: keep the last field clear of it */}
+      <View style={{ height: space[8] * 2 }} />
 
       {daySheet ? (
         <BottomSheet title="Din chunein" subtitle="Aaj se 15 din tak" onClose={() => setDaySheet(false)}>

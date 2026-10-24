@@ -235,14 +235,14 @@ export default function OwnerTodayScreen() {
               onPress={() => router.push({ pathname: "/(owner)/(tabs)/approvals", params: courtIds.length ? { courts: courtIds.join(",") } : {} })}
               accessibilityRole="button"
               accessibilityLabel={`${badges.approvals} payments check karni hain. Dekhein`}
-              style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: 14, boxShadow: shadow.card }}
+              style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: 14, boxShadow: shadow.card }}
             >
               <View style={{ width: 48, height: 48, borderRadius: radius.input, backgroundColor: palette.waitingTint, alignItems: "center", justifyContent: "center" }}>
                 <Text variant="title" color={palette.waiting}>
                   {String(badges.approvals)}
                 </Text>
               </View>
-              <View style={{ flex: 1, gap: 2 }}>
+              <View style={{ flex: 1, minWidth: 150, gap: 2 }}>
                 <Text variant="bodyStrong">Payments check karni hain</Text>
                 {oldest !== null ? <Text variant="meta" tone="waiting">{`Sab se purani ${waitLabel(oldest)} se wait`}</Text> : null}
               </View>

@@ -113,8 +113,9 @@ async function setup(browser, state) {
     if ((m = /^\/owners\/bookings\/([^/]+)\/completion$/.exec(p))) return json(row(m[1], { completion: { result: "no", received_pkr: 3000, reason: "x", marked_at: iso(0), marked_by_name: "Owner" } }));
     if (/^\/courts\/[^/]+\/availability$/.test(p)) {
       const d = url.searchParams.get("date");
-      const s = (hh, status) => ({ starts_at: at(d, hh), ends_at: at(d, hh + 1), status, price: 2000, advance_amount: 1000, held_until: null, booking_id: null, is_mine: false, reason: null, after_midnight: false });
-      return json({ court_id: "c", date: d, slot_minutes: 60, slots: [s(22, "available"), s(23, "booked")] });
+      // relative to now (a fixed 10 PM slot made this check fail after 11 PM PKT): one free slot ahead, one booked
+      const s = (h, status) => ({ starts_at: iso(h), ends_at: iso(h + 1), status, price: 2000, advance_amount: 1000, held_until: null, booking_id: null, is_mine: false, reason: null, after_midnight: false });
+      return json({ court_id: "c", date: d, slot_minutes: 60, slots: [s(0.5, "available"), s(1.5, "booked")] });
     }
     if (p === "/owners/refunds") return json(state.refunds());
     if ((m = /^\/owners\/refunds\/([^/]+)\/mark-refunded$/.exec(p))) {
@@ -386,8 +387,8 @@ function defaultState() {
 
     await total.getByRole("button", { name: "Free 19" }).click();
     await page.getByText("Khali slots").first().waitFor({ timeout: 10000 });
-    await waitFor(async () => (await page.getByLabel(/10:00 PM, khaali/).count()) > 0, 10000);
-    check("A7 Free -> slots sheet showing only free slots", (await page.getByLabel(/10:00 PM, khaali/).count()) >= 1 && (await page.getByLabel(/11:00 PM, booked/).count()) === 0);
+    await waitFor(async () => (await page.getByLabel(/, khaali$/).count()) > 0, 10000);
+    check("A7 Free -> slots sheet showing only free slots", (await page.getByLabel(/, khaali$/).count()) >= 1 && (await page.getByLabel(/, booked$/).count()) === 0);
     await (await vis(page.getByRole("button", { name: "Band karein" }))).click();
     await page.waitForTimeout(400);
 
