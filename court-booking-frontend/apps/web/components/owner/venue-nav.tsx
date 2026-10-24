@@ -68,7 +68,7 @@ export function VenuePicker({
                   borderColor: active ? "var(--color-owner-accent-soft-border)" : "transparent",
                 }}
               >
-                <span className="text-[13.5px] font-semibold leading-tight" style={{ color: active ? "var(--color-owner-accent)" : "var(--color-owner-ink)" }}>
+                <span className="text-[13.5px] font-semibold leading-tight" style={{ color: active ? "var(--color-fl-teal-deep)" : "var(--color-owner-ink)" }}>
                   {v.name}
                 </span>
                 <StatusBadge status={v.status} />
@@ -83,7 +83,7 @@ export function VenuePicker({
           resetDraft();
           router.push("/venue-setup/register");
         }}
-        className="mt-1 px-3.5 py-2 rounded-lg text-[13px] font-semibold text-owner-accent border border-dashed border-owner-accent-soft-border text-left"
+        className="mt-1 px-3.5 py-2 rounded-lg text-[13px] font-semibold text-fl-teal-deep border border-dashed border-owner-accent-soft-border text-left"
       >
         {t("odash.venue.addAnother")}
       </button>

@@ -12,6 +12,8 @@ import { formatPKR, pktDayTabs } from "@/lib/format";
 import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { slotChipState, type SlotChipState } from "@court-booking/ui-tokens";
+import { Chip, SlotChip } from "@/components/fl";
 
 /**
  * "Add a booking" -- the owner/staff records a booking for a customer (a walk-in, a phone call, a regular).
@@ -184,14 +186,7 @@ export default function OwnerWalkinPage() {
         <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">{t("notif.walkin.court")}</span>
         <div className="flex gap-2 flex-wrap">
           {courts.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => { setCourtId(c.id); reset(); }}
-              className="min-h-11 px-4 py-2.5 rounded-lg text-sm font-semibold"
-              style={{ background: courtId === c.id ? "#0E6274" : "#FFFFFF", color: courtId === c.id ? "#fff" : "#5B7079", border: courtId === c.id ? "none" : "1px solid #DCE3E6" }}
-            >
-              {courtLabel(c.name, c.sport)}
-            </button>
+            <Chip key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onClick={() => { setCourtId(c.id); reset(); }} />
           ))}
         </div>
       </div>
@@ -200,14 +195,7 @@ export default function OwnerWalkinPage() {
         <span className="text-[11px] font-bold tracking-wider text-owner-ink-faint">{t("notif.walkin.date")}</span>
         <div className="flex gap-2 flex-wrap">
           {nextDays.map((d, i) => (
-            <button
-              key={i}
-              onClick={() => { setDateIdx(i); reset(); }}
-              className="px-3.5 py-2.5 rounded-lg text-[13px] font-semibold"
-              style={{ background: dateIdx === i ? "#0E6274" : "#FFFFFF", color: dateIdx === i ? "#fff" : "#101C21", border: dateIdx === i ? "none" : "1px solid #DCE3E6" }}
-            >
-              {i === 0 ? t("notif.walkin.today") : i === 1 ? t("notif.walkin.tomorrow") : `${fmt.weekday(backendWeekdayOf(d.date))} ${d.day}`}
-            </button>
+            <Chip key={i} label={i === 0 ? t("notif.walkin.today") : i === 1 ? t("notif.walkin.tomorrow") : `${fmt.weekday(backendWeekdayOf(d.date))} ${d.day}`} selected={dateIdx === i} onClick={() => { setDateIdx(i); reset(); }} />
           ))}
         </div>
       </div>
@@ -219,34 +207,26 @@ export default function OwnerWalkinPage() {
         </p>
         <div className="flex gap-2 flex-wrap" data-testid="walkin-slots">
           {slots.map((slot, i) => {
-            const taken = slot.status !== "available";
             const selected = inRange(i);
-            const cannotStart = !taken && !selected && startIndex < 0 && durationChoices(slots, i, minSlots).length === 0;
+            const cannotStart = slot.status === "available" && !selected && startIndex < 0 && durationChoices(slots, i, minSlots).length === 0;
+            // Floodlight slot states (never colour-only): start = ✓ + outline, rest of the booking = outline, held = dashed + hourglass,
+            // booked = strikethrough, closed = lock. Walk-ins may start in the slot that is in progress, so a started free slot stays open.
+            const state: SlotChipState = selected
+              ? i === startIndex
+                ? "selected"
+                : "inRange"
+              : (slotChipState(slot, { now: 0, fits: !cannotStart }) ?? "open");
             return (
-              <button
-                key={slot.starts_at}
-                disabled={taken}
-                onClick={() => handleTapSlot(i)}
-                aria-pressed={selected}
-                data-testid={selected ? "walkin-slot-selected" : "walkin-slot"}
-                title={cannotStart ? t("notif.walkin.needs", { duration: fmt.duration(minSlots * 30) }) : undefined}
-                className="px-4 py-2.5 rounded-lg font-mono text-sm font-semibold"
-                style={{
-                  background: selected ? "#0E6274" : taken ? "#EFF2F3" : "#FFFFFF",
-                  color: selected ? "#fff" : taken ? "#A6B6BC" : cannotStart ? "#8FA1A8" : "#101C21",
-                  border: selected ? "none" : "1px solid #DCE3E6",
-                  textDecoration: taken ? "line-through" : "none",
-                }}
-              >
-                {fmt.time(slot.starts_at)}
-              </button>
+              <span key={slot.starts_at} data-testid={selected ? "walkin-slot-selected" : "walkin-slot"} className="inline-flex">
+                <SlotChip state={state} label={fmt.time(slot.starts_at)} reason={slot.reason} onClick={() => handleTapSlot(i)} className="min-w-[84px] px-3" />
+              </span>
             );
           })}
         </div>
         {selectedChoice && startsAt ? (
-          <div className="flex items-center justify-between gap-3 rounded-lg px-3.5 py-3" style={{ background: "#E8F2F4" }} data-testid="walkin-summary">
+          <div className="flex items-center justify-between gap-3 rounded-lg px-3.5 py-3" style={{ background: "var(--color-fl-teal-tint)" }} data-testid="walkin-summary">
             <div className="flex flex-col">
-              <span className="font-mono text-sm font-semibold">{fmt.timeRange(startsAt, selectedChoice.endsAt)}</span>
+              <span className="tabular-nums text-sm font-semibold">{fmt.timeRange(startsAt, selectedChoice.endsAt)}</span>
               <span className="text-[12.5px] text-owner-ink-faint">
                 {slotCount === 1 ? t("notif.walkin.summary.one", { duration: fmt.duration(selectedChoice.minutes) }) : t("notif.walkin.summary.many", { duration: fmt.duration(selectedChoice.minutes), count: slotCount })}
               </span>
@@ -301,10 +281,10 @@ export default function OwnerWalkinPage() {
           {t("notif.walkin.total", { duration: fmt.duration(quote.duration_minutes), price: formatPKR(quote.price) })}
         </p>
       ) : quoteQuery.isError ? (
-        <p className="text-sm font-semibold -mt-2" style={{ color: "#8C3823" }}>{friendlyErrorMessage(quoteQuery.error, t)}</p>
+        <p className="text-sm font-semibold -mt-2" style={{ color: "var(--color-fl-danger)" }}>{friendlyErrorMessage(quoteQuery.error, t)}</p>
       ) : null}
 
-      {message ? <p className="text-sm font-semibold" style={{ color: message === t("notif.walkin.saved") ? "#1F7A52" : "#8C3823" }} data-testid="walkin-message">{message}</p> : null}
+      {message ? <p className="text-sm font-semibold" style={{ color: message === t("notif.walkin.saved") ? "var(--color-fl-open)" : "var(--color-fl-danger)" }} data-testid="walkin-message">{message}</p> : null}
 
       <button
         onClick={handleSubmit}
@@ -347,9 +327,9 @@ function Field({
         onBlur={onBlur}
         placeholder={placeholder}
         data-testid={testId}
-        className={`h-12 px-3.5 rounded-lg border outline-none text-sm ${mono ? "font-mono" : ""} ${error ? "border-red-400" : "border-owner-border"}`}
+        className={`h-12 px-3.5 rounded-lg border outline-none text-sm ${mono ? "tabular-nums" : ""} ${error ? "border-red-400" : "border-owner-border"}`}
       />
-      {error ? <span className="text-[12px] font-semibold" style={{ color: "#8C3823" }}>{error}</span> : null}
+      {error ? <span className="text-[12px] font-semibold" style={{ color: "var(--color-fl-danger)" }}>{error}</span> : null}
     </div>
   );
 }

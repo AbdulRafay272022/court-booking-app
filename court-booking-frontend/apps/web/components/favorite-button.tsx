@@ -7,22 +7,14 @@ import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { FAVORITES_KEY, useFavorites } from "@/lib/use-favorites";
 import { useT } from "@/components/i18n/lang-provider";
-
-function Heart({ filled, size = 18 }: { filled: boolean; size?: number }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />
-    </svg>
-  );
-}
+import { Heart } from "@/components/fl";
 
 /**
- * Save / un-save a venue. `card` is a round button for the corner of a photo, `pill` is a labelled button for the venue page.
- * Signed out: tapping goes to login and comes back here. Owners and admins never see it (only players save venues).
- * The heart flips at once and settles when the server answers; if the call fails it flips back and says so.
+ * Save / un-save state for one venue, shared by the venue-page pill and the Floodlight VenueCard heart.
+ * `visible` is false for signed-in owners and admins (only players save venues). Signed out, `toggle` goes to login and comes back.
+ * The heart flips at once and settles when the server answers; if the call fails it flips back and `failed` is true for a moment.
  */
-export function FavoriteButton({ venueId, venueName, variant = "card" }: { venueId: string; venueName: string; variant?: "card" | "pill" }) {
-  const t = useT();
+export function useFavoriteToggle(venueId: string) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
@@ -31,15 +23,14 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
   const [pending, setPending] = useState<boolean | null>(null);
   const [failed, setFailed] = useState(false);
 
-  if (status === "signedIn" && role !== "player") return null;
-
+  const visible = !(status === "signedIn" && role !== "player");
   const saved = pending ?? ids.has(venueId);
   const busy = pending !== null || loading || status === "hydrating";
 
-  async function toggle(e: React.MouseEvent) {
+  async function toggle(e?: { preventDefault(): void; stopPropagation(): void }) {
     // the card sits next to a link: never let a tap on the heart also open the venue
-    e.preventDefault();
-    e.stopPropagation();
+    e?.preventDefault();
+    e?.stopPropagation();
     if (status === "signedOut") {
       router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
@@ -60,30 +51,15 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
     }
   }
 
+  return { visible, saved, busy, failed, toggle };
+}
+
+/** Labelled save button for the venue page (the cards use the heart inside the Floodlight VenueCard). */
+export function FavoriteButton({ venueId, venueName }: { venueId: string; venueName: string }) {
+  const t = useT();
+  const { visible, saved, busy, failed, toggle } = useFavoriteToggle(venueId);
+  if (!visible) return null;
   const label = saved ? t("play.fav.removeAria", { name: venueName }) : t("play.fav.saveAria", { name: venueName });
-  const tone = saved ? "text-player-accent" : "text-player-ink-muted";
-
-  if (variant === "pill") {
-    return (
-      <button
-        type="button"
-        onClick={toggle}
-        aria-pressed={saved}
-        aria-label={label}
-        data-testid="favorite-button"
-        title={failed ? t("play.fav.failed") : undefined}
-        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13.5px] font-bold transition-colors ${
-          saved ? "border-player-accent-soft-border bg-player-accent-soft text-player-accent-hover" : "border-player-border bg-player-surface text-player-ink-muted hover:border-player-accent hover:text-player-accent-hover"
-        } ${busy ? "opacity-70" : ""}`}
-      >
-        <span className={saved ? "text-player-accent" : ""}>
-          <Heart filled={saved} />
-        </span>
-        {failed ? t("play.tryAgain") : saved ? t("play.fav.saved") : t("play.fav.save")}
-      </button>
-    );
-  }
-
   return (
     <button
       type="button"
@@ -92,9 +68,12 @@ export function FavoriteButton({ venueId, venueName, variant = "card" }: { venue
       aria-label={label}
       data-testid="favorite-button"
       title={failed ? t("play.fav.failed") : undefined}
-      className={`flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-sm transition hover:scale-110 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-player-accent ${tone} ${busy ? "opacity-70" : ""}`}
+      className={`inline-flex min-h-11 items-center gap-2 rounded-full border-[1.5px] px-4 text-[13.5px] font-extrabold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night ${
+        saved ? "border-fl-orange bg-fl-orange-tint text-fl-night" : "border-fl-line-strong bg-fl-white text-fl-night hover:border-fl-night"
+      } ${busy ? "opacity-70" : ""}`}
     >
-      <Heart filled={saved} size={20} />
+      <Heart size={18} fill={saved ? "currentColor" : "none"} className={saved ? "text-fl-orange-deep" : ""} aria-hidden />
+      {failed ? t("play.tryAgain") : saved ? t("play.fav.saved") : t("play.fav.save")}
     </button>
   );
 }

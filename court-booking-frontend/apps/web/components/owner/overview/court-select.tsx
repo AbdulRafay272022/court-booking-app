@@ -18,7 +18,7 @@ function Box({ checked }: { checked: boolean }) {
     <span
       aria-hidden="true"
       className={`w-5 h-5 shrink-0 rounded-md border-[1.5px] flex items-center justify-center ${
-        checked ? "bg-khelo-teal border-khelo-teal text-white" : "bg-khelo-surface border-khelo-border"
+        checked ? "bg-fl-teal border-fl-teal text-white" : "bg-fl-white border-fl-line-strong"
       }`}
     >
       {checked ? (
@@ -80,7 +80,7 @@ export function CourtSelect({ courts, selected, onChange }: { courts: CourtOptio
 
   return (
     <div className="relative min-w-0">
-      <span id={labelId} className="block text-xs font-semibold text-khelo-muted mb-1.5">
+      <span id={labelId} className="block text-xs font-semibold text-fl-muted mb-1.5">
         {t("ovw.filters.courts")}
       </span>
       <button
@@ -90,7 +90,7 @@ export function CourtSelect({ courts, selected, onChange }: { courts: CourtOptio
         aria-labelledby={`${labelId} ${valueId}`}
         data-testid="ovw-courts-trigger"
         onClick={() => setOpen((o) => !o)}
-        className="h-11 w-full min-w-[15rem] flex items-center justify-between gap-3 px-4 rounded-xl border-[1.5px] border-khelo-border bg-khelo-surface text-khelo-ink font-semibold text-[15px] whitespace-nowrap"
+        className="h-11 w-full min-w-[15rem] flex items-center justify-between gap-3 px-4 rounded-xl border-[1.5px] border-fl-line-strong bg-fl-white text-fl-night font-semibold text-[15px] whitespace-nowrap"
       >
         <span id={valueId} className="truncate">
           {label}
@@ -105,7 +105,7 @@ export function CourtSelect({ courts, selected, onChange }: { courts: CourtOptio
             tabIndex={0}
             data-autofocus
             onClick={() => onChange([])}
-            className="min-h-11 flex items-center gap-3 px-3 rounded-xl cursor-pointer font-bold text-sm text-khelo-ink hover:bg-khelo-page focus-visible:bg-khelo-page"
+            className="min-h-11 flex items-center gap-3 px-3 rounded-xl cursor-pointer font-bold text-sm text-fl-night hover:bg-fl-ground focus-visible:bg-fl-ground"
           >
             <Box checked={allSelected} />
             {t("ovw.filters.allToggle")}
@@ -117,7 +117,7 @@ export function CourtSelect({ courts, selected, onChange }: { courts: CourtOptio
               aria-selected={isOn(c.id)}
               tabIndex={-1}
               onClick={() => toggleCourt(c.id)}
-              className="min-h-11 flex items-center gap-3 px-3 rounded-xl cursor-pointer font-semibold text-sm text-khelo-ink hover:bg-khelo-page focus-visible:bg-khelo-page"
+              className="min-h-11 flex items-center gap-3 px-3 rounded-xl cursor-pointer font-semibold text-sm text-fl-night hover:bg-fl-ground focus-visible:bg-fl-ground"
             >
               <Box checked={isOn(c.id)} />
               {courtLabel(c.name, c.sport)}

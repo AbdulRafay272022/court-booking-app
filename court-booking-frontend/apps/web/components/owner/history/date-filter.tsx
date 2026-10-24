@@ -188,7 +188,7 @@ function RangePopover({ range, today, onApply, onCancel }: { range: DateRange; t
           type="button"
           disabled={!start}
           onClick={() => start && onApply({ from: start, to: end ?? start })}
-          className="min-h-11 rounded-xl bg-khelo-orange px-5 text-[14px] font-bold text-khelo-ink disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-fl-teal px-5 text-[14px] font-bold text-fl-white disabled:opacity-50"
         >
           {t("hist.range.apply")}
         </button>

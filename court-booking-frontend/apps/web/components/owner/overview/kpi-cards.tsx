@@ -10,10 +10,10 @@ import type { SlotFilter, SlotSegment } from "@/lib/overview-helpers";
 import { Popover } from "./overlay";
 
 const SEGMENT_STYLE: Record<SlotSegment["key"], string> = {
-  booked: "bg-khelo-teal",
-  pending: "bg-khelo-orange",
-  blocked: "bg-khelo-muted-3",
-  free: "bg-khelo-mint border border-khelo-dash",
+  booked: "bg-fl-teal",
+  pending: "bg-fl-amber",
+  blocked: "bg-fl-muted2",
+  free: "bg-fl-teal-tint border border-fl-line-strong",
 };
 
 function ArrowUpRight() {
@@ -32,12 +32,12 @@ function Arrow() {
   );
 }
 
-const CARD = "relative rounded-2xl border border-khelo-border bg-khelo-surface p-5 flex flex-col gap-1 min-w-0";
-const LABEL = "text-sm font-semibold text-khelo-muted";
-const BIG = "font-khelo-display font-extrabold text-khelo-ink leading-none tabular-nums";
-const SUB = "text-[13px] text-khelo-muted";
+const CARD = "relative rounded-2xl border border-fl-line-strong bg-fl-white p-5 flex flex-col gap-1 min-w-0";
+const LABEL = "text-sm font-semibold text-fl-muted";
+const BIG = "font-khelo-display font-extrabold text-fl-night leading-none tabular-nums";
+const SUB = "text-[13px] text-fl-muted";
 const LEGEND_ITEM =
-  "min-h-11 w-full sm:w-auto inline-flex items-center gap-2 rounded-xl border border-khelo-border bg-khelo-page px-3 text-[13px] font-semibold text-khelo-ink whitespace-nowrap hover:border-khelo-ink";
+  "min-h-11 w-full sm:w-auto inline-flex items-center gap-2 rounded-xl border border-fl-line-strong bg-fl-ground px-3 text-[13px] font-semibold text-fl-night whitespace-nowrap hover:border-fl-night";
 
 /** A card title that may only break BEFORE a bracket: "Collected (ab tak mila)" becomes "Collected" + "(ab tak mila)", each
  * kept on one line, so a narrow card shows two clean lines instead of a word split anywhere (QA round 2, 360 / 1280 px). */
@@ -96,7 +96,7 @@ function StatusPendingLine({ n, href }: { n: number; href: string }) {
         </svg>
         {text}
       </span>
-      <span className="text-[13px] font-medium text-khelo-ink">{t("nsw.line.hint")}</span>
+      <span className="text-[13px] font-medium text-fl-night">{t("nsw.line.hint")}</span>
       <span className="ml-auto inline-flex items-center">
         <Arrow />
       </span>
@@ -133,7 +133,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
         <>
           {swatch}
           <span>{t("ovw.kpi.legend.pendingDay", { n: s.count })}</span>
-          <span className="text-[12px] font-normal text-khelo-muted">({t("ovw.kpi.legend.pendingHint")})</span>
+          <span className="text-[12px] font-normal text-fl-muted">({t("ovw.kpi.legend.pendingHint")})</span>
         </>
       );
     }
@@ -157,7 +157,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
               type="button"
               onClick={() => onOpenSlots("all")}
               data-testid="ovw-see-slots"
-              className="min-h-11 -mt-2.5 -mr-2 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-khelo-page text-[13px] font-bold text-khelo-ink whitespace-nowrap"
+              className="min-h-11 -mt-2.5 -mr-2 px-3.5 inline-flex items-center gap-1.5 rounded-full bg-fl-ground text-[13px] font-bold text-fl-night whitespace-nowrap"
             >
               {t("ovw.kpi.seeSlots")}
               <ArrowUpRight />
@@ -169,7 +169,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
           <div
             role="img"
             aria-label={t("ovw.kpi.barAria", { booked: slots.booked, pending: slots.pending, blocked: slots.blocked, free: slots.free })}
-            className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-khelo-mint-2"
+            className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-fl-teal-tint"
           >
             {segments
               .filter((s) => s.count > 0)
@@ -223,7 +223,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
               <Link
                 key={c.court_id}
                 href={history("booked", c.court_id)}
-                className="min-h-11 inline-flex items-center px-3 rounded-full bg-khelo-page text-[13px] font-semibold text-khelo-ink whitespace-nowrap max-w-full truncate"
+                className="min-h-11 inline-flex items-center px-3 rounded-full bg-fl-ground text-[13px] font-semibold text-fl-night whitespace-nowrap max-w-full truncate"
               >
                 {c.court_name} {"\u00b7"} {c.booked}
               </Link>
@@ -238,18 +238,18 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
                   aria-label={`${t("ovw.kpi.more", { n: bookedCourts.rest })}: ${t("ovw.kpi.moreAria")}`}
                   data-testid="ovw-more-courts"
                   onClick={() => setCourtPopover((o) => !o)}
-                  className="min-h-11 px-3 rounded-full bg-khelo-page text-[13px] font-bold text-khelo-ink whitespace-nowrap"
+                  className="min-h-11 px-3 rounded-full bg-fl-ground text-[13px] font-bold text-fl-night whitespace-nowrap"
                 >
                   {t("ovw.kpi.more", { n: bookedCourts.rest })}
                 </button>
                 <Popover open={courtPopover} onClose={() => setCourtPopover(false)} title={t("ovw.kpi.popover.booked")} testId="ovw-courts-popover">
-                  <p className="text-xs text-khelo-muted mb-2">{t("ovw.kpi.popover.hint")}</p>
+                  <p className="text-xs text-fl-muted mb-2">{t("ovw.kpi.popover.hint")}</p>
                   <ul className="flex flex-col">
                     {slots.by_court.map((c) => (
                       <li key={c.court_id}>
                         <Link
                           href={history("booked", c.court_id)}
-                          className="min-h-11 flex items-center justify-between gap-3 px-2 rounded-lg text-sm font-semibold text-khelo-ink hover:bg-khelo-page"
+                          className="min-h-11 flex items-center justify-between gap-3 px-2 rounded-lg text-sm font-semibold text-fl-night hover:bg-fl-ground"
                         >
                           <span className="truncate">{c.court_name}</span>
                           <span className="tabular-nums font-extrabold whitespace-nowrap">{t("ovw.kpi.courtBooked", { n: c.booked })}</span>
@@ -264,14 +264,14 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
         </div>
 
         {/* Pending bookings: ANY date (pending_all), not the day picked above */}
-        <div className={`${CARD} bg-khelo-warm-2 border-khelo-orange/50`} data-testid="kpi-pending">
+        <div className={`${CARD} bg-fl-waiting-tint border-fl-waiting-border`} data-testid="kpi-pending">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <CardTitleLink href={approvalsHref(undefined, courts)} testId="kpi-pending-link">
-              <span className="text-khelo-orange-label whitespace-nowrap">{t("ovw.kpi.pending")}</span>
+              <span className="text-fl-waiting whitespace-nowrap">{t("ovw.kpi.pending")}</span>
             </CardTitleLink>
             <span
               data-testid="kpi-pending-scope"
-              className="inline-flex items-center gap-1 rounded-full border border-khelo-orange/60 bg-khelo-surface px-2.5 py-0.5 text-[12px] font-bold text-khelo-ink whitespace-nowrap"
+              className="inline-flex items-center gap-1 rounded-full border border-fl-waiting-border bg-fl-white px-2.5 py-0.5 text-[12px] font-bold text-fl-night whitespace-nowrap"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="3" y="5" width="18" height="16" rx="2" />
@@ -291,7 +291,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
                   href={approvalsHref(undefined, courts)}
                   aria-label={t("ovw.kpi.pendingApprovalAria", { n: pendingAll.approval })}
                   data-testid="kpi-pending-approval"
-                  className="min-h-11 inline-flex items-center gap-1.5 text-sm font-bold text-khelo-orange-label"
+                  className="min-h-11 inline-flex items-center gap-1.5 text-sm font-bold text-fl-teal-deep"
                 >
                   {t("ovw.kpi.pendingApproval", { n: pendingAll.approval })}
                   <Arrow />
@@ -300,7 +300,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
                   href={allDatesHistoryHref(today, { courts, status: "held" })}
                   aria-label={t("ovw.kpi.pendingPaymentAria", { n: pendingAll.payment })}
                   data-testid="kpi-pay-waiting"
-                  className="min-h-11 inline-flex items-center gap-1.5 text-sm font-semibold text-khelo-ink underline underline-offset-2"
+                  className="min-h-11 inline-flex items-center gap-1.5 text-sm font-semibold text-fl-night underline underline-offset-2"
                 >
                   {t("ovw.kpi.pendingPayment", { n: pendingAll.payment })}
                 </Link>
@@ -312,7 +312,7 @@ export function KpiCards({ overview, date, today, courts, onOpenSlots }: KpiCard
                 {t("ovw.kpi.pendingUnavailable")}
               </p>
               <div className="relative z-10 mt-1">
-                <Link href={approvalsHref(undefined, courts)} className="min-h-11 inline-flex items-center gap-1.5 text-sm font-bold text-khelo-orange-label">
+                <Link href={approvalsHref(undefined, courts)} className="min-h-11 inline-flex items-center gap-1.5 text-sm font-bold text-fl-teal-deep">
                   {t("ovw.kpi.openApprovals")}
                   <Arrow />
                 </Link>

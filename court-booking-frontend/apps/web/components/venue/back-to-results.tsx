@@ -42,7 +42,7 @@ export function BackToResults({ slug }: { slug: string }) {
     <Link
       href={href}
       data-testid="back-to-results"
-      className="inline-flex min-h-11 items-center gap-1.5 rounded-full text-[14px] font-extrabold text-khelo-orange-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-khelo-orange"
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-full text-[14px] font-extrabold text-fl-orange-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-orange"
     >
       <span aria-hidden="true">&larr;</span>
       {t("venue.back")}

@@ -9,8 +9,8 @@ import { historyHref } from "@/lib/queue-filter";
 export function NayaChip() {
   const t = useT();
   return (
-    <span data-testid="naya-chip" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-khelo-warm px-2.5 py-1 text-[12px] font-extrabold text-khelo-orange-label">
-      <span aria-hidden="true" className="h-2 w-2 rounded-full bg-khelo-orange" />
+    <span data-testid="naya-chip" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-fl-orange-tint px-2.5 py-1 text-[12px] font-extrabold text-fl-orange-deep">
+      <span aria-hidden="true" className="h-2 w-2 rounded-full bg-fl-orange" />
       {t("notif.naya")}
     </span>
   );

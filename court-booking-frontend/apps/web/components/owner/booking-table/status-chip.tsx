@@ -11,7 +11,7 @@ const STYLE: Record<BookingStatusKey, string> = {
   no_show: "bg-owner-danger-soft text-owner-danger",
   cancelled: "bg-owner-border-light text-owner-ink-muted",
   refund_owed: "bg-owner-warn-soft text-owner-warn-dark",
-  refunded: "bg-owner-accent-soft text-owner-accent",
+  refunded: "bg-owner-accent-soft text-fl-teal-deep",
   expired: "bg-owner-border-light text-owner-ink-muted",
 };
 

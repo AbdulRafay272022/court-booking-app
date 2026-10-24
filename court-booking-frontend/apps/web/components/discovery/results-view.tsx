@@ -13,7 +13,7 @@ const VenueMap = dynamic(() => import("./venue-map"), {
 
 function MapLoading() {
   const t = useT();
-  return <div className="flex h-[min(70vh,560px)] items-center justify-center rounded-3xl bg-khelo-surface text-khelo-muted-2">{t("search.view.loadingMap")}</div>;
+  return <div className="flex h-[min(70vh,560px)] items-center justify-center rounded-3xl bg-fl-white text-fl-muted2">{t("search.view.loadingMap")}</div>;
 }
 
 type View = "list" | "map";
@@ -41,7 +41,7 @@ export function ResultsView({ list, pins }: { list: ReactNode; pins: MapVenue[] 
 
   return (
     <div>
-      <div role="tablist" aria-label={t("search.view.label")} className="mb-4 inline-flex gap-1 rounded-full border-[1.5px] border-khelo-border bg-khelo-surface p-1" data-testid="view-toggle">
+      <div role="tablist" aria-label={t("search.view.label")} className="mb-4 inline-flex gap-1 rounded-full border-[1.5px] border-fl-line-strong bg-fl-white p-1" data-testid="view-toggle">
         {tabs.map((tab) => {
           const on = view === tab.id;
           return (
@@ -55,7 +55,7 @@ export function ResultsView({ list, pins }: { list: ReactNode; pins: MapVenue[] 
               tabIndex={on ? 0 : -1}
               onClick={() => setView(tab.id)}
               onKeyDown={onKeyDown}
-              className={`khelo-btn min-h-11 min-w-[88px] rounded-full px-5 py-2 text-[14px] font-bold ${on ? "bg-khelo-ink text-white" : "text-khelo-ink"}`}
+              className={`khelo-btn min-h-11 min-w-[88px] rounded-full px-5 py-2 text-[14px] font-bold ${on ? "bg-fl-night text-white" : "text-fl-night"}`}
             >
               {tab.label}
             </button>

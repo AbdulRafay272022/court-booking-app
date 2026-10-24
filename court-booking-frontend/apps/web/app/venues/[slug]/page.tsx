@@ -87,9 +87,9 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
   const showArea = venue.area && venue.area !== venue.city;
   // Every label that looks like a filter is a link to that filter (see lib/search-links.ts). `before:` widens the tap area to 44px.
   const crumbLink =
-    "inline-flex min-h-11 items-center rounded-md px-1 hover:text-khelo-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-khelo-orange";
+    "inline-flex min-h-11 items-center rounded-md px-1 hover:text-fl-night hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-orange";
   const tagLink =
-    "relative inline-flex items-center before:absolute before:-inset-x-1 before:-inset-y-[7px] before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-khelo-orange";
+    "relative inline-flex items-center before:absolute before:-inset-x-1 before:-inset-y-[7px] before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-orange";
 
   return (
     <KheloPage>
@@ -98,7 +98,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
       <Container wide className="pb-16 pt-5 md:pt-7">
         <div className="mb-4 flex flex-col gap-0.5">
           <BackToResults slug={venue.slug} />
-          <nav aria-label={t("venue.breadcrumb.label")} className="text-[13px] text-khelo-muted-2">
+          <nav aria-label={t("venue.breadcrumb.label")} className="text-[13px] text-fl-muted2">
             <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-0">
               <li>
                 <Link href={searchHref({ city: venue.city })} className={crumbLink}>
@@ -131,7 +131,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                 </>
               ) : null}
               <li aria-hidden="true">{"›"}</li>
-              <li aria-current="page" className="font-bold text-khelo-ink">
+              <li aria-current="page" className="font-bold text-fl-night">
                 {venue.name}
               </li>
             </ol>
@@ -149,7 +149,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                     key={s}
                     href={searchHref({ city: venue.city, sport: s })}
                     data-testid="sport-tag"
-                    className={`${tagLink} rounded-full bg-khelo-ink px-3 py-[7px] text-[12px] font-bold capitalize text-white hover:bg-khelo-teal`}
+                    className={`${tagLink} rounded-full bg-fl-night px-3 py-[7px] text-[12px] font-bold capitalize text-white hover:bg-fl-teal`}
                   >
                     {s}
                   </Link>
@@ -159,7 +159,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                     key={k}
                     href={searchHref({ city: venue.city, indoor: k === "indoor" })}
                     data-testid="setting-tag"
-                    className={`${tagLink} rounded-full bg-khelo-mint px-3 py-[7px] text-[12px] font-bold text-khelo-teal hover:underline`}
+                    className={`${tagLink} rounded-full bg-fl-teal-tint px-3 py-[7px] text-[12px] font-bold text-fl-teal-deep hover:underline`}
                   >
                     {settingName(k)}
                   </Link>
@@ -168,16 +168,16 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <h1 className="font-khelo-display text-[32px] font-extrabold leading-[1.05] tracking-[-1px] md:text-[44px]">{venue.name}</h1>
                 {venue.average_rating != null ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-khelo-warning-bg px-3 py-1.5 text-[14px] font-extrabold text-khelo-warning-text">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-fl-waiting-tint px-3 py-1.5 text-[14px] font-extrabold text-fl-waiting">
                     <span aria-hidden="true">{"★"}</span>
                     <span className="sr-only">{t("venue.card.rated")}</span>
                     {venue.average_rating.toFixed(1)}
                     {venue.review_count > 0 ? <span className="font-medium"> ({venue.review_count})</span> : null}
                   </span>
                 ) : null}
-                <FavoriteButton venueId={venue.id} venueName={venue.name} variant="pill" />
+                <FavoriteButton venueId={venue.id} venueName={venue.name} />
               </div>
-              <p className="text-[16px] text-khelo-muted">
+              <p className="text-[16px] text-fl-muted">
                 {t(venue.courts.length === 1 ? "venue.hero.courtOne" : "venue.hero.courtMany", { count: venue.courts.length, sports: venue.sports.map(capitalize).join("/") })} · {venue.address}
                 {coords ? (
                   <>
@@ -187,19 +187,19 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                       target="_blank"
                       rel="noopener noreferrer"
                       data-testid="open-in-maps"
-                      className="inline-flex min-h-11 items-center font-bold text-khelo-orange-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-khelo-orange"
+                      className="inline-flex min-h-11 items-center font-bold text-fl-orange-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-orange"
                     >
                       {t("venue.card.openInMaps")}
                     </a>
                   </>
                 ) : null}
               </p>
-              <AmenityBadges amenities={venue.amenities} size="md" tone="khelo" />
-              {venue.description ? <p className="max-w-[68ch] text-[15.5px] leading-relaxed text-khelo-muted">{venue.description}</p> : null}
+              <AmenityBadges amenities={venue.amenities} size="md" />
+              {venue.description ? <p className="max-w-[68ch] text-[15.5px] leading-relaxed text-fl-muted">{venue.description}</p> : null}
             </header>
 
             <div id="availability" className="scroll-mt-6">
-              <VenueScheduleClient venueId={venue.id} venueName={venue.name} sports={venue.sports} courts={activeCourts} horizonDays={venue.booking_horizon_days} />
+              <VenueScheduleClient venueId={venue.id} venueName={venue.name} sports={venue.sports} courts={activeCourts} horizonDays={venue.booking_horizon_days} cancellation={{ cancellation_allowed: venue.cancellation_allowed, cancellation_cutoff_hours: venue.cancellation_cutoff_hours }} />
             </div>
 
             <VenueLocation name={venue.name} address={venue.address} area={venue.area} city={venue.city} latitude={venue.latitude} longitude={venue.longitude} />
@@ -208,32 +208,32 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
           </div>
 
           <aside className="flex flex-col gap-4 lg:sticky lg:top-6" aria-label={t("venue.aside.label")}>
-            <div className="flex flex-col gap-5 rounded-3xl bg-khelo-surface p-6">
+            <div className="flex flex-col gap-5 rounded-3xl bg-fl-white p-6">
               {fromPrice != null ? (
                 <div data-testid="from-price">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.8px] text-khelo-muted-2">{t("venue.card.from")}</div>
+                  <div className="text-[11px] font-bold uppercase tracking-[0.8px] text-fl-muted2">{t("venue.card.from")}</div>
                   <div className="font-khelo-display text-[30px] font-extrabold leading-tight">
-                    PKR {formatPKR(fromPrice)} <span className="text-[14px] font-medium text-khelo-muted-2">{t("venue.card.perSlot")}</span>
+                    PKR {formatPKR(fromPrice)} <span className="text-[14px] font-medium text-fl-muted2">{t("venue.card.perSlot")}</span>
                   </div>
                 </div>
               ) : null}
               <dl className="flex flex-col gap-3 text-[14px]">
                 <div className="flex flex-col gap-0.5">
-                  <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">{t("venue.aside.sports")}</dt>
+                  <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.sports")}</dt>
                   <dd className="font-bold">{sportsText}</dd>
                 </div>
                 {settings.length > 0 ? (
                   <div className="flex flex-col gap-0.5">
-                    <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">{t("venue.aside.setting")}</dt>
+                    <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.setting")}</dt>
                     <dd className="font-bold">{settings.map(settingName).join(" & ")}</dd>
                   </div>
                 ) : null}
                 <div className="flex flex-col gap-0.5">
-                  <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-khelo-muted-2">{t("venue.aside.location")}</dt>
+                  <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.location")}</dt>
                   <dd className="font-bold">{place}</dd>
                 </div>
               </dl>
-              <a href="#availability" className="khelo-btn hidden min-h-12 items-center justify-center rounded-[14px] bg-khelo-orange px-6 lg:inline-flex text-[15px] font-extrabold text-khelo-ink">
+              <a href="#availability" className="khelo-btn hidden min-h-12 items-center justify-center rounded-[14px] bg-fl-orange px-6 lg:inline-flex text-[15px] font-extrabold text-fl-night">
                 {t("venue.aside.check")}
               </a>
               {venue.whatsapp ? (
@@ -241,7 +241,7 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                   href={`https://wa.me/${venue.whatsapp.replace(/\D/g, "")}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="khelo-btn inline-flex min-h-12 items-center justify-center gap-2 rounded-[14px] border-[1.5px] border-khelo-ink text-[14.5px] font-bold text-khelo-ink"
+                  className="khelo-btn inline-flex min-h-12 items-center justify-center gap-2 rounded-[14px] border-[1.5px] border-fl-night text-[14.5px] font-bold text-fl-night"
                 >
                   {t("venue.aside.whatsapp")}
                 </a>

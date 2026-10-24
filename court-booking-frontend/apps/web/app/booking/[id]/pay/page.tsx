@@ -12,6 +12,8 @@ import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { supportWhatsAppUrl } from "@/lib/support";
 import { useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
+import { journeySteps, windowMs } from "@court-booking/ui-tokens";
+import { ArrowLeft, Banner, Button, CountdownRing, IconButton, StatusPill, Timeline, X, useFlLang } from "@/components/fl";
 
 function useCountdown(target: string | null | undefined) {
   const [now, setNow] = useState(() => Date.now());
@@ -28,6 +30,7 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
   const { id } = use(params);
   const t = useT();
   const fmt = useFmt();
+  const lang = useFlLang();
   const router = useRouter();
   const queryClient = useQueryClient();
   const paymentInstructions = useBookingFlowStore((s) => s.paymentInstructionsByBookingId[id]);
@@ -112,149 +115,163 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
   }
 
   if (bookingQuery.isLoading || !booking) {
-    return <main className="min-h-screen flex items-center justify-center text-player-ink-faint">{t("play.loading")}</main>;
+    return <main className="min-h-screen flex items-center justify-center text-fl-muted2">{t("play.loading")}</main>;
   }
 
   if (booking.status === "cancelled" && booking.cancelled_by === "owner") {
     return (
-      <main className="max-w-lg mx-auto min-h-screen flex flex-col px-6 py-10 gap-6">
+      <main className="mx-auto flex min-h-screen max-w-lg flex-col gap-6 bg-fl-ground px-6 py-10 font-fl-body text-fl-night">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-14 h-14 rounded-full bg-player-danger-soft flex items-center justify-center text-2xl">✕</div>
-          <h1 className="text-2xl font-extrabold">{t("play.pay.rejectedTitle")}</h1>
-          <p className="text-player-ink-muted">{t("play.pay.rejectedBody")}</p>
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-fl-danger-tint text-fl-danger" aria-hidden>
+            <X size={26} strokeWidth={2.6} />
+          </div>
+          <h1 className="font-fl-display text-2xl font-extrabold">{t("play.pay.rejectedTitle")}</h1>
+          <StatusPill booking={booking} />
+          <p className="text-fl-muted">{t("play.pay.rejectedBody")}</p>
         </div>
-        <div className="border-[1.5px] border-player-danger-soft-border rounded-2xl p-5 flex flex-col gap-2">
-          <span className="text-[11px] font-bold tracking-widest text-player-danger">{t("play.pay.venueSaid")}</span>
+        <div className="flex flex-col gap-2 rounded-fl-card border-[1.5px] border-fl-danger-border bg-fl-white p-5">
+          <span className="text-[12px] font-extrabold tracking-widest text-fl-danger">{t("play.pay.venueSaid")}</span>
           <p className="font-semibold">&quot;{rejectionReason ?? "…"}&quot;</p>
         </div>
-        <p className="text-center text-player-ink-muted text-sm">{t("play.pay.slotOpenAgain")}</p>
-        <button onClick={() => router.push("/search")} className="h-14 rounded-2xl bg-player-accent text-white font-bold">
-          {t("play.pay.findAnother")}
-        </button>
+        <div className="rounded-fl-card bg-fl-white p-5">
+          <Timeline steps={journeySteps({ ...booking, proofSent: true }, lang)} />
+        </div>
+        <p className="text-center text-sm text-fl-muted">{t("play.pay.slotOpenAgain")}</p>
+        <Button label={t("play.pay.findAnother")} block onClick={() => router.push("/search")} />
       </main>
     );
   }
 
   if (booking.status === "cancelled" || expired) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-4 px-8 text-center">
-        <h1 className="text-xl font-extrabold">{expired ? t("play.pay.expiredTitle") : t("play.pay.cancelledTitle")}</h1>
-        <p className="text-player-ink-muted">
-          {expired ? t("play.pay.expiredBody") : t("play.pay.cancelledBody")}
-        </p>
-        <button onClick={() => router.push("/search")} className="px-6 h-12 rounded-2xl bg-player-accent text-white font-bold">
-          {t("play.tryAgain")}
-        </button>
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-fl-ground px-8 text-center font-fl-body text-fl-night">
+        <h1 className="font-fl-display text-xl font-extrabold">{expired ? t("play.pay.expiredTitle") : t("play.pay.cancelledTitle")}</h1>
+        {!expired ? <StatusPill booking={booking} /> : null}
+        <p className="text-fl-muted">{expired ? t("play.pay.expiredBody") : t("play.pay.cancelledBody")}</p>
+        <Button label={t("play.tryAgain")} onClick={() => router.push("/search")} />
       </main>
     );
   }
 
   const isWaitingReview = booking.status === "payment_submitted";
-  const minutes = secondsLeft != null ? Math.floor(secondsLeft / 60) : null;
-  const seconds = secondsLeft != null ? secondsLeft % 60 : null;
 
   return (
-    <main className="max-w-lg mx-auto min-h-screen flex flex-col">
-      <div className="px-6 py-5 bg-player-surface border-b border-player-border-light flex items-center gap-3">
-        <button onClick={() => router.back()} className="w-10 h-10 rounded-xl bg-player-surface-2 flex items-center justify-center">←</button>
-        <h1 className="font-bold text-[17px] flex-1">{isWaitingReview ? t("play.pay.titleWaiting") : t("play.pay.titleHold")}</h1>
+    <main className="mx-auto flex min-h-screen max-w-lg flex-col bg-fl-ground font-fl-body text-fl-night">
+      <div className="flex items-center gap-3 border-b border-fl-line bg-fl-white px-4 py-3 sm:px-6">
+        <IconButton icon={ArrowLeft} aria-label={t("play.pay.back")} variant="mist" onClick={() => router.back()} />
+        <h1 className="flex-1 text-[17px] font-extrabold">{isWaitingReview ? t("play.pay.titleWaiting") : t("play.pay.titleHold")}</h1>
         <a
           href={supportWhatsAppUrl(t("play.pay.helpMessage", { id }))}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[13px] font-semibold text-player-accent whitespace-nowrap"
+          className="inline-flex min-h-11 items-center whitespace-nowrap text-[13px] font-extrabold text-fl-orange-deep hover:underline"
         >
           {t("play.pay.help")}
         </a>
       </div>
 
-      <div className="flex-1 p-6 flex flex-col gap-5">
-        {booking.status === "held" && secondsLeft != null ? (
-          <div
-            className="text-center py-2.5 rounded-xl font-mono text-[13px] font-semibold"
-            style={{ background: secondsLeft < 120 ? "#F8E5E0" : "#FDF6E9", color: secondsLeft < 120 ? "#8C3823" : "#8A5A0A" }}
-          >
-            {t("play.pay.held", { time: `${minutes}:${String(seconds).padStart(2, "0")}` })}
+      <div className="flex flex-1 flex-col gap-5 p-4 sm:p-6">
+        <section className="flex flex-col items-center gap-4 rounded-fl-card bg-fl-night p-6 text-center text-fl-white" data-testid="pay-hero">
+          <StatusPill booking={booking} />
+          {booking.status === "held" && booking.held_until ? (
+            <CountdownRing expiresAt={booking.held_until} totalMs={windowMs(booking.created_at, booking.held_until)} caption={t("play.pay.ringCaption")} />
+          ) : null}
+          <div className="flex flex-col gap-1">
+            <span className="text-[12px] font-extrabold tracking-widest text-fl-on-dark-muted">{isWaitingReview ? t("play.pay.sent") : t("play.pay.advanceDue")}</span>
+            <span className="font-fl-display text-4xl font-extrabold tabular-nums">PKR {formatPKR(booking.advance_amount)}</span>
+            {booking.balance_due > 0 ? <span className="text-[14px] text-fl-on-dark-muted">{t("play.pay.balance", { amount: `PKR ${formatPKR(booking.balance_due)}` })}</span> : null}
           </div>
-        ) : null}
+        </section>
 
-        <div className="bg-player-ink text-white rounded-2xl p-6 flex flex-col gap-1.5">
-          <span className="text-[11px] font-bold tracking-widest text-white/60">{isWaitingReview ? t("play.pay.sent") : t("play.pay.advanceDue")}</span>
-          <span className="font-mono text-4xl font-semibold">{formatPKR(booking.advance_amount)}</span>
-          <span className="text-[13.5px] text-white/65">{t("play.pay.balance", { amount: formatPKR(booking.balance_due) })}</span>
+        <div className="rounded-fl-card bg-fl-white p-5" data-testid="pay-journey">
+          <Timeline steps={journeySteps(booking, lang)} />
         </div>
 
         {isWaitingReview ? (
-          <div className="bg-player-surface border border-player-border-light rounded-2xl p-5 text-player-ink-muted text-sm">
-            {t("play.pay.reviewing")}
-          </div>
+          <Banner tone="waiting" body={t("play.pay.reviewing")} />
         ) : (
           <>
             {paymentInstructions ? (
-              <div className="bg-player-surface border border-player-border-light rounded-2xl p-5 flex flex-col gap-3">
-                <span className="text-[11px] font-bold tracking-widest text-player-ink-fainter">{t("play.pay.sendTo")}</span>
+              <div className="flex flex-col gap-3 rounded-fl-card bg-fl-white p-5">
+                <span className="text-[12px] font-extrabold tracking-widest text-fl-muted2">{t("play.pay.sendTo")}</span>
                 {paymentInstructions.bank ? <Row label={t("play.pay.bank")} value={paymentInstructions.bank} /> : null}
                 {paymentInstructions.account_title ? <Row label={t("play.pay.accountTitle")} value={paymentInstructions.account_title} /> : null}
                 {paymentInstructions.account_number ? <Row label={t("play.pay.accountNumber")} value={paymentInstructions.account_number} mono /> : null}
                 {paymentInstructions.iban ? <Row label={t("play.pay.iban")} value={paymentInstructions.iban} mono /> : null}
               </div>
             ) : (
-              <div className="bg-player-surface border border-player-border-light rounded-2xl p-5 text-player-ink-faint text-[13px]">
-                {t("play.pay.noDetails")}
-              </div>
+              <div className="rounded-fl-card bg-fl-white p-5 text-[13px] text-fl-muted">{t("play.pay.noDetails")}</div>
             )}
 
             {previewUrl ? (
-              <div className="bg-player-surface border border-player-border-light rounded-2xl p-3 flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-2 rounded-fl-card bg-fl-white p-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previewUrl} alt={t("play.pay.previewAlt")} className="max-h-56 rounded-xl object-contain" />
-                <button onClick={() => { setFile(null); setPreviewUrl(null); }} className="text-player-danger text-[13px] font-semibold">
+                <img src={previewUrl} alt={t("play.pay.previewAlt")} className="max-h-56 rounded-fl-sm object-contain" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFile(null);
+                    setPreviewUrl(null);
+                  }}
+                  className="inline-flex min-h-11 items-center px-2 text-[13px] font-extrabold text-fl-danger"
+                >
                   {t("play.pay.remove")}
                 </button>
               </div>
             ) : (
               <div
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                role="button"
+                tabIndex={0}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
                 onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files[0]); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  pickFile(e.dataTransfer.files[0]);
+                }}
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed rounded-2xl p-10 flex flex-col items-center gap-2 cursor-pointer text-center"
-                style={{ borderColor: dragOver ? "#EF5A2C" : "#E0D9D4", background: dragOver ? "#FFF3EE" : "transparent" }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                className={`flex cursor-pointer flex-col items-center gap-2 rounded-fl-card border-2 border-dashed p-10 text-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night ${
+                  dragOver ? "border-fl-orange bg-fl-orange-tint" : "border-fl-line-strong bg-fl-white"
+                }`}
               >
-                <span className="font-bold text-[15px]">{t("play.pay.attach")}</span>
-                <span className="text-[13px] text-player-ink-muted">{t("play.pay.attachHint")}</span>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={(e) => pickFile(e.target.files?.[0])}
-                />
+                <span className="text-[15px] font-extrabold">{t("play.pay.attach")}</span>
+                <span className="text-[13px] text-fl-muted">{t("play.pay.attachHint")}</span>
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => pickFile(e.target.files?.[0])} />
               </div>
             )}
 
-            {policyText ? <p className="text-center text-player-ink-faint text-[12.5px] leading-[1.4] px-2">{policyText}</p> : null}
+            {policyText ? (
+              <p className="px-2 text-center text-[13px] leading-[1.4] text-fl-muted" data-testid="pay-policy">
+                {policyText}
+              </p>
+            ) : null}
           </>
         )}
       </div>
 
       {!isWaitingReview ? (
-        <div className="px-6 py-5 bg-player-surface border-t border-player-border-light flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 border-t border-fl-line bg-fl-white px-4 py-4 sm:px-6">
           {submitting ? (
-            <div className="h-1.5 rounded-full bg-player-surface-2 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-player-accent transition-all"
-                style={{ width: `${Math.max(6, Math.round(uploadProgress * 100))}%` }}
-              />
+            <div className="h-1.5 overflow-hidden rounded-full bg-fl-mist">
+              <div className="h-full rounded-full bg-fl-orange transition-all" style={{ width: `${Math.max(6, Math.round(uploadProgress * 100))}%` }} />
             </div>
           ) : null}
-          <button
-            onClick={submitProof}
+          <Button
+            block
             disabled={!file || submitting}
-            className="w-full h-14 rounded-2xl bg-player-accent text-white font-bold disabled:opacity-50"
-          >
-            {submitting ? t("play.pay.uploading", { pct: Math.round(uploadProgress * 100) }) : t("play.pay.submit")}
-          </button>
+            loading={submitting}
+            label={submitting ? t("play.pay.uploading", { pct: Math.round(uploadProgress * 100) }) : t("play.pay.submit")}
+            onClick={submitProof}
+          />
         </div>
       ) : null}
     </main>
@@ -263,9 +280,9 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-player-ink-faint text-sm">{label}</span>
-      <span className={`text-sm font-semibold ${mono ? "font-mono" : ""}`}>{value}</span>
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+      <span className="text-sm text-fl-muted">{label}</span>
+      <span className={`break-all text-sm font-extrabold ${mono ? "tabular-nums tracking-wide" : ""}`}>{value}</span>
     </div>
   );
 }

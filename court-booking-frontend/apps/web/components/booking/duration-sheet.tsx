@@ -9,6 +9,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
+import { Button, Chip, MoneyRows, type MoneyRow } from "@/components/fl";
 
 /**
  * "How long do you want to play?" (Section 32 Part 4 / 4c). Opens when a player taps an open 30-minute slot: they pick a
@@ -26,6 +27,7 @@ export function DurationSheet({
   index,
   onClose,
   onContinue,
+  cancellation,
 }: {
   courtId: string;
   courtName: string;
@@ -35,6 +37,8 @@ export function DurationSheet({
   index: number;
   onClose: () => void;
   onContinue: (choice: { slotCount: number; minutes: number; price: number }) => void;
+  /** The venue's real policy fields (VenuePublicOut); the line is hidden when they are not known. */
+  cancellation?: { cancellation_allowed: boolean; cancellation_cutoff_hours: number | null } | null;
 }) {
   const t = useT();
   const fmt = useFmt();
@@ -47,79 +51,87 @@ export function DurationSheet({
     queryFn: () => api.availability.quote(courtId, slot.starts_at, slotCount),
   });
   const quote = quoteQuery.data;
+  const policy = cancellation ? fmt.cancellationPolicy(cancellation) : "";
+  // Money rows come only from the server quote (the same code that prices the hold); nothing is computed here.
+  const rows: MoneyRow[] = quote
+    ? [
+        { label: t("venue.sheet.totalRow"), value: `PKR ${formatPKR(quote.price)}`, strong: true, note: t("venue.sheet.total", { duration: fmt.duration(quote.duration_minutes) }) },
+        ...(quote.advance_amount < quote.price
+          ? [
+              { label: t("venue.sheet.advanceRow"), value: `PKR ${formatPKR(quote.advance_amount)}` },
+              { label: t("venue.sheet.balanceRow"), value: `PKR ${formatPKR(quote.balance_due)}` },
+            ]
+          : []),
+      ]
+    : [];
 
   return (
-    <div className="khelo fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-khelo-ink/50 font-[family-name:var(--font-khelo-body-x)] text-khelo-ink" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-fl-a-scrim font-fl-body text-fl-night sm:items-center" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t("venue.sheet.book", { court: courtLabel(courtName, courtSport) })}
-        className="w-full sm:max-w-md bg-khelo-surface rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-5"
+        data-testid="confirm-sheet"
+        className="flex max-h-[92dvh] w-full flex-col gap-5 overflow-y-auto rounded-t-fl-sheet bg-fl-white p-6 shadow-fl-raised sm:max-w-md sm:rounded-fl-sheet"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-extrabold tracking-widest text-khelo-orange-label">{courtLabel(courtName, courtSport).toUpperCase()}</span>
-            <span className="font-khelo-display text-[19px] font-extrabold">{fmt.date(slot.starts_at)}</span>
-            <span className="font-mono text-[14.5px] font-semibold" data-testid="sheet-time-range">
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="text-[12px] font-extrabold uppercase tracking-[0.12em] text-fl-orange-deep">{courtLabel(courtName, courtSport)}</span>
+            <span className="font-fl-display text-[20px] font-extrabold">{fmt.date(slot.starts_at)}</span>
+            <span className="text-[15px] font-bold tabular-nums" data-testid="sheet-time-range">
               {quote ? fmt.timeRange(quote.starts_at, quote.ends_at) : fmt.timeRange(slot.starts_at, choices.find((c) => c.slotCount === slotCount)?.endsAt ?? slot.ends_at)}
             </span>
           </div>
-          <button onClick={onClose} aria-label={t("venue.common.close")} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-khelo-page font-bold text-khelo-ink">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t("venue.common.close")}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-fl-ground font-bold text-fl-night focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night"
+          >
             ✕
           </button>
         </div>
 
         <div className="flex flex-col gap-2.5">
-          <span className="text-[14px] font-bold">{t("venue.sheet.howLong")}</span>
+          <span className="text-[14px] font-extrabold">{t("venue.sheet.howLong")}</span>
           <div className="flex flex-wrap gap-2">
-            {choices.map((c) => {
-              const selected = c.slotCount === slotCount;
-              return (
-                <button
-                  key={c.slotCount}
-                  onClick={() => setSlotCount(c.slotCount)}
-                  aria-pressed={selected}
-                  className={`khelo-btn h-11 rounded-full border-[1.5px] px-4 text-[13.5px] font-bold text-khelo-ink ${
-                    selected ? "border-khelo-orange bg-khelo-orange" : "border-khelo-border bg-khelo-surface"
-                  }`}
-                >
-                  {fmt.duration(c.minutes)}
-                </button>
-              );
-            })}
+            {choices.map((c) => (
+              <Chip key={c.slotCount} label={fmt.duration(c.minutes)} selected={c.slotCount === slotCount} onClick={() => setSlotCount(c.slotCount)} />
+            ))}
           </div>
         </div>
 
-        <div className="rounded-2xl bg-khelo-warm-2 border border-khelo-warm p-4 flex flex-col gap-1.5" data-testid="sheet-total">
+        <div data-testid="sheet-total" aria-live="polite">
           {quoteQuery.isError ? (
-            <p className="text-khelo-orange-label text-[13.5px] font-semibold">{friendlyErrorMessage(quoteQuery.error)}</p>
+            <p className="rounded-fl-input bg-fl-danger-tint px-3.5 py-3 text-[14px] font-semibold text-fl-danger">{friendlyErrorMessage(quoteQuery.error)}</p>
           ) : !quote ? (
-            <p className="text-khelo-muted text-[13.5px]">{t("venue.sheet.working")}</p>
+            <p className="rounded-fl-input bg-fl-ground px-3.5 py-3 text-[14px] text-fl-muted">{t("venue.sheet.working")}</p>
           ) : (
-            <>
-              <div className="flex items-baseline justify-between">
-                <span className="text-[13px] font-semibold text-khelo-muted">{t("venue.sheet.total", { duration: fmt.duration(quote.duration_minutes) })}</span>
-                <span className="font-mono text-[22px] font-bold">PKR {formatPKR(quote.price)}</span>
-              </div>
-              {quote.advance_amount < quote.price ? (
-                <p className="text-[12.5px] font-medium text-khelo-muted">
-                  {t("venue.sheet.advance", { advance: formatPKR(quote.advance_amount), balance: formatPKR(quote.balance_due) })}
-                </p>
-              ) : (
-                <p className="text-[12.5px] font-medium text-khelo-muted">{t("venue.sheet.payNow")}</p>
-              )}
-            </>
+            <div className="flex flex-col gap-2">
+              <MoneyRows rows={rows} />
+              <p className="text-[13px] font-medium text-fl-muted">
+                {quote.advance_amount < quote.price
+                  ? t("venue.sheet.advance", { advance: formatPKR(quote.advance_amount), balance: formatPKR(quote.balance_due) })
+                  : t("venue.sheet.payNow")}
+              </p>
+            </div>
           )}
         </div>
 
-        <button
-          onClick={() => quote && onContinue({ slotCount: quote.slot_count, minutes: quote.duration_minutes, price: quote.price })}
+        {policy ? (
+          <p className="rounded-fl-input bg-fl-teal-tint px-3.5 py-3 text-[13px] leading-snug text-fl-teal-deep" data-testid="sheet-policy">
+            <b>{t("venue.sheet.policy")}: </b>
+            {policy}
+          </p>
+        ) : null}
+
+        <Button
+          label={t("venue.sheet.continue")}
+          block
           disabled={!quote}
-          className="khelo-btn min-h-12 rounded-[14px] bg-khelo-orange text-[15px] font-extrabold text-khelo-ink disabled:opacity-50"
-        >
-          {t("venue.sheet.continue")}
-        </button>
+          onClick={() => quote && onContinue({ slotCount: quote.slot_count, minutes: quote.duration_minutes, price: quote.price })}
+        />
       </div>
     </div>
   );

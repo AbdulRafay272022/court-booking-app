@@ -8,6 +8,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useT } from "@/components/i18n/lang-provider";
 import type { MessageKey } from "@/lib/i18n";
+import { Chip } from "@/components/fl";
 
 const METHODS: { value: PaymentMethod; label: MessageKey }[] = [
   { value: "cash_at_venue", label: "odash.pay.method.cash_at_venue" },
@@ -62,18 +63,18 @@ export function RecordPaymentSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" style={{ background: "var(--color-fl-a-scrim)" }} onClick={onClose}>
       <div
         className="bg-owner-surface w-full md:w-[420px] rounded-t-3xl md:rounded-2xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold tracking-widest" style={{ color: "#0E6274" }}>{t("odash.rec.title")}</span>
+            <span className="text-[11px] font-bold tracking-widest" style={{ color: "var(--color-fl-teal)" }}>{t("odash.rec.title")}</span>
             <span className="text-[17px] font-bold text-owner-ink">{playerLabel}</span>
-            <span className="font-mono text-[13px] text-owner-ink-faint">{t("odash.rec.owed", { amount: formatPKR(balanceDue) })}</span>
+            <span className="tabular-nums text-[13px] text-owner-ink-faint">{t("odash.rec.owed", { amount: formatPKR(balanceDue) })}</span>
           </div>
-          <button onClick={onClose} aria-label={t("odash.rec.close")} className="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style={{ background: "#F4F6F7" }}>
+          <button onClick={onClose} aria-label={t("odash.rec.close")} className="w-10 h-10 rounded-xl flex items-center justify-center font-bold" style={{ background: "var(--color-fl-ground)" }}>
             ✕
           </button>
         </div>
@@ -84,11 +85,11 @@ export function RecordPaymentSheet({
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
             inputMode="numeric"
-            className="font-mono text-[22px] font-semibold px-4 rounded-xl border border-owner-border"
+            className="tabular-nums text-[22px] font-semibold px-4 rounded-xl border border-owner-border"
             style={{ height: 54 }}
           />
           {!valid && amount.length > 0 ? (
-            <span className="text-[12.5px] font-medium" style={{ color: "#8C3823" }}>
+            <span className="text-[12.5px] font-medium" style={{ color: "var(--color-fl-danger)" }}>
               {amountNum > balanceDue ? t("odash.rec.tooMuch", { amount: formatPKR(balanceDue) }) : t("odash.rec.zero")}
             </span>
           ) : null}
@@ -98,14 +99,7 @@ export function RecordPaymentSheet({
           <label className="text-[13px] font-semibold text-owner-ink">{t("odash.rec.how")}</label>
           <div className="flex gap-2">
             {METHODS.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setMethod(m.value)}
-                className="flex-1 rounded-xl text-[13px] font-semibold"
-                style={{ height: 44, background: method === m.value ? "#0E6274" : "#F4F6F7", color: method === m.value ? "#fff" : "#5B7079" }}
-              >
-                {t(m.label)}
-              </button>
+              <Chip key={m.value} label={t(m.label)} selected={method === m.value} onClick={() => setMethod(m.value)} className="flex-1" />
             ))}
           </div>
         </div>
@@ -121,13 +115,13 @@ export function RecordPaymentSheet({
           />
         </div>
 
-        {error ? <p className="text-[13px] font-semibold" style={{ color: "#8C3823" }}>{error}</p> : null}
+        {error ? <p className="text-[13px] font-semibold" style={{ color: "var(--color-fl-danger)" }}>{error}</p> : null}
 
         <button
           onClick={handleSubmit}
           disabled={!valid || submitting}
           className="rounded-xl text-white font-bold text-[15px] disabled:opacity-50"
-          style={{ height: 50, background: "#0E6274" }}
+          style={{ height: 50, background: "var(--color-fl-teal)" }}
         >
           {submitting ? t("odash.rec.recording") : t("odash.rec.submit", { amount: valid ? formatPKR(amountNum) : "0" })}
         </button>
