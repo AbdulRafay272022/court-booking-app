@@ -12,6 +12,7 @@
   "dependencies": {
     "@court-booking/api-client": "*",
     "@court-booking/types": "*",
+    "@court-booking/ui-tokens": "*",
     "@tanstack/react-query": "^5.102.8",
     "leaflet": "^1.9.4",
     "next": "16.3.4",

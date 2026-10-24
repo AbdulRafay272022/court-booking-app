@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Floodlight tokens (packages/ui-tokens, generated): fl-* utilities + role CSS vars. Adds names only, restyles nothing. */
+@import "../../../packages/ui-tokens/generated/theme.css";
 
 @theme {
   /* Actual font-family values come from next/font/google in layout.tsx, which sets

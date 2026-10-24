@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { suppressAuthRedirect, useRequireAuth } from "@/lib/use-require-auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { Logo } from "@/components/auth/logo";
+import { FlRoleProvider } from "@/components/fl/role";
 import { useT } from "@/components/i18n/lang-provider";
 import { supportWhatsAppUrl } from "@/lib/support";
 import { api } from "@/lib/api";
@@ -51,7 +52,10 @@ export default function VenueSetupLayout({ children }: { children: React.ReactNo
           </button>
         </div>
       </header>
-      <main className="max-w-2xl mx-auto px-5 sm:px-6 py-8 flex flex-col gap-6">{children}</main>
+      {/* Floodlight role theme by route: venue setup is the owner role (context only, no DOM). */}
+      <main className="max-w-2xl mx-auto px-5 sm:px-6 py-8 flex flex-col gap-6">
+        <FlRoleProvider role="owner">{children}</FlRoleProvider>
+      </main>
     </div>
   );
 }

@@ -12,6 +12,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/mobile/package.json apps/mobile/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
+COPY packages/ui-tokens/package.json packages/ui-tokens/package.json
 # npm workspaces needs every workspace's package.json present to resolve
 # the lockfile correctly, even though this image only ever builds/runs
 # apps/web -- apps/mobile's own image (if one ever exists) is unrelated.
@@ -31,6 +32,7 @@ FROM deps AS builder
 COPY apps/web ./apps/web
 COPY packages/types ./packages/types
 COPY packages/api-client ./packages/api-client
+COPY packages/ui-tokens ./packages/ui-tokens
 # NEXT_PUBLIC_* values are INLINED INTO THE CLIENT BUNDLE at `next build`
 # time -- setting them on the running container's environment does nothing
 # for code that runs in the browser (lib/config.ts is used by client
