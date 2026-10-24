@@ -13,7 +13,7 @@ Agent brief (env, commands, rules): scratchpad `agent-brief.md` (session temp di
 | D-W1 web | floodlight-web | DONE, merged ff2d23e (web tests 137→144, Playwright 278/278) |
 | D-M1 player | floodlight-player | DONE, merged 3407fbb (unit →106, live journey 105/105) |
 | D-M2 owner | floodlight-owner | DONE, merged 233b080 (unit →122, live 18/18, board checks 84+84) |
-| E QA | floodlight-qa | in progress |
+| E QA | floodlight-qa | DONE, merged 8af03f1 (unit →131, e2e 245/245, web 278/278, journeys pass, contrast 0 fail) |
 
 ## BE key findings
 - Direct hold exists: POST /bookings/hold (api.bookings.hold) → "Book karo" holds directly.
@@ -23,6 +23,7 @@ Agent brief (env, commands, rules): scratchpad `agent-brief.md` (session temp di
 - Backend dependencies (not built, for founder): B1 chat inbox, B2 short check-in code, B3 full growth heatmap, B4 thumbnails, B5 bank details re-fetch, B6 hold_minutes public, B7 server notification read state, B8 bulk approve endpoint.
 
 ## Next
+- ALL PHASES DONE (2026-10-25). Founder: push main, then EAS dev-client build (commands in apps/mobile/docs/native-foundation.md).
 - After C merges: W1, M1, M2 in worktrees; merge order W1 → FX → M1 → M2.
 
 ## Blockers
