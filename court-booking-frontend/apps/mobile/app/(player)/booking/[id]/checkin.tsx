@@ -1,107 +1,90 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import QRCode from "react-native-qrcode-svg";
-import { selfCheckinWindow } from "@court-booking/types";
+import { Check, ScanLine } from "lucide-react-native";
+import { formatTimeRange, formatWhen, selfCheckinWindow } from "@court-booking/types";
+import { palette, radius, space } from "@court-booking/ui-tokens";
 
+import { Banner, Button, Card, EmptyState, ErrorState, Header, Input, Screen, Skeleton, Text, Ticket, useCopy, useLang } from "@/components/ui";
 import { api } from "@/lib/api";
-import { safeBack } from "@/lib/safe-back";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatTime, formatWhen } from "@/lib/format";
-import { ChevronLeftIcon, CheckIcon } from "@/components/icons";
+import { safeBack } from "@/lib/safe-back";
+import { sportLabel, useBookingPlace } from "../../_components";
 
-/** Section 32 Part 9. Two directions in one screen: (1) show this booking's own QR (its plain
- * booking id) for the OWNER to scan -- works any time the booking is booked, no time window; (2)
- * "Scan to check in" -- the player scans the VENUE's printed QR themselves, gated to about 15
- * minutes before to 15 minutes after start (packages/types' selfCheckinWindow), with a clear
- * message outside it rather than just hiding the option. Both call the same tested backend paths
- * Today's "Check in" button and the owner's scan screen already use. */
+/** Player check-in (Section 32 Part 9), Floodlight look. (1) The booking's own QR (booking id) for the owner to scan, shown
+ * ONLY for a booked booking; (2) "Scan to check in": the player scans the venue's printed QR, gated to ~15 min before/after
+ * the start (selfCheckinWindow) with a clear message outside it. Same tested backend paths as before. */
 export default function PlayerCheckinScreen() {
+  const copy = useCopy();
+  const lang = useLang();
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
   const bookingQuery = useQuery({ queryKey: ["booking", id], queryFn: () => api.bookings.get(id) });
+  const booking = bookingQuery.data;
+  const place = useBookingPlace(booking);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  const booking = bookingQuery.data;
-
-  if (!booking) {
-    return (
-      <SafeAreaView className="flex-1 bg-player-bg items-center justify-center" edges={["top", "bottom"]}>
-        {bookingQuery.isError ? (
-          <Text className="font-figtree-medium text-player-ink-faint text-sm">{friendlyErrorMessage(bookingQuery.error)}</Text>
-        ) : (
-          <ActivityIndicator color="#EF5A2C" />
-        )}
-      </SafeAreaView>
-    );
-  }
+  const [error, setError] = useState<string | null>(null);
 
   async function submitSelfCheckin(token: string) {
     setSubmitting(true);
+    setError(null);
     try {
       await api.bookings.checkinSelf(id, token.trim());
-      queryClient.invalidateQueries({ queryKey: ["booking", id] });
-      queryClient.invalidateQueries({ queryKey: ["bookings-mine"] });
+      void queryClient.invalidateQueries({ queryKey: ["booking", id] });
+      void queryClient.invalidateQueries({ queryKey: ["bookings-mine"] });
+      setScanning(false);
     } catch (e) {
-      Alert.alert("Couldn't check in", friendlyErrorMessage(e));
+      setError(friendlyErrorMessage(e));
       setScanned(false);
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (booking.checked_in_at) {
+  const header = <Header title={copy("Check-in", "Check in")} onBack={() => safeBack()} />;
+  if (!booking) {
     return (
-      <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-        <View className="px-5 pt-5 pb-4 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-          <Pressable onPress={() => safeBack()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-xl items-center justify-center" style={{ backgroundColor: "#F4EFEC" }}>
-            <ChevronLeftIcon />
-          </Pressable>
-          <Text className="font-figtree-bold text-player-ink text-[18px]">Check in</Text>
-        </View>
-        <View className="flex-1 items-center justify-center px-8 gap-4">
-          <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: "#1F7A52" }}>
-            <CheckIcon size={30} strokeWidth={2.4} />
-          </View>
-          <Text className="font-figtree-bold text-player-ink text-[18px] text-center">You're checked in</Text>
-          <Text className="font-figtree-medium text-player-ink-faint text-[13.5px] text-center">
-            {formatWhen(booking.checked_in_at)}
-          </Text>
-        </View>
-      </SafeAreaView>
+      <Screen>
+        {header}
+        {bookingQuery.isError ? (
+          <ErrorState message={friendlyErrorMessage(bookingQuery.error)} onRetry={() => bookingQuery.refetch()} onBack={() => safeBack()} />
+        ) : (
+          <Skeleton height={320} r={radius.cardL} />
+        )}
+      </Screen>
     );
   }
+  if (booking.checked_in_at) {
+    return (
+      <Screen>
+        {header}
+        <EmptyState icon={Check} title={copy("Check-in ho gaya", "You're checked in")} body={formatWhen(booking.checked_in_at, new Date(), lang)} />
+      </Screen>
+    );
+  }
+  const window = selfCheckinWindow(booking.starts_at, new Date(), lang);
 
-  const window = selfCheckinWindow(booking.starts_at);
-
-  return (
-    <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="px-5 pt-5 pb-4 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-        <Pressable onPress={() => safeBack()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-xl items-center justify-center" style={{ backgroundColor: "#F4EFEC" }}>
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-figtree-bold text-player-ink text-[18px]">Check in</Text>
-      </View>
-
-      {scanning ? (
-        !permission ? null : !permission.granted ? (
-          <View className="flex-1 items-center justify-center px-6 gap-4">
-            <Text className="font-figtree-medium text-player-ink-faint text-[14px] text-center">
-              Khelo needs camera access to scan the venue's check-in code.
+  if (scanning) {
+    return (
+      <Screen scroll={false} gutter={false}>
+        <View style={{ paddingHorizontal: space[5] }}>
+          <Header title={copy("Venue ka QR scan karein", "Scan the venue QR")} onBack={() => setScanning(false)} />
+        </View>
+        {!permission ? null : !permission.granted ? (
+          <View style={{ padding: space[5], gap: space[4] }}>
+            <Text variant="body" tone="muted">
+              {copy("Venue ka check-in code scan karne ke liye camera ki ijazat chahiye.", "Khelo needs camera access to scan the venue's check-in code.")}
             </Text>
-            <Pressable onPress={requestPermission} className="rounded-xl px-5 items-center justify-center" style={{ height: 48, backgroundColor: "#EF5A2C" }}>
-              <Text className="font-figtree-semibold text-white text-[14px]">Allow camera</Text>
-            </Pressable>
+            <Button label={copy("Camera ki ijazat dein", "Allow camera")} block onPress={requestPermission} />
           </View>
         ) : (
-          <View className="flex-1">
+          <View style={{ flex: 1, backgroundColor: palette.night }}>
             <CameraView
               style={{ flex: 1 }}
               barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
@@ -110,69 +93,51 @@ export default function PlayerCheckinScreen() {
                   ? undefined
                   : ({ data }) => {
                       setScanned(true);
-                      submitSelfCheckin(data);
+                      void submitSelfCheckin(data);
                     }
               }
             />
-            <View className="px-5 py-4 bg-player-surface border-t border-player-border-light">
-              <Text className="font-figtree-medium text-player-ink-faint text-[12.5px] text-center">
-                Point the camera at the QR code posted at the venue entrance.
+            <View style={{ padding: space[4], backgroundColor: palette.white, gap: space[2] }}>
+              {error ? <Banner tone="danger" body={error} /> : null}
+              <Text variant="meta" tone="muted" align="center">
+                {copy("Camera ko venue ke darwaze par lage QR code ki taraf karein.", "Point the camera at the QR code posted at the venue entrance.")}
               </Text>
             </View>
           </View>
-        )
-      ) : (
-        <View className="flex-1 px-5 pt-5 gap-6">
-          <View className="items-center gap-4 bg-player-surface border border-player-border-light rounded-2xl p-5">
-            <Text className="font-figtree-bold text-player-ink text-[15px]">Show this to venue staff</Text>
-            <View className="p-4 bg-white rounded-xl border border-player-border-light">
-              <QRCode value={booking.id} size={180} />
-            </View>
-            <Text className="font-figtree-medium text-player-ink-faint text-[12.5px] text-center">
-              {formatTime(booking.starts_at)} today -- the owner can scan this to check you in.
-            </Text>
-          </View>
+        )}
+      </Screen>
+    );
+  }
 
-          <View className="gap-3">
-            <Text className="font-figtree-bold text-player-ink text-[15px]">Or scan the venue's QR yourself</Text>
-            {window.isOpen ? (
-              <Pressable
-                onPress={() => setScanning(true)}
-                className="rounded-xl items-center justify-center"
-                style={{ height: 50, backgroundColor: "#EF5A2C" }}
-              >
-                <Text className="font-figtree-bold text-white text-[15px]">Scan to check in</Text>
-              </Pressable>
-            ) : (
-              <View className="rounded-xl p-3.5" style={{ backgroundColor: "#F4EFEC" }}>
-                <Text className="font-figtree-medium text-player-ink-faint text-[13px] text-center">{window.message}</Text>
-              </View>
-            )}
-            <View className="gap-2">
-              <TextInput
-                value={manualToken}
-                onChangeText={setManualToken}
-                placeholder="Or type the venue's code"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={window.isOpen}
-                className="border border-player-border-light rounded-xl px-4 font-mono-medium text-player-ink text-[14px]"
-                style={{ height: 48, opacity: window.isOpen ? 1 : 0.5 }}
-              />
-              <Pressable
-                disabled={!window.isOpen || !manualToken.trim() || submitting}
-                onPress={() => submitSelfCheckin(manualToken)}
-                className="rounded-xl items-center justify-center"
-                style={{ height: 44, backgroundColor: "#F4EFEC", opacity: !window.isOpen || !manualToken.trim() || submitting ? 0.5 : 1 }}
-              >
-                <Text className="font-figtree-semibold text-player-ink text-[13.5px]">
-                  {submitting ? "Checking in…" : "Check in with this code"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
+  return (
+    <Screen keyboard>
+      {header}
+      {booking.status === "booked" ? (
+        <Ticket
+          bookingId={booking.id}
+          booking={booking}
+          venueName={place.venue?.name ?? copy("Venue", "Venue")}
+          eyebrow={place.court ? `${sportLabel(place.court.sport).toUpperCase()} · ${place.court.name.toUpperCase()}` : undefined}
+          fields={[{ label: copy("Waqt", "Time"), value: formatTimeRange(booking.starts_at, booking.ends_at, lang) }]}
+          qrTitle={copy("Staff ko ye dikhayein", "Show this to venue staff")}
+          qrBody={copy("Owner ye scan karke check-in kar dega.", "The owner scans it to check you in.")}
+        />
+      ) : (
+        <Banner tone="waiting" body={copy("Check-in sirf pakki booking par hota hai.", "Check-in is only for a confirmed booking.")} />
       )}
-    </SafeAreaView>
+      <Card padding={4} radiusSize="cardL" style={{ gap: space[3] }}>
+        <Text variant="title" accessibilityRole="header">
+          {copy("Ya venue ka QR khud scan karein", "Or scan the venue's QR yourself")}
+        </Text>
+        {window.isOpen ? (
+          <Button label={copy("Scan karke check-in", "Scan to check in")} block icon={<ScanLine size={18} color={palette.night} />} onPress={() => setScanning(true)} />
+        ) : (
+          <Banner tone="neutral" body={window.message} />
+        )}
+        <Input label={copy("Ya venue ka code likhein", "Or type the venue's code")} autoCapitalize="none" autoCorrect={false} editable={window.isOpen} value={manualToken} onChangeText={setManualToken} />
+        {error ? <Banner tone="danger" body={error} /> : null}
+        <Button label={copy("Is code se check-in", "Check in with this code")} variant="soft" size="md" block loading={submitting} disabled={!window.isOpen || !manualToken.trim()} onPress={() => submitSelfCheckin(manualToken)} />
+      </Card>
+    </Screen>
   );
 }

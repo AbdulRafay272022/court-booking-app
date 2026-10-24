@@ -1,31 +1,43 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { FlatList, Pressable, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { SPORT_OPTIONS } from "@court-booking/types";
+import { ArrowLeft, SearchX, SlidersHorizontal, X } from "lucide-react-native";
+import { addDays, formatDateString, formatDuration, formatTime24As12, pktDateString } from "@court-booking/types";
+import { palette, radius, size, space, venueCardData } from "@court-booking/ui-tokens";
 
+import { Button, EmptyState, ErrorState, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability } from "@/components/ui";
 import { api } from "@/lib/api";
-import { ErrorState } from "@/components/error-state";
-import { FilterSheet } from "@/components/filter-sheet";
-import { ChevronLeftIcon, SearchIcon } from "@/components/icons";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { safeBack } from "@/lib/safe-back";
+import { PLAYER_HOME_HREF } from "@/lib/safe-back-rules";
 import { EMPTY_FILTERS, activeFilterChips, filtersToParams, filtersToQuery, parseFilters, type VenueFilters } from "@/lib/venue-filters";
-import { EmptyState, SportChip, VenueCard, VenueCardSkeleton } from "./_components";
+import { useFavoriteToggle } from "./_components";
+import { DEFAULT_CITY, FiltersSheet } from "./_filters";
 
-const DEFAULT_CITY = "Karachi";
-
+/**
+ * PSearch board: results list of the shared VenueCard (all photos, autoplay only for the visible card, ONE Amenities chip),
+ * active-filter chips, the Filters bottom sheet and an honest empty state. The map ("Naqsha") is not offered: the app has
+ * no map module (needs a native dependency, see the M1 report).
+ */
 export default function SearchScreen() {
+  const copy = useCopy();
+  const lang = useLang();
+  const insets = useSafeAreaInsets();
+  const t = useRoleTheme();
   // ALL filter state lives in the route params, so returning from a venue (or reloading) keeps it.
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const filters = useMemo(() => parseFilters(params), [params]);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const fav = useFavoriteToggle();
+  const vis = useVenueCardViewability();
 
   function applyFilters(next: VenueFilters) {
     router.setParams({ ...filtersToParams(next), open: undefined });
   }
 
-  // Home's "Filters" chip opens this screen with ?open=1 so the sheet is already up.
+  // Home's "Filters" entry opens this screen with ?open=1 so the sheet is already up.
   const openParam = Array.isArray(params.open) ? params.open[0] : params.open;
   useEffect(() => {
     if (openParam === "1") {
@@ -34,118 +46,134 @@ export default function SearchScreen() {
     }
   }, [openParam]);
 
-  const areasQuery = useQuery({ queryKey: ["venue-areas"], queryFn: () => api.venues.areas(), staleTime: 5 * 60_000 });
   const query = useQuery({
     queryKey: ["venue-search", filtersToQuery(filters, DEFAULT_CITY)],
     queryFn: () => api.venues.list(filtersToQuery(filters, DEFAULT_CITY)),
   });
-
   const venues = query.data?.venues ?? [];
   const chips = activeFilterChips(filters);
-  const nonSportChips = chips.filter((c) => c.key !== "sport");
-  const areaLabel = filters.near ? "Near your location" : filters.area ?? DEFAULT_CITY;
+  const nonSport = chips.filter((c) => c.key !== "sport");
+  const place = filters.near ? copy("Aap ke qareeb", "Near you") : filters.area ?? DEFAULT_CITY;
+  const whenLine =
+    filters.date && filters.time
+      ? `${filters.date === pktDateString() ? copy("Aaj", "Today") : formatDateString(filters.date, new Date(), lang)} ${formatTime24As12(filters.time)}${filters.duration ? ` · ${formatDuration(filters.duration, lang)}` : ""}`
+      : filters.date
+        ? formatDateString(filters.date, new Date(), lang)
+        : copy("Koi bhi waqt", "Any time");
+
+  const header = (
+    <View style={{ gap: space[3], paddingBottom: space[2] }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
+        <IconButton icon={ArrowLeft} accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack(PLAYER_HOME_HREF)} testID="search-back" />
+        <Pressable
+          onPress={() => setSheetOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={copy(`Search badlein: ${filters.sport ?? "Koi bhi khel"}, ${place}, ${whenLine}`, `Change search: ${filters.sport ?? "Any sport"}, ${place}, ${whenLine}`)}
+          style={({ pressed }) => ({ flex: 1, minHeight: 52, borderRadius: radius.input, backgroundColor: palette.white, paddingHorizontal: space[4], paddingVertical: 6, justifyContent: "center", opacity: pressed ? 0.85 : 1 })}
+          testID="search-summary"
+        >
+          <Text variant="bodyBold" weight="black">
+            {`${filters.sport ?? copy("Sab khel", "All sports")} · ${place}`}
+          </Text>
+          <Text variant="caption" tone="muted">
+            {whenLine}
+          </Text>
+        </Pressable>
+        <IconButton
+          icon={SlidersHorizontal}
+          accessibilityLabel={nonSport.length ? copy(`Filters, ${nonSport.length} lage hue`, `Filters, ${nonSport.length} on`) : copy("Filters", "Filters")}
+          badge={nonSport.length || null}
+          onPress={() => setSheetOpen(true)}
+          testID="search-filters"
+        />
+      </View>
+      {chips.length > 0 ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+          {chips.map((c) => (
+            <Pressable
+              key={c.key}
+              onPress={() => applyFilters({ ...filters, ...c.clear })}
+              accessibilityRole="button"
+              accessibilityLabel={copy(`Filter hatayein: ${c.label}`, `Remove filter ${c.label}`)}
+              style={{ minHeight: size.tap, paddingLeft: space[3], paddingRight: space[2], borderRadius: radius.pill, backgroundColor: t.selected.bg, borderWidth: 2, borderColor: t.selected.border, flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Text variant="label" color={t.selected.fg}>
+                {c.label}
+              </Text>
+              <X size={14} color={t.selected.fg} strokeWidth={2.6} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {!query.isLoading && venues.length > 0 ? (
+        <Text variant="meta" tone="muted" testID="search-count">
+          <Text variant="meta" weight="black">
+            {copy(`${venues.length} venues`, `${venues.length} venue${venues.length === 1 ? "" : "s"}`)}
+          </Text>
+          {filters.near ? copy(" · qareeb pehle", " · nearest first") : ""}
+        </Text>
+      ) : null}
+    </View>
+  );
 
   return (
-    <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="px-5 pt-6 pb-3.5 bg-player-surface border-b border-player-border-light gap-3.5">
-        <View className="flex-row items-center gap-3">
-          <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
-            <ChevronLeftIcon />
-          </Pressable>
-          <View className="flex-1 gap-0.5">
-            <Text className="font-figtree-bold text-player-ink text-[17px] -tracking-[0.2px]" accessibilityLabel="Result count">
-              {filters.sport ? `${filters.sport} · ` : "Courts · "}
-              {query.isLoading ? "Searching…" : `${venues.length} venue${venues.length === 1 ? "" : "s"}`}
-            </Text>
-            <Text className="font-figtree-medium text-player-ink-faint text-[13px]">{areaLabel}</Text>
-          </View>
-          <Pressable
-            onPress={() => setSheetOpen(true)}
-            accessibilityLabel="Open filters"
-            className="h-11 px-4 rounded-full flex-row items-center gap-1.5 active:opacity-80"
-            style={{ backgroundColor: nonSportChips.length > 0 ? "#EF5A2C" : "#F4EFEC" }}
-          >
-            <Text className="font-figtree-bold text-[13px]" style={{ color: nonSportChips.length > 0 ? "#FFFFFF" : "#5C544D" }}>
-              Filters{nonSportChips.length > 0 ? ` (${nonSportChips.length})` : ""}
-            </Text>
-          </Pressable>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
-          {SPORT_OPTIONS.map((s) => (
-            <SportChip key={s} label={s} selected={filters.sport === s} onPress={() => applyFilters({ ...filters, sport: filters.sport === s ? undefined : s })} />
-          ))}
-        </ScrollView>
-
-        {nonSportChips.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 items-center">
-            {nonSportChips.map((c) => (
-              <Pressable
-                key={c.key}
-                onPress={() => applyFilters({ ...filters, ...c.clear })}
-                accessibilityLabel={`Remove filter ${c.label}`}
-                className="flex-row items-center gap-1.5 pl-3 pr-2.5 h-8 rounded-full"
-                style={{ backgroundColor: "#FDEBE4" }}
-              >
-                <Text className="font-figtree-semibold text-[12.5px]" style={{ color: "#C8431C" }}>{c.label}</Text>
-                <Text className="font-figtree-bold text-[12px]" style={{ color: "#C8431C" }}>✕</Text>
-              </Pressable>
-            ))}
-            <Pressable onPress={() => applyFilters({ ...EMPTY_FILTERS, sport: filters.sport })} accessibilityLabel="Clear all filters" className="h-8 px-2 justify-center">
-              <Text className="font-figtree-bold text-player-ink-muted text-[12.5px]">Clear all</Text>
-            </Pressable>
-          </ScrollView>
-        ) : null}
-      </View>
-
-      {query.isLoading ? (
-        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-4" scrollEnabled={false}>
-          {[0, 1].map((i) => (
-            <VenueCardSkeleton key={i} />
-          ))}
-        </ScrollView>
-      ) : query.isError && venues.length === 0 ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="player" />
-      ) : venues.length === 0 ? (
-        <EmptyState
-          icon={<SearchIcon size={26} color="#EF5A2C" />}
-          title={chips.length > 0 ? "No venues match these filters" : `No courts in ${areaLabel} yet`}
-          subtitle={
-            chips.length > 0
-              ? "Try removing a filter, or widening the price range or time."
-              : "We're opening one area at a time so every listing is real. Right now we're live in DHA and Clifton, Karachi."
-          }
-          action={chips.length > 0 ? { label: "Clear all filters", onPress: () => applyFilters(EMPTY_FILTERS) } : undefined}
-        />
-      ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-4">
-          {venues.map((v) => (
-            <VenueCard
-              key={v.id}
-              venue={v}
-              onPress={() =>
-                router.push({
-                  pathname: "/(player)/venue/[slug]",
-                  // the sport the player is looking at goes with them, so the venue opens on that sport's courts
-                  params: filters.sport ? { slug: v.slug, sport: filters.sport } : { slug: v.slug },
-                })
-              }
-            />
-          ))}
-        </ScrollView>
-      )}
-
-      {sheetOpen ? (
-        <FilterSheet
-          initial={filters}
-          areas={areasQuery.data?.areas ?? []}
-          onClose={() => setSheetOpen(false)}
-          onApply={(next) => {
-            setSheetOpen(false);
-            applyFilters(next);
-          }}
-        />
-      ) : null}
-    </SafeAreaView>
+    <View style={{ flex: 1, backgroundColor: palette.ground }}>
+      <FlatList
+        testID="search-screen"
+        data={query.isLoading || (query.isError && venues.length === 0) ? [] : venues}
+        keyExtractor={(v) => v.id}
+        {...vis.listProps}
+        contentContainerStyle={{ paddingTop: insets.top + space[3], paddingBottom: insets.bottom + space[8], paddingHorizontal: t.gutter, gap: space[4] }}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          query.isLoading ? (
+            <View style={{ gap: space[4] }} accessibilityLabel={copy("Venues dhoond rahe hain", "Searching venues")}>
+              <SkeletonCard />
+              <SkeletonCard />
+            </View>
+          ) : query.isError ? (
+            <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} onBack={() => safeBack(PLAYER_HOME_HREF)} backLabel={copy("Home par jayein", "Go home")} />
+          ) : (
+            <View testID="search-empty">
+              <EmptyState
+                icon={SearchX}
+                title={chips.length > 0 ? copy("Is waqt koi court khaali nahi", "No court matches right now") : copy(`${place} mein abhi koi venue nahi`, `No venues in ${place} yet`)}
+                body={
+                  chips.length > 0
+                    ? `${[filters.sport, place, whenLine].filter(Boolean).join(" · ")}. ${copy("Doosra waqt ya qareebi ilaqa dekh lein.", "Try another time or a nearby area.")}`
+                    : copy("Hum ek ek ilaqa khol rahe hain taake har listing asli ho.", "We open one area at a time so every listing is real.")
+                }
+              />
+              <View style={{ gap: space[2] }}>
+                {filters.date ? (
+                  <Button label={copy("Agle din ke slots dekhein", "See the next day")} block onPress={() => applyFilters({ ...filters, date: addDays(filters.date!, 1) })} testID="search-next-day" />
+                ) : null}
+                {nonSport.length > 0 ? (
+                  <Button label={copy("Filters kam karein", "Use fewer filters")} variant="soft" size="md" block onPress={() => applyFilters({ ...EMPTY_FILTERS, sport: filters.sport })} testID="search-clear" />
+                ) : null}
+              </View>
+            </View>
+          )
+        }
+        renderItem={({ item }) => (
+          <VenueCard
+            venue={venueCardData(item, { sport: filters.sport })}
+            visible={vis.isVisible(item.id)}
+            saved={fav.isSaved(item.id)}
+            onToggleSave={fav.enabled ? () => fav.toggle(item.id) : undefined}
+            onPress={() => router.push({ pathname: "/(player)/venue/[slug]", params: filters.sport ? { slug: item.slug, sport: filters.sport } : { slug: item.slug } })}
+          />
+        )}
+      />
+      <FiltersSheet
+        open={sheetOpen}
+        initial={filters}
+        onClose={() => setSheetOpen(false)}
+        onApply={(next) => {
+          setSheetOpen(false);
+          applyFilters(next);
+        }}
+      />
+    </View>
   );
 }
