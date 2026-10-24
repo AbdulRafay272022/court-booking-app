@@ -13,7 +13,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
 import { EMPTY_FILTERS, filtersToParams, type VenueFilters } from "@/lib/venue-filters";
 import { nextGame, replayList, tonightStarts } from "@/lib/player-flow";
-import { DateTile, PlayerOfflineBanner, sportLabel, useBookingPlace, useFavoriteToggle, useFirstName, useLightStatusBar } from "../_components";
+import { DateTile, PlayerOfflineBanner, asList, sportLabel, useBookingPlace, useFavoriteToggle, useFirstName, useLightStatusBar } from "../_components";
 import { DEFAULT_CITY, FiltersSheet } from "../_filters";
 
 const TILES: { sport: (typeof SPORT_OPTIONS)[number]; icon: IconComponent }[] = [
@@ -54,7 +54,7 @@ export default function PlayerHomeScreen() {
   });
   const tonight = useMemo(
     () =>
-      [...(tonightQ.data?.venues ?? [])]
+      [...asList<VenueSummary>(tonightQ.data?.venues)]
         .filter((v) => v.today_free_slots == null || v.today_free_slots > 0)
         .sort((a, b) => (b.today_free_slots ?? -1) - (a.today_free_slots ?? -1))
         .slice(0, 6),
@@ -71,13 +71,13 @@ export default function PlayerHomeScreen() {
   const timesByVenue = new Map<string, string[]>();
   tonight.slice(0, TIMES_FOR).forEach((v, i) => {
     const d = timeQueries[i]?.data;
-    if (d) timesByVenue.set(v.id, tonightStarts(d.courts));
+    if (d && Array.isArray(d.courts)) timesByVenue.set(v.id, tonightStarts(d.courts));
   });
 
-  const upcoming = upcomingQ.data ?? [];
+  const upcoming = asList<Booking>(upcomingQ.data);
   const game = nextGame(upcoming);
   const pending = nextBooking(upcoming.filter((b) => b.status === "held" || b.status === "payment_submitted"));
-  const replay = replayList(pastQ.data ?? []);
+  const replay = replayList(asList<Booking>(pastQ.data));
   const refreshing = upcomingQ.isRefetching || tonightQ.isRefetching;
 
   const kab =

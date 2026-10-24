@@ -10,7 +10,7 @@ import { Avatar, Banner, EmptyState, ErrorState, Screen, SkeletonCard, StatusPil
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { chatCandidates, shownStatus } from "@/lib/player-flow";
-import { PlayerOfflineBanner, useBookingPlace } from "../_components";
+import { PlayerOfflineBanner, asList, useBookingPlace } from "../_components";
 
 /**
  * PChat board frame 1 (Chat tab). The backend has NO conversation list or unread state (contract dependency B1), so this
@@ -23,7 +23,7 @@ export default function ChatTabScreen() {
   const focused = useIsFocused();
   const upcomingQ = useQuery({ queryKey: ["bookings-mine", "upcoming"], queryFn: () => api.bookings.mine("upcoming", 1, 100), subscribed: focused });
   const pastQ = useQuery({ queryKey: ["bookings-mine", "past"], queryFn: () => api.bookings.mine("past", 1, 100), subscribed: focused });
-  const rows = useMemo(() => chatCandidates([...(upcomingQ.data ?? []), ...(pastQ.data ?? [])]), [upcomingQ.data, pastQ.data]);
+  const rows = useMemo(() => chatCandidates([...asList<Booking>(upcomingQ.data), ...asList<Booking>(pastQ.data)]), [upcomingQ.data, pastQ.data]);
   const histories = useQueries({
     queries: rows.map((b) => ({
       queryKey: ["chat-history", b.id],

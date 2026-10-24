@@ -341,3 +341,8 @@ export function useFirstName(): string | null {
 }
 
 export const TAP = size.tap;
+
+/** A list from an API response, or [] when the payload is not a list (never crash a screen on a malformed reply). */
+export function asList<T>(v: T[] | null | undefined | unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}

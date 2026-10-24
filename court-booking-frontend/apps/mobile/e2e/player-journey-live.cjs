@@ -227,6 +227,8 @@ async function freeStart(tok, courtId, minSlots, dayOffset) {
     }
     check("player sees 'Court aap ka hai!' after the approval (polling)", /Court aap ka hai/.test(bookedTitle), bookedTitle);
     check("booked: QR ticket shown", (await page.getByRole("img", { name: "Check-in QR code" }).count()) === 1);
+    await page.evaluate(() => document.querySelectorAll("div").forEach((el) => (el.scrollTop = 0)));
+    await page.waitForTimeout(3500); // let the OCR toast fade
     await shot(page, "Status-booked-ticket");
     await scrollShots(page, "Status-booked", 2);
     // bookings tab + chat tab

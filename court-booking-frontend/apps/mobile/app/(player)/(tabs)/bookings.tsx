@@ -10,7 +10,7 @@ import { Banner, Button, Card, Chip, EmptyState, ErrorState, Input, Screen, Segm
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { bookingAction, shownStatus } from "@/lib/player-flow";
-import { DateTile, PlayerOfflineBanner, useBookingPlace } from "../_components";
+import { DateTile, PlayerOfflineBanner, asList, useBookingPlace } from "../_components";
 
 type Tab = "upcoming" | "past";
 type Filter = "all" | StatusGroup;
@@ -34,7 +34,7 @@ export default function PlayerBookingsScreen() {
   const reviewByBooking = new Map((reviewsQ.data ?? []).map((r) => [r.booking_id, r]));
 
   const query = tab === "upcoming" ? upcomingQ : pastQ;
-  const list: Booking[] = query.data ?? [];
+  const list: Booking[] = asList<Booking>(query.data);
   const counts = countByGroup(list);
   const shown = filter === "all" ? list : list.filter((b) => statusGroup(b.status) === filter);
   const filters: { key: Filter; label: string }[] =
@@ -71,8 +71,8 @@ export default function PlayerBookingsScreen() {
           setFilter("all");
         }}
         options={[
-          { value: "upcoming", label: copy("Aane wali", "Upcoming"), ...(upcomingQ.data ? { count: upcomingQ.data.length } : {}) },
-          { value: "past", label: copy("Purani", "Past"), ...(pastQ.data ? { count: pastQ.data.length } : {}) },
+          { value: "upcoming", label: copy("Aane wali", "Upcoming"), ...(Array.isArray(upcomingQ.data) ? { count: upcomingQ.data.length } : {}) },
+          { value: "past", label: copy("Purani", "Past"), ...(Array.isArray(pastQ.data) ? { count: pastQ.data.length } : {}) },
         ]}
         testID="bookings-tab"
       />

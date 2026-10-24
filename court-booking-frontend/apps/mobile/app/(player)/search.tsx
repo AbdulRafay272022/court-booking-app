@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, SearchX, SlidersHorizontal, X } from "lucide-react-native";
-import { addDays, formatDateString, formatDuration, formatTime24As12, pktDateString } from "@court-booking/types";
+import { addDays, formatDateString, formatDuration, formatTime24As12, pktDateString, type VenueSummary } from "@court-booking/types";
 import { palette, radius, size, space, venueCardData } from "@court-booking/ui-tokens";
 
 import { Button, EmptyState, ErrorState, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability } from "@/components/ui";
@@ -13,7 +13,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { safeBack } from "@/lib/safe-back";
 import { PLAYER_HOME_HREF } from "@/lib/safe-back-rules";
 import { EMPTY_FILTERS, activeFilterChips, filtersToParams, filtersToQuery, parseFilters, type VenueFilters } from "@/lib/venue-filters";
-import { PlayerOfflineBanner, useFavoriteToggle } from "./_components";
+import { PlayerOfflineBanner, asList, useFavoriteToggle } from "./_components";
 import { DEFAULT_CITY, FiltersSheet } from "./_filters";
 
 /**
@@ -50,7 +50,7 @@ export default function SearchScreen() {
     queryKey: ["venue-search", filtersToQuery(filters, DEFAULT_CITY)],
     queryFn: () => api.venues.list(filtersToQuery(filters, DEFAULT_CITY)),
   });
-  const venues = query.data?.venues ?? [];
+  const venues = asList<VenueSummary>(query.data?.venues);
   const chips = activeFilterChips(filters);
   const nonSport = chips.filter((c) => c.key !== "sport");
   const place = filters.near ? copy("Aap ke qareeb", "Near you") : filters.area ?? DEFAULT_CITY;
