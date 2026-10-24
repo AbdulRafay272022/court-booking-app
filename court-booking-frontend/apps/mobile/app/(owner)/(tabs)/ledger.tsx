@@ -98,7 +98,7 @@ export default function LedgerScreen() {
           disabled={exporting || !ledger || ledger.entries.length === 0}
           accessibilityRole="button"
           accessibilityLabel="Ledger CSV export karein"
-          style={{ minHeight: size.tap, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, opacity: exporting || !ledger || ledger.entries.length === 0 ? 0.6 : 1 }}
+          style={{ minHeight: size.tap, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: alpha.glassOnTeal, borderWidth: 1, borderColor: alpha.glassOnTealBorder, opacity: exporting || !ledger || ledger.entries.length === 0 ? 0.6 : 1 }}
         >
           <Download size={16} color={palette.white} />
           <Text variant="bodyBold" tone="hero">
@@ -250,7 +250,7 @@ export default function LedgerScreen() {
 
 function Tile({ label, value, testID }: { label: string; value: number; testID?: string }) {
   return (
-    <View testID={testID} style={{ flexGrow: 1, flexBasis: 90, borderRadius: radius.input, paddingHorizontal: space[3], paddingVertical: 10, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, gap: 2 }}>
+    <View testID={testID} style={{ flexGrow: 1, flexBasis: 90, borderRadius: radius.input, paddingHorizontal: space[3], paddingVertical: 10, backgroundColor: alpha.glassOnTeal, borderWidth: 1, borderColor: alpha.glassOnTealBorder, gap: 2 }}>
       <Text variant="caption" weight="bold" tone="heroMuted">
         {label}
       </Text>

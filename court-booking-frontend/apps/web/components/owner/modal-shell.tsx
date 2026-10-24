@@ -82,8 +82,7 @@ export function ModalShell({ label, labelledBy, onClose, children, maxWidthClass
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex justify-center ${fullscreen ? "items-center" : "items-end md:items-center"}`}
-      style={{ background: fullscreen ? "rgba(12,31,29,0.85)" : "rgba(12,31,29,0.45)" }}
+      className={`fixed inset-0 z-50 flex justify-center ${fullscreen ? "items-center bg-fl-night/85" : "items-end md:items-center bg-fl-a-scrim"}`}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCloseRef.current();
       }}

@@ -40,7 +40,7 @@ export function HeroLayout({ hero, children, testID }: { hero: ReactNode; childr
 /** Glass chip on the teal hero ("6 bookings", "PKR 1,250 baqi"). Text is white on the dark glass (passes on the gradient). */
 export function HeroChip({ label, onPress, accessibilityLabel, testID }: { label: string; onPress?: () => void; accessibilityLabel?: string; testID?: string }) {
   const body = (
-    <View style={{ minHeight: 34, paddingHorizontal: space[3], paddingVertical: 6, borderRadius: radius.pill, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, justifyContent: "center" }}>
+    <View style={{ minHeight: 34, paddingHorizontal: space[3], paddingVertical: 6, borderRadius: radius.pill, backgroundColor: alpha.glassOnTeal, borderWidth: 1, borderColor: alpha.glassOnTealBorder, justifyContent: "center" }}>
       <Text variant="label" tone="hero">
         {label}
       </Text>
@@ -148,49 +148,5 @@ export function BigMoney({ value, tone = "primary", testID }: { value: string; t
     <Text testID={testID} variant="displayXL" tone={tone} align="center">
       {value}
     </Text>
-  );
-}
-
-export interface OwnerRadioOption<V extends string> {
-  value: V;
-  label: string;
-  hint?: string;
-}
-
-/**
- * Reason / choice radios (OSheets reject sheet, approve overpayment choice). Same look as the DS RadioGroup, plus
- * `aria-checked` so the checked state also reaches the web accessibility tree (the DS RadioGroup only sets
- * accessibilityState, which react-native-web does not map for radios: listed for promotion).
- */
-export function OwnerRadioGroup<V extends string>({ options, value, onChange, accessibilityLabel, danger, testID }: { options: OwnerRadioOption<V>[]; value: V | null; onChange: (v: V) => void; accessibilityLabel: string; danger?: boolean; testID?: string }) {
-  return (
-    <View testID={testID} accessibilityRole="radiogroup" accessibilityLabel={accessibilityLabel} style={{ gap: space[2] }}>
-      {options.map((o) => {
-        const on = o.value === value;
-        const onColor = danger ? palette.danger : palette.teal;
-        return (
-          <Pressable
-            key={o.value}
-            testID={testID ? `${testID}-${o.value}` : undefined}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: on }}
-            aria-checked={on}
-            accessibilityLabel={o.hint ? `${o.label}, ${o.hint}` : o.label}
-            onPress={() => onChange(o.value)}
-            style={{ flexDirection: "row", alignItems: "center", gap: space[3], minHeight: 52, paddingHorizontal: 14, paddingVertical: space[2], borderRadius: radius.md, backgroundColor: on ? (danger ? palette.dangerTint : palette.tealTint) : palette.ground, borderWidth: 2, borderColor: on ? onColor : "transparent" }}
-          >
-            <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: on ? 6 : 2, borderColor: on ? onColor : palette.muted2, backgroundColor: palette.white }} />
-            <View style={{ flex: 1, gap: 1 }}>
-              <Text variant="bodyBold">{o.label}</Text>
-              {o.hint ? (
-                <Text variant="caption" tone="muted">
-                  {o.hint}
-                </Text>
-              ) : null}
-            </View>
-          </Pressable>
-        );
-      })}
-    </View>
   );
 }

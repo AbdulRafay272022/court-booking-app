@@ -85,6 +85,7 @@ export function Checkbox({ checked, onChange, label, children, disabled, testID 
       testID={testID}
       accessibilityRole="checkbox"
       accessibilityState={{ checked, disabled: !!disabled }}
+      aria-checked={checked}
       accessibilityLabel={label}
       disabled={disabled}
       onPress={() => {
@@ -146,6 +147,7 @@ export function RadioGroup<V extends string>({
             testID={testID ? `${testID}-${o.value}` : undefined}
             accessibilityRole="radio"
             accessibilityState={{ checked: on }}
+            aria-checked={on}
             accessibilityLabel={o.hint ? `${o.label}, ${o.hint}` : o.label}
             onPress={() => {
               haptic("selection");
@@ -157,6 +159,7 @@ export function RadioGroup<V extends string>({
               gap: space[3],
               minHeight: 52,
               paddingHorizontal: 14,
+              paddingVertical: space[2],
               borderRadius: radius.md,
               backgroundColor: on ? (danger ? palette.dangerTint : t.selected.bg) : palette.ground,
               borderWidth: 2,
@@ -199,6 +202,7 @@ export function Switch({ value, onChange, label, showLabel = true, hint, disable
       testID={testID}
       accessibilityRole="switch"
       accessibilityState={{ checked: value, disabled: !!disabled }}
+      aria-checked={value}
       accessibilityLabel={label}
       accessibilityHint={hint}
       disabled={disabled}

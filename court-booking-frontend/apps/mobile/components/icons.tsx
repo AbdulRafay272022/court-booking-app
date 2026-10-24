@@ -1,4 +1,5 @@
 import Svg, { Circle, Path, Rect } from "react-native-svg";
+import { palette } from "@court-booking/ui-tokens";
 
 export interface IconProps {
   size?: number;
@@ -6,7 +7,7 @@ export interface IconProps {
   strokeWidth?: number;
 }
 
-export function ChevronLeftIcon({ size = 20, color = "#141A1D", strokeWidth = 2 }: IconProps) {
+export function ChevronLeftIcon({ size = 20, color = palette.night, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -20,7 +21,7 @@ export function ChevronLeftIcon({ size = 20, color = "#141A1D", strokeWidth = 2 
   );
 }
 
-export function ChevronRightIcon({ size = 19, color = "#9A9791", strokeWidth = 2.2 }: IconProps) {
+export function ChevronRightIcon({ size = 19, color = palette.muted2, strokeWidth = 2.2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -34,7 +35,7 @@ export function ChevronRightIcon({ size = 19, color = "#9A9791", strokeWidth = 2
   );
 }
 
-export function ChevronDownIcon({ size = 17, color = "#8A8078", strokeWidth = 2 }: IconProps) {
+export function ChevronDownIcon({ size = 17, color = palette.muted2, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -48,7 +49,7 @@ export function ChevronDownIcon({ size = 17, color = "#8A8078", strokeWidth = 2 
   );
 }
 
-export function CheckIcon({ size = 18, color = "#FFFFFF", strokeWidth = 2 }: IconProps) {
+export function CheckIcon({ size = 18, color = palette.white, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -64,7 +65,7 @@ export function CheckIcon({ size = 18, color = "#FFFFFF", strokeWidth = 2 }: Ico
 
 // Booking-status icons (backlog #7). Clock = waiting/holding, X = cancelled,
 // Ban (circle + diagonal slash, distinct from X) = no-show. Check already exists above.
-export function ClockIcon({ size = 13, color = "#8A5A0A", strokeWidth = 2.4 }: IconProps) {
+export function ClockIcon({ size = 13, color = palette.waiting, strokeWidth = 2.4 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={strokeWidth} />
@@ -73,7 +74,7 @@ export function ClockIcon({ size = 13, color = "#8A5A0A", strokeWidth = 2.4 }: I
   );
 }
 
-export function XIcon({ size = 13, color = "#A8432C", strokeWidth = 2.4 }: IconProps) {
+export function XIcon({ size = 13, color = palette.danger, strokeWidth = 2.4 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
@@ -81,7 +82,7 @@ export function XIcon({ size = 13, color = "#A8432C", strokeWidth = 2.4 }: IconP
   );
 }
 
-export function BanIcon({ size = 13, color = "#A8432C", strokeWidth = 2.4 }: IconProps) {
+export function BanIcon({ size = 13, color = palette.danger, strokeWidth = 2.4 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={strokeWidth} />
@@ -90,7 +91,7 @@ export function BanIcon({ size = 13, color = "#A8432C", strokeWidth = 2.4 }: Ico
   );
 }
 
-export function WhatsAppIcon({ size = 16, color = "#1F7A52", strokeWidth = 2 }: IconProps) {
+export function WhatsAppIcon({ size = 16, color = palette.open, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -104,7 +105,7 @@ export function WhatsAppIcon({ size = 16, color = "#1F7A52", strokeWidth = 2 }: 
   );
 }
 
-export function BuildingIcon({ size = 21, color = "#0E6274", strokeWidth = 1.9 }: IconProps) {
+export function BuildingIcon({ size = 21, color = palette.teal, strokeWidth = 1.9 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Rect x="3" y="4" width="18" height="16" rx="2" stroke={color} strokeWidth={strokeWidth} />
@@ -114,7 +115,7 @@ export function BuildingIcon({ size = 21, color = "#0E6274", strokeWidth = 1.9 }
   );
 }
 
-export function PlusIcon({ size = 17, color = "#FFFFFF", strokeWidth = 2.2 }: IconProps) {
+export function PlusIcon({ size = 17, color = palette.white, strokeWidth = 2.2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M12 5v14M5 12h14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
@@ -122,7 +123,7 @@ export function PlusIcon({ size = 17, color = "#FFFFFF", strokeWidth = 2.2 }: Ic
   );
 }
 
-export function CalendarIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: IconProps) {
+export function CalendarIcon({ size = 19, color = palette.muted, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Rect x="3" y="5" width="18" height="16" rx="2" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
@@ -131,7 +132,7 @@ export function CalendarIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: 
   );
 }
 
-export function BarsIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: IconProps) {
+export function BarsIcon({ size = 19, color = palette.muted, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
@@ -139,7 +140,7 @@ export function BarsIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: Icon
   );
 }
 
-export function BellIcon({ size = 20, color = "#101C21", strokeWidth = 1.9 }: IconProps) {
+export function BellIcon({ size = 20, color = palette.night, strokeWidth = 1.9 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -154,7 +155,7 @@ export function BellIcon({ size = 20, color = "#101C21", strokeWidth = 1.9 }: Ic
   );
 }
 
-export function PersonIcon({ size = 18, color = "#8399A1", strokeWidth = 2 }: IconProps) {
+export function PersonIcon({ size = 18, color = palette.muted2, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth={strokeWidth} />
@@ -163,7 +164,7 @@ export function PersonIcon({ size = 18, color = "#8399A1", strokeWidth = 2 }: Ic
   );
 }
 
-export function PhoneIcon({ size = 18, color = "#8399A1", strokeWidth = 2 }: IconProps) {
+export function PhoneIcon({ size = 18, color = palette.muted2, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -177,7 +178,7 @@ export function PhoneIcon({ size = 18, color = "#8399A1", strokeWidth = 2 }: Ico
   );
 }
 
-export function SearchIcon({ size = 19, color = "#8A8078", strokeWidth = 2 }: IconProps) {
+export function SearchIcon({ size = 19, color = palette.muted2, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={strokeWidth} />
@@ -186,7 +187,7 @@ export function SearchIcon({ size = 19, color = "#8A8078", strokeWidth = 2 }: Ic
   );
 }
 
-export function StarIcon({ size = 14, color = "#EF5A2C" }: IconProps) {
+export function StarIcon({ size = 14, color = palette.orange }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
       <Path d="M12 2l3 6.5 7 .9-5 4.8 1.2 7L12 17.8 5.8 21.2 7 14.2 2 9.4l7-.9z" />
@@ -194,7 +195,7 @@ export function StarIcon({ size = 14, color = "#EF5A2C" }: IconProps) {
   );
 }
 
-export function LocationPinIcon({ size = 19, color = "#8A8078", strokeWidth = 2 }: IconProps) {
+export function LocationPinIcon({ size = 19, color = palette.muted2, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -209,7 +210,7 @@ export function LocationPinIcon({ size = 19, color = "#8A8078", strokeWidth = 2 
   );
 }
 
-export function HomeIcon({ size = 21, color = "#141A1D", strokeWidth = 2.1 }: IconProps) {
+export function HomeIcon({ size = 21, color = palette.night, strokeWidth = 2.1 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -223,7 +224,7 @@ export function HomeIcon({ size = 21, color = "#141A1D", strokeWidth = 2.1 }: Ic
   );
 }
 
-export function DownloadIcon({ size = 15, color = "#5B7079", strokeWidth = 2 }: IconProps) {
+export function DownloadIcon({ size = 15, color = palette.muted, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M12 3v12M7 10l5 5 5-5M4 20h16" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
@@ -231,7 +232,7 @@ export function DownloadIcon({ size = 15, color = "#5B7079", strokeWidth = 2 }: 
   );
 }
 
-export function RefreshIcon({ size = 16, color = "#FFFFFF", strokeWidth = 2 }: IconProps) {
+export function RefreshIcon({ size = 16, color = palette.white, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -245,7 +246,7 @@ export function RefreshIcon({ size = 16, color = "#FFFFFF", strokeWidth = 2 }: I
   );
 }
 
-export function AlertTriangleIcon({ size = 26, color = "#9C5C0A", strokeWidth = 2 }: IconProps) {
+export function AlertTriangleIcon({ size = 26, color = palette.waiting, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -259,7 +260,7 @@ export function AlertTriangleIcon({ size = 26, color = "#9C5C0A", strokeWidth = 
   );
 }
 
-export function TrendingUpIcon({ size = 19, color = "#9C5C0A", strokeWidth = 2 }: IconProps) {
+export function TrendingUpIcon({ size = 19, color = palette.waiting, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M3 17l6-6 4 4 8-8" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
@@ -268,7 +269,7 @@ export function TrendingUpIcon({ size = 19, color = "#9C5C0A", strokeWidth = 2 }
   );
 }
 
-export function StarBadgeIcon({ size = 17, color = "#9C5C0A", strokeWidth = 2 }: IconProps) {
+export function StarBadgeIcon({ size = 17, color = palette.waiting, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -282,7 +283,7 @@ export function StarBadgeIcon({ size = 17, color = "#9C5C0A", strokeWidth = 2 }:
   );
 }
 
-export function QrIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: IconProps) {
+export function QrIcon({ size = 19, color = palette.muted, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Rect x="3" y="3" width="7" height="7" rx="1" stroke={color} strokeWidth={strokeWidth} />
@@ -296,7 +297,7 @@ export function QrIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: IconPr
   );
 }
 
-export function SettingsIcon({ size = 19, color = "#5B7079", strokeWidth = 2 }: IconProps) {
+export function SettingsIcon({ size = 19, color = palette.muted, strokeWidth = 2 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx={12} cy={12} r={3} stroke={color} strokeWidth={strokeWidth} />

@@ -43,6 +43,8 @@ module.exports = {
     "a-glass-light-border": "rgba(255,255,255,0.9)",
     "a-glass-dark": "rgba(255,255,255,0.1)",
     "a-glass-dark-border": "rgba(255,255,255,0.16)",
+    "a-glass-on-teal": "rgba(12,31,29,0.16)",
+    "a-glass-on-teal-border": "rgba(255,255,255,0.22)",
     "a-on-photo": "rgba(12,31,29,0.62)",
     "a-on-photo-strong": "rgba(12,31,29,0.42)",
     "a-on-photo-border": "rgba(255,255,255,0.3)",

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
+import { Bell } from "lucide-react-native";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Button, EmptyState, ErrorState, SkeletonList, Text } from "@/components/ui";
 import { router, useIsFocused } from "expo-router";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { notificationText, type NotificationFeedItem, type NotificationFeedPage } from "@court-booking/types";
@@ -9,13 +12,13 @@ import { formatTime } from "@/lib/format";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { groupByDay, ms, notificationTarget } from "@/lib/notif-helpers";
 import { fetchNotificationFeed, useUnreadNotifications } from "@/lib/use-unread-notifications";
-import { ErrorState } from "@/components/error-state";
 
 export type NotifTone = "owner" | "player";
 
+/** Floodlight tokens per side (no hex here): owner unread rows sit on the teal tint, player rows on the orange tint. */
 const TONE = {
-  owner: { ink: "#101C21", faint: "#5B7079", muted: "#8399A1", border: "#DCE3E6", surface: "#FFFFFF", unreadBg: "#EEF6F7", dot: "#D8421F", title: "font-plex-semibold", body: "font-plex-medium", radius: 12 },
-  player: { ink: "#141A1D", faint: "#5C544D", muted: "#7A7068", border: "#EBE5E1", surface: "#FFFFFF", unreadBg: "#FFF4EE", dot: "#D8421F", title: "font-figtree-semibold", body: "font-figtree-medium", radius: 16 },
+  owner: { unreadBg: palette.tealTint, link: "link" as const },
+  player: { unreadBg: palette.orangeTint, link: "link" as const },
 } as const;
 
 /**
@@ -34,28 +37,28 @@ export function NotificationRow({ item, unread, tone, onPress }: { item: Notific
       accessibilityRole={onPress ? "button" : "text"}
       accessibilityLabel={label}
       testID="notif-row"
-      className="flex-row gap-3 p-3.5"
-      style={{ minHeight: 56, borderRadius: t.radius, borderWidth: 1, borderColor: t.border, backgroundColor: unread ? t.unreadBg : t.surface }}
+      style={{ flexDirection: "row", gap: space[3], padding: 14, minHeight: 56, borderRadius: radius.tile, backgroundColor: unread ? t.unreadBg : palette.white }}
     >
       <View style={{ width: 10, paddingTop: 6, alignItems: "center" }}>
-        {unread ? <View testID="notif-unread-dot" style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: t.dot }} /> : null}
+        {/* the unread dot is the role accent (orange + ink rule: a dot carries no text); "Naya" is in the label */}
+        {unread ? <View testID="notif-unread-dot" style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: palette.orange }} /> : null}
       </View>
-      <View className="flex-1 gap-0.5">
-        <View className="flex-row items-start gap-2">
-          <Text className={`${t.title} text-[14px] flex-1`} style={{ color: t.ink }}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[2], flexWrap: "wrap" }}>
+          <Text variant="bodyBold" style={{ flex: 1, minWidth: 140 }}>
             {text.title}
           </Text>
-          <Text className={`${t.body} text-[11.5px]`} style={{ color: t.muted }}>
+          <Text variant="caption" tone="muted">
             {formatTime(item.created_at)}
           </Text>
         </View>
         {text.context ? (
-          <Text className={`${t.body} text-[13px]`} style={{ color: t.faint }}>
+          <Text variant="meta" tone="body">
             {text.context}
           </Text>
         ) : null}
         {text.delivery ? (
-          <Text testID="notif-delivery" className={`${t.body} text-[11.5px]`} style={{ color: t.muted }}>
+          <Text testID="notif-delivery" variant="caption" tone="muted">
             {text.delivery}
           </Text>
         ) : null}
@@ -116,30 +119,29 @@ export function NotificationsList({ tone }: { tone: NotifTone }) {
 
   if (query.isLoading) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <ActivityIndicator color={tone === "owner" ? "#0E6274" : "#EF5A2C"} />
+      <View style={{ paddingHorizontal: space[4], paddingTop: space[3] }}>
+        <SkeletonList cards={3} />
       </View>
     );
   }
   if (query.isError && items.length === 0) {
-    return <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone={tone} />;
-  }
-  if (items.length === 0) {
     return (
-      <View className="flex-1 items-center justify-center gap-2 px-8">
-        <Text className={`${t.title} text-base text-center`} style={{ color: t.ink }}>
-          Abhi kuch nahi
-        </Text>
-        <Text className={`${t.body} text-[13px] text-center`} style={{ color: t.faint }}>
-          {tone === "owner"
-            ? "Naye payments, bookings, refunds aur venue ki khabrein yahan nazar aayengi."
-            : "Booking ki updates aur waitlist alerts yahan nazar aayengi."}
-        </Text>
+      <View style={{ paddingHorizontal: space[4], paddingTop: space[3] }}>
+        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} />
       </View>
     );
   }
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        icon={Bell}
+        title="Abhi kuch nahi"
+        body={tone === "owner" ? "Naye payments, bookings, refunds aur venue ki khabrein yahan nazar aayengi." : "Booking ki updates aur waitlist alerts yahan nazar aayengi."}
+      />
+    );
+  }
   return (
-    <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 32, gap: 8 }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[8], gap: space[2] }}>
       {anyUnread ? (
         <Pressable
           onPress={() => {
@@ -148,17 +150,16 @@ export function NotificationsList({ tone }: { tone: NotifTone }) {
           }}
           accessibilityRole="button"
           accessibilityLabel="Sab parh liye"
-          className="self-end justify-center px-2"
-          style={{ minHeight: 44 }}
+          style={{ alignSelf: "flex-end", justifyContent: "center", paddingHorizontal: space[2], minHeight: 44 }}
         >
-          <Text className={`${t.title} text-[13.5px] underline`} style={{ color: tone === "owner" ? "#0E6274" : "#C2410C" }}>
+          <Text variant="label" tone={t.link} style={{ textDecorationLine: "underline" }}>
             Sab parh liye
           </Text>
         </Pressable>
       ) : null}
       {groups.map((g) => (
-        <View key={g.key} className="gap-2">
-          <Text accessibilityRole="header" testID="notif-day" className={`${t.title} text-[12.5px] mt-2`} style={{ color: t.faint }}>
+        <View key={g.key} style={{ gap: space[2] }}>
+          <Text accessibilityRole="header" testID="notif-day" variant="eyebrow" tone="muted" style={{ marginTop: space[2] }}>
             {g.title}
           </Text>
           {g.items.map((it) => (
@@ -167,17 +168,7 @@ export function NotificationsList({ tone }: { tone: NotifTone }) {
         </View>
       ))}
       {query.hasNextPage ? (
-        <Pressable
-          onPress={() => query.fetchNextPage()}
-          disabled={query.isFetchingNextPage}
-          accessibilityRole="button"
-          className="items-center justify-center rounded-xl mt-2"
-          style={{ minHeight: 44, borderWidth: 1, borderColor: t.border, backgroundColor: t.surface }}
-        >
-          <Text className={`${t.title} text-[13.5px]`} style={{ color: t.ink }}>
-            {query.isFetchingNextPage ? "Load ho raha hai..." : "Aur dikhayein"}
-          </Text>
-        </Pressable>
+        <Button label={query.isFetchingNextPage ? "Load ho raha hai..." : "Aur dikhayein"} variant="secondary" size="md" block onPress={() => query.fetchNextPage()} disabled={query.isFetchingNextPage} />
       ) : null}
     </ScrollView>
   );

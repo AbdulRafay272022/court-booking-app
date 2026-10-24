@@ -104,6 +104,7 @@ export function colorPairs(): ColorPair[] {
   pairs.push({ name: "onDarkMuted on night", fg: text.onDarkMuted, bg: palette.night, kind: "text" });
   pairs.push({ name: "onDarkSoft on night", fg: text.onDarkSoft, bg: palette.night, kind: "text" });
   pairs.push({ name: "white on dark glass (night)", fg: text.onDark, bg: alpha.glassDark, over: palette.night, kind: "text" });
+  pairs.push({ name: "white on teal-hero glass (lightest stop)", fg: text.onDark, bg: alpha.glassOnTeal, over: palette.teal, kind: "text" });
   pairs.push({ name: "amber icon on night (offline banner, hourglass)", fg: palette.amber, bg: palette.night, kind: "ui" });
   pairs.push({ name: "mint step label on night (pay step bar)", fg: palette.mint, bg: palette.night, kind: "text" });
   pairs.push({ name: "waiting title on white (timeline now)", fg: palette.waiting, bg: palette.white, kind: "text" });

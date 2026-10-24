@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import { alpha, palette, radius, size } from "@court-booking/ui-tokens";
-import { useRoleTheme } from "./theme";
+import { useRole, useRoleTheme } from "./theme";
 import { haptic } from "./haptics";
 import { Text } from "./Text";
 
@@ -42,12 +42,14 @@ export function IconButton({
   style,
 }: IconButtonProps) {
   const t = useRoleTheme();
+  const owner = useRole() === "owner";
   const d = Math.max(diameter, size.tap);
   const look = {
     plain: { bg: "transparent", fg: palette.night, border: "transparent" },
     surface: { bg: palette.white, fg: palette.night, border: "transparent" },
     mist: { bg: palette.mist, fg: palette.night, border: "transparent" },
-    onDark: { bg: alpha.glassDark, fg: palette.white, border: alpha.glassDarkBorder },
+    // owner "dark" surfaces are the teal hero: a night-tinted glass keeps white >= 4.5 on its lightest stop
+    onDark: owner ? { bg: alpha.glassOnTeal, fg: palette.white, border: alpha.glassOnTealBorder } : { bg: alpha.glassDark, fg: palette.white, border: alpha.glassDarkBorder },
     onPhoto: { bg: alpha.heartOnPhoto, fg: palette.white, border: alpha.onPhotoBorder },
     primary: { bg: t.primary.bg, fg: t.primary.fg, border: t.primary.bg },
     night: { bg: palette.night, fg: palette.white, border: palette.night },
