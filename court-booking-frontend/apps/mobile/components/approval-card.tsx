@@ -3,7 +3,8 @@ import { View } from "react-native";
 import { Ban, TriangleAlert } from "lucide-react-native";
 import { approvalSummary, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
 import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
-import { Avatar, Banner, Button, Input, MoneyRows, Pill, RadioGroup, Text } from "@/components/ui";
+import { Avatar, Banner, Button, Input, MoneyRows, Pill, Text } from "@/components/ui";
+import { OwnerRadioGroup } from "@/app/(owner)/_fl";
 
 import { formatPKR } from "@/lib/format";
 import { duplicateChipCount, duplicateUsedText } from "@/lib/overview";
@@ -213,7 +214,7 @@ export function ApproveSheet({
         </View>
       ) : null}
       {over ? (
-        <RadioGroup
+        <OwnerRadioGroup
           accessibilityLabel="Kitna manzoor"
           value={mode}
           onChange={setMode}
@@ -364,7 +365,7 @@ export function RejectSheet({
       }
     >
       <Text variant="bodyBold">Wajah chunein</Text>
-      <RadioGroup
+      <OwnerRadioGroup
         danger
         accessibilityLabel="Reject ki wajah"
         value={picked}

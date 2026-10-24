@@ -35,12 +35,13 @@ export function SlotsSheet({
   return (
     <BottomSheet title={onlyFree ? "Khali slots" : "Sab slots"} subtitle={formatDayHeader(date)} onClose={onClose}>
       <Text variant="caption" tone="muted">
-        {onlyFree ? "Sirf aane wale khaali slots." : "Kata hua = booked · dashed + ghari = hold / approval baqi · taala = band. Guzre hue khaali slots nahi dikhaye."}
+        {onlyFree ? "Sirf aane wale khaali slots." : "Kata hua = booked · dashed + ghari = hold / approval baqi · taala = band. Khatam ho chuke khaali slots nahi dikhaye."}
       </Text>
       {courts.map((c, i) => {
         const r = results[i];
         const chips = (r.data?.slots ?? [])
-          .map((s) => ({ s, state: slotChipState({ ...s, is_mine: false }, { now }) }))
+          // Owner view: a free slot still running can take a walk-in (walkinSlots keeps it), so free = not ended yet.
+          .map((s) => ({ s, state: s.status === "available" ? (Date.parse(s.ends_at) > now ? ("open" as const) : null) : slotChipState({ ...s, is_mine: false }, { now }) }))
           .filter((x) => x.state !== null && (!onlyFree || x.state === "open"));
         return (
           <View key={c.id} style={{ gap: 8 }}>

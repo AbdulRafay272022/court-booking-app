@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, CircleAlert, Clock } from "lucide-react-native";
@@ -78,6 +78,10 @@ export function BookingCard({
 }) {
   const tone = CARD_TONE[rowTone(row)];
   const [picking, setPicking] = useState(false);
+  // "Nahi" hands over to the adhoora sheet only after the picker has animated out (two @gorhom modals must not stack).
+  const [pickerOpen, setPickerOpen] = useState(true);
+  // a ref, not state: @gorhom may call the sheet's onDismiss through the closure from when it was presented
+  const afterPick = useRef(false);
   const [adhoora, setAdhoora] = useState(false);
   const [noShow, setNoShow] = useState(false);
   // Stage 2 (B.b): staff without the permission never see these buttons (the 403 message stays as the fallback).
@@ -149,7 +153,10 @@ export function BookingCard({
         <View style={{ paddingHorizontal: space[4], paddingBottom: space[4], flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3] }}>
           {mayComplete ? (
             <Pressable
-              onPress={() => setPicking(true)}
+              onPress={() => {
+              setPickerOpen(true);
+              setPicking(true);
+            }}
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel={`Booking completed: ${current}`}
@@ -203,7 +210,18 @@ export function BookingCard({
       ) : null}
 
       {picking ? (
-        <BottomSheet title="Booking completed?" subtitle={`${row.player_name ?? "Player"} · ${row.short_code}`} onClose={() => setPicking(false)}>
+        <BottomSheet
+          open={pickerOpen}
+          title="Booking completed?"
+          subtitle={`${row.player_name ?? "Player"} · ${row.short_code}`}
+          onClose={() => {
+            setPicking(false);
+            if (afterPick.current) {
+              afterPick.current = false;
+              setAdhoora(true);
+            }
+          }}
+        >
           <View style={{ gap: 10, paddingBottom: space[2] }}>
             <Text testID="completion-hint" variant="meta" tone="muted">
               {row.status_key === "no_show"
@@ -217,12 +235,13 @@ export function BookingCard({
               <Pressable
                 key={o.v}
                 onPress={() => {
-                  setPicking(false);
                   if (o.v === "yes") {
+                    setPicking(false);
                     // A no_show row with an old "yes" still needs the call: it is what makes the booking completed.
                     if (row.completion?.result !== "yes" || row.status_key === "no_show") yes.mutate();
                   } else {
-                    setAdhoora(true);
+                    afterPick.current = true;
+                    setPickerOpen(false);
                   }
                 }}
                 accessibilityRole="button"

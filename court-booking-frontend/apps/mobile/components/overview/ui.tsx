@@ -12,6 +12,7 @@ import { Button, Checkbox as FlCheckbox, Chip, FontScaleProvider, LangProvider, 
 
 /** A bottom sheet. Mount it only while open (it presents itself on mount; Close / backdrop / swipe call onClose). */
 export function BottomSheet({
+  open = true,
   title,
   subtitle,
   onClose,
@@ -19,6 +20,9 @@ export function BottomSheet({
   footer,
   testID,
 }: {
+  /** Default true (mount-while-open). Set false to let the sheet animate out first: onClose fires once it is gone, which is
+   * how one sheet hands over to the next without two @gorhom modals stacking (the stack dismissed both on Expo web). */
+  open?: boolean;
   title: string;
   subtitle?: string;
   onClose: () => void;
@@ -41,7 +45,7 @@ export function BottomSheet({
     </RoleProvider>
   );
   return (
-    <Sheet open onClose={onClose} title={title} subtitle={subtitle} footer={footer ? wrap(footer) : undefined} testID={testID}>
+    <Sheet open={open} onClose={onClose} title={title} subtitle={subtitle} footer={footer ? wrap(footer) : undefined} testID={testID}>
       {wrap(children)}
     </Sheet>
   );

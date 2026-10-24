@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -100,9 +100,45 @@ export function BookingDetailSheet({
   });
   const d = query.data;
   const forbidden = query.error instanceof ApiError && query.error.status === 403;
+  const qc = useQueryClient();
+  // The follow-up sheets (No-show, Kam mila, Payment record) are SIBLINGS of this sheet, never inside its content:
+  // @gorhom minimizes this modal while one of them is up, and a sheet nested in a minimized modal's content re-mounts.
+  const [follow, setFollowState] = useState<null | "noShow" | "short" | "record">(null);
+  // read by the sheet's onClose through a ref: @gorhom may call onDismiss through the closure from when it was presented
+  const followRef = useRef<typeof follow>(null);
+  const setFollow = (f: typeof follow) => {
+    followRef.current = f;
+    setFollowState(f);
+  };
+  // The detail animates out first; the follow-up mounts only once it is gone, and the detail comes back after it.
+  const [followShown, setFollowShown] = useState(false);
+  const refreshAll = () => void invalidateOwnerMoney(qc);
+  // A saved follow-up closes the whole flow (back to the list, fresh numbers); a cancelled one brings the detail back.
+  const saved = useRef(false);
+  const onSaved = () => {
+    saved.current = true;
+    refreshAll();
+  };
+  const endFollow = () => {
+    setFollow(null);
+    if (saved.current) {
+      saved.current = false;
+      onClose();
+      return;
+    }
+    setFollowShown(false);
+  };
 
   return (
-    <BottomSheet title={d ? d.row.short_code : "Booking"} subtitle="Booking ID" onClose={onClose} testID="booking-detail-sheet">
+    <>
+    {followShown ? null : (
+    <BottomSheet
+      open={follow === null}
+      title={d ? d.row.short_code : "Booking"}
+      subtitle="Booking ID"
+      onClose={() => (followRef.current ? setFollowShown(true) : onClose())}
+      testID="booking-detail-sheet"
+    >
       {query.isLoading ? (
         <View style={{ gap: space[3] }} accessibilityLabel="Loading">
           <Skeleton height={44} r={radius.md} />
@@ -121,9 +157,25 @@ export function BookingDetailSheet({
           <OutlineButton label="Dobara koshish karein" onPress={() => query.refetch()} />
         </View>
       ) : (
-        <DetailBody d={d} bookingId={bookingId} onOpenBooking={onOpenBooking} hideHistoryLink={hideHistoryLink} onClose={onClose} />
+        <DetailBody d={d} bookingId={bookingId} onOpenBooking={onOpenBooking} hideHistoryLink={hideHistoryLink} onClose={onClose} onFollow={setFollow} />
       )}
     </BottomSheet>
+    )}
+    {d && followShown && follow === "noShow" ? <NoShowSheet row={d.row} onClose={endFollow} onSaved={onSaved} /> : null}
+    {d && followShown && follow === "short" ? <CompletionSheet row={d.row} onClose={endFollow} onSaved={onSaved} /> : null}
+    {d && followShown && follow === "record" ? (
+      <RecordPaymentSheet
+        bookingId={d.row.booking_id}
+        playerLabel={d.row.player_name ?? "Player"}
+        balanceDue={d.row.due}
+        onClose={endFollow}
+        onRecorded={() => {
+          onSaved();
+          endFollow();
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -133,20 +185,19 @@ function DetailBody({
   onOpenBooking,
   hideHistoryLink,
   onClose,
+  onFollow,
 }: {
   d: OwnerBookingDetail;
   bookingId: string;
   onOpenBooking: (id: string) => void;
   hideHistoryLink?: boolean;
   onClose: () => void;
+  onFollow: (f: "noShow" | "short" | "record") => void;
 }) {
   const r = d.row;
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
-  const [noShow, setNoShow] = useState(false);
-  const [short, setShort] = useState(false);
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const live = r.kind === "booked" && r.status_key === "booked";
   // Stage 2 (B.b): buttons this staff member may not use are not shown at all (a 403 still shows its message).
@@ -331,15 +382,15 @@ function DetailBody({
               testID="detail-settle"
             />
           ) : null}
-          {action === "record" ? <Button label={`Payment record karein (PKR ${formatPKR(r.due)} baqi)`} variant="soft" block size="md" onPress={() => setRecording(true)} /> : null}
+          {action === "record" ? <Button label={`Payment record karein (PKR ${formatPKR(r.due)} baqi)`} variant="soft" block size="md" onPress={() => onFollow("record")} /> : null}
           {action === "wait" ? (
             <Text variant="meta" tone="muted">{`Baqi PKR ${formatPKR(r.due)}: slot khatam hone ke baad "Baqi mil gaye" ya "Kam mila" yahin se mark karein.`}</Text>
           ) : null}
           {action === "completion" || mayNoShow || mayCheckIn ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-              {action === "completion" && r.due > 0 ? <Button label="Kam mila" variant="soft" size="md" onPress={() => setShort(true)} style={{ flexGrow: 1 }} /> : null}
+              {action === "completion" && r.due > 0 ? <Button label="Kam mila" variant="soft" size="md" onPress={() => onFollow("short")} style={{ flexGrow: 1 }} /> : null}
               {mayCheckIn && live ? <Button label={busy ? "Ho raha hai" : "Check in"} variant="soft" size="md" disabled={busy} onPress={() => run(() => api.bookings.checkin(r.booking_id))} style={{ flexGrow: 1 }} /> : null}
-              {mayNoShow ? <Button label="Nahi aaye (No-show)" variant="danger" size="md" onPress={() => setNoShow(true)} style={{ flexGrow: 1 }} /> : null}
+              {mayNoShow ? <Button label="Nahi aaye (No-show)" variant="danger" size="md" onPress={() => onFollow("noShow")} style={{ flexGrow: 1 }} /> : null}
             </View>
           ) : null}
           {actionError ? (
@@ -349,21 +400,6 @@ function DetailBody({
           ) : null}
         </View>
       ) : null}
-      {noShow ? <NoShowSheet row={r} onClose={() => setNoShow(false)} onSaved={refreshAll} /> : null}
-      {short ? <CompletionSheet row={r} onClose={() => setShort(false)} onSaved={refreshAll} /> : null}
-      {recording ? (
-        <RecordPaymentSheet
-          bookingId={r.booking_id}
-          playerLabel={r.player_name ?? "Player"}
-          balanceDue={r.due}
-          onClose={() => setRecording(false)}
-          onRecorded={() => {
-            setRecording(false);
-            refreshAll();
-          }}
-        />
-      ) : null}
-
       <Text variant="caption" tone="subtle">
         Phone aur screenshot sirf owner aur ijazat wale staff ko nazar aate hain.
       </Text>

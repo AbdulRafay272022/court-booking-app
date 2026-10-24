@@ -92,7 +92,7 @@ async function waitBadge(page, want, timeout = 25000) {
   {
     const { ctx, page, reqs } = await setup(browser, { notifications: () => [] });
     await page.goto(BASE + "/approvals", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Payment review").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("approvals-count").first().waitFor({ timeout: 180000 });
     await page.getByRole("button", { name: "Details" }).waitFor({ timeout: 30000 });
     check("approvals: Details + History link shown", (await page.getByRole("link", { name: "History mein dekhein" }).count()) === 1);
     check("approvals: approve/reject still there", (await page.getByText("Approve", { exact: true }).count()) === 1 && (await page.getByText("Reject", { exact: true }).count()) === 1);
@@ -104,6 +104,7 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.getByRole("link", { name: "History mein dekhein" }).click();
     await page.waitForURL(/history/, { timeout: 15000 });
     await page.getByTestId("history-highlighted").first().waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !document.body.innerText.includes("Band karein"), null, { timeout: 5000 }).catch(() => {});
     const h = reqs.filter((r) => r.p === "/owners/bookings-history").pop();
     check("approvals: History opens with the booking's date range", h && h.q.includes("from=" + SLOT_DAY) && h.q.includes("to=" + SLOT_DAY), h && h.q);
     check("approvals: booking highlighted on History (no popup)", /b-77/.test(page.url()) && (await page.getByText("Sirf ye booking dikhayi ja rahi hai").count()) >= 1 && (await page.getByText("Band karein").count()) === 0);
@@ -127,6 +128,7 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.getByRole("link", { name: "History mein dekhein" }).click();
     await page.waitForURL(/history/, { timeout: 15000 });
     await page.getByTestId("history-highlighted").first().waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !document.body.innerText.includes("Band karein"), null, { timeout: 5000 }).catch(() => {});
     const h = reqs.filter((r) => r.p === "/owners/bookings-history").pop();
     check("refunds: History opens with the booking's date range", h && h.q.includes("from=" + SLOT_DAY) && h.q.includes("to=" + SLOT_DAY), h && h.q);
     check("refunds: booking highlighted on History (no popup)", /b-77/.test(page.url()) && (await page.getByText("Sirf ye booking dikhayi ja rahi hai").count()) >= 1 && (await page.getByText("Band karein").count()) === 0);

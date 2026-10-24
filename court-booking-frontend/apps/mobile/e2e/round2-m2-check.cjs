@@ -96,6 +96,8 @@ async function setup(browser, opts = {}) {
     if (p === "/owners/approvals-queue") return json({ items: [], total: 0, page: 1, page_size: 50 });
     if (p === "/owners/badges") return json({ approvals: 0, refunds: 0 });
     if (p === "/owners/bookings-history") return json({ items: [], total: 0, page: 1, page_size: 20, totals: { count: 0, total: 0, collected: 0, due: 0 } });
+    // the real GET /reviews/mine returns a list (the player Bookings tab maps it)
+    if (p === "/reviews/mine") return json([]);
     if (p.startsWith("/owners/") || p.startsWith("/users/")) return json([]);
     return json({});
   });

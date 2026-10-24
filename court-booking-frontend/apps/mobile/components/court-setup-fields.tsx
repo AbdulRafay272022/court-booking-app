@@ -80,9 +80,9 @@ export function CourtSetupFields({
       </SectionCard>
 
       <SectionCard>
-        <View className="flex-row items-center justify-between">
+        <View className="flex-row flex-wrap items-center justify-between gap-2">
           <SectionLabel>Opening hours</SectionLabel>
-          <Pressable onPress={() => onChange({ sameHoursEveryDay: !value.sameHoursEveryDay })}>
+          <Pressable accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => onChange({ sameHoursEveryDay: !value.sameHoursEveryDay })}>
             <Text variant="meta" tone="link" weight="bold">
               {value.sameHoursEveryDay ? "Set different hours per day" : "Use same hours every day"}
             </Text>
