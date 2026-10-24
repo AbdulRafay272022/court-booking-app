@@ -27,7 +27,7 @@ test("firstAllowedTabRoute: staff land on the first tab they may open", () => {
   assert.equal(firstAllowedTabRoute(staffWith("check_in")), "more");
 });
 
-test("moreItemAllowed: owners get everything; staff get what their keys allow; growth is owner-only", () => {
+test("moreItemAllowed: owners get everything; staff get what their keys allow", () => {
   for (const item of ["history", "walkin", "checkin", "growth", "reviews", "venueSettings"] as const) {
     assert.equal(moreItemAllowed(item, owner, false), true, item);
   }
@@ -37,7 +37,8 @@ test("moreItemAllowed: owners get everything; staff get what their keys allow; g
   assert.equal(moreItemAllowed("walkin", s, true), false);
   assert.equal(moreItemAllowed("history", s, true), false);
   assert.equal(moreItemAllowed("reviews", s, true), false);
-  assert.equal(moreItemAllowed("growth", owner, true), false);
+  assert.equal(moreItemAllowed("growth", s, true), false);
+  assert.equal(moreItemAllowed("growth", staffWith("view_growth"), true), true);
   // view_ledger staff may read venue settings (read-only timers), record_payments-only staff may not.
   assert.equal(moreItemAllowed("venueSettings", staffWith("view_ledger"), true), true);
   assert.equal(moreItemAllowed("venueSettings", staffWith("record_payments"), true), false);

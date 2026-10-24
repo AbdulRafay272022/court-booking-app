@@ -6,7 +6,7 @@ import type { StaffPermissionKey } from "@court-booking/types";
  * - Refunds need `mark_refunds`; a walk-in `walkin`; check-in `check_in`; replying to reviews `respond_reviews`.
  * - Venue settings open with `edit_court_settings` (courts, pricing, timers) or `manage_photos`; `view_ledger` staff may
  *   READ them (the timers card turns into a read-only summary, Stage 2), so that key opens the screen too.
- * - Growth resolves with the key `view_growth`, which no staff account can hold, so it is owner-only like Staff/Premium.
+ * - Growth needs `view_growth` (`owners.py` resolve_owner_context(..., "view_growth")).
  * Owners and admins may do everything; `can` comes from useMyPermissions (unknown counts as allowed, the server's 403 stays
  * the fallback). */
 export type OwnerTabKey = "overview" | "approvals" | "refunds" | "ledger" | "more";
@@ -34,7 +34,7 @@ const MORE_NEEDS: Record<MoreItemKey, StaffPermissionKey[] | "owner"> = {
   history: ["view_ledger"],
   walkin: ["walkin"],
   checkin: ["check_in"],
-  growth: "owner",
+  growth: ["view_growth"],
   reviews: ["respond_reviews"],
   venueSettings: ["edit_court_settings", "manage_photos", "view_ledger"],
 };

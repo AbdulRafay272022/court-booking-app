@@ -10,6 +10,8 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon, StarBadgeIcon, TrendingUpIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
+import { NoAccess } from "@/components/no-access";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { EmptyState, VenueSwitcher } from "./_dashboard-components";
 
 const WEEKDAYS = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
@@ -21,16 +23,21 @@ function formatHourRange(hour: number): string {
 
 export default function GrowthScreen() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
+  const perms = useMyPermissions();
 
   const query = useQuery({
     queryKey: ["owner-growth", activeVenueId],
     queryFn: () => api.owners.growth(activeVenueId),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && perms.can("view_growth"),
     retry: false,
   });
 
   const ineligible = query.error instanceof ApiError && query.error.status === 403;
   const suggestions = query.data?.underbooked_slots ?? [];
+
+  // Staff without view_growth: the shared no-access screen, not the owner's "premium feature" upsell (that 403 is
+  // about the venue's plan, this one about the staff member's permissions).
+  if (perms.settled && !perms.can("view_growth")) return <NoAccess what="Growth" />;
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>

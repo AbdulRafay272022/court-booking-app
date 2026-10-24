@@ -104,7 +104,7 @@ export default function HistoryScreen() {
         pageSize: PAGE_SIZE,
       }),
     getNextPageParam: (last) => (last.page * last.page_size < last.total ? last.page + 1 : undefined),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && perms.can("view_ledger"),
   });
 
   const allItems = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
