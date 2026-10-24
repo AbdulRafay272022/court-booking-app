@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 
 import { api } from "@/lib/api";
+import { safeBack } from "@/lib/safe-back";
 import { ApiError } from "@court-booking/api-client";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDate, formatPKR, formatTime, formatTimeRange } from "@/lib/format";
@@ -239,8 +240,9 @@ export default function BookingChatScreen() {
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View className="px-5 py-3.5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => safeBack()}
             accessibilityLabel="Back"
+            accessibilityRole="button"
             className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center active:opacity-70"
           >
             <ChevronLeftIcon />

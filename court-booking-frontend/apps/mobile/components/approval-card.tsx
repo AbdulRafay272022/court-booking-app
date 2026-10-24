@@ -3,7 +3,7 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { approvalSummary, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
 
 import { formatPKR } from "@/lib/format";
-import { OV } from "@/lib/overview";
+import { OV, duplicateChipCount, duplicateUsedText } from "@/lib/overview";
 import { refundAmountFor } from "@/lib/refund-confirm";
 import { STATE_CHIP, isGrey, parsePkr, slotWhen } from "@/lib/round2-format";
 import { AlertTriangleIcon, BanIcon, CheckIcon, XIcon } from "@/components/icons";
@@ -39,7 +39,7 @@ function AmountChip({ item }: { item: ApprovalQueueItem }) {
 
 /** Stage 2 (B.a): "this screenshot was already used on N other bookings" (icon + text). */
 export function duplicateText(n: number): string {
-  return `Ye screenshot pehle bhi ${n} ${n === 1 ? "booking" : "bookings"} par use hua hai`;
+  return duplicateUsedText(n);
 }
 
 function DuplicateChip({ n }: { n: number }) {
@@ -110,7 +110,11 @@ export function ApprovalCard({
       </View>
 
       {!grey ? <AmountChip item={item} /> : null}
-      {!grey && item.duplicate ? <DuplicateChip n={item.duplicate.used_on_bookings} /> : null}
+      {(() => {
+        // hidden for a 0 count ("0 bookings" read as a false alarm); the approve flow still asks for the confirm
+        const dupN = grey ? null : duplicateChipCount(item.duplicate);
+        return dupN != null ? <DuplicateChip n={dupN} /> : null;
+      })()}
       {item.has_screenshot || item.proof_url ? <ScreenshotThumb paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : null}
 
       <BookingLinks bookingId={item.booking_id} startsAt={item.starts_at} onDetails={onDetails} />

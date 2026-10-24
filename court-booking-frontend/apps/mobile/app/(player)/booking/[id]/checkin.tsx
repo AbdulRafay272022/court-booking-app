@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import QRCode from "react-native-qrcode-svg";
 import { selfCheckinWindow } from "@court-booking/types";
 
 import { api } from "@/lib/api";
+import { safeBack } from "@/lib/safe-back";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatTime, formatWhen } from "@/lib/format";
 import { ChevronLeftIcon, CheckIcon } from "@/components/icons";
@@ -60,7 +61,7 @@ export default function PlayerCheckinScreen() {
     return (
       <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
         <View className="px-5 pt-5 pb-4 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-          <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl items-center justify-center" style={{ backgroundColor: "#F4EFEC" }}>
+          <Pressable onPress={() => safeBack()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-xl items-center justify-center" style={{ backgroundColor: "#F4EFEC" }}>
             <ChevronLeftIcon />
           </Pressable>
           <Text className="font-figtree-bold text-player-ink text-[18px]">Check in</Text>
@@ -83,7 +84,7 @@ export default function PlayerCheckinScreen() {
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
       <View className="px-5 pt-5 pb-4 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl items-center justify-center" style={{ backgroundColor: "#F4EFEC" }}>
+        <Pressable onPress={() => safeBack()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-xl items-center justify-center" style={{ backgroundColor: "#F4EFEC" }}>
           <ChevronLeftIcon />
         </Pressable>
         <Text className="font-figtree-bold text-player-ink text-[18px]">Check in</Text>

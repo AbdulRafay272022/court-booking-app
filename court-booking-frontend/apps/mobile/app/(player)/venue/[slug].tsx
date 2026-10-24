@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import { safeBack } from "@/lib/safe-back";
+import { PLAYER_HOME_HREF } from "@/lib/safe-back-rules";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDistance, formatPKR } from "@/lib/format";
 import { formatDuration } from "@court-booking/types";
@@ -77,7 +79,7 @@ export default function VenueDetailScreen() {
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
       <View className="px-5 pt-5 pb-3.5 bg-player-surface border-b border-player-border-light gap-3">
         <View className="flex-row items-center gap-3">
-          <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
+          <Pressable onPress={() => safeBack(PLAYER_HOME_HREF)} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
             <ChevronLeftIcon />
           </Pressable>
           <View className="flex-1 gap-0.5">
