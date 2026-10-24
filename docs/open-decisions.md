@@ -26,6 +26,25 @@ Source: `docs/floodlight-contract.md` (B1-B8 table) aur `docs/floodlight-progres
 - **Preview aur production** builds abhi bhi `google-services.json` use karti hain. Is file mein `com.aftrsolutions.khelo` nahi hai, is liye **nayi file aane tak preview/production Android build fail hogi**.
 - File aane par: nayi `google-services.json` `apps/mobile/` mein rakhein aur `app.config.js` delete karein (ya us commit ko `git revert` karein). Phir naya build banayein.
 
+## ⚠️ EAS upload incident (2026-10-25): `.env` files Expo pe chali gayi thin
+
+- **Kya hua:** pehle development build (`ac91d899`) ka upload 476 MB tha. eas-cli 25.3.0 Windows pe sirf root `.gitignore` pe amal karta hai (nested `.gitignore` ke rules match hi nahi hote), is liye ye files bhi chali gayin: `court-booking-backend/.env`, `court-booking-frontend/apps/web/.env.local`, backend `.venv`, web `.next`, aur `Claude outputs/`, `design/desgin/`, `scripts/`. `infra/terraform.tfstate` **nahi** gayi (root `.gitignore` ne roki).
+- **Kya kiya:** build cancel aur delete kiya (`eas build:list` → 0 builds). Project `@abdulrafay879/khelo` aaj hi bana tha, is liye is pe koi aur purana build nahi. Purane `maidan-app` project pe kabhi build hua ho to wo is account se dikhta nahi (access nahi), aur wo is machine ke aaj ke kaam se nahi bana. CLI se ye confirm nahi ho sakta ke delete ke baad Expo ne archive ki storage copy bhi foran mita di; dashboard pe build ab nazar nahi aata.
+- **Fix:** repo root pe `.easignore` (commit `9b4e461`). Upload ab 1.4 MB hai: sirf frontend workspace. eas-cli ki apni ignore class se dry-run kiya: disk ki saari `.env*`, `tfstate`, aur key/keystore/p8/p12/pem/adminsdk paths BLOCKED, sirf `.env.example` jati hai.
+- **Rotation (founder khud karega; agent ne koi key na banayi, na mitayi, na print ki):**
+
+| File | Variable | Secret? | Rotate? |
+|---|---|---|---|
+| backend `.env` | `GEMINI_API_KEY` (set) | **Haan**: asli, billed key | **Haan, foran** (Google AI Studio / Cloud console) |
+| backend `.env` | `SESSION_TOKEN_SECRET` (set) | Haan | Sirf agar production mein bhi yahi value hai; warna local ke liye naya bana lein |
+| backend `.env` | `WHATSAPP_WEBHOOK_VERIFY_TOKEN` (set) | Haan (kam asar) | Agar production webhook mein yahi value hai to haan; warna nahi |
+| backend `.env` | `DATABASE_URL` (set) | Password andar hai, lekin sirf local docker Postgres (`localhost:5433`) | Nahi (local) |
+| backend `.env` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (set) | Nahi: localstack dummy (AWS format nahi) | Nahi |
+| backend `.env` | `DEV_FIXED_OTP` (set) | Local dev setting | Nahi (production mein ye set nahi hona chahiye; wahan check kar lein) |
+| backend `.env` | `WHATSAPP_API_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FCM_SERVICE_ACCOUNT_KEY`, `SENTRY_DSN`, `S3_KMS_KEY_ID`, `CLOUDFRONT_DOMAIN` | Khaali thin, kuch nahi gaya | Nahi |
+| backend `.env` | `APP_NAME`, `DEBUG`, `API_V1_PREFIX`, `ALLOWED_ORIGINS`, `SESSION_TOKEN_EXPIRE_DAYS`, `OTP_EXPIRE_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_LIMIT_WINDOW_MINUTES`, `AWS_REGION`, `AWS_ENDPOINT_URL`, `S3_BUCKET_PUBLIC`, `S3_BUCKET_PRIVATE`, `WHATSAPP_API_URL`, `AI_PROVIDER`, `AI_VISION_PROVIDER`, `CLAUDE_HAIKU_MODEL`, `CLAUDE_SONNET_MODEL`, `GEMINI_FLASH_MODEL`, `GEMINI_PRO_MODEL`, `OPENAI_MINI_MODEL`, `OPENAI_FULL_MODEL` | Nahi (settings / naam / URLs) | Nahi |
+| web `.env.local` | `NEXT_PUBLIC_API_BASE_URL` (set) | Nahi (public URL) | Nahi |
+
 ## Notifications phase 0 (commit 9fb5bd7, archived, NOT merged)
 
 Commit 2026-10-02, base `e0da708`. Ab ye local tag **`archive/notifications-phase-0`** aur local branch `notifications-phase-0` mein hai. Push nahi kiya, merge nahi kiya, aur worktree hata diya gaya.

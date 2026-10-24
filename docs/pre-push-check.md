@@ -1,9 +1,13 @@
 # Pre-push check: Floodlight + Khelo rename → production (final, 2026-10-25)
 
-Kya push hoga: local `main` (code: merge **93b8376**, phir sirf is doc ka commit), jo `origin/main` **db4db49** se 34 commits aage hai:
+Kya push hoga: local `main`, jo `origin/main` **db4db49** se 38 commits aage hai:
 - Floodlight ke 30 commits (rewrite ke baad screenshots ke baghair)
 - `.gitignore` commit `5848aa5`
-- rename commit `e4df42a` + merge `93b8376`
+- rename commit `e4df42a` + merge `93b8376`, aur is doc ka commit
+- dev build Firebase ke baghair: `567b80d` + merge `f165b51` (sirf `apps/mobile/app.config.js`; web/backend pe asar nahi)
+- `.easignore`: `9b4e461` + merge `6fe9f86` (sirf EAS upload filter; deploy pe asar nahi)
+
+Tests (section a) `93b8376` pe chale. Baad ke dono commits web/backend code ko nahi chhoote. Mobile ka `app.config.js` `npx expo config` aur `native-foundation.test.ts` (6/6) se check hua.
 
 Kul 370 files, +33,980 / −9,318 lines. **Push size ~3.0 MB** (git pack). Screenshots nikalne se pehle ye 85.2 MB tha.
 Ye check production ko chhue baghair kiya gaya: push nahi kiya, kuch deploy nahi kiya.
