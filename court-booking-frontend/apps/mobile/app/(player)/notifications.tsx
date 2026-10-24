@@ -9,7 +9,7 @@ import { NotificationsList } from "@/components/notification-row";
 export default function PlayerNotificationsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="px-5 py-4.5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
+      <View className="px-5 py-5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"

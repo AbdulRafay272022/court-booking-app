@@ -240,9 +240,10 @@ function defaultState() {
     check("B.b staff: no approve request was needed to learn it", !reqs.some((r) => /\/approve$/.test(r.p)));
 
     await page.goto(BASE + "/refunds", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Refunds to pay").first().waitFor({ timeout: 180000 });
-    await waitFor(async () => (await page.getByTestId("refunds-no-permission").count()) > 0, 15000);
-    check("B.b staff: refunds no-permission state up front", (await page.getByTestId("refunds-no-permission").count()) === 1 && (await page.getByTestId("refunds-count").count()) === 0);
+    // P0 fix branch: a staff member without mark_refunds gets the ONE shared no-access screen (and no Refunds tab).
+    await waitFor(async () => (await page.getByTestId("no-access").count()) > 0, 180000);
+    check("B.b staff: refunds no-permission state up front", (await page.getByTestId("no-access").count()) === 1 && (await page.getByText("Refunds ki ijazat nahi").count()) === 1 && (await page.getByTestId("refunds-count").count()) === 0);
+    check("B.b staff: no Refunds tab without mark_refunds", (await page.getByRole("tab", { name: /^Refunds/ }).count()) === 0);
     check("B.b staff: refunds list never requested", !reqs.some((r) => r.p === "/owners/refunds"));
 
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });

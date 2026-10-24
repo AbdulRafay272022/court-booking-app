@@ -60,7 +60,7 @@ function routeForNotification(data: Record<string, unknown> | undefined): void {
   const referenceId = data.reference_id ? String(data.reference_id) : undefined;
 
   if (eventType === "payment_submitted" || eventType === "late_payment_proof") {
-    router.push("/(owner)/approvals");
+    router.push("/(owner)/(tabs)/approvals");
   } else if ((eventType === "booking_confirmed" || eventType === "payment_rejected") && referenceId) {
     router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: referenceId } });
   } else if (eventType.includes("slot") || eventType === "waitlist_slot_available") {

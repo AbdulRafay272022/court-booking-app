@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 
@@ -9,6 +9,9 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
+import { hasPayableDetails } from "@/lib/booking-flow-rules";
+import { prepareProofImage, type PreparedProof } from "@/lib/proof-image";
+import { isRetryableUploadError } from "@/lib/proof-image-rules";
 import { openSupportWhatsApp } from "@/lib/support";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
@@ -29,12 +32,22 @@ export default function PaymentProofScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
   const paymentInstructions = useBookingFlowStore((s) => s.paymentInstructionsByBookingId[id]);
+  // The store is persisted (AsyncStorage): wait for it before saying "no payment details", or a reopened pay screen
+  // flashes the fallback for a frame.
+  const [instructionsReady, setInstructionsReady] = useState(() => useBookingFlowStore.persist.hasHydrated());
+  useEffect(() => {
+    if (instructionsReady) return;
+    return useBookingFlowStore.persist.onFinishHydration(() => setInstructionsReady(true));
+  }, [instructionsReady]);
 
-  const [picked, setPicked] = useState<{ uri: string; blob?: Blob; name: string; type: string } | null>(null);
+  const [picked, setPicked] = useState<PreparedProof | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<{ message: string; retryable: boolean } | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
 
+  const focused = useIsFocused();
   const bookingQuery = useQuery({
     queryKey: ["booking", id],
     queryFn: () => api.bookings.get(id),
@@ -42,6 +55,7 @@ export default function PaymentProofScreen() {
       const status = query.state.data?.status;
       return status === "held" || status === "payment_submitted" ? 4000 : false;
     },
+    subscribed: focused,
   });
   const booking = bookingQuery.data;
   const secondsLeft = useCountdown(booking?.status === "held" ? booking.held_until : null);
@@ -77,23 +91,32 @@ export default function PaymentProofScreen() {
       return;
     }
     const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({ quality: 0.8 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+      ? await ImagePicker.launchCameraAsync({ quality: 1 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
     if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    setPicked({
-      uri: asset.uri,
-      blob: asset.file,
-      name: asset.fileName ?? "proof.jpg",
-      type: asset.mimeType ?? "image/jpeg",
-    });
+    // Long side <= 1600 px, JPEG 0.7: a few hundred KB instead of 3-8 MB, so it finishes on slow 3G (P0-4).
+    setPreparing(true);
+    setUploadError(null);
+    try {
+      setPicked(await prepareProofImage(result.assets[0]));
+    } finally {
+      setPreparing(false);
+    }
   }
 
   async function submitProof() {
-    if (!picked) return;
+    if (!picked || submitting) return;
+    const isRetry = !!uploadError?.retryable;
     setSubmitting(true);
     setUploadProgress(0);
+    setUploadError(null);
     try {
+      // A timed-out upload may still have reached the server: check before sending the same screenshot twice.
+      if (isRetry) {
+        const fresh = await api.bookings.get(id);
+        queryClient.setQueryData(["booking", id], fresh);
+        if (fresh.status !== "held") return;
+      }
       const result = await api.bookings.submitPaymentProof(
         id,
         picked.blob ?? picked.uri,
@@ -113,7 +136,13 @@ export default function PaymentProofScreen() {
         Alert.alert("Couldn't read the screenshot", "The venue will review it manually.");
       }
     } catch (e) {
-      Alert.alert("Couldn't submit", friendlyErrorMessage(e));
+      const retryable = isRetryableUploadError(e);
+      setUploadError({
+        retryable,
+        message: retryable
+          ? "The upload didn't finish — your connection may be slow. Your screenshot is still here, tap Try again."
+          : friendlyErrorMessage(e),
+      });
     } finally {
       setSubmitting(false);
       setUploadProgress(0);
@@ -166,7 +195,7 @@ export default function PaymentProofScreen() {
               The venue couldn't match your screenshot.
             </Text>
           </View>
-          <View className="bg-player-surface border-[1.5px] rounded-2xl p-4.5 gap-3" style={{ borderColor: "#DDBAB1" }}>
+          <View className="bg-player-surface border-[1.5px] rounded-2xl p-5 gap-3" style={{ borderColor: "#DDBAB1" }}>
             <Text className="font-figtree-bold text-[11px] tracking-[0.1em]" style={{ color: "#8C3823" }}>
               WHAT THE VENUE SAID
             </Text>
@@ -207,7 +236,7 @@ export default function PaymentProofScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="px-5 py-4.5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
+      <View className="px-5 py-5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
         <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
           <ChevronLeftIcon />
         </Pressable>
@@ -232,20 +261,20 @@ export default function PaymentProofScreen() {
           </View>
         ) : null}
 
-        <View className="bg-player-ink rounded-2xl p-5.5 gap-1.5">
+        <View className="bg-player-ink rounded-2xl p-6 gap-1.5">
           <Text className="font-figtree-bold text-[11px] tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.6)" }}>
             {isWaitingReview ? "SENT" : "ADVANCE DUE NOW"}
           </Text>
           <Text className="font-mono-semibold text-white text-[38px] -tracking-[0.5px]">
-            {formatPKR(booking.advance_amount)}
+            PKR {formatPKR(booking.advance_amount)}
           </Text>
           <Text className="font-figtree-medium text-[13.5px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-            Balance {formatPKR(booking.balance_due)} payable at the venue
+            Balance PKR {formatPKR(booking.balance_due)} payable at the venue
           </Text>
         </View>
 
         {isWaitingReview ? (
-          <View className="bg-player-surface border border-player-border-light rounded-2xl p-4.5 flex-row items-center gap-3">
+          <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 flex-row items-center gap-3">
             <ActivityIndicator color="#8A5A0A" />
             <Text className="font-figtree-medium text-player-ink-muted text-sm flex-1 leading-[1.4]">
               The venue is reviewing your screenshot. This page will update automatically.
@@ -253,8 +282,8 @@ export default function PaymentProofScreen() {
           </View>
         ) : (
           <>
-            {paymentInstructions ? (
-              <View className="bg-player-surface border border-player-border-light rounded-2xl p-4.5 gap-3.5">
+            {!instructionsReady ? null : hasPayableDetails(paymentInstructions) ? (
+              <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 gap-3.5">
                 <Text className="font-figtree-bold text-[11px] tracking-[0.1em] text-player-ink-fainter">SEND TO</Text>
                 {paymentInstructions.bank ? <PayRow label="Bank" value={paymentInstructions.bank} /> : null}
                 {paymentInstructions.account_title ? <PayRow label="Account title" value={paymentInstructions.account_title} /> : null}
@@ -262,17 +291,39 @@ export default function PaymentProofScreen() {
                 {paymentInstructions.iban ? <PayRow label="IBAN" value={paymentInstructions.iban} mono /> : null}
               </View>
             ) : (
-              <View className="bg-player-surface border border-player-border-light rounded-2xl p-4.5">
-                <Text className="font-figtree-medium text-player-ink-faint text-[13px] leading-[1.5]">
-                  Payment details were shown when this hold was created — check your chat with the venue if you need them again.
+              <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 gap-3">
+                <Text className="font-figtree-medium text-player-ink-muted text-[13.5px] leading-[1.5]">
+                  This phone doesn't have the venue's bank details for this hold (it may have been made on WhatsApp or another
+                  device). They are in your chat with the venue, or we can send them to you.
                 </Text>
+                <Pressable
+                  onPress={() => openSupportWhatsApp(`Please send me the payment details for booking ${id}`)}
+                  accessibilityRole="button"
+                  className="h-11 rounded-xl border border-player-border items-center justify-center active:opacity-80"
+                >
+                  <Text className="font-figtree-semibold text-player-ink text-[14px]">Get payment details on WhatsApp</Text>
+                </Pressable>
               </View>
             )}
 
-            {picked ? (
+            {preparing ? (
+              <View className="bg-player-surface border border-player-border-light rounded-2xl p-5 flex-row items-center gap-3">
+                <ActivityIndicator color="#EF5A2C" />
+                <Text className="font-figtree-medium text-player-ink-muted text-sm">Preparing your screenshot…</Text>
+              </View>
+            ) : picked ? (
               <View className="bg-player-surface border border-player-border-light rounded-2xl p-3 items-center">
                 <Image source={{ uri: picked.uri }} style={{ width: "100%", height: 220, borderRadius: 12 }} resizeMode="contain" />
-                <Pressable onPress={() => setPicked(null)} className="mt-2">
+                <Pressable
+                  onPress={() => {
+                    setPicked(null);
+                    setUploadError(null);
+                  }}
+                  disabled={submitting}
+                  accessibilityRole="button"
+                  className="mt-1 px-4 justify-center"
+                  style={{ minHeight: 44 }}
+                >
                   <Text className="font-figtree-semibold text-player-danger text-[13px]">Remove and choose another</Text>
                 </Pressable>
               </View>
@@ -280,7 +331,7 @@ export default function PaymentProofScreen() {
               <View className="gap-2.5">
                 <Pressable
                   onPress={() => pickImage(false)}
-                  className="border-2 rounded-2xl p-6.5 items-center gap-2"
+                  className="border-2 rounded-2xl p-7 items-center gap-2"
                   style={{ borderStyle: "dashed", borderColor: "#E0D9D4" }}
                 >
                   <Text className="font-figtree-bold text-player-ink text-[15px]">Attach payment screenshot</Text>
@@ -307,6 +358,17 @@ export default function PaymentProofScreen() {
 
       {!isWaitingReview ? (
         <View className="px-5 pt-4 pb-6 bg-player-surface border-t border-player-border-light gap-2.5">
+          {uploadError ? (
+            <View
+              accessibilityRole="alert"
+              className="rounded-xl px-4 py-3 border"
+              style={{ backgroundColor: "#F8E5E0", borderColor: "#DDBAB1" }}
+            >
+              <Text className="font-figtree-semibold text-[13.5px] leading-[1.45]" style={{ color: "#8C3823" }}>
+                {uploadError.message}
+              </Text>
+            </View>
+          ) : null}
           {submitting ? (
             <View className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "#F4EFEC" }}>
               <View
@@ -317,13 +379,18 @@ export default function PaymentProofScreen() {
           ) : null}
           <Pressable
             onPress={submitProof}
-            disabled={!picked || submitting}
+            disabled={!picked || submitting || preparing}
+            accessibilityRole="button"
             className="h-[54px] rounded-2xl bg-player-accent items-center justify-center flex-row gap-2"
-            style={{ opacity: !picked || submitting ? 0.5 : 1 }}
+            style={{ opacity: !picked || submitting || preparing ? 0.5 : 1 }}
           >
             {submitting ? <ActivityIndicator color="#FFFFFF" /> : null}
             <Text className="font-figtree-bold text-white text-base">
-              {submitting ? `Uploading… ${Math.round(uploadProgress * 100)}%` : "Submit payment proof"}
+              {submitting
+                ? `Uploading… ${Math.round(uploadProgress * 100)}%`
+                : uploadError?.retryable
+                  ? "Try again"
+                  : "Submit payment proof"}
             </Text>
           </Pressable>
         </View>

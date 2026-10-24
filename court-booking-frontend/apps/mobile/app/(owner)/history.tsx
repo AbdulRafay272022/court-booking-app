@@ -12,6 +12,8 @@ import { addDays, daysOfMonth, formatDayHeader, formatPKR, monthOf, pktDateStrin
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { OV, STATUS_FILTERS } from "@/lib/overview";
 import { ChevronLeftIcon, SearchIcon } from "@/components/icons";
+import { NoAccess } from "@/components/no-access";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { BookingCard } from "@/components/overview/booking-card";
@@ -49,6 +51,7 @@ const PAGE_SIZE = 20;
 export default function HistoryScreen() {
   const params = useLocalSearchParams<{ from?: string; to?: string; courts?: string; status?: string; q?: string; booking?: string }>();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
+  const perms = useMyPermissions();
   const today = pktDateString();
   const [from, setFrom] = useState(params.from ?? today);
   const [to, setTo] = useState(params.to ?? params.from ?? today);
@@ -101,7 +104,7 @@ export default function HistoryScreen() {
         pageSize: PAGE_SIZE,
       }),
     getNextPageParam: (last) => (last.page * last.page_size < last.total ? last.page + 1 : undefined),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && perms.can("view_ledger"),
   });
 
   const allItems = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
@@ -138,11 +141,13 @@ export default function HistoryScreen() {
     setTo(r.to);
   }
 
+  if (perms.settled && !perms.can("view_ledger")) return <NoAccess what="Bookings history" />;
+
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
       <View className="px-4 py-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(owner)/today"))}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(owner)/(tabs)/today"))}
           accessibilityLabel="Back"
           accessibilityRole="button"
           className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center"

@@ -5,6 +5,14 @@ import type { Query } from "@tanstack/react-query";
  * the normal interval as soon as a request succeeds. TanStack Query tracks
  * `fetchFailureCount` per query and resets it to 0 on the next successful fetch, so reading
  * it here is enough — no separate state to manage. */
+/** `/health` (the offline banner): once a minute while the server answers, every 8 s while it doesn't, so the banner
+ * clears quickly once the connection is back. */
+export const HEALTH_ONLINE_MS = 60_000;
+export const HEALTH_OFFLINE_MS = 8_000;
+export function healthPollMs(online: boolean): number {
+  return online ? HEALTH_ONLINE_MS : HEALTH_OFFLINE_MS;
+}
+
 export function pollInterval(query: Query<any, any, any, any>, baseMs: number, maxMs = 120_000): number {
   const failures = query.state.fetchFailureCount;
   return failures === 0 ? baseMs : Math.min(baseMs * 2 ** failures, maxMs);

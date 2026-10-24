@@ -16,7 +16,7 @@ export default function CheckinQrScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 pt-5 pb-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
+      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
         <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
           <ChevronLeftIcon />
         </Pressable>

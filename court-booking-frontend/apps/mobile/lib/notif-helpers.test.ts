@@ -59,14 +59,14 @@ test("dayHeading and groupByDay use the Pakistan calendar", () => {
 
 test("notificationTarget maps link kinds to screens", () => {
   const base = { params: { starts_at: "2026-10-18T16:00:00Z" } };
-  assert.deepEqual(notificationTarget({ ...base, link: { kind: "approvals" } }, "owner"), { pathname: "/(owner)/approvals" });
-  assert.deepEqual(notificationTarget({ ...base, link: { kind: "refunds" } }, "owner"), { pathname: "/(owner)/refunds" });
+  assert.deepEqual(notificationTarget({ ...base, link: { kind: "approvals" } }, "owner"), { pathname: "/(owner)/(tabs)/approvals" });
+  assert.deepEqual(notificationTarget({ ...base, link: { kind: "refunds" } }, "owner"), { pathname: "/(owner)/(tabs)/refunds" });
   assert.deepEqual(notificationTarget({ ...base, link: { kind: "booking", booking_id: "b9" } }, "owner"), {
     pathname: "/(owner)/history",
     params: { booking: "b9", from: "2026-10-18", to: "2026-10-18" },
   });
   assert.deepEqual(notificationTarget({ ...base, link: { kind: "bookings" } }, "owner"), { pathname: "/(owner)/history" });
-  assert.deepEqual(notificationTarget({ ...base, link: { kind: "overview" } }, "owner"), { pathname: "/(owner)/today" });
+  assert.deepEqual(notificationTarget({ ...base, link: { kind: "overview" } }, "owner"), { pathname: "/(owner)/(tabs)/today" });
   assert.deepEqual(notificationTarget({ ...base, link: { kind: "venue_status" } }, "owner"), { pathname: "/(owner)" });
   assert.equal(notificationTarget({ ...base, link: { kind: "none" } }, "owner"), null);
   assert.deepEqual(notificationTarget({ ...base, link: { kind: "booking", booking_id: "b9" } }, "player"), { pathname: "/(player)/(tabs)/bookings" });
@@ -79,5 +79,5 @@ test("late screenshot (old endpoint) reads as a late screenshot and the feed kin
   assert.equal(notificationText(item, "ru").title, "Screenshot hold khatam hone ke baad aaya");
   const feedItem = { ...item, kind: "late_payment" as const, link: { kind: "approvals" as const, booking_id: "b1" } };
   assert.equal(notificationText(feedItem, "ru").title, "Screenshot hold khatam hone ke baad aaya");
-  assert.deepEqual(notificationTarget(feedItem, "owner"), { pathname: "/(owner)/approvals" });
+  assert.deepEqual(notificationTarget(feedItem, "owner"), { pathname: "/(owner)/(tabs)/approvals" });
 });

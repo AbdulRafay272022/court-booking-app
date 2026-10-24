@@ -1,17 +1,30 @@
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { courtLabel } from "@/components/court-label";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import { CheckIcon } from "@/components/icons";
+import { CheckIcon, ClockIcon, XIcon } from "@/components/icons";
+import { doneCopy, donePollMs, type DoneTone } from "@/lib/booking-done";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
 
+const TONE: Record<DoneTone, { bg: string; badge: string; sub: string }> = {
+  confirmed: { bg: "#0F2D22", badge: "#1F7A52", sub: "#9BC4B1" },
+  waiting: { bg: "#141A1D", badge: "#8A5A0A", sub: "#D8CDBF" },
+  ended: { bg: "#141A1D", badge: "#A8432C", sub: "#D8CDBF" },
+};
+
 export default function BookingDoneScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const bookingQuery = useQuery({ queryKey: ["booking", id], queryFn: () => api.bookings.get(id) });
+  const focused = useIsFocused();
+  const bookingQuery = useQuery({
+    queryKey: ["booking", id],
+    queryFn: () => api.bookings.get(id),
+    refetchInterval: (q) => donePollMs(q.state.data?.status),
+    subscribed: focused,
+  });
   const courtQuery = useQuery({
     queryKey: ["court", bookingQuery.data?.court_id],
     queryFn: () => api.courts.get(bookingQuery.data!.court_id),
@@ -52,20 +65,26 @@ export default function BookingDoneScreen() {
     );
   }
 
+  const copy = doneCopy(booking.status, booking.cancelled_by);
+  const tone = TONE[copy.tone];
+
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: "#0F2D22" }} edges={["top", "bottom"]}>
-      <View className="flex-1 px-6 pt-11 items-center gap-5.5">
-        <View className="w-[66px] h-[66px] rounded-full items-center justify-center" style={{ backgroundColor: "#1F7A52" }}>
-          <CheckIcon size={32} strokeWidth={2.4} />
+    <SafeAreaView className="flex-1" style={{ backgroundColor: tone.bg }} edges={["top", "bottom"]}>
+      <View className="flex-1 px-6 pt-11 items-center gap-6">
+        <View className="w-[66px] h-[66px] rounded-full items-center justify-center" style={{ backgroundColor: tone.badge }}>
+          {copy.icon === "check" ? <CheckIcon size={32} strokeWidth={2.4} /> : null}
+          {copy.icon === "clock" ? <ClockIcon size={30} color="#FFFFFF" /> : null}
+          {copy.icon === "x" ? <XIcon size={28} color="#FFFFFF" /> : null}
         </View>
-        <View className="items-center gap-1.5">
-          <Text className="font-figtree-extrabold text-white text-2xl -tracking-[0.4px]">Court is yours</Text>
-          <Text className="font-figtree-medium text-[14.5px] text-center" style={{ color: "#9BC4B1" }}>
-            Confirmed by the venue
+        <View className="items-center gap-1.5" accessibilityRole="header">
+          <Text className="font-figtree-extrabold text-white text-2xl -tracking-[0.4px] text-center">{copy.title}</Text>
+          <Text className="font-figtree-medium text-[14.5px] text-center leading-[1.45]" style={{ color: tone.sub }}>
+            {copy.subtitle}
           </Text>
+          {booking.status === "payment_submitted" ? <ActivityIndicator color={tone.sub} style={{ marginTop: 6 }} /> : null}
         </View>
 
-        <View className="w-full bg-white rounded-[20px] p-5.5 gap-4.5">
+        <View className="w-full bg-white rounded-[20px] p-6 gap-5">
           <View className="gap-1">
             <Text className="font-figtree-bold text-player-ink text-[19px] -tracking-[0.2px]">
               {venueQuery.data?.name ?? "Venue"} · {courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : "Court"}
@@ -99,13 +118,18 @@ export default function BookingDoneScreen() {
         </View>
       </View>
 
-      <View className="px-6 pt-4.5 pb-6">
+      <View className="px-6 pt-5 pb-6">
         <Pressable
-          onPress={() => router.replace("/bookings")}
-          className="h-13 rounded-2xl bg-white items-center justify-center"
+          onPress={() =>
+            copy.action === "pay"
+              ? router.replace({ pathname: "/(player)/booking/[id]/pay", params: { id } })
+              : router.replace("/bookings")
+          }
+          accessibilityRole="button"
+          className="rounded-2xl bg-white items-center justify-center active:opacity-80"
           style={{ height: 52 }}
         >
-          <Text className="font-figtree-bold text-player-ink text-[15.5px]">Done</Text>
+          <Text className="font-figtree-bold text-player-ink text-[15.5px]">{copy.actionLabel}</Text>
         </Pressable>
       </View>
     </SafeAreaView>

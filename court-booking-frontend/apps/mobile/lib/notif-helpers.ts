@@ -126,9 +126,9 @@ export function notificationTarget(item: Pick<NotificationFeedItem, "link" | "pa
   }
   switch (kind) {
     case "approvals":
-      return { pathname: "/(owner)/approvals" };
+      return { pathname: "/(owner)/(tabs)/approvals" };
     case "refunds":
-      return { pathname: "/(owner)/refunds" };
+      return { pathname: "/(owner)/(tabs)/refunds" };
     case "booking": {
       if (!item.link.booking_id) return { pathname: "/(owner)/history" };
       const params: Record<string, string> = { booking: item.link.booking_id };
@@ -142,7 +142,7 @@ export function notificationTarget(item: Pick<NotificationFeedItem, "link" | "pa
     case "bookings":
       return { pathname: "/(owner)/history" };
     case "overview":
-      return { pathname: "/(owner)/today" };
+      return { pathname: "/(owner)/(tabs)/today" };
     case "venue_status":
       return { pathname: "/(owner)" };
     default:

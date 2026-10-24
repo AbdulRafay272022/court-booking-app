@@ -10,6 +10,8 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { ChevronLeftIcon, StarBadgeIcon, TrendingUpIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
+import { NoAccess } from "@/components/no-access";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { EmptyState, VenueSwitcher } from "./_dashboard-components";
 
 const WEEKDAYS = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
@@ -21,20 +23,25 @@ function formatHourRange(hour: number): string {
 
 export default function GrowthScreen() {
   const { venues, activeVenue, activeVenueId, setVenueId, showSwitcher, isLoading: venuesLoading } = useOwnerVenues();
+  const perms = useMyPermissions();
 
   const query = useQuery({
     queryKey: ["owner-growth", activeVenueId],
     queryFn: () => api.owners.growth(activeVenueId),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && perms.can("view_growth"),
     retry: false,
   });
 
   const ineligible = query.error instanceof ApiError && query.error.status === 403;
   const suggestions = query.data?.underbooked_slots ?? [];
 
+  // Staff without view_growth: the shared no-access screen, not the owner's "premium feature" upsell (that 403 is
+  // about the venue's plan, this one about the staff member's permissions).
+  if (perms.settled && !perms.can("view_growth")) return <NoAccess what="Growth" />;
+
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4.5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
+      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
         <View className="flex-row items-center gap-3">
           <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
             <ChevronLeftIcon />
@@ -73,14 +80,14 @@ export default function GrowthScreen() {
           subtitle="We need a bit more booking history at this venue before we can suggest anything useful."
         />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4.5 pt-4 pb-6 gap-3">
+        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-6 gap-3">
           {suggestions.map((s) => {
             const growthCourt = activeVenue?.courts.find((c) => c.id === s.court_id);
             const courtName = growthCourt ? courtLabel(growthCourt.name, growthCourt.sport) : "Court";
             return (
               <View
                 key={`${s.court_id}-${s.day_of_week}-${s.hour}`}
-                className="bg-owner-surface border border-owner-border rounded-2xl p-4.5 gap-3.5"
+                className="bg-owner-surface border border-owner-border rounded-2xl p-5 gap-3.5"
               >
                 <View className="flex-row items-start gap-3">
                   <View className="w-[38px] h-[38px] rounded-[10px] items-center justify-center" style={{ backgroundColor: "#FBF0DD" }}>

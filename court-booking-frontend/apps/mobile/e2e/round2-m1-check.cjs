@@ -293,6 +293,10 @@ function defaultState() {
     const greyC = page.locator('[data-testid="approval-card-grey"]').filter({ hasText: "Chaudhry Asif" });
     check("A5 cancelled card: grey chip + two money buttons", (await greyC.innerText()).includes("Player ne cancel kar di") && (await greyC.getByRole("button", { name: "Paisa nahi aaya - Theek hai" }).count()) === 1 && (await greyC.getByRole("button", { name: "Paisa aa gaya - Refund banayein" }).count()) === 1);
     await greyC.getByRole("button", { name: "Paisa aa gaya - Refund banayein" }).click();
+    // P0-7: a confirm sheet with the amount and the booking comes first; nothing is sent until "Haan, refund banayein".
+    await waitFor(async () => (await page.getByTestId("refund-confirm").count()) === 1, 5000);
+    check("A5 refund confirm shows amount + player before anything is sent", (await page.getByTestId("refund-confirm-amount").innerText()).includes("PKR") && (await page.getByTestId("refund-confirm").innerText()).includes("Chaudhry Asif") && !reqs.some((r) => r.p === "/owners/payments/pC/acknowledge"));
+    await page.getByRole("button", { name: "Haan, refund banayein" }).click();
     await waitFor(async () => (await greyC.count()) === 0, 8000);
     const ackC = reqs.find((r) => r.p === "/owners/payments/pC/acknowledge");
     check("A5 money received -> acknowledge(true), card leaves", ackC && JSON.parse(ackC.body).money_received === true && (await greyC.count()) === 0, ackC && ackC.body);

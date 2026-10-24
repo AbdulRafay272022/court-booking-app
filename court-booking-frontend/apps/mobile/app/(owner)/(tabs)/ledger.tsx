@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { useIsFocused } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LedgerEntry } from "@court-booking/types";
 
@@ -10,12 +10,14 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { shareCsv } from "@/lib/export-csv";
 import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
-import { OwnerTabBar } from "@/components/owner-tab-bar";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { ChevronLeftIcon, DownloadIcon } from "@/components/icons";
+import { DownloadIcon } from "@/components/icons";
+import { NoAccess } from "@/components/no-access";
+import { invalidateOwnerMoney } from "@/lib/owner-cache";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { ErrorState } from "@/components/error-state";
 import { CorrectPaymentSheet } from "@/components/correct-payment-sheet";
-import { EmptyState, Tab } from "./_dashboard-components";
+import { EmptyState, Tab } from "../_dashboard-components";
 
 type RangeKey = "7d" | "30d" | "month";
 
@@ -49,11 +51,14 @@ export default function LedgerScreen() {
   const [correcting, setCorrecting] = useState<LedgerEntry | null>(null);
   const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
   const queryClient = useQueryClient();
+  const perms = useMyPermissions();
+  const allowed = perms.can("view_ledger");
 
   const query = useQuery({
     queryKey: ["owner-ledger", activeVenueId, courtId, start, end],
     queryFn: () => api.owners.ledger(start, end, { venueId: activeVenueId, courtId }),
-    enabled: !!activeVenueId,
+    enabled: !!activeVenueId && allowed,
+    subscribed: useIsFocused(),
   });
 
   const courts = activeVenue?.courts ?? [];
@@ -72,16 +77,15 @@ export default function LedgerScreen() {
     }
   }
 
+  if (perms.settled && !allowed) return <NoAccess what="Ledger" withBack={false} />;
+
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
-      <View className="px-4.5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
+      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
         <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
-              <ChevronLeftIcon />
-            </Pressable>
-            <Text className="font-plex-bold text-owner-ink text-[19px] -tracking-[0.3px]">Ledger</Text>
-          </View>
+          <Text className="font-plex-bold text-owner-ink text-[19px] -tracking-[0.3px]" accessibilityRole="header">
+            Ledger
+          </Text>
           <Pressable
             onPress={handleExport}
             disabled={exporting || !ledger || ledger.entries.length === 0}
@@ -136,7 +140,7 @@ export default function LedgerScreen() {
       </View>
 
       {courts.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0 bg-owner-surface border-b border-owner-border" contentContainerClassName="px-4.5 py-3 gap-1.5">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0 bg-owner-surface border-b border-owner-border" contentContainerClassName="px-5 py-3 gap-1.5">
           <Tab label="All courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
           {courts.map((c) => (
             <Tab key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
@@ -161,7 +165,7 @@ export default function LedgerScreen() {
               const statusStyle = STATUS_LABEL[entry.booking_status] ?? STATUS_LABEL.held;
               const isCorrection = entry.amount_pkr < 0;
               return (
-                <View key={entry.entry_id} className="flex-row items-center gap-3 px-4.5 py-3.5 border-b border-owner-border-light">
+                <View key={entry.entry_id} className="flex-row items-center gap-3 px-5 py-3.5 border-b border-owner-border-light">
                   <View className="gap-0.5" style={{ minWidth: 52 }}>
                     <Text className="font-mono-semibold text-owner-ink text-[13px]">{formatShortDate(entry.recorded_at)}</Text>
                     <Text className="font-mono-medium text-owner-ink-faint text-xs">{formatTime(entry.recorded_at)}</Text>
@@ -203,12 +207,10 @@ export default function LedgerScreen() {
           onClose={() => setCorrecting(null)}
           onReversed={() => {
             setCorrecting(null);
-            queryClient.invalidateQueries({ queryKey: ["owner-ledger"] });
-            queryClient.invalidateQueries({ queryKey: ["owner-today"] });
+            void invalidateOwnerMoney(queryClient);
           }}
         />
       ) : null}
-      <OwnerTabBar active="ledger" />
     </SafeAreaView>
   );
 }

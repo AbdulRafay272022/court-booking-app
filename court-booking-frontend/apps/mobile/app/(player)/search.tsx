@@ -47,7 +47,7 @@ export default function SearchScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
-      <View className="px-5 pt-5.5 pb-3.5 bg-player-surface border-b border-player-border-light gap-3.5">
+      <View className="px-5 pt-6 pb-3.5 bg-player-surface border-b border-player-border-light gap-3.5">
         <View className="flex-row items-center gap-3">
           <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
             <ChevronLeftIcon />
