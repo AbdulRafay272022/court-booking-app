@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 
 import { api } from "@/lib/api";
+import { safeBack } from "@/lib/safe-back";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useBookingFlowStore } from "@/lib/booking-flow-store";
@@ -237,7 +238,7 @@ export default function PaymentProofScreen() {
   return (
     <SafeAreaView className="flex-1 bg-player-bg" edges={["top", "bottom"]}>
       <View className="px-5 py-5 bg-player-surface border-b border-player-border-light flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
+        <Pressable onPress={() => safeBack()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-xl bg-player-surface-2 items-center justify-center">
           <ChevronLeftIcon />
         </Pressable>
         <Text className="font-figtree-bold text-player-ink text-[17px] flex-1">{isWaitingReview ? "Waiting for the venue" : "Pay to hold your slot"}</Text>
@@ -268,9 +269,12 @@ export default function PaymentProofScreen() {
           <Text className="font-mono-semibold text-white text-[38px] -tracking-[0.5px]">
             PKR {formatPKR(booking.advance_amount)}
           </Text>
-          <Text className="font-figtree-medium text-[13.5px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-            Balance PKR {formatPKR(booking.balance_due)} payable at the venue
-          </Text>
+          {/* A 0 balance read as "Balance PKR 0 payable": only mention it when something is really left to pay. */}
+          {booking.balance_due > 0 ? (
+            <Text className="font-figtree-medium text-[13.5px]" style={{ color: "rgba(255,255,255,0.65)" }}>
+              Balance PKR {formatPKR(booking.balance_due)} payable at the venue
+            </Text>
+          ) : null}
         </View>
 
         {isWaitingReview ? (

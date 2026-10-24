@@ -152,6 +152,20 @@ export function permissionAllows(data: unknown, venueId: string | undefined, key
   return list.some((v) => Array.isArray(v?.permissions) && v.permissions.includes(key));
 }
 
+/** Approvals: how many OTHER bookings a flagged screenshot was already used on, or null when there is nothing to show
+ * (no duplicate signal, or a count of 0 -- the chip used to read "pehle bhi 0 bookings par use hua hai"). */
+export function duplicateChipCount(duplicate: { used_on_bookings?: number | null } | null | undefined): number | null {
+  const n = Number(duplicate?.used_on_bookings ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+/** "This screenshot was already used on N other bookings" (singular for 1). A flagged screenshot whose earlier use was
+ * never credited (count 0) still needs the confirm, so it gets a line without a number instead of "0 bookings". */
+export function duplicateUsedText(n: number): string {
+  if (!(n > 0)) return "Ye screenshot pehle bhi kisi aur payment mein bheja gaya tha";
+  return `Ye screenshot pehle bhi ${n} ${n === 1 ? "booking" : "bookings"} par use hua hai`;
+}
+
 /** Stage 2: a refund whose screenshot was also credited on N OTHER bookings (OwnerRefund.duplicate_proof). */
 export function duplicateCreditText(n: number): string {
   return `Ye screenshot ${n} aur ${n === 1 ? "booking" : "bookings"} par bhi credit hua`;

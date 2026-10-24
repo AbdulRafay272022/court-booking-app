@@ -76,9 +76,11 @@ type Props = {
   /** A local uri on native; a real Blob on Expo web (RN-web's FormData cannot send a `{ uri }` part, the server saw "[object Object]"). */
   onUpload: (file: string | Blob) => Promise<void>;
   onReorder: (keys: string[]) => Promise<void>;
+  /** Staff without `manage_photos`: show the photos only (no add / move / cover / delete). */
+  readOnly?: boolean;
 };
 
-export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReorder }: Props) {
+export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReorder, readOnly = false }: Props) {
   const [busy, setBusy] = useState(false);
   const atLimit = photoUrls.length >= max;
 
@@ -144,7 +146,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
       </View>
 
       {photoUrls.length === 0 ? (
-        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">No photos yet. Add a few so players can see the place.</Text>
+        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">{readOnly ? "No photos yet." : "No photos yet. Add a few so players can see the place."}</Text>
       ) : (
         <View className="flex-row flex-wrap gap-2.5">
           {photoUrls.map((url, i) => (
@@ -158,6 +160,8 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                   </View>
                 ) : null}
               </View>
+              {readOnly ? null : (
+              <>
               <View className="flex-row items-center justify-between">
                 <Pressable
                   accessibilityLabel={`Move photo ${i + 1} left`}
@@ -196,11 +200,14 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
               >
                 <Text className="font-plex-semibold text-[11px]" style={{ color: "#A8432C" }}>Delete</Text>
               </Pressable>
+              </>
+              )}
             </View>
           ))}
         </View>
       )}
 
+      {readOnly ? null : (
       <View className="flex-row gap-2.5">
         <Pressable
           accessibilityLabel="Add photo from gallery"
@@ -221,7 +228,8 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
           <Text className="font-plex-semibold text-owner-ink text-[13.5px]">＋ Camera</Text>
         </Pressable>
       </View>
-      {atLimit ? (
+      )}
+      {atLimit && !readOnly ? (
         <Text className="font-plex-medium text-owner-ink-faint text-[12px]">Limit reached ({max}). Delete one to add another.</Text>
       ) : null}
     </View>

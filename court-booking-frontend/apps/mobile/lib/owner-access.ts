@@ -63,3 +63,32 @@ export function moreItemAllowed(item: MoreItemKey, can: Can, isStaff: boolean): 
   if (needs === "owner") return !isStaff;
   return !isStaff || anyOf(needs, can);
 }
+
+/** What Venue settings lets this account change, mirroring what the backend enforces per section:
+ * - venue basics, bank details, cancellation policy, booking window and the location pin: `PATCH /venues/{id}` is
+ *   owner/admin only (RequireOwner), so no staff key opens them;
+ * - courts (details, hours, prices, advance rule, add/delete) and blackouts: `edit_court_settings`; the timers card
+ *   already decides for itself (reminders-card.tsx);
+ * - venue and court photos: `manage_photos`.
+ * Everything else is shown read-only, with `note` saying who can change it. */
+export interface VenueSettingsAccess {
+  venue: boolean;
+  courts: boolean;
+  photos: boolean;
+  /** Nothing on the screen can be changed. */
+  readOnly: boolean;
+  /** The line shown at the top when part (or all) of the screen is read-only, else null. */
+  note: string | null;
+}
+
+export const VENUE_SETTINGS_READ_ONLY_NOTE = "Sirf dekh sakte hain. Badalne ke liye owner se kahein.";
+export const VENUE_SETTINGS_PARTLY_READ_ONLY_NOTE =
+  "Jo hissay aap badal nahi sakte woh sirf dekhne ke liye hain. Unhein badalne ke liye owner se kahein.";
+
+export function venueSettingsAccess(can: Can, isStaff: boolean): VenueSettingsAccess {
+  if (!isStaff) return { venue: true, courts: true, photos: true, readOnly: false, note: null };
+  const courts = can("edit_court_settings");
+  const photos = can("manage_photos");
+  const readOnly = !courts && !photos;
+  return { venue: false, courts, photos, readOnly, note: readOnly ? VENUE_SETTINGS_READ_ONLY_NOTE : VENUE_SETTINGS_PARTLY_READ_ONLY_NOTE };
+}

@@ -1,6 +1,28 @@
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { Pressable, Text, TextInput, TextInputProps, View } from "react-native";
 import { CheckIcon } from "@/components/icons";
+
+/** Venue settings for a staff member without the right permission: inside a read-only fence every TextField stops
+ * being editable, Chips stop toggling and Primary/Secondary buttons (the Saves) are not rendered. Outside a fence
+ * (the wizard, owners) nothing changes. */
+const ReadOnlyContext = createContext(false);
+
+/** True inside a read-only fence (for parts that are neither TextFields nor Chips, e.g. a hint to hide). */
+export function useReadOnly(): boolean {
+  return useContext(ReadOnlyContext);
+}
+
+export function ReadOnlyFence({ readOnly, children }: { readOnly: boolean; children: React.ReactNode }) {
+  if (!readOnly) return <>{children}</>;
+  return (
+    <ReadOnlyContext.Provider value>
+      {/* pointerEvents also stops the pickers, toggles and links that are not TextFields or Chips */}
+      <View pointerEvents="none" accessibilityState={{ disabled: true }} testID="read-only-fence" className="gap-4">
+        {children}
+      </View>
+    </ReadOnlyContext.Provider>
+  );
+}
 
 export function SectionCard({ children }: { children: React.ReactNode }) {
   return (
@@ -31,6 +53,7 @@ interface TextFieldProps extends TextInputProps {
 }
 
 export function TextField({ label, mono, style, error, ...props }: TextFieldProps) {
+  const readOnly = useContext(ReadOnlyContext);
   const [focused, setFocused] = useState(false);
   const borderColor = error ? "#C13525" : focused ? "#0E6274" : "#DCE3E6";
   return (
@@ -38,6 +61,7 @@ export function TextField({ label, mono, style, error, ...props }: TextFieldProp
       <FieldLabel>{label}</FieldLabel>
       <TextInput
         {...props}
+        editable={readOnly ? false : props.editable}
         onFocus={(e) => {
           setFocused(true);
           props.onFocus?.(e);
@@ -53,7 +77,7 @@ export function TextField({ label, mono, style, error, ...props }: TextFieldProp
             height: 48,
             paddingHorizontal: 14,
             borderRadius: 9,
-            backgroundColor: "#FFFFFF",
+            backgroundColor: readOnly ? "#F4F6F7" : "#FFFFFF",
             borderWidth: focused || error ? 1.5 : 1,
             borderColor,
             fontSize: 15,
@@ -80,9 +104,11 @@ export function Chip({
   selected: boolean;
   onPress: () => void;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
   return (
     <Pressable
       onPress={onPress}
+      disabled={readOnly}
       className="min-h-11 px-4 rounded-lg flex-row items-center gap-1.5"
       style={{
         backgroundColor: selected ? "#0E6274" : "#FFFFFF",
@@ -114,6 +140,8 @@ export function PrimaryButton({
   disabled?: boolean;
   loading?: boolean;
 }) {
+  const readOnly = useContext(ReadOnlyContext);
+  if (readOnly) return null;
   return (
     <Pressable
       onPress={() => {
@@ -132,6 +160,8 @@ export function PrimaryButton({
 }
 
 export function SecondaryButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const readOnly = useContext(ReadOnlyContext);
+  if (readOnly) return null;
   return (
     <Pressable
       onPress={onPress}

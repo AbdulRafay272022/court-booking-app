@@ -63,8 +63,15 @@ const MESSAGES: Record<string, string> = {
   UNKNOWN_ERROR: "Something went wrong. Please try again.",
 };
 
+/** Any 5xx without a known code (an unhandled crash, a gateway error, maintenance). */
+export const SERVER_ERROR_MESSAGE = "Server mein abhi masla hai. Thori dair baad dobara koshish karein.";
+
 export function friendlyErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    // A known code keeps its own message (the 4xx business errors). An unknown code on a 5xx carries the server's raw
+    // text ("Internal server error"), which means nothing to the user: say it in plain words instead.
+    if (MESSAGES[error.code] && error.code !== "UNKNOWN_ERROR") return MESSAGES[error.code];
+    if (error.status >= 500) return SERVER_ERROR_MESSAGE;
     return MESSAGES[error.code] ?? error.message ?? MESSAGES.UNKNOWN_ERROR;
   }
   if (error instanceof Error && error.message === "Network request failed") {

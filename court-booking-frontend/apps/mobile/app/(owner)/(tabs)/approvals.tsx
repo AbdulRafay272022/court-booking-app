@@ -147,7 +147,7 @@ export default function ApprovalsScreen() {
         if (!(e instanceof ApiError) || e.code !== "DUPLICATE_PROOF_CONFIRM_REQUIRED") return false;
         const n = Number((e.details as { used_on_bookings?: unknown } | undefined)?.used_on_bookings);
         setSheet(null);
-        setDup({ id: item.payment_id, usedOn: Number.isFinite(n) && n > 0 ? n : 1, amount, mode });
+        setDup({ id: item.payment_id, usedOn: Number.isFinite(n) && n > 0 ? n : 0, amount, mode });
         return true;
       },
     );

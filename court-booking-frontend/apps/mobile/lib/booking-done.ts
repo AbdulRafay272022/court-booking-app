@@ -64,3 +64,18 @@ export function doneCopy(status: BookingStatus, cancelledBy: CancelledBy | null 
 export function donePollMs(status: BookingStatus | undefined): number | false {
   return status === "payment_submitted" || status === "held" ? 5000 : false;
 }
+
+/** Colours of the confirmation screen per tone. `spinner` is the "still checking" indicator shown while the owner
+ * reviews the screenshot: it must stay clearly visible on `bg` (>= 3:1, pinned by booking-done.test.ts). */
+export const DONE_TONE_COLORS: Record<DoneTone, { bg: string; badge: string; sub: string; spinner: string }> = {
+  confirmed: { bg: "#0F2D22", badge: "#1F7A52", sub: "#9BC4B1", spinner: "#FFFFFF" },
+  waiting: { bg: "#141A1D", badge: "#8A5A0A", sub: "#D8CDBF", spinner: "#FFFFFF" },
+  ended: { bg: "#141A1D", badge: "#A8432C", sub: "#D8CDBF", spinner: "#FFFFFF" },
+};
+
+/** The "PAID" figure on the confirmation card: only money the venue has really recorded. While the screenshot is still
+ * being reviewed `amount_paid` is 0, and "PAID PKR 0" read as if nothing (or everything) was settled: hide the line. */
+export function donePaidAmount(booking: { amount_paid: number | null | undefined }): number | null {
+  const paid = Number(booking.amount_paid ?? 0);
+  return Number.isFinite(paid) && paid > 0 ? paid : null;
+}

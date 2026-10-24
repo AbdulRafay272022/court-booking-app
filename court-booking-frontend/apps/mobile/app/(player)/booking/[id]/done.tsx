@@ -6,15 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { CheckIcon, ClockIcon, XIcon } from "@/components/icons";
-import { doneCopy, donePollMs, type DoneTone } from "@/lib/booking-done";
+import { DONE_TONE_COLORS, doneCopy, donePaidAmount, donePollMs } from "@/lib/booking-done";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDate, formatPKR, formatTimeRange } from "@/lib/format";
-
-const TONE: Record<DoneTone, { bg: string; badge: string; sub: string }> = {
-  confirmed: { bg: "#0F2D22", badge: "#1F7A52", sub: "#9BC4B1" },
-  waiting: { bg: "#141A1D", badge: "#8A5A0A", sub: "#D8CDBF" },
-  ended: { bg: "#141A1D", badge: "#A8432C", sub: "#D8CDBF" },
-};
 
 export default function BookingDoneScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -66,7 +60,8 @@ export default function BookingDoneScreen() {
   }
 
   const copy = doneCopy(booking.status, booking.cancelled_by);
-  const tone = TONE[copy.tone];
+  const tone = DONE_TONE_COLORS[copy.tone];
+  const paid = donePaidAmount(booking);
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: tone.bg }} edges={["top", "bottom"]}>
@@ -81,7 +76,7 @@ export default function BookingDoneScreen() {
           <Text className="font-figtree-medium text-[14.5px] text-center leading-[1.45]" style={{ color: tone.sub }}>
             {copy.subtitle}
           </Text>
-          {booking.status === "payment_submitted" ? <ActivityIndicator color={tone.sub} style={{ marginTop: 6 }} /> : null}
+          {booking.status === "payment_submitted" ? <ActivityIndicator testID="done-waiting-spinner" size="large" color={tone.spinner} style={{ marginTop: 8 }} /> : null}
         </View>
 
         <View className="w-full bg-white rounded-[20px] p-6 gap-5">
@@ -103,10 +98,13 @@ export default function BookingDoneScreen() {
               <Text className="font-figtree-bold text-[10.5px] tracking-[0.1em] text-player-ink-fainter">TIME</Text>
               <Text className="font-mono-semibold text-[15px] text-player-ink">{formatTimeRange(booking.starts_at, booking.ends_at)}</Text>
             </View>
-            <View className="gap-0.5" style={{ width: "50%" }}>
-              <Text className="font-figtree-bold text-[10.5px] tracking-[0.1em] text-player-ink-fainter">PAID</Text>
-              <Text className="font-mono-semibold text-[15px] text-player-ink">PKR {formatPKR(booking.amount_paid)}</Text>
-            </View>
+            {/* Only money the venue has recorded; while the screenshot is in review this is 0, so the line is hidden. */}
+            {paid != null ? (
+              <View className="gap-0.5" style={{ width: "50%" }}>
+                <Text className="font-figtree-bold text-[10.5px] tracking-[0.1em] text-player-ink-fainter">PAID</Text>
+                <Text className="font-mono-semibold text-[15px] text-player-ink">PKR {formatPKR(paid)}</Text>
+              </View>
+            ) : null}
             <View className="gap-0.5" style={{ width: "50%" }}>
               {/* "AT VENUE 0" read like a broken "Venue 0"; say what it means. */}
               <Text className="font-figtree-bold text-[10.5px] tracking-[0.1em] text-player-ink-fainter">DUE AT VENUE</Text>

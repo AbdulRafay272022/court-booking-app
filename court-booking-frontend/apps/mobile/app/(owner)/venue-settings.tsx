@@ -30,7 +30,7 @@ import { formatWhen } from "@/lib/format";
 import { ChevronLeftIcon } from "@/components/icons";
 import { ErrorState } from "@/components/error-state";
 import { NoAccess } from "@/components/no-access";
-import { moreItemAllowed } from "@/lib/owner-access";
+import { moreItemAllowed, venueSettingsAccess } from "@/lib/owner-access";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
 import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
@@ -51,7 +51,7 @@ import { CourtTabs } from "@/components/court-tabs";
 import { courtLabel } from "@/components/court-label";
 import { confirmAction } from "@/lib/confirm";
 import { findSport, sameSport } from "@/lib/sport";
-import { Chip, FieldLabel, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./venue-setup/_components";
+import { Chip, FieldLabel, PrimaryButton, ReadOnlyFence, SecondaryButton, SectionCard, SectionLabel, TextField, useReadOnly } from "./venue-setup/_components";
 
 type Section = "venue" | "courts";
 const NEW_COURT_KEY = "__new__";
@@ -84,6 +84,8 @@ export default function VenueSettingsScreen() {
   // Staff need court settings or photos access (or view_ledger, which reads the timers as a summary); without any of them
   // the whole screen would only 403.
   if (perms.settled && !moreItemAllowed("venueSettings", perms.can, perms.isStaff)) return <NoAccess what="Venue settings" />;
+  // Per section, what this account may change (the backend's own rules); the rest is shown read-only.
+  const access = venueSettingsAccess(perms.can, perms.isStaff);
 
   return (
     <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
@@ -93,6 +95,13 @@ export default function VenueSettingsScreen() {
         </Pressable>
         <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px] flex-1">Venue settings</Text>
       </View>
+      {perms.settled && access.note ? (
+        <View testID="venue-settings-read-only-note" className="px-5 py-3 border-b border-owner-border" style={{ backgroundColor: "#FDF6E9" }}>
+          <Text className="font-plex-semibold text-[13px]" style={{ color: "#6B4708" }}>
+            {access.note}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Venue-level settings and court-level settings are two separate sections, so an owner never edits a court's price
           while looking at the venue's bank details (or the other way round). */}
@@ -114,26 +123,32 @@ export default function VenueSettingsScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-4" keyboardShouldPersistTaps="handled">
-        {section === "venue" ? (
+        {!perms.settled ? (
+          // wait for the permissions answer so a staff member never sees an editable form flash
+          <ActivityIndicator color="#0E6274" />
+        ) : section === "venue" ? (
           activeVenue ? (
             <>
               {/* Stage 2: the owner's CNIC (owner only; masked). First, so the Overview banner's "CNIC dein" lands on it. */}
               <IdentityCard />
               {/* QA signup-venue round item 3: post-approval editing for the fields the wizard's own
                   copy already promised are editable (name / WhatsApp / bank details). */}
-              <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} activeSports={courts.map((c) => c.sport)} />
-              {/* ONE cancellation policy for the whole venue (Section 32 Part 4). */}
-              <VenueCancellationCard
-                key={activeVenue.id}
-                venueId={activeVenue.id}
-                initialAllowed={activeVenue.cancellation_allowed}
-                initialCutoff={activeVenue.cancellation_cutoff_hours}
-              />
-              <BookingHorizonCard
-                key={`horizon-${activeVenue.id}`}
-                venueId={activeVenue.id}
-                initialDays={activeVenue.booking_horizon_days}
-              />
+              {/* PATCH /venues/{id} is owner-only: staff see these three read-only, with no Save. */}
+              <ReadOnlyFence readOnly={!access.venue}>
+                <VenueBasicsCard key={`basics-${activeVenue.id}`} venue={activeVenue} activeSports={courts.map((c) => c.sport)} />
+                {/* ONE cancellation policy for the whole venue (Section 32 Part 4). */}
+                <VenueCancellationCard
+                  key={activeVenue.id}
+                  venueId={activeVenue.id}
+                  initialAllowed={activeVenue.cancellation_allowed}
+                  initialCutoff={activeVenue.cancellation_cutoff_hours}
+                />
+                <BookingHorizonCard
+                  key={`horizon-${activeVenue.id}`}
+                  venueId={activeVenue.id}
+                  initialDays={activeVenue.booking_horizon_days}
+                />
+              </ReadOnlyFence>
               {/* Stage 2: hold / reminders / auto-cancel, saved per venue (null = default). */}
               <VenueRemindersCard key={`reminders-${activeVenue.id}`} venueId={activeVenue.id} />
               <VenuePhotosCard
@@ -141,6 +156,7 @@ export default function VenueSettingsScreen() {
                 venueId={activeVenue.id}
                 photoUrls={activeVenue.photo_urls}
                 photoKeys={activeVenue.photo_keys}
+                readOnly={!access.photos}
               />
             </>
           ) : (
@@ -156,7 +172,7 @@ export default function VenueSettingsScreen() {
               selectedKey={onNewTab ? NEW_COURT_KEY : activeCourtId}
               onSelect={(k) => setCourtId(k)}
               onAdd={
-                activeVenue && !newCourtOpen
+                activeVenue && !newCourtOpen && access.courts
                   ? () => {
                       setNewCourtOpen(true);
                       setCourtId(NEW_COURT_KEY);
@@ -185,19 +201,21 @@ export default function VenueSettingsScreen() {
             ) : courtQuery.isError ? (
               <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
             ) : !activeCourtId || !court ? (
-              <Text className="font-plex-medium text-owner-ink-faint text-center py-10">No courts yet. Tap "+ Court" to add your first one.</Text>
+              <Text className="font-plex-medium text-owner-ink-faint text-center py-10">{access.courts ? 'No courts yet. Tap "+ Court" to add your first one.' : "No courts yet."}</Text>
             ) : (
               <>
                 {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
-                <CourtSettingsForm
-                  key={court.id}
-                  court={court}
-                  venueSports={activeVenue?.sports ?? []}
-                  canDelete={courts.length > 1}
-                  onDeleted={() => setCourtId(undefined)}
-                />
-                <CourtPhotosCard key={`court-photos-${court.id}`} court={court} />
-                <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} />
+                <ReadOnlyFence readOnly={!access.courts}>
+                  <CourtSettingsForm
+                    key={court.id}
+                    court={court}
+                    venueSports={activeVenue?.sports ?? []}
+                    canDelete={courts.length > 1 && access.courts}
+                    onDeleted={() => setCourtId(undefined)}
+                  />
+                </ReadOnlyFence>
+                <CourtPhotosCard key={`court-photos-${court.id}`} court={court} readOnly={!access.photos} />
+                <BlackoutsCard key={`blackouts-${activeCourtId}`} courtId={activeCourtId} canEdit={access.courts} />
               </>
             )}
           </>
@@ -209,6 +227,7 @@ export default function VenueSettingsScreen() {
 
 function VenueBasicsCard({ venue, activeSports }: { venue: Venue; activeSports: string[] }) {
   const queryClient = useQueryClient();
+  const readOnly = useReadOnly();
   const [name, setName] = useState(venue.name);
   const [description, setDescription] = useState(venue.description ?? "");
   const [whatsapp, setWhatsapp] = useState(venue.whatsapp ?? "");
@@ -312,10 +331,12 @@ function VenueBasicsCard({ venue, activeSports }: { venue: Venue; activeSports: 
         options={AMENITY_OPTIONS}
       />
 
-      <View className="gap-2">
-        <FieldLabel>Location pin</FieldLabel>
-        <SecondaryButton label={locating ? "Locating..." : "Move pin to my current location"} onPress={updatePin} />
-      </View>
+      {readOnly ? null : (
+        <View className="gap-2">
+          <FieldLabel>Location pin</FieldLabel>
+          <SecondaryButton label={locating ? "Locating..." : "Move pin to my current location"} onPress={updatePin} />
+        </View>
+      )}
 
       <SectionLabel>Bank details (players see these on the pay screen)</SectionLabel>
       <TextField label="Bank name" value={bankName} onChangeText={setBankName} placeholder="Meezan Bank" error={bankName ? bErrors.bank : null} />
@@ -323,9 +344,11 @@ function VenueBasicsCard({ venue, activeSports }: { venue: Venue; activeSports: 
       <TextField label="Account number" value={accountNumber} onChangeText={setAccountNumber} placeholder="03445551234 or 12345678901234" keyboardType="number-pad" mono error={accountNumber ? bErrors.num : null} />
       {/* Bank changes are the highest-risk edit on this screen. Inline nudge, no re-verification
           wall -- see the web mirror for the trade-off note. */}
-      <Text className="font-plex-medium text-owner-warn text-[12.5px]">
-        These fields decide where players send their money. Update carefully.
-      </Text>
+      {readOnly ? null : (
+        <Text className="font-plex-medium text-owner-warn text-[12.5px]">
+          These fields decide where players send their money. Update carefully.
+        </Text>
+      )}
       {message ? (
         <Text
           accessibilityRole="alert"
@@ -599,12 +622,13 @@ function NewCourtForm({ venue, onAdded, onDiscard }: { venue: Venue; onAdded: (c
   );
 }
 
-function VenuePhotosCard({ venueId, photoUrls, photoKeys }: { venueId: string; photoUrls: string[]; photoKeys: string[] }) {
+function VenuePhotosCard({ venueId, photoUrls, photoKeys, readOnly }: { venueId: string; photoUrls: string[]; photoKeys: string[]; readOnly: boolean }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
   return (
     <PhotoManager
       title="Venue photos"
+      readOnly={readOnly}
       photoUrls={photoUrls}
       photoKeys={photoKeys}
       max={8}
@@ -620,7 +644,7 @@ function VenuePhotosCard({ venueId, photoUrls, photoKeys }: { venueId: string; p
   );
 }
 
-function CourtPhotosCard({ court }: { court: Court }) {
+function CourtPhotosCard({ court, readOnly }: { court: Court; readOnly: boolean }) {
   const queryClient = useQueryClient();
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["court-settings", court.id] });
@@ -629,6 +653,7 @@ function CourtPhotosCard({ court }: { court: Court }) {
   return (
     <PhotoManager
       title={`${courtLabel(court.name, court.sport)} photos`}
+      readOnly={readOnly}
       photoUrls={court.photo_urls}
       photoKeys={court.photo_keys}
       max={5}
@@ -644,7 +669,7 @@ function CourtPhotosCard({ court }: { court: Court }) {
   );
 }
 
-function BlackoutsCard({ courtId }: { courtId: string }) {
+function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean }) {
   const queryClient = useQueryClient();
   const blackoutsQuery = useQuery({
     queryKey: ["court-blackouts", courtId],
@@ -696,14 +721,19 @@ function BlackoutsCard({ courtId }: { courtId: string }) {
           </View>
         ))
       )}
-      <View className="h-px bg-owner-border-light" />
-      <FieldLabel>Add a blackout</FieldLabel>
-      <TextField label="Title (optional)" value={title} onChangeText={setTitle} placeholder="Maintenance" />
-      <DayPicker label="Starts on" value={startDate} onChange={setStartDate} />
-      <TimeField12 label="Starts at" value={startTime} onChange={setStartTime} />
-      <DayPicker label="Ends on" value={endDate} onChange={setEndDate} />
-      <TimeField12 label="Ends at" value={endTime} onChange={setEndTime} />
-      <PrimaryButton label="Add blackout" onPress={add} loading={adding} />
+      {/* adding a blackout needs edit_court_settings (POST /courts/{id}/blackouts); others only see the list */}
+      {canEdit ? (
+        <>
+          <View className="h-px bg-owner-border-light" />
+          <FieldLabel>Add a blackout</FieldLabel>
+          <TextField label="Title (optional)" value={title} onChangeText={setTitle} placeholder="Maintenance" />
+          <DayPicker label="Starts on" value={startDate} onChange={setStartDate} />
+          <TimeField12 label="Starts at" value={startTime} onChange={setStartTime} />
+          <DayPicker label="Ends on" value={endDate} onChange={setEndDate} />
+          <TimeField12 label="Ends at" value={endTime} onChange={setEndTime} />
+          <PrimaryButton label="Add blackout" onPress={add} loading={adding} />
+        </>
+      ) : null}
     </SectionCard>
   );
 }
