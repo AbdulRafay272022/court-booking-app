@@ -194,7 +194,8 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <BottomSheetModalProvider>
         <StatusBar style="dark" />
-        <OfflineBanner />
+        {/* Player + auth screens show the Floodlight OfflineBanner in their own layout (one /health poller there); owner/staff/admin keep this one until M2 switches. */}
+        {status === "signedIn" && role !== "player" ? <OfflineBanner /> : null}
         {status === "unreachable" ? (
           <SessionUnreachable onRetry={() => void restore(true)} />
         ) : (
