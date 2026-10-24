@@ -4,6 +4,12 @@
     "slug": "maidan",
     "scheme": "maidan",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/4853b946-757a-45df-8e9a-70e48e0a6d94"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -67,7 +73,10 @@
         {
           "cameraPermission": "Khelo uses your camera to scan a check-in QR code."
         }
-      ]
+      ],
+      "expo-image",
+      "expo-updates",
+      "@sentry/react-native/expo"
     ],
     "extra": {
       "apiBaseUrl": "https://api.3.6.48.6.sslip.io",

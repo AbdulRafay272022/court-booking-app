@@ -7,6 +7,8 @@ import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
   useFonts as useFigtreeFonts,
   Figtree_400Regular,
@@ -28,6 +30,22 @@ import {
   IBMPlexMono_500Medium,
   IBMPlexMono_600SemiBold,
 } from "@expo-google-fonts/ibm-plex-mono";
+// Floodlight fonts (weights used by design/khelo-mobile-floodlight/System.dc.html). Loaded now so the
+// design-system phase can switch to them; no screen uses them yet.
+import {
+  useFonts as useBricolageFonts,
+  BricolageGrotesque_600SemiBold,
+  BricolageGrotesque_700Bold,
+  BricolageGrotesque_800ExtraBold,
+} from "@expo-google-fonts/bricolage-grotesque";
+import {
+  useFonts as useJakartaFonts,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from "@expo-google-fonts/plus-jakarta-sans";
 
 import { REFRESH_CHECK_INTERVAL_MS, restoreSession, shouldRefreshSoon } from "@court-booking/api-client";
 import { api } from "@/lib/api";
@@ -36,6 +54,10 @@ import { useAuthStore } from "@/lib/auth-store";
 import { registerForPushNotifications } from "@/lib/push-notifications";
 import { OfflineBanner } from "@/components/offline-banner";
 import { SessionUnreachable } from "@/components/session-unreachable";
+import { initSentry, wrapRoot } from "@/lib/sentry";
+
+// No-op unless EXPO_PUBLIC_SENTRY_DSN is set (lib/sentry.ts).
+initSentry();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -68,7 +90,7 @@ function routeForNotification(data: Record<string, unknown> | undefined): void {
   }
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const [figtreeLoaded] = useFigtreeFonts({
     Figtree_400Regular,
     Figtree_500Medium,
@@ -88,10 +110,23 @@ export default function RootLayout() {
     IBMPlexMono_600SemiBold,
   });
 
+  const [bricolageLoaded] = useBricolageFonts({
+    BricolageGrotesque_600SemiBold,
+    BricolageGrotesque_700Bold,
+    BricolageGrotesque_800ExtraBold,
+  });
+  const [jakartaLoaded] = useJakartaFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+  });
+
   const status = useAuthStore((s) => s.status);
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const role = useAuthStore((s) => s.user?.role);
-  const fontsLoaded = figtreeLoaded && plexSansLoaded && plexMonoLoaded;
+  const fontsLoaded = figtreeLoaded && plexSansLoaded && plexMonoLoaded && bricolageLoaded && jakartaLoaded;
   const ready = fontsLoaded && hasHydrated && status !== "hydrating";
 
   const restore = async (isRetry = false) => {
@@ -154,8 +189,10 @@ export default function RootLayout() {
   if (!ready) return null;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
+        <BottomSheetModalProvider>
         <StatusBar style="dark" />
         <OfflineBanner />
         {status === "unreachable" ? (
@@ -177,7 +214,12 @@ export default function RootLayout() {
           </Stack.Protected>
         </Stack>
         )}
+        </BottomSheetModalProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+// Sentry.wrap only when a DSN is configured; otherwise the component is exported untouched.
+export default wrapRoot(RootLayout);
