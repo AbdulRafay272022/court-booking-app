@@ -173,7 +173,7 @@ export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRo
           multiline
           accessibilityLabel="Wajah"
           placeholder="Customer ne kaha baqi paisa kal dega."
-          help="Keyboard ke mic se bol kar bhi likh sakte hain."
+          help="Keyboard ke mic se bolein"
         />
       ) : null}
 

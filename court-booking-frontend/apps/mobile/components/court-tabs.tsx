@@ -1,4 +1,6 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
+import { palette, radius, size, space } from "@court-booking/ui-tokens";
+import { Text, useRoleTheme } from "@/components/ui";
 
 export interface CourtTabItem {
   key: string;
@@ -6,9 +8,9 @@ export interface CourtTabItem {
 }
 
 /**
- * The horizontally scrollable "Court 1 / Court 2 / ... / + Court" tab strip shared by the venue-setup wizard and Venue
- * Settings (Courts section). It only renders the strip: the caller owns what each tab shows, and decides what
- * "+ Court" and delete do (the wizard edits a local draft, Settings talks to the API).
+ * The horizontally scrollable "Court 1 / Court 2 / ... / + Court" strip shared by the venue-setup wizard and Venue
+ * Settings (Courts section), OSettings board style: selected = role tint + 2px border + "✓". It only renders the strip:
+ * the caller owns what each tab shows, and decides what "+ Court" and delete do.
  */
 export function CourtTabs({
   tabs,
@@ -25,28 +27,32 @@ export function CourtTabs({
   addLabel?: string;
   addDisabled?: boolean;
 }) {
+  const t = useRoleTheme();
   return (
-    <View className="bg-owner-surface border border-owner-border rounded-xl">
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator
-        contentContainerClassName="px-3 py-3 gap-2 items-center"
-        keyboardShouldPersistTaps="handled"
-      >
-        {tabs.map((t) => {
-          const selected = t.key === selectedKey;
+    <View>
+      <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ paddingVertical: space[1], gap: space[2], alignItems: "center" }} keyboardShouldPersistTaps="handled">
+        {tabs.map((tab) => {
+          const selected = tab.key === selectedKey;
           return (
             <Pressable
-              key={t.key}
+              key={tab.key}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
-              accessibilityLabel={t.label}
-              onPress={() => onSelect(t.key)}
-              className="px-4 rounded-lg items-center justify-center"
-              style={{ minHeight: 44, backgroundColor: selected ? "#0E6274" : "#F4F6F7" }}
+              accessibilityLabel={tab.label}
+              onPress={() => onSelect(tab.key)}
+              style={{
+                minHeight: size.tap,
+                paddingHorizontal: space[4],
+                borderRadius: radius.md,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: selected ? t.selected.bg : palette.white,
+                borderWidth: selected ? 2 : 1.5,
+                borderColor: selected ? t.selected.border : palette.lineStrong,
+              }}
             >
-              <Text className="font-plex-semibold text-[13px]" style={{ color: selected ? "#FFFFFF" : "#5B7079" }}>
-                {t.label}
+              <Text variant="label" color={selected ? t.selected.fg : palette.night}>
+                {`${selected ? "✓ " : ""}${tab.label}`}
               </Text>
             </Pressable>
           );
@@ -57,10 +63,11 @@ export function CourtTabs({
             accessibilityLabel="Add a court"
             disabled={addDisabled}
             onPress={onAdd}
-            className="px-4 rounded-lg items-center justify-center border border-owner-border"
-            style={{ minHeight: 44, borderStyle: "dashed", opacity: addDisabled ? 0.5 : 1 }}
+            style={{ minHeight: size.tap, paddingHorizontal: space[4], borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderStyle: "dashed", borderColor: palette.muted2, opacity: addDisabled ? 0.5 : 1 }}
           >
-            <Text className="font-plex-semibold text-owner-accent text-[13px]">{addLabel}</Text>
+            <Text variant="label" tone="link">
+              {addLabel}
+            </Text>
           </Pressable>
         ) : null}
       </ScrollView>

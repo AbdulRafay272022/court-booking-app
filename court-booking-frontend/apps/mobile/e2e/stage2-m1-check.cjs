@@ -290,7 +290,7 @@ function defaultState() {
     await shot(page, "s2-staff-overview");
     check("staff account: lands on Overview (owner screens), not the login / setup wizard", landed && !/venue-setup|login/.test(page.url()), page.url());
     check("staff account: the gate never opened the setup wizard", !reqs.some((r) => r.method === "POST" && r.p === "/venues"));
-    check("staff account: no CNIC banner / premium notices", (await page.getByText(/CNIC dein|Shanakhti/).count()) === 0);
+    check("staff account: no CNIC banner / premium notices", (await page.getByText(/CNIC dein|CNIC verify|Shanakhti/).count()) === 0);
     check("staff account: no '+ Add venue'", (await page.getByText("+ Add venue").count()) === 0);
     await page.goto(BASE + "/more", { waitUntil: "domcontentloaded", timeout: 240000 });
     await page.getByText("Venue settings").first().waitFor({ timeout: 60000 });
@@ -367,7 +367,7 @@ function defaultState() {
     await bcard(page, "bkp").getByRole("button", { name: /^Booking completed:/ }).click();
     await page.getByTestId("completion-hint").first().waitFor({ timeout: 8000 });
     check("C.3 booked row hint: 'dono se booking Completed ho jayegi'", /dono se booking Completed ho jayegi/.test(await page.getByTestId("completion-hint").first().innerText()));
-    await (await vis(page.getByRole("button", { name: "Close" }))).click();
+    await (await vis(page.getByRole("button", { name: "Band karein" }))).click();
     await page.waitForTimeout(400);
 
     // No-show: confirm sheet, Wapas sends nothing, server error shown, then success.

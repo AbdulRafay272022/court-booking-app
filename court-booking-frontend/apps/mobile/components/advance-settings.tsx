@@ -1,4 +1,6 @@
-import { Text, View } from "react-native";
+import { palette } from "@court-booking/ui-tokens";
+import { Text } from "@/components/ui";
+import { View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { DEFAULT_ADVANCE_PERCENTAGE, advanceDefaultHintText, isFeatureOn, type AdvanceExplain } from "@court-booking/types";
 
@@ -74,7 +76,7 @@ export function AdvanceSettings({
         onReset={() => onChange({ advanceType: "", advanceValue: "" })}
         testID="default-advance"
       />
-      <Text testID="advance-help" className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+      <Text testID="advance-help" variant="caption" tone="subtle">
         {HELP[value.advanceType]}
       </Text>
       {value.advanceType === "fixed" ? (
@@ -108,7 +110,7 @@ export function AdvanceSettings({
           placeholder="Khali chorein to koi had nahi"
           mono
         />
-        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+        <Text variant="caption" tone="subtle">
           Advance is se kam kabhi nahi hoga (lekin booking ke total se zyada bhi nahi).
         </Text>
         <DefaultHint
@@ -119,13 +121,13 @@ export function AdvanceSettings({
         />
       </View>
       {example ? (
-        <View className="rounded-[10px] px-3 py-2.5" style={{ backgroundColor: "#EEF6F7" }}>
-          <Text testID="advance-example" className="font-plex-semibold text-owner-ink text-[13.5px]">
+        <View className="rounded-[10px] px-3 py-2.5" style={{ backgroundColor: palette.tealTint }}>
+          <Text testID="advance-example" variant="meta" weight="bold">
             {example}
           </Text>
         </View>
       ) : null}
-      <Text testID="advance-default" className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+      <Text testID="advance-default" variant="caption" tone="muted">
         {advanceDefaultLine(price, pct, explain)}
       </Text>
     </SectionCard>

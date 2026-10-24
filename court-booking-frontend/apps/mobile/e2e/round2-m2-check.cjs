@@ -219,7 +219,7 @@ const badgeText = async (page) => {
   {
     const { ctx, page, reqs } = await setup(browser);
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     // f1 (5 min), f2 (40 min), f3 (20 h) are inside the first-visit 24 h window; f4 (80 h) is not
     const t0 = Date.now();
     while (Date.now() - t0 < 30000 && (await badgeText(page)) !== "3") await page.waitForTimeout(300);
@@ -261,7 +261,7 @@ const badgeText = async (page) => {
     const logRows = [entry("n1", "booking_confirmed", minAgo(10), "b1"), entry("n1b", "booking_confirmed", minAgo(9), "b1", "whatsapp"), entry("n2", "payment_submitted", minAgo(120), "b2")];
     const { ctx, page, reqs } = await setup(browser, { feed404: true, log: () => logRows });
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     const t0 = Date.now();
     while (Date.now() - t0 < 30000 && (await badgeText(page)) !== "2") await page.waitForTimeout(300);
     check("fallback: badge from the old endpoint (folded)", (await badgeText(page)) === "2", "got " + (await badgeText(page)));

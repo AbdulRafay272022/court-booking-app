@@ -1,113 +1,160 @@
 import { useState } from "react";
-import { Alert, Pressable, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Platform, ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { useQueryClient } from "@tanstack/react-query";
+import { Check, X } from "lucide-react-native";
+import type { OwnerBookingDetail } from "@court-booking/types";
+import { ApiError } from "@court-booking/api-client";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Banner, Button, IconButton, Input, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { ChevronLeftIcon } from "@/components/icons";
+import { formatPKR, formatTimeRange } from "@/lib/format";
+import { invalidateOwnerMoney } from "@/lib/owner-cache";
+import { useMyPermissions } from "@/lib/use-my-permissions";
+import { NoAccess } from "@/components/no-access";
+import { BookingDetailSheet } from "@/components/booking-detail-sheet";
+import { ownerBack } from "./_fl";
 
-/** Section 32 Part 9: owner scans a player's booking QR (a plain booking-id string, shown on the
- * player's own check-in screen -- see (player)/booking/[id]/checkin.tsx) as a faster front-desk
- * alternative to finding their row on Today, or types the booking code by hand when scanning fails
- * or the player has no signal to load their screen. Calls the same POST /bookings/{id}/checkin
- * Today's own "Check in" button uses -- no separate backend logic. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function checkinError(e: unknown): string {
+  if (e instanceof ApiError && e.code === "INVALID_BOOKING_STATE") return "Ye booking check-in ke liye tayyar nahi (pakki nahi, cancel, ya pehle ho chuka).";
+  if (e instanceof ApiError && (e.code === "INVALID_CHECKIN_CODE" || e.status === 404 || e.status === 422)) return "Ye booking ID nahi mila. Poora ID dobara dekhein.";
+  if (e instanceof ApiError && e.status === 403) return "Aapke paas check-in ki ijazat nahi hai.";
+  return friendlyErrorMessage(e);
+}
+
+/**
+ * OWalkin frame 2: the owner scans a player's booking QR (its content is the booking UUID, shown on the player's
+ * ticket) or types the booking ID, then POST /bookings/{id}/checkin. A short typed code is not supported by the backend
+ * (contract B2), so the manual field takes the full ID and says so. On Expo web there is no camera: the manual field only.
+ */
 export default function CheckinScanScreen() {
+  const insets = useSafeAreaInsets();
+  const perms = useMyPermissions();
+  const qc = useQueryClient();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [useManual, setUseManual] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ id: string; name: string; detail: OwnerBookingDetail | null } | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const web = Platform.OS === "web";
+  const camera = !web && !!permission?.granted;
 
-  async function submitCheckin(bookingId: string) {
+  async function submitCheckin(raw: string) {
+    const id = raw.trim();
+    setError(null);
+    if (!UUID.test(id)) {
+      setError("Ye poora booking ID nahi lagta. Player ki booking screen par lamba ID hota hai (jaise 3b9a41d7-...); wahi likhein ya paste karein.");
+      setScanned(false);
+      return;
+    }
     setSubmitting(true);
     try {
-      const { booking } = await api.bookings.checkin(bookingId.trim());
-      Alert.alert(
-        "Checked in",
-        `${booking.player_name ?? "Player"} is checked in.`,
-        [{ text: "Done", onPress: () => router.back() }],
-      );
+      const { booking } = await api.bookings.checkin(id);
+      let detail: OwnerBookingDetail | null = null;
+      try {
+        detail = await api.owners.bookingDetail(id);
+      } catch {
+        detail = null;
+      }
+      setDone({ id, name: booking.player_name ?? detail?.row.player_name ?? "Player", detail });
+      setManualCode("");
+      void invalidateOwnerMoney(qc);
     } catch (e) {
-      Alert.alert("Couldn't check in", friendlyErrorMessage(e));
-      setScanned(false);
+      setError(checkinError(e));
     } finally {
       setSubmitting(false);
+      setScanned(false);
     }
   }
 
+  if (perms.settled && !perms.can("check_in")) return <NoAccess what="Check-in" />;
+
+  const row = done?.detail?.row;
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-plex-bold text-owner-ink text-[19px] -tracking-[0.3px]">Scan to check in</Text>
+    <View style={{ flex: 1, backgroundColor: palette.night, paddingTop: insets.top + space[3], paddingBottom: insets.bottom + space[4] }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: space[4] }}>
+        <IconButton icon={X} variant="onDark" accessibilityLabel="Band karein" onPress={ownerBack} />
+        <Text variant="cta" tone="onDark" accessibilityRole="header" style={{ flex: 1 }}>
+          Player ka QR scan karein
+        </Text>
       </View>
 
-      {useManual ? (
-        <View className="flex-1 px-5 pt-6 gap-4">
-          <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
-            Enter the booking code the player shows you.
+      <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: space[4], paddingHorizontal: space[4], paddingTop: space[5], paddingBottom: space[6] }}>
+        {camera ? (
+          <View style={{ alignSelf: "center", width: 260, height: 260, borderRadius: radius.card, overflow: "hidden", backgroundColor: palette.scanFrame }}>
+            <CameraView
+              style={{ flex: 1 }}
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+              onBarcodeScanned={
+                scanned || submitting
+                  ? undefined
+                  : ({ data }) => {
+                      setScanned(true);
+                      void submitCheckin(data);
+                    }
+              }
+            />
+            <View pointerEvents="none" style={{ position: "absolute", left: 20, right: 20, top: 128, height: 3, borderRadius: 2, backgroundColor: palette.mint }} />
+          </View>
+        ) : (
+          <View style={{ alignSelf: "stretch", minHeight: 150, borderRadius: radius.card, backgroundColor: palette.scanFrame, alignItems: "center", justifyContent: "center", padding: space[5], gap: space[3] }}>
+            <Text variant="bodyL" tone="onDark" align="center">
+              {web ? "Camera scan phone ki app mein chalta hai. Yahan booking ID likh kar check-in karein." : "QR scan ke liye camera ki ijazat chahiye."}
+            </Text>
+            {!web && permission && !permission.granted ? <Button label="Camera ki ijazat dein" size="md" onPress={requestPermission} /> : null}
+          </View>
+        )}
+        {camera ? (
+          <Text variant="bodyL" tone="onDark" align="center">
+            QR ko frame ke andar rakhein
           </Text>
-          <TextInput
+        ) : null}
+
+        {done ? (
+          <View testID="checkin-done" style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[3] }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.openTint, alignItems: "center", justifyContent: "center" }}>
+                <Check size={20} color={palette.open} strokeWidth={3} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="bodyStrong">{`${done.name} · check-in ho gaya`}</Text>
+                {row ? (
+                  <Text variant="meta" tone="muted">{`${row.court_name} · ${formatTimeRange(row.starts_at, row.ends_at)} · ${row.due > 0 ? `Baqi PKR ${formatPKR(row.due)}` : "Poora paid"}`}</Text>
+                ) : null}
+              </View>
+            </View>
+            <Button label="Booking detail kholein" variant="soft" size="md" block onPress={() => setDetailId(done.id)} />
+          </View>
+        ) : null}
+
+        <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[3] }}>
+          <Input
+            label="Ya booking ID likhein"
             value={manualCode}
-            onChangeText={setManualCode}
-            placeholder="Booking code"
+            onChangeText={(v) => {
+              setManualCode(v);
+              setError(null);
+            }}
+            placeholder="Poora ID, jaise 3b9a41d7-..."
             autoCapitalize="none"
             autoCorrect={false}
-            className="border border-owner-border rounded-xl px-4 font-mono-medium text-owner-ink text-[15px]"
-            style={{ height: 52 }}
+            help="Player ki booking / ticket screen par poora booking ID hota hai. Chhota code (KH-...) abhi check-in mein nahi chalta."
+            testID="checkin-code"
           />
-          <Pressable
-            disabled={!manualCode.trim() || submitting}
-            onPress={() => submitCheckin(manualCode)}
-            className="rounded-xl items-center justify-center"
-            style={{ height: 50, backgroundColor: "#0E6274", opacity: !manualCode.trim() || submitting ? 0.5 : 1 }}
-          >
-            <Text className="font-plex-bold text-white text-[15px]">{submitting ? "Checking in…" : "Check in"}</Text>
-          </Pressable>
-          <Pressable onPress={() => setUseManual(false)}>
-            <Text className="font-plex-semibold text-owner-accent text-[13px] text-center">Scan a code instead</Text>
-          </Pressable>
+          <Button label={submitting ? "Ho raha hai" : "Check in"} block size="md" onPress={() => submitCheckin(manualCode)} disabled={!manualCode.trim() || submitting} loading={submitting} testID="checkin-submit" />
+          {error ? <Banner tone="danger" body={error} testID="checkin-error" /> : null}
         </View>
-      ) : !permission ? null : !permission.granted ? (
-        <View className="flex-1 items-center justify-center px-6 gap-4">
-          <Text className="font-plex-medium text-owner-ink-faint text-[14px] text-center">
-            Khelo needs camera access to scan a player's booking code.
-          </Text>
-          <Pressable onPress={requestPermission} className="rounded-xl px-5 items-center justify-center" style={{ height: 48, backgroundColor: "#0E6274" }}>
-            <Text className="font-plex-semibold text-white text-[14px]">Allow camera</Text>
-          </Pressable>
-          <Pressable onPress={() => setUseManual(true)}>
-            <Text className="font-plex-semibold text-owner-accent text-[13px]">Enter the code by hand instead</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <View className="flex-1">
-          <CameraView
-            style={{ flex: 1 }}
-            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-            onBarcodeScanned={
-              scanned || submitting
-                ? undefined
-                : ({ data }) => {
-                    setScanned(true);
-                    submitCheckin(data);
-                  }
-            }
-          />
-          <View className="px-5 py-4 bg-owner-surface border-t border-owner-border">
-            <Text className="font-plex-medium text-owner-ink-faint text-[12.5px] text-center mb-2">
-              Point the camera at the player's booking QR code.
-            </Text>
-            <Pressable onPress={() => setUseManual(true)}>
-              <Text className="font-plex-semibold text-owner-accent text-[13px] text-center">Enter the code by hand instead</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-    </SafeAreaView>
+        <Button label="Venue ka QR dikhayein" variant="soft" size="md" block onPress={() => router.push("/(owner)/checkin-qr")} />
+      </ScrollView>
+      {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
+    </View>
   );
 }

@@ -1,4 +1,6 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { palette, radius, size, space } from "@court-booking/ui-tokens";
+import { Text } from "@/components/ui";
 import {
   DEFAULT_HINT_COPY,
   defaultHintState,
@@ -39,25 +41,22 @@ export function DefaultHint({
   const copy = DEFAULT_HINT_COPY.ru;
   const id = testID ?? `default-${settingKey}`;
   return (
-    <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1" testID={id}>
-      <Text className="font-plex-medium text-owner-ink-faint text-[12px]">{text ?? defaultHintText(settingKey, "ru")}</Text>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: space[2], rowGap: space[1] }} testID={id}>
+      <Text variant="caption" tone="muted">
+        {text ?? defaultHintText(settingKey, "ru")}
+      </Text>
       {running ? (
-        <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: "#EEF6F7" }}>
-          <Text testID={`${id}-running`} className="font-plex-semibold text-owner-accent text-[11px]">
+        <View style={{ borderRadius: radius.pill, paddingHorizontal: space[2], paddingVertical: 2, backgroundColor: palette.tealTint }}>
+          <Text testID={`${id}-running`} variant="caption" weight="bold" tone="info">
             {copy.running}
           </Text>
         </View>
       ) : null}
       {!running && canReset && onReset ? (
-        <Pressable
-          onPress={onReset}
-          accessibilityRole="button"
-          accessibilityLabel={copy.reset}
-          testID={`${id}-reset`}
-          hitSlop={8}
-          style={{ minHeight: 28, justifyContent: "center" }}
-        >
-          <Text className="font-plex-semibold text-owner-accent text-[12px] underline">{copy.reset}</Text>
+        <Pressable onPress={onReset} accessibilityRole="button" accessibilityLabel={copy.reset} testID={`${id}-reset`} style={{ minHeight: size.tap, justifyContent: "center", paddingHorizontal: space[1] }}>
+          <Text variant="label" tone="link" style={{ textDecorationLine: "underline" }}>
+            {copy.reset}
+          </Text>
         </Pressable>
       ) : null}
     </View>

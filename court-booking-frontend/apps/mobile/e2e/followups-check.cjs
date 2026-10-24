@@ -114,7 +114,7 @@ async function waitBadge(page, want, timeout = 25000) {
   {
     const { ctx, page, reqs } = await setup(browser, { notifications: () => [] });
     await page.goto(BASE + "/refunds", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Refunds to pay").first().waitFor({ timeout: 120000 });
+    await page.getByText("Refunds dene hain").first().waitFor({ timeout: 120000 });
     await page.getByRole("button", { name: "Details" }).waitFor({ timeout: 30000 });
     await page.getByRole("button", { name: "Details" }).click();
     await page.getByText("KH-0000004D").first().waitFor({ timeout: 15000 });
@@ -144,7 +144,7 @@ async function waitBadge(page, want, timeout = 25000) {
     ];
     const { ctx, page } = await setup(browser, { notifications: () => list });
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     check("bell: badge shows 3 (duplicate folded, >24h row ignored)", await waitBadge(page, "3", 30000), "got " + (await badgeText(page)));
 
     list = [entry("n5", "payment_submitted", new Date().toISOString(), "b5"), ...list];
@@ -154,7 +154,7 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.getByText("Notifications", { exact: true }).first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(800);
     await page.goBack();
-    await page.getByText("Overview").first().waitFor({ timeout: 30000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 30000 });
     await page.waitForTimeout(800);
     check("bell: badge clears after opening notifications", (await badgeText(page)) === null, "got " + (await badgeText(page)));
     const stored = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("khelo.notif.readAt.")));
@@ -169,7 +169,7 @@ async function waitBadge(page, want, timeout = 25000) {
     const many = Array.from({ length: 130 }, (_, i) => entry("m" + i, "booking_confirmed", minAgo(1 + i * 6), "ref" + i));
     const { ctx, page } = await setup(browser, { notifications: () => many });
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     check("bell: caps at 99+", await waitBadge(page, "99+", 30000), "got " + (await badgeText(page)));
     await ctx.close();
   }

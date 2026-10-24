@@ -283,3 +283,32 @@ export function settleAction(
   if (row.due > 0) return opts.splitPayments ? "record" : "wait";
   return "none";
 }
+
+/* ---------------- Growth heatmap (contract B3: only UNDER-booked cells exist) ---------------- */
+
+export interface GrowthCell {
+  /** Lowest booking rate among the courts flagged for this day + hour (0..1). */
+  rate: number;
+  venueAverage: number;
+  courts: string[];
+}
+
+/**
+ * Rows = the hours that have at least one under-booked cell (sorted), columns = Mon..Sun (day_of_week 0 = Monday, as the
+ * API sends it). Only the server's under-booked cells are filled; every other cell is "no signal", never "0%".
+ */
+export function growthGrid(slots: { court_id: string; day_of_week: number; hour: number; booking_rate: number; venue_average: number }[]): {
+  hours: number[];
+  cell: (day: number, hour: number) => GrowthCell | null;
+} {
+  const map = new Map<string, GrowthCell>();
+  for (const s of slots) {
+    if (s.day_of_week < 0 || s.day_of_week > 6) continue;
+    const k = `${s.day_of_week}-${s.hour}`;
+    const prev = map.get(k);
+    if (!prev) map.set(k, { rate: s.booking_rate, venueAverage: s.venue_average, courts: [s.court_id] });
+    else map.set(k, { rate: Math.min(prev.rate, s.booking_rate), venueAverage: prev.venueAverage, courts: [...prev.courts, s.court_id] });
+  }
+  const hours = [...new Set(slots.filter((s) => s.day_of_week >= 0 && s.day_of_week <= 6).map((s) => s.hour))].sort((a, b) => a - b);
+  return { hours, cell: (d, h) => map.get(`${d}-${h}`) ?? null };
+}

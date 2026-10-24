@@ -1,125 +1,58 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Users } from "lucide-react-native";
 import type { StaffMember, StaffPermissionCatalogItem } from "@court-booking/types";
 import { isValidName, isValidPkMobile, toE164 } from "@court-booking/types";
+import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
+import { Avatar, Banner, Button, Chip, EmptyState, ErrorState, Input, Pill, Screen, SkeletonCard, Switch, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { ChevronLeftIcon, CheckIcon, PlusIcon } from "@/components/icons";
-import { ErrorState } from "@/components/error-state";
+import { NoAccess } from "@/components/no-access";
+import { BottomSheet, DangerButton, OutlineButton, PrimaryButton } from "@/components/overview/ui";
+import { OwnerHeader } from "./_fl";
 
+/** OGrowthTeam frame 3 "Staff + permissions": the venue's team (GET /staff), each with permission switches from the
+ * server's own catalog (GET /staff/permissions: a permission whose feature is off cannot be switched on). Owner only. */
 export default function OwnerStaffScreen() {
+  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
   const { venues } = useOwnerVenues();
-  const staffQuery = useQuery({ queryKey: ["owner-staff"], queryFn: () => api.staff.list() });
-  const catalogQuery = useQuery({
-    queryKey: ["staff-permission-catalog"],
-    queryFn: () => api.staff.permissionCatalog(),
-  });
+  const staffQuery = useQuery({ queryKey: ["owner-staff"], queryFn: () => api.staff.list(), enabled: isOwner });
+  const catalogQuery = useQuery({ queryKey: ["staff-permission-catalog"], queryFn: () => api.staff.permissionCatalog(), enabled: isOwner });
   const [adding, setAdding] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
 
+  if (!isOwner) return <NoAccess what="Staff" />;
   const catalog = catalogQuery.data ?? [];
   const staff = staffQuery.data ?? [];
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px] flex-1">Staff</Text>
-      </View>
-
+    <Screen testID="staff-screen">
+      <OwnerHeader
+        title="Staff"
+        subtitle="Jo log venue chalane mein madad karte hain. Har ek ko sirf zaroori ijazat dein; woh isi phone + password se login karte hain."
+        right={<Button label="+ Add" size="sm" onPress={() => setAdding(true)} testID="staff-add" />}
+      />
       {staffQuery.isLoading || catalogQuery.isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#0E6274" />
+        <View style={{ gap: space[3] }}>
+          <SkeletonCard />
         </View>
       ) : staffQuery.isError ? (
-        <ErrorState message={friendlyErrorMessage(staffQuery.error)} onRetry={() => staffQuery.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(staffQuery.error)} onRetry={() => staffQuery.refetch()} />
+      ) : staff.length === 0 ? (
+        <EmptyState title="Abhi koi staff nahi" body="Pehla team member add karein: woh sirf woh kaam kar sakega jo aap chunein." icon={Users} actionLabel="Staff add karein" onAction={() => setAdding(true)} />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-3.5">
-          <Text className="font-plex-medium text-owner-ink-faint text-[13px] leading-[18px]">
-            Add people who help run your venue and choose exactly what each can do. Staff sign in with the
-            phone number and password you set here.
-          </Text>
-
-          {adding ? (
-            <AddStaffForm
-              venues={venues}
-              catalog={catalog}
-              onCancel={() => setAdding(false)}
-              onAdded={() => setAdding(false)}
-            />
-          ) : (
-            <Pressable
-              onPress={() => setAdding(true)}
-              className="self-start px-4 h-11 rounded-[10px] bg-owner-accent flex-row items-center justify-center gap-2"
-            >
-              <PlusIcon />
-              <Text className="font-plex-bold text-white text-[14px]">Add staff member</Text>
-            </Pressable>
-          )}
-
-          {staff.length === 0 ? (
-            <Text className="font-plex-medium text-owner-ink-faint text-center pt-8">
-              No staff yet. Add your first team member above.
-            </Text>
-          ) : (
-            staff.map((member) => <StaffCard key={member.id} member={member} catalog={catalog} />)
-          )}
-        </ScrollView>
+        staff.map((member) => <StaffCard key={member.id} member={member} catalog={catalog} open={openId === member.id} onToggleOpen={() => setOpenId(openId === member.id ? null : member.id)} />)
       )}
-    </SafeAreaView>
+      {adding ? <AddStaffSheet venues={venues} catalog={catalog} onClose={() => setAdding(false)} /> : null}
+    </Screen>
   );
 }
 
-const inputCls =
-  "h-11 px-3 rounded-[10px] border border-owner-border bg-white font-plex-medium text-owner-ink text-[14px]";
-
-function PermissionRow({
-  item,
-  checked,
-  onToggle,
-}: {
-  item: StaffPermissionCatalogItem;
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  const disabled = !item.available;
-  return (
-    <Pressable
-      onPress={disabled ? undefined : onToggle}
-      className="flex-row items-center gap-2.5 py-1.5"
-      style={{ opacity: disabled ? 0.45 : 1 }}
-    >
-      <View
-        className="w-5 h-5 rounded-[5px] items-center justify-center border"
-        style={{ backgroundColor: checked ? "#0E6274" : "#FFFFFF", borderColor: checked ? "#0E6274" : "#C6D2D7" }}
-      >
-        {checked ? <CheckIcon size={13} color="#FFFFFF" /> : null}
-      </View>
-      <Text className="font-plex-medium text-owner-ink text-[13.5px] flex-1">
-        {item.label}
-        {disabled ? " (feature off)" : ""}
-      </Text>
-    </Pressable>
-  );
-}
-
-function AddStaffForm({
-  venues,
-  catalog,
-  onCancel,
-  onAdded,
-}: {
-  venues: { id: string; name: string }[];
-  catalog: StaffPermissionCatalogItem[];
-  onCancel: () => void;
-  onAdded: () => void;
-}) {
+function AddStaffSheet({ venues, catalog, onClose }: { venues: { id: string; name: string }[]; catalog: StaffPermissionCatalogItem[]; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [venueId, setVenueId] = useState(venues[0]?.id ?? "");
   const [name, setName] = useState("");
@@ -132,97 +65,71 @@ function AddStaffForm({
   const valid = isValidName(name) && isValidPkMobile(phone) && password.length >= 8 && !!effectiveVenueId;
 
   const create = useMutation({
-    mutationFn: () =>
-      api.staff.create({
-        venue_id: effectiveVenueId,
-        name: name.trim(),
-        phone: toE164(phone),
-        password,
-        permissions: [...selected],
-      }),
+    mutationFn: () => api.staff.create({ venue_id: effectiveVenueId, name: name.trim(), phone: toE164(phone), password, permissions: [...selected] }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["owner-staff"] });
-      onAdded();
+      await queryClient.invalidateQueries({ queryKey: ["owner-staff-count"] });
+      onClose();
     },
     onError: (e) => setError(friendlyErrorMessage(e)),
   });
 
-  function toggle(key: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
   return (
-    <View className="bg-owner-surface border border-owner-border rounded-xl p-4 gap-3">
-      <Text className="font-plex-bold text-owner-ink text-[15px]">New staff member</Text>
+    <BottomSheet
+      title="Naya staff member"
+      onClose={onClose}
+      footer={
+        <View style={{ flexDirection: "row", gap: space[3] }}>
+          <OutlineButton flex label="Cancel" onPress={onClose} />
+          <PrimaryButton flex label={create.isPending ? "Add ho raha hai" : "Staff add karein"} disabled={!valid || create.isPending} onPress={() => create.mutate()} />
+        </View>
+      }
+    >
       {venues.length > 1 ? (
-        <View className="flex-row flex-wrap gap-2">
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
           {venues.map((v) => (
-            <Pressable
-              key={v.id}
-              onPress={() => setVenueId(v.id)}
-              className="px-3 h-9 rounded-full items-center justify-center"
-              style={{ backgroundColor: effectiveVenueId === v.id ? "#0E6274" : "#F4F6F7" }}
-            >
-              <Text
-                className="font-plex-semibold text-[12.5px]"
-                style={{ color: effectiveVenueId === v.id ? "#FFFFFF" : "#5B7079" }}
-              >
-                {v.name}
-              </Text>
-            </Pressable>
+            <Chip key={v.id} label={v.name} selected={effectiveVenueId === v.id} onPress={() => setVenueId(v.id)} />
           ))}
         </View>
       ) : null}
-      <TextInput className={inputCls} placeholder="Full name" placeholderTextColor="#8399A1" value={name} onChangeText={setName} />
-      <TextInput
-        className={inputCls}
-        placeholder="Phone (03xx…)"
-        placeholderTextColor="#8399A1"
-        keyboardType="phone-pad"
-        value={phone}
-        onChangeText={setPhone}
-      />
-      <TextInput
-        className={inputCls}
-        placeholder="Temporary password (min 8 chars)"
-        placeholderTextColor="#8399A1"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <View>
-        <Text className="font-plex-bold text-owner-ink-faint text-[11px] tracking-[0.6px] mb-1">WHAT THEY CAN DO</Text>
-        {catalog.map((item) => (
-          <PermissionRow key={item.key} item={item} checked={selected.has(item.key)} onToggle={() => toggle(item.key)} />
-        ))}
-      </View>
-      {error ? <Text className="font-plex-semibold text-owner-danger text-[12.5px]">{error}</Text> : null}
-      <View className="flex-row gap-2.5">
-        <Pressable onPress={onCancel} className="flex-1 h-11 rounded-[10px] border border-owner-border items-center justify-center">
-          <Text className="font-plex-semibold text-owner-ink text-[13.5px]">Cancel</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => create.mutate()}
-          disabled={!valid || create.isPending}
-          className="flex-1 h-11 rounded-[10px] items-center justify-center bg-owner-accent"
-          style={{ opacity: !valid || create.isPending ? 0.5 : 1 }}
-        >
-          <Text className="font-plex-bold text-white text-[13.5px]">{create.isPending ? "Adding…" : "Add staff"}</Text>
-        </Pressable>
-      </View>
+      <Input label="Poora naam" value={name} onChangeText={setName} placeholder="Bilal Raza" />
+      <Input label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="0300 1234567" error={phone && !isValidPkMobile(phone) ? "Sahi mobile number likhein" : null} />
+      <Input label="Password (kam se kam 8 harf)" value={password} onChangeText={setPassword} secureToggle />
+      <Text variant="label">Kya kar sakta hai</Text>
+      <PermissionSwitches catalog={catalog} selected={selected} onChange={setSelected} />
+      {error ? <Banner tone="danger" body={error} /> : null}
+    </BottomSheet>
+  );
+}
+
+function PermissionSwitches({ catalog, selected, onChange }: { catalog: StaffPermissionCatalogItem[]; selected: Set<string>; onChange: (s: Set<string>) => void }) {
+  return (
+    <View style={{ gap: space[1] }}>
+      {catalog.map((item) => (
+        <Switch
+          key={item.key}
+          label={item.label}
+          hint={item.available ? undefined : "Ye feature abhi band hai"}
+          value={selected.has(item.key)}
+          disabled={!item.available}
+          onChange={(on) => {
+            const next = new Set(selected);
+            if (on) next.add(item.key);
+            else next.delete(item.key);
+            onChange(next);
+          }}
+          testID={`perm-${item.key}`}
+        />
+      ))}
     </View>
   );
 }
 
-function StaffCard({ member, catalog }: { member: StaffMember; catalog: StaffPermissionCatalogItem[] }) {
+function StaffCard({ member, catalog, open, onToggleOpen }: { member: StaffMember; catalog: StaffPermissionCatalogItem[]; open: boolean; onToggleOpen: () => void }) {
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(member.permissions));
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const labelFor = useMemo(() => {
     const m = new Map(catalog.map((c) => [c.key, c.label]));
@@ -232,94 +139,80 @@ function StaffCard({ member, catalog }: { member: StaffMember; catalog: StaffPer
   const savePerms = useMutation({
     mutationFn: () => api.staff.setPermissions(member.id, [...selected]),
     onSuccess: async () => {
-      setEditing(false);
+      setError(null);
+      onToggleOpen();
       await queryClient.invalidateQueries({ queryKey: ["owner-staff"] });
     },
-    onError: (e) => Alert.alert("Couldn't save", friendlyErrorMessage(e)),
+    onError: (e) => setError(friendlyErrorMessage(e)),
   });
 
   const toggleActive = useMutation({
     mutationFn: () => api.staff.setActive(member.id, !member.is_active),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["owner-staff"] }),
-    onError: (e) => Alert.alert("Couldn't update", friendlyErrorMessage(e)),
+    onSuccess: () => {
+      setConfirming(false);
+      void queryClient.invalidateQueries({ queryKey: ["owner-staff"] });
+    },
+    onError: (e) => setError(friendlyErrorMessage(e)),
   });
 
-  function confirmToggleActive() {
-    if (member.is_active) {
-      Alert.alert(
-        "Deactivate staff member?",
-        `${member.name ?? "This staff member"} will be logged out immediately.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Deactivate", style: "destructive", onPress: () => toggleActive.mutate() },
-        ],
-      );
-    } else {
-      toggleActive.mutate();
-    }
-  }
-
-  function toggle(key: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
   return (
-    <View className="bg-owner-surface border border-owner-border rounded-xl p-4 gap-2">
-      <View className="flex-row items-start justify-between">
-        <View className="flex-1">
-          <Text className="font-plex-bold text-owner-ink text-[14px]">
-            {member.name ?? "Staff"}
-            {!member.is_active ? <Text className="font-plex-bold text-owner-danger text-[11px]">  · INACTIVE</Text> : null}
-          </Text>
-          <Text className="font-mono-medium text-owner-ink-faint text-[11.5px]">
-            {member.phone} · {member.venue_name}
-          </Text>
+    <View testID="staff-card" style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[3], boxShadow: shadow.card }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+        <Avatar name={member.name ?? "Staff"} size={44} tone={member.is_active ? "info" : "neutral"} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text variant="bodyStrong">{member.name ?? "Staff"}</Text>
+          <Text variant="meta" tone="muted">{`${member.phone} · ${member.venue_name}`}</Text>
         </View>
+        {!member.is_active ? <Pill size="sm" tone="danger" label="Band" /> : null}
       </View>
-
-      {editing ? (
-        <View className="gap-2">
-          {catalog.map((item) => (
-            <PermissionRow key={item.key} item={item} checked={selected.has(item.key)} onToggle={() => toggle(item.key)} />
-          ))}
-          <Pressable
-            onPress={() => savePerms.mutate()}
-            disabled={savePerms.isPending}
-            className="self-start px-4 h-10 rounded-[10px] bg-owner-accent items-center justify-center"
-            style={{ opacity: savePerms.isPending ? 0.5 : 1 }}
-          >
-            <Text className="font-plex-bold text-white text-[13px]">{savePerms.isPending ? "Saving…" : "Save permissions"}</Text>
-          </Pressable>
+      {open ? (
+        <View style={{ gap: space[2] }}>
+          <Text variant="label">{`${member.name ?? "Staff"} ki permissions`}</Text>
+          <PermissionSwitches catalog={catalog} selected={selected} onChange={setSelected} />
+          <Button label={savePerms.isPending ? "Save ho raha hai" : "Permissions save karein"} size="md" block onPress={() => savePerms.mutate()} disabled={savePerms.isPending} />
         </View>
       ) : (
-        <View className="flex-row flex-wrap gap-1.5">
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {member.permissions.length === 0 ? (
-            <Text className="font-plex-medium text-owner-ink-faint text-[12px]">No permissions yet</Text>
+            <Text variant="caption" tone="muted">
+              Abhi koi permission nahi
+            </Text>
           ) : (
-            member.permissions.map((p) => (
-              <View key={p} className="px-2 py-0.5 rounded-md bg-owner-bg">
-                <Text className="font-plex-medium text-owner-ink-muted text-[11.5px]">{labelFor(p)}</Text>
-              </View>
-            ))
+            member.permissions.map((p) => <Pill key={p} size="sm" tone="info" label={labelFor(p)} />)
           )}
         </View>
       )}
-
-      <View className="flex-row gap-4 pt-1">
-        <Pressable onPress={() => setEditing((v) => !v)}>
-          <Text className="font-plex-bold text-owner-accent text-[13px]">{editing ? "Cancel" : "Edit permissions"}</Text>
-        </Pressable>
-        <Pressable onPress={confirmToggleActive} disabled={toggleActive.isPending}>
-          <Text className="font-plex-bold text-[13px]" style={{ color: member.is_active ? "#B23B3B" : "#1F7A52" }}>
-            {member.is_active ? "Deactivate" : "Reactivate"}
-          </Text>
-        </Pressable>
+      {error ? <Banner tone="danger" body={error} /> : null}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+        <Button
+          label={open ? "Cancel" : "Permissions badlein"}
+          variant="soft"
+          size="sm"
+          onPress={() => {
+            setSelected(new Set(member.permissions));
+            onToggleOpen();
+          }}
+        />
+        <Button label={member.is_active ? "Staff hatayein" : "Wapas chalu karein"} variant={member.is_active ? "danger" : "soft"} size="sm" onPress={() => (member.is_active ? setConfirming(true) : toggleActive.mutate())} disabled={toggleActive.isPending} />
       </View>
+      {confirming ? (
+        <BottomSheet
+          title={`${member.name ?? "Staff"} ko band karein?`}
+          subtitle="Woh foran log out ho jayenge. Baad mein wapas chalu kar sakte hain."
+          onClose={() => setConfirming(false)}
+          footer={
+            <View style={{ flexDirection: "row", gap: space[3] }}>
+              <OutlineButton flex label="Wapas" onPress={() => setConfirming(false)} />
+              <DangerButton flex label={toggleActive.isPending ? "Ho raha hai" : "Haan, band karein"} onPress={() => toggleActive.mutate()} disabled={toggleActive.isPending} />
+            </View>
+          }
+        >
+          <Text variant="body" tone="muted">
+            Unki bookings aur record waise hi rahenge.
+          </Text>
+        </BottomSheet>
+      ) : null}
     </View>
   );
 }
+

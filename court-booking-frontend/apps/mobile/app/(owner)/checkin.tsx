@@ -1,60 +1,33 @@
-import { Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { QrCode, ScanLine } from "lucide-react-native";
+import { ListRow, Screen, Text } from "@/components/ui";
 
-import { ChevronLeftIcon, ChevronRightIcon, QrIcon } from "@/components/icons";
+import { useMyPermissions } from "@/lib/use-my-permissions";
+import { NoAccess } from "@/components/no-access";
+import { GroupCard, IconTile, OwnerHeader } from "./_fl";
 
-/** Section 32 Part 9: a hub for the two check-in paths that don't happen directly on Today's slot
- * list -- printing the venue's own QR (players scan it to self-check-in) and scanning a player's
- * booking QR (or typing their booking code) as a faster front-desk alternative to finding their row
- * on Today. Today's own "Check in" / "No-show" buttons on each booked slot stay the primary path. */
+/** Section 32 Part 9: the two check-in paths that are not on Aaj's own booking cards: scanning a player's booking QR (or
+ * typing the booking ID) at the front desk, and showing the venue's own QR so players check themselves in. */
 export default function CheckinHubScreen() {
+  const perms = useMyPermissions();
+  if (perms.settled && !perms.can("check_in")) return <NoAccess what="Check-in" />;
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-plex-bold text-owner-ink text-[19px] -tracking-[0.3px]">Check-in tools</Text>
-      </View>
-
-      <View className="px-5 pt-5 gap-3">
-        <Pressable
-          onPress={() => router.push("/(owner)/checkin-qr")}
-          className="bg-owner-surface border border-owner-border rounded-xl p-4 flex-row items-center gap-3.5"
-        >
-          <View className="w-11 h-11 rounded-[10px] items-center justify-center" style={{ backgroundColor: "#F4F6F7" }}>
-            <QrIcon size={22} />
-          </View>
-          <View className="flex-1 gap-0.5">
-            <Text className="font-plex-semibold text-owner-ink text-[15px]">Show venue QR code</Text>
-            <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-              Print or display this at your entrance -- players scan it to check themselves in.
-            </Text>
-          </View>
-          <ChevronRightIcon />
-        </Pressable>
-
-        <Pressable
+    <Screen testID="checkin-hub">
+      <OwnerHeader title="Check-in" subtitle="Player aaya? Scan karein ya booking ID likhein." />
+      <GroupCard>
+        <ListRow
+          title="Player ka QR scan karein"
+          subtitle="Player ki booking ka QR, ya poora booking ID haath se"
+          leading={<IconTile icon={ScanLine} />}
           onPress={() => router.push("/(owner)/checkin-scan")}
-          className="bg-owner-surface border border-owner-border rounded-xl p-4 flex-row items-center gap-3.5"
-        >
-          <View className="w-11 h-11 rounded-[10px] items-center justify-center" style={{ backgroundColor: "#F4F6F7" }}>
-            <QrIcon size={22} />
-          </View>
-          <View className="flex-1 gap-0.5">
-            <Text className="font-plex-semibold text-owner-ink text-[15px]">Scan a player's code</Text>
-            <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-              Scan the code from a player's booking, or enter their booking code by hand.
-            </Text>
-          </View>
-          <ChevronRightIcon />
-        </Pressable>
-
-        <Text className="font-plex-medium text-owner-ink-faint text-[12px] px-1">
-          Most check-ins are faster from Today: tap Check in on a player's row directly.
-        </Text>
-      </View>
-    </SafeAreaView>
+          divider
+          testID="checkin-scan-row"
+        />
+        <ListRow title="Venue ka QR dikhayein" subtitle="Entrance par lagayein: player khud scan karke check-in kare" leading={<IconTile icon={QrCode} />} onPress={() => router.push("/(owner)/checkin-qr")} />
+      </GroupCard>
+      <Text variant="caption" tone="muted">
+        Aaj screen par booking card ya timeline block khol kar bhi &quot;Check in&quot; daba sakte hain.
+      </Text>
+    </Screen>
   );
 }

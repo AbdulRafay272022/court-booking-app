@@ -1,5 +1,7 @@
+import { palette } from "@court-booking/ui-tokens";
+import { Text } from "@/components/ui";
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { formatTime24As12, parseTime24, pktDayTabs, toTime24, type Meridiem, type Time12 } from "@court-booking/types";
 
 /**
@@ -9,7 +11,7 @@ import { formatTime24As12, parseTime24, pktDayTabs, toTime24, type Meridiem, typ
  */
 const MINUTES = [0, 15, 30, 45, 59];
 const DEFAULT_TIME: Time12 = { hour: 6, minute: 0, meridiem: "AM" };
-const TEAL = "#0E6274";
+const TEAL = palette.teal;
 
 function Pill({ label, selected, onPress, minWidth = 44 }: { label: string; selected: boolean; onPress: () => void; minWidth?: number }) {
   return (
@@ -22,12 +24,12 @@ function Pill({ label, selected, onPress, minWidth = 44 }: { label: string; sele
         minHeight: 44,
         minWidth,
         paddingHorizontal: 10,
-        backgroundColor: selected ? TEAL : "#FFFFFF",
+        backgroundColor: selected ? TEAL : palette.white,
         borderWidth: selected ? 0 : 1,
-        borderColor: "#DCE3E6",
+        borderColor: palette.lineStrong,
       }}
     >
-      <Text className="font-plex-semibold text-sm" style={{ color: selected ? "#FFFFFF" : "#5B7079" }}>
+      <Text variant="body" weight="bold" style={{ color: selected ? palette.white : palette.muted }}>
         {label}
       </Text>
     </Pressable>
@@ -53,7 +55,7 @@ export function TimeField12({
 
   return (
     <View className="gap-2 flex-1">
-      {label ? <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">{label}</Text> : null}
+      {label ? <Text variant="meta" tone="muted" weight="bold">{label}</Text> : null}
       <Pressable
         onPress={() => setOpen(!open)}
         accessibilityRole="button"
@@ -63,12 +65,12 @@ export function TimeField12({
           height: 48,
           paddingHorizontal: 14,
           borderRadius: 9,
-          backgroundColor: "#FFFFFF",
+          backgroundColor: palette.white,
           borderWidth: open ? 1.5 : 1,
-          borderColor: open ? TEAL : "#DCE3E6",
+          borderColor: open ? TEAL : palette.lineStrong,
         }}
       >
-        <Text className="font-mono-medium" style={{ fontSize: 15, color: parsed ? "#101C21" : "#8399A1" }}>
+        <Text variant="body" style={{ fontSize: 15, color: parsed ? palette.night : palette.muted2 }}>
           {parsed ? formatTime24As12(value) : optional ? "Any time" : "Set time"}
         </Text>
       </Pressable>
@@ -103,7 +105,7 @@ export function DayPicker({ label, value, onChange, days = 21 }: { label: string
   const options = pktDayTabs(days);
   return (
     <View className="gap-2">
-      {label ? <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">{label}</Text> : null}
+      {label ? <Text variant="meta" tone="muted" weight="bold">{label}</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
         {options.map((d, i) => (
           <Pill

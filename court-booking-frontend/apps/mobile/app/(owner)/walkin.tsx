@@ -1,32 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
-import { courtLabel } from "@/components/court-label";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
-import { api } from "@/lib/api";
+import { X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
 import { addDays, durationChoices, formatDuration, isValidPkMobile, minSlotsFor, walkinSlots } from "@court-booking/types";
+import { palette, radius, space, type SlotChipState } from "@court-booking/ui-tokens";
+import { ActionBar, Banner, Button, Chip, IconButton, Input, Screen, Skeleton, SlotChip, Text } from "@/components/ui";
+
+import { courtLabel } from "@/components/court-label";
+import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { formatPKR, formatTime, formatTimeRange, pktDayTabs } from "@/lib/format";
+import { formatPKR, formatTime, formatTimeRange, pktDateString, pktDayTabs } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { invalidateOwnerMoney } from "@/lib/owner-cache";
-import { ChevronLeftIcon } from "@/components/icons";
 import { NoAccess } from "@/components/no-access";
-import { Chip, FieldLabel, PrimaryButton, TextField } from "./venue-setup/_components";
+import { BottomSheet } from "@/components/overview/ui";
+import { ownerBack } from "./_fl";
 
 /**
- * "Add a booking" (walk-in / phone / regular). Section 32 Part 4c: a fixed 30-minute grid, and a booking is several slots in
- * a row. Tap the first slot, then a later slot (or "+ 30 min") to stretch the booking to it; the court's minimum booking
- * time is selected for you and cannot be shortened below it. The total comes from the server's quote, and Save creates ONE
- * booking. The customer's name is required; the phone is optional and links the booking to an existing account when it
- * matches one (otherwise the name lives on the booking).
+ * OWalkin frame 1 "Walk-in booking" (the "+" FAB). Section 32 Part 4c: a fixed 30-minute grid, and a booking is several
+ * slots in a row. Tap the first slot, then a later slot (or "+ 30 min") to stretch it; the court's minimum booking time is
+ * selected for you. The total comes from the server's quote, and Save creates ONE booking (POST /bookings/walkin). Name is
+ * required; the phone is optional and links the booking to an existing account when it matches one.
  *
- * No walk-ins in the past: the date picker starts at TODAY (Pakistan calendar day) and, for today, slots that have already
- * ended are not offered (`walkinSlots`); the slot in progress still is. The server enforces the same rule (WALKIN_IN_PAST)
- * and its message is shown if a stale screen still gets it.
+ * No walk-ins in the past: days start at TODAY (Pakistan calendar day) and, for today, slots that have already ended are not
+ * offered (`walkinSlots`); the slot in progress still is. The server enforces the same rule (WALKIN_IN_PAST).
+ * The board's "Kaise mila?" (cash / bank / JazzCash) is NOT sent: the walk-in endpoint has no payment-method field.
  */
 export default function WalkInScreen() {
   const params = useLocalSearchParams<{ courtId?: string; startsAt?: string }>();
@@ -45,18 +46,17 @@ export default function WalkInScreen() {
   const [amount, setAmount] = useState("");
   const [amountTouched, setAmountTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [problem, setProblem] = useState<{ title: string; body: string } | null>(null);
+  const [daySheet, setDaySheet] = useState(false);
 
   useEffect(() => {
     if (!courtId && courts.length > 0) setCourtId(courts[0].id);
   }, [courts, courtId]);
 
-  // Section 29 Tier 2 Part 3: a walk-in used to always book against today only -- an owner
-  // taking a phone booking for tomorrow (a completely normal case) had no way to do it here.
-  const nextDays = useMemo(
-    () => pktDayTabs(15), // Pakistan calendar days, not the UTC date
-    [],
-  );
-  const [dateIdx, setDateIdx] = useState(0);
+  // Section 29 Tier 2 Part 3: a phone booking for tomorrow is normal, so 15 Pakistan calendar days are offered.
+  const nextDays = useMemo(() => pktDayTabs(15), []);
+  const startDay = params.startsAt ? Math.max(0, nextDays.findIndex((d) => d.date === pktDateString(params.startsAt as string))) : 0;
+  const [dateIdx, setDateIdx] = useState(startDay);
   const date = nextDays[dateIdx].date;
   const availabilityQuery = useQuery({
     queryKey: ["court-availability", courtId, date],
@@ -84,12 +84,14 @@ export default function WalkInScreen() {
   );
   const court = courts.find((c) => c.id === courtId);
   const minSlots = minSlotsFor(availabilityQuery.data?.min_booking_minutes ?? court?.slot_minutes ?? 60);
-  const startIndex = startsAt ? slots.findIndex((s) => s.starts_at === startsAt) : -1;
+  // A start from Aaj's timeline may be written differently ("...Z" vs "+05:00"): match by instant.
+  const startIndex = startsAt ? slots.findIndex((s) => Date.parse(s.starts_at) === Date.parse(startsAt)) : -1;
   const choices = startIndex >= 0 ? durationChoices(slots, startIndex, minSlots) : [];
   const selectedChoice = choices.find((c) => c.slotCount === slotCount);
   const inRange = (i: number) => startIndex >= 0 && selectedChoice !== undefined && i >= startIndex && i < startIndex + slotCount;
+  const startIso = startIndex >= 0 ? slots[startIndex].starts_at : undefined;
 
-  // arriving with a pre-picked slot (from Today): start with the court's minimum selected
+  // arriving with a pre-picked slot (from Aaj): start with the court's minimum selected
   useEffect(() => {
     if (startIndex >= 0 && !selectedChoice && choices.length > 0) setSlotCount(choices[0].slotCount);
   }, [startIndex, selectedChoice, choices]);
@@ -106,6 +108,7 @@ export default function WalkInScreen() {
   function handleTapSlot(index: number) {
     const slot = slots[index];
     if (slot.status !== "available") return;
+    setProblem(null);
     if (startIndex >= 0 && index > startIndex) {
       const count = index - startIndex + 1;
       const reachable = choices.find((c) => c.slotCount === Math.max(count, minSlots));
@@ -116,7 +119,7 @@ export default function WalkInScreen() {
     }
     const fresh = durationChoices(slots, index, minSlots);
     if (fresh.length === 0) {
-      Alert.alert("Too short", `That start can't fit this court's minimum booking of ${formatDuration(minSlots * 30)} in a row.`);
+      setProblem({ title: "Itna waqt nahi", body: `Is court ki kam se kam booking ${formatDuration(minSlots * 30, "ru")} hai; is waqt se itne khaali slots lagatar nahi.` });
       return;
     }
     setStartsAt(slot.starts_at);
@@ -132,10 +135,10 @@ export default function WalkInScreen() {
 
   // The total comes from the server's quote -- one source of truth for what a range costs.
   const quoteQuery = useQuery({
-    queryKey: ["booking-quote", courtId, startsAt, slotCount],
-    queryFn: () => api.availability.quote(courtId!, startsAt!, slotCount),
+    queryKey: ["booking-quote", courtId, startIso, slotCount],
+    queryFn: () => api.availability.quote(courtId!, startIso!, slotCount),
     placeholderData: undefined,
-    enabled: !!courtId && !!startsAt && !!selectedChoice,
+    enabled: !!courtId && !!startIso && !!selectedChoice,
   });
   const quote = quoteQuery.data;
 
@@ -146,37 +149,40 @@ export default function WalkInScreen() {
 
   const phoneOk = playerPhone.trim() === "" || isValidPkMobile(playerPhone);
   const nameOk = playerName.trim().length > 0;
-  const isValid = !!courtId && !!startsAt && !!selectedChoice && !!quote && nameOk && phoneOk && amount !== "" && Number(amount) >= 0;
+  const paid = amount === "" ? null : Number(amount);
+  const isValid = !!courtId && !!startIso && !!selectedChoice && !!quote && nameOk && phoneOk && paid !== null && paid >= 0;
+  const baqi = quote && paid !== null ? Math.max(0, Math.round(quote.price) - paid) : null;
 
   async function handleSubmit() {
-    if (!isValid || !courtId || !startsAt) {
-      Alert.alert("Almost there", "Pick a court, a time, and enter the customer's name (and a valid phone if you add one).");
+    if (!isValid || !courtId || !startIso) {
+      setProblem({ title: "Thora baqi hai", body: "Court, waqt aur player ka naam chunein (phone dalein to sahi number)." });
       return;
     }
     setSubmitting(true);
+    setProblem(null);
     try {
       await api.bookings.walkin({
         court_id: courtId,
-        starts_at: startsAt,
+        starts_at: startIso,
         slot_count: slotCount,
         player_name: playerName.trim(),
         player_phone: playerPhone.trim() || undefined,
         amount_paid: Number(amount),
       });
-      // Overview, ledger, history and badges all show the new booking at once (the old ["owner-today"] key was dead).
+      // Aaj, ledger, history and badges all show the new booking at once (the old ["owner-today"] key was dead).
       await Promise.all([invalidateOwnerMoney(queryClient), queryClient.invalidateQueries({ queryKey: ["court-availability"] })]);
-      router.back();
+      ownerBack();
     } catch (e) {
       if (e instanceof ApiError && e.code === "SLOT_ALREADY_TAKEN") {
-        Alert.alert("Time just taken", "Part of that time was just booked. Pick another.");
+        setProblem({ title: "Ye waqt abhi abhi le liya gaya", body: "Is waqt ka kuch hissa abhi book ho gaya. Doosra waqt chunein." });
         reset();
         availabilityQuery.refetch();
       } else if (e instanceof ApiError && e.code === "WALKIN_IN_PAST") {
-        Alert.alert("That time has passed", e.message || friendlyErrorMessage(e)); // the server's own words
+        setProblem({ title: "Ye waqt guzar gaya", body: e.message || friendlyErrorMessage(e) });
         reset();
         setNowMs(Date.now());
       } else {
-        Alert.alert("Couldn't save booking", friendlyErrorMessage(e));
+        setProblem({ title: "Booking save nahi hui", body: friendlyErrorMessage(e) });
       }
     } finally {
       setSubmitting(false);
@@ -185,144 +191,130 @@ export default function WalkInScreen() {
 
   if (perms.settled && !perms.can("walkin")) return <NoAccess what="Walk-in booking" />;
 
+  const dayLabel = (i: number) => (i === 0 ? "Aaj" : i === 1 ? "Kal" : `${nextDays[i].weekday} ${nextDays[i].day}`);
+  const quickDays = [0, 1, 2];
+  const chipState = (i: number): SlotChipState => {
+    const s = slots[i];
+    if (s.status === "booked") return "booked";
+    if (s.status === "held" || s.status === "payment_submitted") return "held";
+    if (s.status === "blocked") return "blocked";
+    if (startIndex === i) return "selected";
+    if (inRange(i)) return "inRange";
+    if (startIndex < 0 && durationChoices(slots, i, minSlots).length === 0) return "noRoom";
+    return "open";
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
-          <ChevronLeftIcon />
-        </Pressable>
-        <View className="gap-0.5">
-          <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px]">Add a booking</Text>
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Walk-in, phone call or regular</Text>
-        </View>
+    <Screen
+      keyboard
+      floatingBar="bar"
+      testID="walkin-screen"
+      overlay={
+        <ActionBar caption={selectedChoice && startIso ? `${court ? courtLabel(court.name, court.sport) : ""} · ${dayLabel(dateIdx)} ${formatTimeRange(startIso, selectedChoice.endsAt)}${baqi !== null ? ` · Baqi ${formatPKR(baqi)}` : ""}` : "Waqt chunein"} value={quote ? `PKR ${formatPKR(quote.price)}` : undefined}>
+          <Button label="Booking save" size="md" onPress={handleSubmit} loading={submitting} disabled={!isValid} testID="walkin-save" />
+        </ActionBar>
+      }
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <IconButton icon={X} accessibilityLabel="Band karein" onPress={ownerBack} />
+        <Text variant="h2" accessibilityRole="header" style={{ flex: 1 }}>
+          Walk-in booking
+        </Text>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-5 pt-5 pb-8 gap-5" keyboardShouldPersistTaps="handled">
-        <View className="gap-2">
-          <FieldLabel>Court</FieldLabel>
-          <View className="flex-row flex-wrap gap-2">
+      <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[4] }}>
+        <View style={{ gap: space[2] }}>
+          <Text variant="bodyBold">Court</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
             {courts.map((c) => (
               <Chip
                 key={c.id}
+                shape="tile"
                 label={courtLabel(c.name, c.sport)}
                 selected={courtId === c.id}
                 onPress={() => {
                   setCourtId(c.id);
                   reset();
                 }}
+                style={{ flexGrow: 1, flexBasis: 130 }}
               />
             ))}
           </View>
         </View>
 
-        <View className="gap-2">
-          <FieldLabel>Date</FieldLabel>
-          <View className="flex-row flex-wrap gap-2">
-            {nextDays.map((d, i) => (
-              <Pressable
+        <View style={{ gap: space[2] }}>
+          <Text variant="bodyBold">Din</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {quickDays.map((i) => (
+              <Chip
                 key={i}
+                shape="tile"
+                label={dayLabel(i)}
+                selected={dateIdx === i}
                 onPress={() => {
                   setDateIdx(i);
                   reset();
                 }}
-                className="px-3.5 rounded-[10px] items-center justify-center"
-                style={{ minHeight: 46, backgroundColor: dateIdx === i ? "#0E6274" : "#FFFFFF", borderWidth: dateIdx === i ? 0 : 1, borderColor: "#DCE3E6" }}
-              >
-                <Text className="font-plex-semibold text-[13px]" style={{ color: dateIdx === i ? "#FFFFFF" : "#101C21" }}>
-                  {i === 0 ? "Today" : i === 1 ? "Tomorrow" : `${d.weekday} ${d.day}`}
-                </Text>
-              </Pressable>
+                style={{ flexGrow: 1, flexBasis: 70 }}
+              />
             ))}
+            <Chip shape="tile" label={dateIdx > 2 ? dayLabel(dateIdx) : "Tareekh"} selected={dateIdx > 2} onPress={() => setDaySheet(true)} style={{ flexGrow: 1, flexBasis: 70 }} />
           </View>
         </View>
 
-        <View className="gap-2">
-          <FieldLabel>Time</FieldLabel>
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-            Tap the first slot, then a later slot (or + 30 min) to book several in a row. Minimum for this court: {formatDuration(minSlots * 30)}.
+        <View style={{ gap: space[2] }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: space[2] }}>
+            <Text variant="bodyBold">Waqt (khaali)</Text>
+            {selectedChoice && startIso ? (
+              <Text variant="meta" tone="muted">{`${formatTimeRange(startIso, selectedChoice.endsAt)} chuna`}</Text>
+            ) : null}
+          </View>
+          <Text variant="caption" tone="muted">
+            {`Pehla slot dabayein, phir baad wala (ya + 30 min) lambi booking ke liye. Is court ki kam se kam booking: ${formatDuration(minSlots * 30, "ru")}.`}
           </Text>
           {availabilityQuery.isLoading ? (
-            <ActivityIndicator color="#0E6274" />
+            <Skeleton height={48} r={radius.md} />
+          ) : slots.length === 0 ? (
+            <Text variant="meta" tone="muted">
+              Is din koi slot nahi (band hai ya sab guzar gaye).
+            </Text>
           ) : (
-            <View className="flex-row flex-wrap gap-2">
-              {slots.map((slot, i) => {
-                const takenOrPast = slot.status !== "available";
-                const selected = inRange(i);
-                const cannotStart = !takenOrPast && !selected && startIndex < 0 && durationChoices(slots, i, minSlots).length === 0;
-                return (
-                  <Pressable
-                    key={slot.starts_at}
-                    disabled={takenOrPast}
-                    onPress={() => handleTapSlot(i)}
-                    className="px-4 rounded-[10px] items-center justify-center"
-                    style={{
-                      minHeight: 46,
-                      backgroundColor: selected ? "#0E6274" : takenOrPast ? "#EFF2F3" : "#FFFFFF",
-                      borderWidth: selected ? 0 : 1,
-                      borderColor: "#DCE3E6",
-                    }}
-                  >
-                    <Text
-                      className="font-mono-semibold text-[13.5px]"
-                      style={{
-                        color: selected ? "#FFFFFF" : takenOrPast ? "#A6B6BC" : cannotStart ? "#8FA1A8" : "#101C21",
-                        textDecorationLine: takenOrPast ? "line-through" : "none",
-                      }}
-                    >
-                      {formatTime(slot.starts_at)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {slots.map((slot, i) => (
+                <SlotChip key={slot.starts_at} state={chipState(i)} label={formatTime(slot.starts_at)} reason={slot.reason} onPress={() => handleTapSlot(i)} style={{ flexGrow: 1, flexBasis: 92 }} />
+              ))}
             </View>
           )}
-          {selectedChoice && startsAt ? (
-            <View className="flex-row items-center justify-between gap-3 rounded-[10px] px-3.5 py-3" style={{ backgroundColor: "#E8F2F4" }}>
-              <View>
-                <Text className="font-mono-semibold text-owner-ink text-[14px]">{formatTimeRange(startsAt, selectedChoice.endsAt)}</Text>
-                <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-                  {formatDuration(selectedChoice.minutes)} · {slotCount} slot{slotCount === 1 ? "" : "s"}
-                </Text>
+          {selectedChoice && startIso ? (
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: space[3], borderRadius: radius.md, padding: space[3], backgroundColor: palette.tealTint }}>
+              <View style={{ gap: 2 }}>
+                <Text variant="bodyStrong">{formatTimeRange(startIso, selectedChoice.endsAt)}</Text>
+                <Text variant="caption" tone="muted">{`${formatDuration(selectedChoice.minutes, "ru")} · ${slotCount} slot`}</Text>
               </View>
-              <View className="flex-row gap-2">
-                <Pressable
-                  onPress={() => step(-1)}
-                  disabled={!choices.some((c) => c.slotCount === slotCount - 1)}
-                  className="px-3 rounded-[10px] items-center justify-center bg-white"
-                  style={{ minHeight: 40, borderWidth: 1, borderColor: "#DCE3E6", opacity: choices.some((c) => c.slotCount === slotCount - 1) ? 1 : 0.4 }}
-                >
-                  <Text className="font-plex-bold text-owner-ink text-[13px]">− 30 min</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => step(1)}
-                  disabled={!choices.some((c) => c.slotCount === slotCount + 1)}
-                  className="px-3 rounded-[10px] items-center justify-center bg-white"
-                  style={{ minHeight: 40, borderWidth: 1, borderColor: "#DCE3E6", opacity: choices.some((c) => c.slotCount === slotCount + 1) ? 1 : 0.4 }}
-                >
-                  <Text className="font-plex-bold text-owner-ink text-[13px]">+ 30 min</Text>
-                </Pressable>
+              <View style={{ flexDirection: "row", gap: space[2] }}>
+                <Button label="− 30 min" variant="soft" size="sm" onPress={() => step(-1)} disabled={!choices.some((c) => c.slotCount === slotCount - 1)} />
+                <Button label="+ 30 min" variant="soft" size="sm" onPress={() => step(1)} disabled={!choices.some((c) => c.slotCount === slotCount + 1)} />
               </View>
             </View>
           ) : null}
         </View>
+      </View>
 
-        <View className="gap-3">
-          <FieldLabel>Who</FieldLabel>
-          <TextField label="Customer name" value={playerName} onChangeText={setPlayerName} placeholder="Usman Tariq" />
-          <TextField
-            label="Customer phone (optional)"
-            value={playerPhone}
-            onChangeText={setPlayerPhone}
-            onBlur={() => setPhoneTouched(true)}
-            placeholder="0333 5119042"
-            keyboardType="phone-pad"
-            mono
-            error={phoneTouched && !phoneOk ? "Enter a valid mobile number, e.g. 0333 5119042" : undefined}
-          />
-        </View>
-
-        <TextField
-          label="Amount collected (PKR)"
+      <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: 14 }}>
+        <Input label="Player ka naam" value={playerName} onChangeText={setPlayerName} placeholder="Usman Tariq" testID="walkin-name" />
+        <Input
+          label="Phone (optional)"
+          value={playerPhone}
+          onChangeText={setPlayerPhone}
+          onBlur={() => setPhoneTouched(true)}
+          placeholder="0333 5119042"
+          keyboardType="phone-pad"
+          help="Agar ye number Khelo par hai to booking us player ke account se jur jayegi."
+          error={phoneTouched && !phoneOk ? "Sahi mobile number likhein, jaise 0333 5119042" : null}
+          testID="walkin-phone"
+        />
+        <Input
+          label="Kitna mila (PKR)"
           value={amount}
           onChangeText={(v) => {
             setAmountTouched(true);
@@ -330,20 +322,39 @@ export default function WalkInScreen() {
           }}
           keyboardType="number-pad"
           placeholder="4000"
-          mono
+          help={quote ? `Total ${formatPKR(quote.price)} · Baqi ${formatPKR(baqi ?? Math.round(quote.price))}` : quoteQuery.isError ? undefined : "Waqt chunne par court ki qeemat yahan aa jayegi."}
+          error={quoteQuery.isError ? friendlyErrorMessage(quoteQuery.error) : null}
+          testID="walkin-amount"
         />
-        {quote ? (
-          <Text className="-mt-3 font-plex-medium text-owner-ink-faint text-[12.5px]">
-            Court price for {formatDuration(quote.duration_minutes)}: PKR {formatPKR(quote.price)}
-          </Text>
-        ) : quoteQuery.isError ? (
-          <Text className="-mt-3 font-plex-semibold text-[12.5px]" style={{ color: "#C13525" }}>{friendlyErrorMessage(quoteQuery.error)}</Text>
-        ) : null}
-      </ScrollView>
-
-      <View className="px-5 pt-3.5 pb-6 bg-owner-surface border-t border-owner-border">
-        <PrimaryButton label="Save booking" onPress={handleSubmit} loading={submitting} disabled={!isValid} />
+        <Text variant="caption" tone="muted">
+          Abhi kuch nahi mila to 0 likhein; baqi venue par Paisa aur booking detail mein dikhega.
+        </Text>
       </View>
-    </SafeAreaView>
+
+      {problem ? <Banner tone="danger" title={problem.title} body={problem.body} testID="walkin-problem" /> : null}
+
+      {daySheet ? (
+        <BottomSheet title="Din chunein" subtitle="Aaj se 15 din tak" onClose={() => setDaySheet(false)}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+            {nextDays.map((d, i) => (
+              <Chip
+                key={d.date}
+                shape="tile"
+                label={dayLabel(i)}
+                meta={`${d.day} ${d.month}`}
+                selected={dateIdx === i}
+                onPress={() => {
+                  setDateIdx(i);
+                  reset();
+                  setDaySheet(false);
+                }}
+                style={{ flexGrow: 1, flexBasis: 88 }}
+              />
+            ))}
+          </View>
+        </BottomSheet>
+      ) : null}
+    </Screen>
   );
 }
+

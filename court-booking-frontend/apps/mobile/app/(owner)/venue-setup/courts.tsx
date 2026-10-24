@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Banner, Screen, Text, useToast } from "@/components/ui";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+
+import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { isStaleVenueDraftError } from "@court-booking/api-client";
@@ -28,7 +30,7 @@ import { CnicFields, submitCnicDraft, useCnicDraft } from "@/components/cnic-for
 import { cnicDraftComplete } from "@/components/cnic-logic";
 import { OWNER_IDENTITY_KEY, useOwnerIdentity } from "@/components/identity-card";
 import { timerDraftIsEmpty, timerDraftProblems, timerDraftToValues } from "@/lib/settings-defaults";
-import { PrimaryButton, SecondaryButton, SectionCard, SectionLabel } from "./_components";
+import { PrimaryButton, SecondaryButton, SectionCard, SectionLabel, WizardSteps } from "./_components";
 
 /** A wizard court plus its A11 advance rule. The persisted draft store (lib/venue-setup-store.ts) spreads whatever fields a
  * court carries, so the advance fields ride along in the saved draft; a court from an older draft simply has none
@@ -46,6 +48,8 @@ function advanceOf(c: CourtDraft): AdvanceDraft {
 export default function VenueCourtsScreen() {
   const store = useVenueSetupStore();
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const toast = useToast();
   // Section 31 Part 2: the saved draft pointed at a venue/court that no longer exists (or isn't
   // ours). Shown as a recovery panel with a next step, not as a bare error alert.
   const [staleDraft, setStaleDraft] = useState(false);
@@ -84,9 +88,10 @@ export default function VenueCourtsScreen() {
   const isValid = store.courts.length > 0 && firstProblem === null;
 
   async function handleSubmit() {
+    setSubmitError(null);
     if (!isValid) {
       if (problemTab >= 0) setSelected(problemTab);
-      Alert.alert("Almost there", firstProblem ?? "Add at least one court and a price for it before sending for review.");
+      setSubmitError(firstProblem ?? "Kam se kam ek court aur us ki qeemat dalein.");
       return;
     }
     setSubmitting(true);
@@ -179,10 +184,8 @@ export default function VenueCourtsScreen() {
         try {
           await api.owners.updateVenueTimers(venueId, timerDraftToValues(timers));
         } catch (err) {
-          Alert.alert(
-            "Reminder settings save nahi huin",
-            `Venue review ke liye bhej di gayi hai. Hold aur reminders Venue Settings mein dobara set karein. (${friendlyErrorMessage(err)})`,
-          );
+          // the venue is created: say it on the pending screen's way out (a toast survives the navigation)
+          toast.show({ message: `Reminder settings save nahi huin: venue review ke liye bhej di gayi hai. Hold aur reminders Venue Settings mein dobara set karein. (${friendlyErrorMessage(err)})`, tone: "danger", duration: 8000 });
         }
       }
 
@@ -196,7 +199,7 @@ export default function VenueCourtsScreen() {
         store.setField("createdCourtIds", {});
         setStaleDraft(true);
       } else {
-        Alert.alert("Couldn't send for review", friendlyErrorMessage(e));
+        setSubmitError(`Review ke liye nahi bheja ja saka: ${friendlyErrorMessage(e)}`);
       }
     } finally {
       setSubmitting(false);
@@ -204,13 +207,13 @@ export default function VenueCourtsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <ScrollView className="flex-1" contentContainerClassName="px-6 pt-4 pb-8 gap-5">
+    <Screen keyboard testID="wizard-courts">
+      <WizardSteps current={1} />
         <View className="gap-1.5">
-          <Text className="font-plex-bold text-owner-ink text-[26px] tracking-tight">
+          <Text variant="h2">
             Your courts and prices
           </Text>
-          <Text className="font-plex-medium text-owner-ink-muted text-[15px]">
+          <Text variant="body" tone="muted">
             Each court has its own minimum booking time, opening hours and prices. We build its schedule from them.
           </Text>
         </View>
@@ -244,7 +247,7 @@ export default function VenueCourtsScreen() {
               price={advancePriceFromSetup(store.courts[tabIndex])}
             />
             {courtProblems[tabIndex] ? (
-              <Text className="font-plex-medium text-owner-warn text-[12.5px]">{courtProblems[tabIndex]}</Text>
+              <Text variant="caption" tone="waiting">{courtProblems[tabIndex]}</Text>
             ) : null}
             {store.courts.length > 1 ? (
               <Pressable
@@ -268,7 +271,7 @@ export default function VenueCourtsScreen() {
                 }}
                 className="min-h-11 items-center justify-center"
               >
-                <Text className="font-plex-semibold text-owner-danger text-[13.5px]">Delete this court</Text>
+                <Text variant="meta" tone="danger" weight="bold">Delete this court</Text>
               </Pressable>
             ) : null}
           </View>
@@ -281,11 +284,10 @@ export default function VenueCourtsScreen() {
             accessibilityRole="button"
             accessibilityState={{ expanded: advancedOpen }}
             accessibilityLabel="Advanced"
-            className="flex-row items-center justify-between rounded-[10px] border border-owner-border bg-owner-surface px-4"
-            style={{ minHeight: 48 }}
+            style={{ minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: radius.md, backgroundColor: palette.white, paddingHorizontal: space[4] }}
           >
-            <Text className="font-plex-semibold text-owner-ink text-[14.5px]">Advanced</Text>
-            <Text className="font-plex-semibold text-owner-accent text-[13px]">{advancedOpen ? "Chhupayein" : "Dikhayein"}</Text>
+            <Text variant="body" weight="bold">Advanced</Text>
+            <Text variant="meta" tone="link" weight="bold">{advancedOpen ? "Chhupayein" : "Dikhayein"}</Text>
           </Pressable>
           {advancedOpen ? <RemindersCard value={store.timers} onChange={(patch) => store.setField("timers", { ...store.timers, ...patch })} /> : null}
         </View>
@@ -294,14 +296,14 @@ export default function VenueCourtsScreen() {
         {cnicOnFile ? (
           <SectionCard>
             <SectionLabel>Shanakhti card (CNIC)</SectionLabel>
-            <Text testID="wizard-cnic-on-file" className="font-plex-medium text-owner-ink-muted text-[13px]">
+            <Text testID="wizard-cnic-on-file" variant="meta" tone="muted">
               Aap ka CNIC pehle se jama hai ({identityQuery.data?.masked ?? ""}). Badalna ho to Venue Settings mein badlein.
             </Text>
           </SectionCard>
         ) : (
           <SectionCard>
             <SectionLabel>Shanakhti card (CNIC)</SectionLabel>
-            <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+            <Text variant="caption" tone="subtle">
               Venue review ke liye bhejne se pehle apna CNIC number aur card ki dono taraf ki photo dein.
             </Text>
             <CnicFields />
@@ -309,8 +311,8 @@ export default function VenueCourtsScreen() {
         )}
 
         {staleDraft ? (
-          <View className="rounded-[10px] bg-owner-danger-soft border border-owner-danger-soft-border px-4 py-3 gap-3">
-            <Text className="font-plex-semibold text-owner-danger text-[13.5px]">
+          <View style={{ borderRadius: radius.md, backgroundColor: palette.dangerTint, paddingHorizontal: space[4], paddingVertical: space[3], gap: space[3] }}>
+            <Text variant="meta" tone="danger" weight="bold">
               Your previous session for this venue has expired. Let's start fresh.
             </Text>
             <Pressable
@@ -319,23 +321,23 @@ export default function VenueCourtsScreen() {
                 setStaleDraft(false);
                 router.replace("/(owner)/venue-setup/register");
               }}
-              className="self-start min-h-10 px-4 rounded-lg bg-owner-accent items-center justify-center"
+              accessibilityRole="button"
+              style={{ alignSelf: "flex-start", minHeight: 44, paddingHorizontal: space[4], borderRadius: radius.md, backgroundColor: palette.teal, alignItems: "center", justifyContent: "center" }}
             >
-              <Text className="font-plex-semibold text-white text-[13.5px]">Start fresh</Text>
+              <Text variant="meta" tone="onDark" weight="bold">Start fresh</Text>
             </Pressable>
           </View>
         ) : null}
 
-        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
+        <Text variant="meta" tone="subtle">
           We'll review it and come back to you within a day.
         </Text>
-        <View className="flex-row gap-3">
+        {!isValid && firstProblem ? <Banner tone="waiting" testID="wizard-submit-reason" body={`Bhejne se pehle: ${firstProblem}`} /> : null}
+        {submitError ? <Banner tone="danger" body={submitError} /> : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[3] }}>
           <SecondaryButton label="Back" onPress={() => router.back()} />
-          <View className="flex-1">
-            <PrimaryButton label="Send for review" onPress={handleSubmit} loading={submitting} disabled={!isValid} />
-          </View>
+          <PrimaryButton label="Send for review" onPress={handleSubmit} loading={submitting} disabled={!isValid} />
         </View>
-      </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }

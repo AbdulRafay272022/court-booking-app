@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, View } from "react-native";
+import { palette } from "@court-booking/ui-tokens";
+import { ErrorState, Screen } from "@/components/ui";
 import { router } from "expo-router";
 
 import { api } from "@/lib/api";
@@ -10,7 +11,6 @@ import { confirmLogout } from "@/lib/logout";
 import { permissionAllows } from "@/lib/overview";
 import { firstAllowedTabRoute } from "@/lib/owner-access";
 import { queryClient } from "@/lib/query-client";
-import { AlertTriangleIcon, RefreshIcon } from "@/components/icons";
 
 /**
  * Per Section 6.1: an owner with zero venues goes straight to the setup wizard;
@@ -74,35 +74,20 @@ export default function OwnerGateScreen() {
   }, [attempt]);
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="flex-1 items-center justify-center gap-3 px-8">
-        {error ? (
-          <>
-            <AlertTriangleIcon />
-            <Text className="font-plex-bold text-owner-ink text-base text-center">Aap ki venue load nahi ho saki</Text>
-            <Text className="font-plex-medium text-owner-ink-faint text-sm text-center leading-[1.45]">{error}</Text>
-            <Pressable
-              onPress={() => setAttempt((n) => n + 1)}
-              accessibilityRole="button"
-              className="mt-2 w-full max-w-[280px] flex-row items-center justify-center gap-2 rounded-xl bg-owner-accent active:opacity-80"
-              style={{ minHeight: 48 }}
-            >
-              <RefreshIcon />
-              <Text className="font-plex-semibold text-white text-[14.5px]">Dobara koshish karein</Text>
-            </Pressable>
-            <Pressable
-              onPress={confirmLogout}
-              accessibilityRole="button"
-              className="w-full max-w-[280px] items-center justify-center rounded-xl border border-owner-border active:opacity-80"
-              style={{ minHeight: 48 }}
-            >
-              <Text className="font-plex-semibold text-owner-ink-muted text-[14.5px]">Log out</Text>
-            </Pressable>
-          </>
-        ) : (
-          <ActivityIndicator color="#0E6274" />
-        )}
-      </View>
-    </SafeAreaView>
+    <Screen scroll={false} testID="owner-gate" contentStyle={{ justifyContent: "center" }}>
+      {error ? (
+        <ErrorState
+          title="Aap ki venue load nahi ho saki"
+          message={error}
+          onRetry={() => setAttempt((n) => n + 1)}
+          onBack={confirmLogout}
+          backLabel="Log out"
+        />
+      ) : (
+        <View style={{ alignItems: "center" }} accessibilityLabel="Loading">
+          <ActivityIndicator color={palette.teal} />
+        </View>
+      )}
+    </Screen>
   );
 }

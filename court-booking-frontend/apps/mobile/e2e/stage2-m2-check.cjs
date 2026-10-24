@@ -231,11 +231,11 @@ async function waitReq(reqs, pred, timeout = 15000) {
   {
     const { ctx, page } = await setup(browser);
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
-    const b = await waitText(page, "cnic-banner", /CNIC dein/, 20000);
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
+    const b = await waitText(page, "cnic-banner", /CNIC verify karein/, 20000);
     check("banner: shown while CNIC is missing", !!b);
     await page.screenshot({ path: "e2e/s2-m2-banner.png", fullPage: false });
-    check("banner: nothing is locked (Overview still usable)", (await page.getByText("Overview").count()) > 0);
+    check("banner: nothing is locked (Overview still usable)", (await page.getByTestId("today-hero").count()) > 0);
     await (await visible(page.getByRole("button", { name: "Baad mein" }))).click();
     await page.waitForTimeout(400);
     check("banner: 'Baad mein' hides it", (await visibleText(page, "cnic-banner")) === null);
@@ -246,7 +246,7 @@ async function waitReq(reqs, pred, timeout = 15000) {
   {
     const { ctx, page } = await setup(browser, { identity: { status: "submitted", masked: "*****-*******-1", flags: [] } });
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     await page.waitForTimeout(2500);
     check("banner: hidden once a CNIC is on file", (await visibleText(page, "cnic-banner")) === null);
     await ctx.close();

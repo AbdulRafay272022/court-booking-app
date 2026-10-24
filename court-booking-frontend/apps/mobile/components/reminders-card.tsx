@@ -1,5 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { View } from "react-native";
+import { Minus, Plus } from "lucide-react-native";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Banner, Checkbox, ErrorState, IconButton, Pill, Skeleton, Text } from "@/components/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_HINT_COPY, type SettingDefaultKey, type VenueTimers } from "@court-booking/types";
 
@@ -17,32 +20,22 @@ import {
   type TimerDraft,
   type TimerField,
 } from "@/lib/settings-defaults";
-import { ErrorState } from "./error-state";
 import { DefaultHint } from "./default-hint";
 import { PrimaryButton, SectionCard, SectionLabel, TextField } from "../app/(owner)/venue-setup/_components";
 
 const digits = (v: string) => v.replace(/\D/g, "");
 
+/** − / + step and the allowed floor per timer (the full ranges are checked by timerDraftProblems). */
+const STEP: Record<string, { step: number; min: number }> = {
+  hold: { step: 5, min: 5 },
+  first: { step: 5, min: 1 },
+  every: { step: 5, min: 5 },
+  max: { step: 1, min: 1 },
+  cancelAfter: { step: 5, min: 5 },
+};
+
 function Check({ checked, label, onPress, testID }: { checked: boolean; label: string; onPress: () => void; testID?: string }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked }}
-      accessibilityLabel={label}
-      testID={testID}
-      className="flex-row items-center gap-3"
-      style={{ minHeight: 44 }}
-    >
-      <View
-        className="items-center justify-center rounded-md"
-        style={{ width: 24, height: 24, borderWidth: 2, borderColor: "#0E6274", backgroundColor: checked ? "#0E6274" : "#FFFFFF" }}
-      >
-        {checked ? <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 14, lineHeight: 16 }}>{String.fromCharCode(0x2713)}</Text> : null}
-      </View>
-      <Text className="font-plex-semibold text-owner-ink text-[13.5px] flex-1">{label}</Text>
-    </Pressable>
-  );
+  return <Checkbox checked={checked} onChange={() => onPress()} label={label} testID={testID} />;
 }
 
 /**
@@ -64,17 +57,27 @@ export function RemindersCard({
   const { errors, warnings } = timerDraftProblems(value);
   const preview = timerPreview(value);
 
-  const numberField = (field: TimerField, key: SettingDefaultKey, label: string, testID: string) => (
-    <View className="gap-1.5">
-      <TextField
-        label={label}
-        value={String(e[field] ?? "")}
-        onChangeText={(v) => onChange({ [field]: digits(v) } as Partial<TimerDraft>)}
-        keyboardType="number-pad"
-        mono
-        error={errors[field] ?? null}
-        testID={testID}
-      />
+  // OSettings "Timers": − value + (the value stays typeable), the state badge, help and "Default par wapas".
+  const numberField = (field: TimerField, key: SettingDefaultKey, label: string, testID: string) => {
+    const cur = Number(e[field] ?? 0) || 0;
+    const st = STEP[field] ?? { step: 1, min: 0 };
+    const set = (n: number) => onChange({ [field]: String(Math.max(st.min, n)) } as Partial<TimerDraft>);
+    const custom = value[field] !== null && value[field] !== undefined;
+    return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: space[2] }}>
+        <IconButton icon={Minus} variant="mist" accessibilityLabel={`${label} kam karein`} onPress={() => set(cur - st.step)} disabled={cur - st.step < st.min} testID={`${testID}-dec`} />
+        <TextField
+          label={label}
+          value={String(e[field] ?? "")}
+          onChangeText={(v) => onChange({ [field]: digits(v) } as Partial<TimerDraft>)}
+          keyboardType="number-pad"
+          error={errors[field] ?? null}
+          testID={testID}
+        />
+        <IconButton icon={Plus} variant="mist" accessibilityLabel={`${label} barhayein`} onPress={() => set(cur + st.step)} testID={`${testID}-inc`} />
+      </View>
+      <Pill size="sm" tone={custom ? "waiting" : "info"} label={custom ? "Badla hua" : "Default chal raha"} />
       <DefaultHint
         settingKey={key}
         value={value[field] === null ? null : Number(value[field])}
@@ -82,12 +85,13 @@ export function RemindersCard({
         testID={`default-${testID}`}
       />
     </View>
-  );
+    );
+  };
 
   return (
     <SectionCard>
       <SectionLabel>Hold aur payment reminders</SectionLabel>
-      <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+      <Text variant="meta" tone="muted">
         Player slot chunta hai to wo itni der us ke liye hold rehta hai, taa ke wo payment bhej sake. Jab player payment ka
         screenshot bheje aur aap ne abhi approve ya reject na kiya ho, hum aap ko yaad dilate hain. Aap ke action lete hi ya
         player ke cancel karte hi reminders ruk jate hain. Waqt screenshot aane se minute mein hai.
@@ -95,7 +99,7 @@ export function RemindersCard({
 
       {numberField("hold", "hold_minutes", "Slot hold (minute)", "rem-hold")}
 
-      <View className="gap-1.5">
+      <View style={{ gap: 6 }}>
         <Check
           checked={e.remindersOn}
           label="Approve na hone par mujhe reminder bhejein"
@@ -112,7 +116,7 @@ export function RemindersCard({
         </>
       ) : null}
 
-      <View className="gap-1.5">
+      <View style={{ gap: 6 }}>
         <Check
           checked={e.autoCancelOn}
           label="Approve na hone par booking khud cancel karein"
@@ -129,25 +133,25 @@ export function RemindersCard({
       {e.autoCancelOn ? (
         <>
           {numberField("cancelAfter", "auto_cancel_after_min", "Kitne minute baad cancel", "rem-cancel")}
-          <Text className="font-plex-semibold text-owner-warn text-[12.5px]">
+          <Text variant="meta" weight="bold" tone="waiting">
             Dhyan dein: ho sakta hai player ne asal mein paisa bhej diya ho. Auto-cancel booking ko khud cancel kar dega, is liye
             screenshot zaroor check karein. Cancel se 5 minute pehle aap ko aakhri warning milegi.
           </Text>
         </>
       ) : (
-        <Text testID="auto-cancel-off-warning" className="font-plex-semibold text-owner-warn text-[12.5px]">
+        <Text testID="auto-cancel-off-warning" variant="meta" weight="bold" tone="waiting">
           {DEFAULT_HINT_COPY.ru.autoCancelOffWarning}
         </Text>
       )}
 
       {warnings.map((w) => (
-        <Text key={w} className="font-plex-medium text-owner-warn text-[12.5px]">
+        <Text key={w} variant="meta" tone="waiting">
           {w}
         </Text>
       ))}
       {preview ? (
-        <View className="rounded-[10px] px-3 py-2.5" style={{ backgroundColor: "#EEF6F7" }}>
-          <Text testID="reminder-preview" className="font-plex-semibold text-owner-ink text-[13.5px]">
+        <View style={{ borderRadius: radius.sm, paddingHorizontal: space[3], paddingVertical: 10, backgroundColor: palette.tealTint }}>
+          <Text testID="reminder-preview" variant="bodyBold">
             {preview}
           </Text>
         </View>
@@ -177,7 +181,7 @@ export function VenueRemindersCard({ venueId }: { venueId: string }) {
     return (
       <SectionCard>
         <SectionLabel>Hold aur payment reminders</SectionLabel>
-        <ActivityIndicator color="#0E6274" />
+        <Skeleton height={120} r={radius.input} />
       </SectionCard>
     );
   }
@@ -185,7 +189,7 @@ export function VenueRemindersCard({ venueId }: { venueId: string }) {
     return (
       <SectionCard>
         <SectionLabel>Hold aur payment reminders</SectionLabel>
-        <ErrorState message={friendlyErrorMessage(q.error)} onRetry={() => q.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(q.error)} onRetry={() => q.refetch()} />
       </SectionCard>
     );
   }
@@ -193,7 +197,7 @@ export function VenueRemindersCard({ venueId }: { venueId: string }) {
     return (
       <SectionCard>
         <SectionLabel>Hold aur payment reminders</SectionLabel>
-        <ActivityIndicator color="#0E6274" />
+        <Skeleton height={120} r={radius.input} />
       </SectionCard>
     );
   }
@@ -205,15 +209,15 @@ function VenueRemindersReadOnly({ data }: { data: VenueTimers | undefined }) {
   const preview = data ? timerPreview(timerDraftFromValues(data.values)) : null;
   return (
     <SectionCard>
-      <View testID="timers-card-readonly" className="gap-2">
+      <View testID="timers-card-readonly" style={{ gap: space[2] }}>
         <SectionLabel>Hold aur payment reminders</SectionLabel>
         {data ? (
-          <Text className="font-plex-medium text-owner-ink text-[13.5px]">
+          <Text variant="body">
             {`Player ke paas payment bhejne ke liye ${data.effective.hold_minutes} minute.`}
           </Text>
         ) : null}
-        {preview ? <Text className="font-plex-medium text-owner-ink text-[13.5px]">{preview}</Text> : null}
-        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+        {preview ? <Text variant="body">{preview}</Text> : null}
+        <Text variant="meta" tone="muted">
           Ye settings sirf venue owner (ya settings ki ijazat wala staff) badal sakta hai.
         </Text>
       </View>
@@ -254,12 +258,7 @@ function VenueRemindersForm({ venueId, initial }: { venueId: string; initial: Ve
       footer={
         <>
           {message ? (
-            <Text
-              accessibilityRole="alert"
-              testID="timers-message"
-              className="font-plex-semibold text-[13.5px]"
-              style={{ color: message.ok ? "#0E6274" : "#C13525" }}
-            >
+            <Text accessibilityRole="alert" testID="timers-message" variant="bodyBold" tone={message.ok ? "info" : "danger"}>
               {message.text}
             </Text>
           ) : null}

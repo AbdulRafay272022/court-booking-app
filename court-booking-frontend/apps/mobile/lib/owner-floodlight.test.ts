@@ -7,6 +7,7 @@ import {
   bulkApprovable,
   bulkApproveAmount,
   flagOn,
+  growthGrid,
   heroCollected,
   oldestWaitMinutes,
   ownerBarTabs,
@@ -179,4 +180,46 @@ test("timelineModel: clipFromMs starts the window an hour before now and says ho
   assert.equal(timelineModel(rows, [{ id: "c1", name: "Court 1" }], day, now)!.hiddenHours, 0);
   // a clip outside the window is ignored
   assert.equal(timelineModel(rows, [{ id: "c1", name: "Court 1" }], day, now, 30, Date.parse("2026-10-25T01:00:00Z"))!.hiddenHours, 0);
+});
+
+test("growthGrid: only flagged cells, lowest rate per day+hour, hours sorted; the rest is no signal", () => {
+  const g = growthGrid([
+    { court_id: "c1", day_of_week: 0, hour: 14, booking_rate: 0.2, venue_average: 0.68 },
+    { court_id: "c2", day_of_week: 0, hour: 14, booking_rate: 0.1, venue_average: 0.68 },
+    { court_id: "c1", day_of_week: 2, hour: 9, booking_rate: 0.3, venue_average: 0.68 },
+    { court_id: "c1", day_of_week: 9, hour: 22, booking_rate: 0.3, venue_average: 0.68 },
+  ]);
+  assert.deepEqual(g.hours, [9, 14]);
+  assert.equal(g.cell(0, 14)!.rate, 0.1);
+  assert.deepEqual(g.cell(0, 14)!.courts, ["c1", "c2"]);
+  assert.equal(g.cell(1, 14), null);
+  assert.equal(growthGrid([]).hours.length, 0);
+});
+
+// ---- Floodlight owner screens: no hex / rgba literal (tokens only; packages/ui-tokens is the one place with colours) ----
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+const OWNER_COMPONENTS = [
+  "approval-card.tsx", "booking-detail-sheet.tsx", "booking-links.tsx", "cnic-banner.tsx", "completion-sheet.tsx", "correct-payment-sheet.tsx",
+  "no-access.tsx", "owner-tab-bar.tsx", "premium-notices.tsx", "record-payment-sheet.tsx", "refund-sheet.tsx", "screenshot-viewer.tsx",
+  "reminders-card.tsx", "default-hint.tsx", "court-tabs.tsx", "time-fields.tsx", "photo-manager.tsx", "identity-card.tsx", "advance-settings.tsx",
+  "overview/booking-card.tsx", "overview/pickers.tsx", "overview/slots-sheet.tsx", "overview/ui.tsx",
+];
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((n) => {
+    const f = join(dir, n);
+    return statSync(f).isDirectory() ? walk(f) : /\.tsx?$/.test(n) ? [f] : [];
+  });
+}
+test("owner screens + owner components: no hex / rgba colour literal", () => {
+  const root = join(__dirname, "..");
+  const files = [...walk(join(root, "app", "(owner)")), ...OWNER_COMPONENTS.map((c) => join(root, "components", c)), join(root, "lib", "overview.ts")];
+  const bad: string[] = [];
+  for (const f of files) {
+    readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+      if (/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b(?![\w-])|\brgba?\(/.test(line.replace(/&#x?[0-9a-fA-F]+;/g, ""))) bad.push(`${f.slice(root.length)}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(bad, []);
 });
