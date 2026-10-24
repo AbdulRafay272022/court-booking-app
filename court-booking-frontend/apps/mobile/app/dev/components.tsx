@@ -371,6 +371,10 @@ function Gallery(p: { role: Role; setRole: (r: Role) => void; lang: Lang; setLan
           </Sheet>
         </Section>
 
+        <Section title="Sheet QA (stack, hand-over, unmount, latest onClose)">
+          <SheetQa />
+        </Section>
+
         <Section title="Toast / Offline / Skeleton">
           <Button label="Toast dikhao" variant="soft" size="md" onPress={() => toast.show({ message: "Copy ho gaya", tone: "success" })} testID="dev-toast" />
           <View style={{ height: 70 }}>
@@ -416,3 +420,32 @@ function Gallery(p: { role: Role; setRole: (r: Role) => void; lang: Lang; setLan
     </View>
   );
 }
+
+/** DS QA harness for the Sheet lifecycle (e2e: qa-sheets-check.cjs). DEV SAMPLE copy only. */
+function SheetQa() {
+  const [a, setA] = useState(false);
+  const [b, setB] = useState(false);
+  const [mountA, setMountA] = useState(true);
+  const [n, setN] = useState(0);
+  const [log, setLog] = useState<string[]>([]);
+  const push = (s: string) => setLog((l) => [...l, s].slice(-6));
+  return (
+    <View style={{ gap: 8 }}>
+      <Button label="Sheet A kholein" variant="secondary" onPress={() => { setMountA(true); setA(true); }} testID="qa-open-a" />
+      <Text testID="qa-log" variant="meta">{`log: ${log.join(" | ") || "-"}`}</Text>
+      {mountA ? (
+        <Sheet open={a} onClose={() => { setA(false); push(`A closed n=${n}`); }} title="Sheet A" testID="qa-sheet-a" footer={<Button label="A primary" block onPress={() => setA(false)} testID="qa-a-primary" />}>
+          <Text testID="qa-a-n">{`n = ${n}`}</Text>
+          <Button label="n + 1" variant="soft" onPress={() => setN((x) => x + 1)} testID="qa-a-inc" />
+          <Button label="A se B (hand-over)" variant="secondary" onPress={() => { setA(false); setB(true); }} testID="qa-a-handover" />
+          <Button label="B upar kholein (A khula)" variant="secondary" onPress={() => setB(true)} testID="qa-a-stack" />
+          <Button label="A unmount karein" variant="secondary" onPress={() => setMountA(false)} testID="qa-a-unmount" />
+        </Sheet>
+      ) : null}
+      <Sheet open={b} onClose={() => { setB(false); push("B closed"); }} title="Sheet B" testID="qa-sheet-b" footer={<Button label="B primary" block onPress={() => setB(false)} testID="qa-b-primary" />}>
+        <Text>Second sheet</Text>
+      </Sheet>
+    </View>
+  );
+}
+

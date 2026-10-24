@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { ChevronDown } from "lucide-react-native";
 import { palette, radius, size, space, type Tone } from "@court-booking/ui-tokens";
-import { Button, Checkbox as FlCheckbox, Chip, FontScaleProvider, LangProvider, Pill as FlPill, RoleProvider, Sheet, Text, useFontScale, useLang, useRole } from "@/components/ui";
+import { Button, Checkbox as FlCheckbox, Chip, Pill as FlPill, Sheet, Text } from "@/components/ui";
 
 /**
  * Owner sheet / control kit, now a thin layer over the Floodlight library (@/components/ui): every owner sheet (booking
@@ -32,21 +32,11 @@ export function BottomSheet({
   tall?: boolean;
   testID?: string;
 }) {
-  // @gorhom renders the sheet in a portal at the app root, OUTSIDE the owner layout's providers: re-provide the owner
-  // role, language and font scale to the content so buttons stay teal (never the player orange) inside sheets.
-  const role = useRole();
-  const lang = useLang();
-  const fs = useFontScale();
-  const wrap = (node: ReactNode) => (
-    <RoleProvider role={role}>
-      <LangProvider lang={lang}>
-        <FontScaleProvider scale={fs}>{node}</FontScaleProvider>
-      </LangProvider>
-    </RoleProvider>
-  );
+  // The DS Sheet re-provides the owner role / language / font scale inside the @gorhom portal itself (it used to be
+  // wrapped here).
   return (
-    <Sheet open={open} onClose={onClose} title={title} subtitle={subtitle} footer={footer ? wrap(footer) : undefined} testID={testID}>
-      {wrap(children)}
+    <Sheet open={open} onClose={onClose} title={title} subtitle={subtitle} footer={footer} testID={testID}>
+      {children}
     </Sheet>
   );
 }

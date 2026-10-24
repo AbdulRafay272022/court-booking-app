@@ -25,6 +25,12 @@ export function useToast(): ToastCtx {
   return useContext(Ctx);
 }
 
+/** Re-provides a toast handle read OUTSIDE a portal (Sheet content renders in the @gorhom portal at the app root, outside
+ * the role layout's ToastProvider). Used by Sheet; screens do not need it. */
+export function ToastBridge({ value, children }: { value: ToastCtx; children: ReactNode }) {
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
 /** Mounted once per role layout. Shows one toast at a time above the floating bars, announced politely. */
 export function ToastProvider({ children, bottomOffset = 110 }: { children: ReactNode; bottomOffset?: number }) {
   const [current, setCurrent] = useState<(ToastOptions & { id: number }) | null>(null);
