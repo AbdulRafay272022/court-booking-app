@@ -1,0 +1,41 @@
+# EAS Build upload filter (read by eas-cli from the git root). When this file exists eas-cli uses it INSTEAD of every
+# .gitignore, and on Windows eas-cli 25.x never applied the nested .gitignore files anyway (it uploaded
+# court-booking-backend/.env and .venv on 2026-10-25). Keep secrets and everything the mobile build does not need out.
+
+.git
+node_modules
+
+# secrets: never upload
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.p8
+*.p12
+*.jks
+*.key
+*.keystore
+*.mobileprovision
+**/*adminsdk*.json
+
+# not part of the mobile build
+court-booking-backend/
+infra/
+docs/
+design/
+Claude outputs/
+scripts/
+.claude/
+.github/
+AUDIT_FINDINGS.md
+
+# build output / caches
+**/.next/
+**/.expo/
+**/dist/
+**/web-build/
+**/__pycache__/
+**/.turbo/
+**/*.tsbuildinfo
+court-booking-frontend/apps/web/design-review/
+court-booking-frontend/apps/*/e2e/**/*.png
