@@ -23,8 +23,8 @@ Agent brief (env, commands, rules): scratchpad `agent-brief.md` (session temp di
 | 2 notifications commit 9fb5bd7 | DONE. tag archive/notifications-phase-0 (local), worktree removed (no junctions), branch kept, not merged. File-by-file present/missing in docs/open-decisions.md. |
 | 3 seed password check | DONE. deploy.yml / infra / docker-compose.prod.yml / Dockerfile / app startup never run seed.py: NAHI. |
 | 4 rename maidan → Khelo (branch rename-khelo) | DONE. app.json identity (com.aftrsolutions.khelo, schemes khelo+maidan), new EAS project @abdulrafay879/khelo e166063a-198d-4bf8-9e12-299a98cd8b18, APNS_BUNDLE_ID default. No visible Maidan text was left. Storage keys/DB/venue untouched. tsc + unit 131/144/96 + apns/fcm 40 pass. BLOCKER for build: google-services.json only has com.maidan.app. List: docs/rename-khelo.md |
-| 5 EAS dev build | pending |
-| 6 final pre-push check | pending |
+| 5 EAS dev build | WAITING on founder: new google-services.json with Android client com.aftrsolutions.khelo (Firebase project maidan-31556). Logged in as abdulrafay879. Then: `npx eas-cli@latest build --profile development --platform android` in apps/mobile. |
+| 6 final pre-push check | DONE on main 93b8376: pytest 1568, tsc 0, unit 131/144/96, next build 45/45, push ~3.0 MB, 0 migrations. docs/pre-push-check.md ends READY TO PUSH. |
 
 ## BE key findings
 - Direct hold exists: POST /bookings/hold (api.bookings.hold) → "Book karo" holds directly.
@@ -34,7 +34,7 @@ Agent brief (env, commands, rules): scratchpad `agent-brief.md` (session temp di
 - Backend dependencies (not built, for founder): B1 chat inbox, B2 short check-in code, B3 full growth heatmap, B4 thumbnails, B5 bank details re-fetch, B6 hold_minutes public, B7 server notification read state, B8 bulk approve endpoint.
 
 ## Next
-- ALL PHASES DONE (2026-10-25). Founder: push main, then EAS dev-client build (commands in apps/mobile/docs/native-foundation.md).
+- ALL PHASES DONE (2026-10-25). Pre-push run done (table above). Founder: add google-services.json for com.aftrsolutions.khelo → agent starts EAS dev build; founder pushes main.
 - After C merges: W1, M1, M2 in worktrees; merge order W1 → FX → M1 → M2.
 
 ## Blockers
