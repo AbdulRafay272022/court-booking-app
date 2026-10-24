@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { Text } from "@/components/ui";
 import {
   DAY_LABELS,
   GRID_MINUTES,
@@ -56,7 +57,7 @@ export function CourtSetupFields({
     <>
       <SectionCard>
         <SectionLabel>Minimum booking time</SectionLabel>
-        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+        <Text variant="caption" tone="subtle">
           Time is offered in 30-minute slots. Players must book at least this long (in a row) and can add 30 minutes at a time.
         </Text>
         <View className="flex-row flex-wrap gap-2">
@@ -72,22 +73,22 @@ export function CourtSetupFields({
         />
         <SlotPreviewLine value={value} />
         {slotChangeNote ? (
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+          <Text variant="caption" tone="subtle">
             Bookings already made keep their own times if you change this; the price entered below is for one minimum booking. Any new time that would overlap one of them stays unavailable.
           </Text>
         ) : null}
       </SectionCard>
 
       <SectionCard>
-        <View className="flex-row items-center justify-between">
+        <View className="flex-row flex-wrap items-center justify-between gap-2">
           <SectionLabel>Opening hours</SectionLabel>
-          <Pressable onPress={() => onChange({ sameHoursEveryDay: !value.sameHoursEveryDay })}>
-            <Text className="font-plex-semibold text-owner-accent text-[13px]">
+          <Pressable accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => onChange({ sameHoursEveryDay: !value.sameHoursEveryDay })}>
+            <Text variant="meta" tone="link" weight="bold">
               {value.sameHoursEveryDay ? "Set different hours per day" : "Use same hours every day"}
             </Text>
           </Pressable>
         </View>
-        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Times are Pakistan time (PKT).</Text>
+        <Text variant="caption" tone="subtle">Times are Pakistan time (PKT).</Text>
 
         {value.sameHoursEveryDay ? (
           <View className="flex-row gap-3">
@@ -101,9 +102,9 @@ export function CourtSetupFields({
               return (
                 <View key={day} className="flex-row items-center gap-3">
                   <View className="w-12">
-                    <Text className="font-plex-medium text-owner-ink text-sm">{label}</Text>
+                    <Text variant="body">{label}</Text>
                     {hoursKind(o.open, o.close) !== "same-day" ? (
-                      <Text className="font-plex-semibold text-owner-accent text-[10px]">
+                      <Text variant="caption" tone="link" weight="bold">
                         {hoursKind(o.open, o.close) === "24-hours" ? "24 hours" : "Next day"}
                       </Text>
                     ) : null}
@@ -120,12 +121,12 @@ export function CourtSetupFields({
           </View>
         )}
         {value.sameHoursEveryDay ? <HoursKindNote open={value.openTime} close={value.closeTime} /> : null}
-        {hoursProblem ? <Text className="font-plex-semibold text-owner-danger text-[13px]">{hoursProblem}</Text> : null}
+        {hoursProblem ? <Text variant="meta" tone="danger" weight="bold">{hoursProblem}</Text> : null}
       </SectionCard>
 
       <SectionCard>
         <SectionLabel>Prices for this court</SectionLabel>
-        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+        <Text variant="caption" tone="subtle">
           The first rate is the everyday price. Add a rate for peak hours or weekends: pick the days and the times it applies
           to, and it replaces the everyday price for those slots.
         </Text>
@@ -137,7 +138,7 @@ export function CourtSetupFields({
               </View>
               {value.pricingRules.length > 1 ? (
                 <Pressable onPress={() => removeRule(rule.id)} className="mt-6">
-                  <Text className="font-plex-medium text-owner-danger text-[12.5px]">Remove</Text>
+                  <Text variant="caption" tone="danger">Remove</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -169,14 +170,14 @@ export function CourtSetupFields({
               onReset={() => updateRule(rule.id, { floodlightSurcharge: undefined })}
               testID={`default-rule-floodlight-${rule.id}`}
             />
-            {hidden[rule.id] ? <Text className="font-plex-semibold text-owner-danger text-[12.5px]">{hidden[rule.id].message}</Text> : null}
+            {hidden[rule.id] ? <Text variant="caption" tone="danger" weight="bold">{hidden[rule.id].message}</Text> : null}
           </View>
         ))}
         <Pressable
           onPress={() => onChange({ pricingRules: [...value.pricingRules, makePricingRule("Peak hours")] })}
           className="min-h-10 px-3 rounded-lg border border-owner-border items-start justify-center self-start"
         >
-          <Text className="font-plex-semibold text-owner-accent text-[13px]">+ Add a peak or weekend rate</Text>
+          <Text variant="meta" tone="link" weight="bold">+ Add a peak or weekend rate</Text>
         </Pressable>
       </SectionCard>
     </>
@@ -188,7 +189,7 @@ function HoursKindNote({ open, close }: { open: string; close: string }) {
   const kind = hoursKind(open, close);
   if (kind === "same-day") return null;
   return (
-    <Text className="font-plex-semibold text-owner-accent text-[13px]">
+    <Text variant="meta" tone="link" weight="bold">
       {kind === "24-hours"
         ? "Open 24 hours: each day runs from its opening time to the same time the next morning."
         : `Closes next day: the court stays open past midnight until ${formatTime24As12(close)} the next morning. That night belongs to the day it opens, so a Thursday 3 PM to 3 AM court covers Thursday 3 PM through Friday 3 AM.`}
@@ -202,12 +203,12 @@ function SlotPreviewLine({ value }: { value: CourtSetup }) {
     const p = slotPreview(value.openTime, value.closeTime, GRID_MINUTES);
     return (
       <View className="gap-1">
-        <Text className="font-plex-semibold text-owner-ink text-[13.5px]">{slotPreviewText(value.openTime, value.closeTime, GRID_MINUTES)}</Text>
-        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+        <Text variant="meta" weight="bold">{slotPreviewText(value.openTime, value.closeTime, GRID_MINUTES)}</Text>
+        <Text variant="caption" tone="subtle">
           Minimum booking: {formatDuration(value.slotMinutes)} ({Math.ceil(value.slotMinutes / GRID_MINUTES)} {value.slotMinutes <= GRID_MINUTES ? "slot" : "slots in a row"}).
         </Text>
         {p && p.lastEnd !== value.closeTime.slice(0, 5) ? (
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+          <Text variant="caption" tone="subtle">
             The last slot ends at {formatTime24As12(p.lastEnd)}; the time left before {formatTime24As12(value.closeTime)} is shorter than one{" "}
             {formatDuration(GRID_MINUTES)} slot, so it is not offered.
           </Text>
@@ -216,7 +217,7 @@ function SlotPreviewLine({ value }: { value: CourtSetup }) {
     );
   }
   return (
-    <Text className="font-plex-semibold text-owner-ink text-[13.5px]">
+    <Text variant="meta" weight="bold">
       Slots a day:{" "}
       {DAY_LABELS.map((label, day) => {
         const o = value.perDayOverrides[day] ?? { open: value.openTime, close: value.closeTime };
@@ -294,7 +295,7 @@ export function AdvanceRuleFields({
           mono
         />
       ) : (
-        <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
+        <Text variant="caption" tone="subtle">
           Uses each price rule&apos;s own advance percentage (set when you add a price rate below). Most courts
           default to 100% -- pay in full to hold the slot.
         </Text>

@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Text } from "@/components/ui";
+import { View } from "react-native";
+import { Banner, Screen } from "@/components/ui";
+import { palette, radius, space } from "@court-booking/ui-tokens";
 import { router } from "expo-router";
 import * as Location from "expo-location";
 
@@ -8,45 +10,9 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 import { AmenityPicker } from "@/components/court-identity-fields";
 import { CheckIcon } from "@/components/icons";
-import { Chip, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField } from "./_components";
+import { Chip, PrimaryButton, SecondaryButton, SectionCard, SectionLabel, TextField, WizardSteps } from "./_components";
 import { CancellationPolicyFields } from "@/components/court-setup-fields";
 import { AMENITY_OPTIONS, CITY_CENTRES, SPORT_OPTIONS, accountNumberError, accountTitleError, bankNameError, type City } from "@court-booking/types";
-
-function Stepper({ current }: { current: 1 | 2 | 3 }) {
-  const steps = ["Your venue", "Courts & pricing", "We review it"];
-  return (
-    <View className="flex-row items-center gap-2 px-6 pt-2 pb-4">
-      {steps.map((label, i) => {
-        const stepNum = i + 1;
-        const done = stepNum < current;
-        const active = stepNum === current;
-        return (
-          <View key={label} className="flex-row items-center gap-2">
-            <View
-              className="w-[22px] h-[22px] rounded-full items-center justify-center"
-              style={{ backgroundColor: done || active ? "#0E6274" : "#F4F6F7", borderWidth: done || active ? 0 : 1, borderColor: "#DCE3E6" }}
-            >
-              {done ? (
-                <CheckIcon size={11} strokeWidth={3} />
-              ) : (
-                <Text className="font-plex-semibold text-[11px]" style={{ color: active ? "#FFFFFF" : "#8399A1" }}>
-                  {stepNum}
-                </Text>
-              )}
-            </View>
-            <Text
-              className="font-plex-medium text-[12.5px]"
-              style={{ color: active ? "#101C21" : "#8399A1", fontWeight: active ? "600" : "500" }}
-            >
-              {label}
-            </Text>
-            {i < steps.length - 1 ? <View className="w-4 h-px bg-owner-border ml-1" /> : null}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
 
 export default function VenueRegisterScreen() {
   const user = useAuthStore((s) => s.user);
@@ -121,10 +87,6 @@ export default function VenueRegisterScreen() {
 
   function handleNext() {
     if (!isValid) {
-      Alert.alert(
-        "A few things are missing",
-        "Venue name, address, area, at least one sport, and a location pin are needed before continuing. If you started entering bank details, complete them too or clear all three fields.",
-      );
       return;
     }
     router.push("/(owner)/venue-setup/courts");
@@ -136,14 +98,13 @@ export default function VenueRegisterScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <Stepper current={1} />
-      <ScrollView className="flex-1" contentContainerClassName="px-6 pb-8 gap-5">
+    <Screen keyboard testID="wizard-register">
+      <WizardSteps current={0} />
         <View className="gap-1.5">
-          <Text className="font-plex-bold text-owner-ink text-[26px] tracking-tight">
+          <Text variant="h2">
             Tell us about your venue
           </Text>
-          <Text className="font-plex-medium text-owner-ink-muted text-[15px]">
+          <Text variant="body" tone="muted">
             This is what players will see. You can change any of it later.
           </Text>
         </View>
@@ -159,12 +120,12 @@ export default function VenueRegisterScreen() {
           />
 
           <View className="gap-2">
-            <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">Mobile number</Text>
-            <View className="h-12 px-3.5 rounded-[9px] bg-owner-bg border border-owner-border flex-row items-center gap-2.5">
-              <Text className="font-mono-medium text-owner-ink text-[15px] flex-1">{user?.phone}</Text>
-              <View className="flex-row items-center gap-1 px-2 py-0.5 rounded bg-owner-success-soft">
-                <CheckIcon size={11} color="#1F7A52" strokeWidth={3} />
-                <Text className="font-plex-semibold text-owner-success-dark text-[11px]">VERIFIED</Text>
+            <Text variant="meta" tone="muted" weight="bold">Mobile number</Text>
+            <View style={{ minHeight: 48, paddingHorizontal: 14, borderRadius: radius.input, backgroundColor: palette.ground, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Text variant="body" className="flex-1">{user?.phone}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.xs, backgroundColor: palette.openTint }}>
+                <CheckIcon size={11} color={palette.open} strokeWidth={3} />
+                <Text variant="caption" tone="open" weight="bold">VERIFIED</Text>
               </View>
             </View>
           </View>
@@ -179,7 +140,7 @@ export default function VenueRegisterScreen() {
           />
 
           <View className="gap-2">
-            <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">Sports you offer</Text>
+            <Text variant="meta" tone="muted" weight="bold">Sports you offer</Text>
             <View className="flex-row flex-wrap gap-2">
               {SPORT_OPTIONS.map((sport) => (
                 <Chip
@@ -209,7 +170,7 @@ export default function VenueRegisterScreen() {
           />
 
           <View className="gap-2">
-            <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">
+            <Text variant="meta" tone="muted" weight="bold">
               Pin your location so players can find the gate
             </Text>
             <SecondaryButton
@@ -218,21 +179,21 @@ export default function VenueRegisterScreen() {
             />
             {store.latitude !== null && store.longitude !== null ? (
               <Text
-                className="font-mono-medium text-[12.5px]"
-                style={{ color: usingCityCentre ? "#B8531E" : "#1F7A52" }}
+                variant="caption"
+                tone={usingCityCentre ? "waiting" : "open"}
               >
                 Pinned · {store.latitude.toFixed(5)}, {store.longitude.toFixed(5)}
                 {usingCityCentre ? " (city centre — refine later)" : ""}
               </Text>
             ) : null}
             {locationError ? (
-              <Text className="font-plex-medium text-owner-warn text-[12.5px]">{locationError}</Text>
+              <Text variant="caption" tone="waiting">{locationError}</Text>
             ) : null}
             {store.latitude === null || locationError ? (
               <Text
                 onPress={handleUseCityCentre}
-                className="font-plex-semibold text-[13px]"
-                style={{ color: "#0E6274", textDecorationLine: "underline" }}
+                variant="meta" weight="bold" tone="link"
+                style={{ textDecorationLine: "underline", minHeight: 44, paddingVertical: 12 }}
               >
                 Use city centre for now — refine from Venue Settings
               </Text>
@@ -242,7 +203,7 @@ export default function VenueRegisterScreen() {
 
         <SectionCard>
           <SectionLabel>Where players send payment</SectionLabel>
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px] leading-[18px]">
+          <Text variant="caption" tone="subtle">
             Players pay you directly. Khelo never holds your money — we only check that the
             screenshot matches what's owed. You can add this later if you'd rather skip it for now.
           </Text>
@@ -278,28 +239,42 @@ export default function VenueRegisterScreen() {
           onCutoffChange={(v) => store.setField("cancellationCutoffHours", v)}
         />
 
-        <View className="bg-owner-warn-soft border border-owner-warn-soft-border rounded-2xl p-5 gap-1.5">
-          <Text className="font-plex-bold text-owner-warn-dark text-[14.5px]">
+        <View style={{ backgroundColor: palette.waitingTint, borderRadius: radius.tile, padding: space[5], gap: 6 }}>
+          <Text variant="body" tone="waiting" weight="black">
             Free while we're building
           </Text>
-          <Text className="font-plex-medium text-owner-warn text-[13px] leading-[19px]">
+          <Text variant="meta" tone="waiting">
             Early venues in DHA and Clifton keep the Pro plan free permanently. No card, no
             contract.
           </Text>
         </View>
 
-        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
+        <Text variant="meta" tone="subtle">
           Everything here can be edited after you go live.
         </Text>
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <SecondaryButton label="Save and finish later" onPress={handleSaveAndExit} />
-          </View>
-          <View className="flex-1">
-            <PrimaryButton label="Next: courts & pricing" onPress={handleNext} disabled={!isValid} />
-          </View>
+        {!isValid ? (
+          <Banner
+            tone="waiting"
+            testID="wizard-next-reason"
+            body={`Aage jaane ke liye baqi: ${[
+              !store.name.trim() ? "venue ka naam" : null,
+              !store.address.trim() ? "address" : null,
+              !store.area.trim() ? "area" : null,
+              store.sports.length === 0 ? "kam se kam ek khel" : null,
+              store.latitude === null || store.longitude === null ? "location pin" : null,
+              !bankValid ? "bank ki teeno details (ya teeno khaali)" : null,
+            ]
+              .filter(Boolean)
+              .join(", ")}.`}
+          />
+        ) : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[3] }}>
+          <SecondaryButton label="Save and finish later" onPress={handleSaveAndExit} />
+          <PrimaryButton label="Next: courts & pricing" onPress={handleNext} disabled={!isValid} />
         </View>
-      </ScrollView>
-    </SafeAreaView>
+        <Text variant="caption" tone="muted" align="center">
+          Draft khud save hota hai
+        </Text>
+    </Screen>
   );
 }

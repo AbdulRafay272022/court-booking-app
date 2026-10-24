@@ -1,16 +1,17 @@
-import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, ChevronDown, CircleAlert, Clock } from "lucide-react-native";
 import type { OwnerBookingRow } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { palette, radius, space, type Tone } from "@court-booking/ui-tokens";
+import { Avatar, Button, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTimeRange } from "@/lib/format";
-import { OV, PERM, TONE_STYLE, canOfferNoShow, courtNumber, durationLabel, isStatusPending, rowStatusLabel, rowTone, statusChipLabel } from "@/lib/overview";
+import { PERM, canOfferNoShow, courtNumber, durationLabel, isStatusPending, rowStatusLabel, rowTone, statusChipLabel } from "@/lib/overview";
 import { useMyPermissions } from "@/lib/use-my-permissions";
-import { CheckIcon, ChevronDownIcon, ClockIcon } from "@/components/icons";
-import { AlertCircleIcon } from "./icons";
 import { BottomSheet, SmallChip } from "./ui";
 import { CompletionSheet, NoShowSheet } from "@/components/completion-sheet";
 
@@ -18,16 +19,18 @@ import { CompletionSheet, NoShowSheet } from "@/components/completion-sheet";
 export function StatusPendingChip() {
   return (
     <View testID="status-pending-chip">
-      <SmallChip label="Status baqi" bg={OV.amberBg} fg={OV.amberDark} icon={<ClockIcon size={12} color={OV.amberDark} />} />
+      <SmallChip label="Status baqi" tone="waiting" icon={<Clock size={12} color={palette.waiting} />} />
     </View>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
-    <View className="flex-1 gap-0.5">
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{label}</Text>
-      <Text className="font-mono-semibold text-[15px]" style={{ color: color ?? OV.ink }}>
+    <View style={{ flexGrow: 1, flexBasis: 64, gap: 2 }}>
+      <Text variant="caption" tone="muted">
+        {label}
+      </Text>
+      <Text variant="bodyStrong" tone={tone ?? "primary"}>
         {value}
       </Text>
     </View>
@@ -46,12 +49,17 @@ function useInvalidateOverview() {
 }
 
 function statusChip(row: OwnerBookingRow) {
-  const key = row.status_key;
-  const tone =
-    row.kind === "refund" ? { bg: OV.amberBg, fg: OV.amberDark } : row.kind === "cancelled" ? { bg: OV.redBg, fg: OV.red } : { bg: OV.accentSoft, fg: OV.accent };
-  const label = row.kind === "refund" ? statusChipLabel(row.refund_status === "paid" ? "refunded" : "refund_owed") : rowStatusLabel({ ...row, status_key: key });
-  return <SmallChip label={label} bg={tone.bg} fg={tone.fg} />;
+  const tone: Tone = row.kind === "refund" ? "waiting" : row.kind === "cancelled" ? "danger" : "info";
+  const label = row.kind === "refund" ? statusChipLabel(row.refund_status === "paid" ? "refunded" : "refund_owed") : rowStatusLabel(row);
+  return <SmallChip label={label} tone={tone} />;
 }
+
+const CARD_TONE = {
+  green: { bg: palette.openTint, border: palette.openTint },
+  red: { bg: palette.dangerTint, border: palette.dangerBorder },
+  amber: { bg: palette.waitingTint, border: palette.waitingTint },
+  neutral: { bg: palette.white, border: palette.white },
+} as const;
 
 export function BookingCard({
   row,
@@ -68,8 +76,12 @@ export function BookingCard({
   onLayoutY?: (y: number) => void;
   canComplete?: boolean;
 }) {
-  const tone = TONE_STYLE[rowTone(row)];
+  const tone = CARD_TONE[rowTone(row)];
   const [picking, setPicking] = useState(false);
+  // "Nahi" hands over to the adhoora sheet only after the picker has animated out (two @gorhom modals must not stack).
+  const [pickerOpen, setPickerOpen] = useState(true);
+  // a ref, not state: @gorhom may call the sheet's onDismiss through the closure from when it was presented
+  const afterPick = useRef(false);
   const [adhoora, setAdhoora] = useState(false);
   const [noShow, setNoShow] = useState(false);
   // Stage 2 (B.b): staff without the permission never see these buttons (the 403 message stays as the fallback).
@@ -79,7 +91,6 @@ export function BookingCard({
   const mayNoShow = (can(PERM.checkIn) || can(PERM.recordPayments)) && canOfferNoShow(row);
   const [error, setError] = useState<string | null>(null);
   const invalidate = useInvalidateOverview();
-  const initial = (row.player_name ?? "?").trim().charAt(0).toUpperCase() || "?";
   const isBooked = row.kind === "booked" && ["booked", "no_show"].includes(row.status_key);
   const refundLine =
     row.kind === "refund" && row.refund_amount != null
@@ -102,109 +113,117 @@ export function BookingCard({
     <View
       onLayout={(e) => onLayoutY?.(e.nativeEvent.layout.y)}
       testID={`booking-card-${row.booking_id}-${row.kind}`}
-      className="rounded-2xl"
       style={{
         backgroundColor: tone.bg,
-        borderWidth: highlighted ? 2.5 : 1.5,
-        borderColor: highlighted ? OV.orange : tone.border,
+        borderRadius: radius.card,
+        borderWidth: highlighted ? 2.5 : 1,
+        borderColor: highlighted ? palette.teal : tone.border === palette.white ? palette.line : tone.border,
       }}
     >
-      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${row.player_name ?? "Booking"}, ${row.short_code}`} className="p-4 gap-3.5">
-        <View className="flex-row items-start gap-3">
-          <View
-            className="w-11 h-11 rounded-full items-center justify-center"
-            style={{ backgroundColor: row.kind === "refund" ? OV.amber : OV.accent }}
-          >
-            <Text className="font-plex-bold text-white text-[18px]">{initial}</Text>
-          </View>
-          <View className="flex-1 gap-0.5">
-            <Text className="font-plex-bold text-owner-ink text-[16.5px]" numberOfLines={1}>
+      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${row.player_name ?? "Booking"}, ${row.short_code}`} style={{ padding: space[4], gap: 14 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[3] }}>
+          <Avatar name={row.player_name ?? "?"} size={44} tone={row.kind === "refund" ? "waiting" : "info"} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text variant="bodyStrong">
               {row.player_name ?? "Player"}
               {row.kind === "refund" ? " · refund" : ""}
             </Text>
-            {refundLine ? (
-              <Text className="font-plex-medium text-owner-ink-muted text-[13px]">{refundLine}</Text>
-            ) : (
-              <Text className="font-plex-medium text-owner-ink-muted text-[13px]">
-                {`${formatTimeRange(row.starts_at, row.ends_at)} · ${durationLabel(row.duration_minutes)}`}
-              </Text>
-            )}
+            <Text variant="meta" tone="muted">
+              {refundLine ?? `${formatTimeRange(row.starts_at, row.ends_at)} · ${durationLabel(row.duration_minutes)}`}
+            </Text>
           </View>
-          <View className="items-end gap-1">
+          <View style={{ alignItems: "flex-end", gap: space[1] }}>
             {statusChip(row)}
-            {row.checked_in ? <SmallChip label="Checked in" bg={OV.greenBg} fg={OV.greenDark} /> : null}
+            {row.checked_in ? <SmallChip label="Checked in" tone="open" /> : null}
             {isStatusPending(row) ? <StatusPendingChip /> : null}
           </View>
         </View>
 
         {row.kind !== "refund" ? (
-          <View className="flex-row gap-2">
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
             <Stat label="Court" value={courtNumber(row.court_name)} />
             <Stat label="Total" value={formatPKR(row.total)} />
             <Stat label="Advance" value={formatPKR(row.advance)} />
-            <Stat label="Due" value={formatPKR(row.due)} color={row.due > 0 ? OV.red : OV.ink} />
+            <Stat label="Due" value={formatPKR(row.due)} tone={row.due > 0 ? "danger" : undefined} />
           </View>
         ) : null}
       </Pressable>
 
       {isBooked && (mayComplete || mayNoShow || row.completion) ? (
-        <View className="px-4 pb-4 flex-row flex-wrap items-center gap-3">
+        <View style={{ paddingHorizontal: space[4], paddingBottom: space[4], flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3] }}>
           {mayComplete ? (
-          <Pressable
-            onPress={() => setPicking(true)}
-            disabled={disabled}
-            accessibilityRole="button"
-            accessibilityLabel={`Booking completed: ${current}`}
-            accessibilityState={{ disabled }}
-            className="flex-row items-center justify-between rounded-xl bg-owner-surface px-4"
-            style={{
-              minHeight: 48,
-              minWidth: 130,
-              borderWidth: 1.5,
-              borderColor: disabled ? OV.border : OV.ink,
-              opacity: disabled ? 0.7 : 1,
-            }}
-          >
-            <Text className="font-plex-semibold text-owner-ink text-[15px]">{current}</Text>
-            <ChevronDownIcon color={OV.ink} />
-          </Pressable>
-          ) : null}
-          {mayNoShow ? (
             <Pressable
-              onPress={() => setNoShow(true)}
+              onPress={() => {
+              setPickerOpen(true);
+              setPicking(true);
+            }}
+              disabled={disabled}
               accessibilityRole="button"
-              accessibilityLabel="Nahi aaye (No-show)"
-              className="flex-row items-center justify-center rounded-xl px-3.5"
-              style={{ minHeight: 48, borderWidth: 1.5, borderColor: OV.redBorder, backgroundColor: "#FFFFFF" }}
+              accessibilityLabel={`Booking completed: ${current}`}
+              accessibilityState={{ disabled }}
+              aria-disabled={disabled}
+              style={{
+                minHeight: 48,
+                minWidth: 130,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: space[2],
+                paddingHorizontal: space[4],
+                borderRadius: radius.md,
+                backgroundColor: palette.white,
+                borderWidth: 1.5,
+                borderColor: disabled ? palette.line : palette.lineStrong,
+                opacity: disabled ? 0.7 : 1,
+              }}
             >
-              <Text className="font-plex-semibold text-[14px]" style={{ color: OV.red }}>
-                Nahi aaye (No-show)
-              </Text>
+              <Text variant="bodyBold">{current}</Text>
+              <ChevronDown size={18} color={palette.night} />
             </Pressable>
           ) : null}
+          {mayNoShow ? <Button label="Nahi aaye (No-show)" variant="danger" size="sm" onPress={() => setNoShow(true)} style={{ minHeight: 48 }} /> : null}
           {!row.slot_ended && mayComplete ? (
-            <Text className="flex-1 font-plex-medium text-owner-ink-muted text-[12.5px] text-right">Slot khatam hone ke baad</Text>
+            <Text variant="caption" tone="muted" align="right" style={{ flex: 1 }}>
+              Slot khatam hone ke baad
+            </Text>
           ) : row.completion?.result === "yes" ? (
-            <SmallChip label="Mukammal" bg={OV.greenBg} fg={OV.greenDark} icon={<CheckIcon size={13} color={OV.greenDark} strokeWidth={2.6} />} />
+            <SmallChip label="Mukammal" tone="open" icon={<Check size={13} color={palette.open} strokeWidth={2.6} />} />
           ) : row.completion?.result === "no" ? (
-            <SmallChip label="Adhoora" bg={OV.redBg} fg={OV.red} icon={<AlertCircleIcon size={13} />} />
+            <SmallChip label="Adhoora" tone="danger" icon={<CircleAlert size={13} color={palette.danger} />} />
           ) : null}
         </View>
       ) : null}
 
       {row.kind !== "booked" ? (
-        <View className="px-4 pb-4 flex-row flex-wrap items-center gap-2.5">
-          <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{row.short_code}</Text>
-          {row.original_booking_id ? <SmallChip label="Original booking dekhein" bg="#FFFFFF" fg={OV.ink} onPress={onOpenOriginal} /> : null}
+        <View style={{ paddingHorizontal: space[4], paddingBottom: space[4], flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+          <Text variant="meta" tone="muted">
+            {row.short_code}
+          </Text>
+          {row.original_booking_id ? <SmallChip label="Original booking dekhein" tone="info" onPress={onOpenOriginal} /> : null}
         </View>
       ) : null}
 
-      {error ? <Text className="px-4 pb-3 font-plex-medium text-owner-danger text-[12.5px]">{error}</Text> : null}
+      {error ? (
+        <Text variant="meta" tone="danger" style={{ paddingHorizontal: space[4], paddingBottom: space[3] }}>
+          {error}
+        </Text>
+      ) : null}
 
       {picking ? (
-        <BottomSheet title="Booking completed?" subtitle={`${row.player_name ?? "Player"} · ${row.short_code}`} onClose={() => setPicking(false)}>
-          <View className="gap-2.5 pb-2">
-            <Text testID="completion-hint" className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+        <BottomSheet
+          open={pickerOpen}
+          title="Booking completed?"
+          subtitle={`${row.player_name ?? "Player"} · ${row.short_code}`}
+          onClose={() => {
+            setPicking(false);
+            if (afterPick.current) {
+              afterPick.current = false;
+              setAdhoora(true);
+            }
+          }}
+        >
+          <View style={{ gap: 10, paddingBottom: space[2] }}>
+            <Text testID="completion-hint" variant="meta" tone="muted">
               {row.status_key === "no_show"
                 ? "Abhi No-show hai. Haan ya Nahi chunne se booking Completed ho jayegi."
                 : "Khel ho gaya? Haan ya Nahi, dono se booking Completed ho jayegi."}
@@ -216,20 +235,22 @@ export function BookingCard({
               <Pressable
                 key={o.v}
                 onPress={() => {
-                  setPicking(false);
                   if (o.v === "yes") {
+                    setPicking(false);
                     // A no_show row with an old "yes" still needs the call: it is what makes the booking completed.
                     if (row.completion?.result !== "yes" || row.status_key === "no_show") yes.mutate();
                   } else {
-                    setAdhoora(true);
+                    afterPick.current = true;
+                    setPickerOpen(false);
                   }
                 }}
                 accessibilityRole="button"
-                className="rounded-xl px-4 justify-center"
-                style={{ minHeight: 56, borderWidth: 1.5, borderColor: OV.border }}
+                style={{ minHeight: 56, justifyContent: "center", paddingHorizontal: space[4], paddingVertical: space[2], borderRadius: radius.md, backgroundColor: palette.ground }}
               >
-                <Text className="font-plex-bold text-owner-ink text-[16px]">{o.label}</Text>
-                <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">{o.sub}</Text>
+                <Text variant="bodyStrong">{o.label}</Text>
+                <Text variant="caption" tone="muted">
+                  {o.sub}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -240,3 +261,4 @@ export function BookingCard({
     </View>
   );
 }
+

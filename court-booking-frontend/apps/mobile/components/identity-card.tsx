@@ -1,5 +1,7 @@
+import { palette } from "@court-booking/ui-tokens";
+import { Text } from "@/components/ui";
 import { useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
@@ -57,14 +59,14 @@ export function IdentityCard() {
     <SectionCard>
       <SectionLabel>Shanakhti card (CNIC)</SectionLabel>
       {q.isLoading ? (
-        <ActivityIndicator color="#0E6274" />
+        <ActivityIndicator color={palette.teal} />
       ) : q.isError || !identity ? (
-        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">CNIC ki maloomat abhi load nahi ho saki.</Text>
+        <Text variant="meta" tone="subtle">CNIC ki maloomat abhi load nahi ho saki.</Text>
       ) : (
         <View className="gap-1" testID="identity-status">
-          <Text className="font-plex-semibold text-owner-ink text-[14px]">Status: {IDENTITY_STATUS_TEXT[identity.status]}</Text>
+          <Text variant="body" weight="bold">Status: {IDENTITY_STATUS_TEXT[identity.status]}</Text>
           {identity.masked ? (
-            <Text testID="identity-masked" className="font-mono-medium text-owner-ink-muted text-[14px]">
+            <Text testID="identity-masked" variant="body" tone="muted">
               {identity.masked}
             </Text>
           ) : null}
@@ -93,7 +95,7 @@ export function IdentityCard() {
         <SecondaryButton label="CNIC badlein" onPress={() => setEditing(true)} />
       ) : null}
       {message ? (
-        <Text accessibilityRole="alert" testID="identity-message" className="font-plex-semibold text-[13.5px]" style={{ color: message.ok ? "#0E6274" : "#C13525" }}>
+        <Text accessibilityRole="alert" testID="identity-message" variant="meta" weight="bold" style={{ color: message.ok ? palette.tealDeep : palette.danger }}>
           {message.text}
         </Text>
       ) : null}

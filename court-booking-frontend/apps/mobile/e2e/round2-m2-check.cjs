@@ -96,6 +96,8 @@ async function setup(browser, opts = {}) {
     if (p === "/owners/approvals-queue") return json({ items: [], total: 0, page: 1, page_size: 50 });
     if (p === "/owners/badges") return json({ approvals: 0, refunds: 0 });
     if (p === "/owners/bookings-history") return json({ items: [], total: 0, page: 1, page_size: 20, totals: { count: 0, total: 0, collected: 0, due: 0 } });
+    // the real GET /reviews/mine returns a list (the player Bookings tab maps it)
+    if (p === "/reviews/mine") return json([]);
     if (p.startsWith("/owners/") || p.startsWith("/users/")) return json([]);
     return json({});
   });
@@ -219,7 +221,7 @@ const badgeText = async (page) => {
   {
     const { ctx, page, reqs } = await setup(browser);
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     // f1 (5 min), f2 (40 min), f3 (20 h) are inside the first-visit 24 h window; f4 (80 h) is not
     const t0 = Date.now();
     while (Date.now() - t0 < 30000 && (await badgeText(page)) !== "3") await page.waitForTimeout(300);
@@ -261,7 +263,7 @@ const badgeText = async (page) => {
     const logRows = [entry("n1", "booking_confirmed", minAgo(10), "b1"), entry("n1b", "booking_confirmed", minAgo(9), "b1", "whatsapp"), entry("n2", "payment_submitted", minAgo(120), "b2")];
     const { ctx, page, reqs } = await setup(browser, { feed404: true, log: () => logRows });
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     const t0 = Date.now();
     while (Date.now() - t0 < 30000 && (await badgeText(page)) !== "2") await page.waitForTimeout(300);
     check("fallback: badge from the old endpoint (folded)", (await badgeText(page)) === "2", "got " + (await badgeText(page)));

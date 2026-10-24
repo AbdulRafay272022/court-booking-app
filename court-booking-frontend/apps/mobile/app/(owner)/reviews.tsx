@@ -1,19 +1,28 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Star } from "lucide-react-native";
 import type { Review } from "@court-booking/types";
+import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
+import { Banner, Button, EmptyState, ErrorState, Input, Screen, SkeletonCard, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { useMyPermissions } from "@/lib/use-my-permissions";
+import { useFeatureFlags } from "@/lib/use-feature-flags";
 import { formatShortDate } from "@/lib/format";
-import { ChevronLeftIcon, StarIcon } from "@/components/icons";
-import { ErrorState } from "@/components/error-state";
+import { NoAccess } from "@/components/no-access";
+import { OwnerHeader } from "./_fl";
 
+const stars = (n: number) => "★★★★★".slice(0, Math.round(n)) + "☆☆☆☆☆".slice(0, 5 - Math.round(n));
+
+/** OGrowthTeam frame 2 "Reviews": the venue's real reviews (GET /venues/{id}/reviews). The average is computed from them;
+ * nothing shows without reviews. Reply (POST /reviews/{id}/reply) needs respond_reviews and the `reviews` flag. */
 export default function OwnerReviewsScreen() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
+  const perms = useMyPermissions();
+  const flags = useFeatureFlags();
   const venueId = activeVenue?.id;
   const reviewsQuery = useQuery({
     queryKey: ["owner-reviews", venueId],
@@ -21,102 +30,94 @@ export default function OwnerReviewsScreen() {
     enabled: !!venueId,
   });
   const reviews = reviewsQuery.data ?? [];
+  const avg = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : null;
+  const mayReply = perms.can("respond_reviews") && flags.on("reviews");
+
+  if (perms.settled && !perms.can("respond_reviews")) return <NoAccess what="Reviews" />;
 
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px] flex-1">
-          Reviews{activeVenue ? ` · ${activeVenue.name}` : ""}
-        </Text>
-      </View>
-
+    <Screen testID="reviews-screen">
+      <OwnerHeader title="Reviews" subtitle={activeVenue?.name} />
+      {!flags.on("reviews") ? <Banner tone="info" body="Reviews ka feature abhi band hai: naye reviews aur jawab abhi nahi ho sakte." /> : null}
       {venuesLoading || reviewsQuery.isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#0E6274" />
-        </View>
+        <SkeletonCard />
       ) : reviewsQuery.isError ? (
-        <ErrorState message={friendlyErrorMessage(reviewsQuery.error)} onRetry={() => reviewsQuery.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(reviewsQuery.error)} onRetry={() => reviewsQuery.refetch()} />
       ) : reviews.length === 0 ? (
-        <Text className="font-plex-medium text-owner-ink-faint text-center px-6 pt-16">
-          No reviews yet. They'll appear here once players rate their games.
-        </Text>
+        <EmptyState title="Abhi koi review nahi" body="Players khel ke baad rating denge to yahan dikhegi." icon={Star} />
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-3.5">
+        <>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space[4], backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], boxShadow: shadow.card }}>
+            <Text variant="display">{avg!.toFixed(1)}</Text>
+            <View style={{ gap: 2, flex: 1 }}>
+              <Text variant="bodyStrong" tone="info" accessibilityLabel={`${avg!.toFixed(1)} mein se 5`}>
+                {stars(avg!)}
+              </Text>
+              <Text variant="meta" tone="muted">{`${reviews.length} ${reviews.length === 1 ? "review" : "reviews"}`}</Text>
+            </View>
+          </View>
           {reviews.map((r) => (
-            <OwnerReviewCard key={r.id} review={r} venueId={venueId!} />
+            <OwnerReviewCard key={r.id} review={r} venueId={venueId!} mayReply={mayReply} />
           ))}
-        </ScrollView>
+        </>
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-function OwnerReviewCard({ review, venueId }: { review: Review; venueId: string }) {
+function OwnerReviewCard({ review, venueId, mayReply }: { review: Review; venueId: string; mayReply: boolean }) {
   const queryClient = useQueryClient();
   const [replying, setReplying] = useState(false);
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit() {
     if (!text.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       await api.reviews.reply(review.id, text.trim());
       setReplying(false);
       setText("");
       await queryClient.invalidateQueries({ queryKey: ["owner-reviews", venueId] });
     } catch (e) {
-      Alert.alert("Couldn't post reply", friendlyErrorMessage(e));
+      setError(friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <View className="bg-owner-surface border border-owner-border rounded-xl p-4 gap-2">
-      <View className="flex-row items-center justify-between">
-        <Text className="font-plex-bold text-owner-ink text-[14px]">{review.player_first_name ?? "Player"}</Text>
-        <View className="flex-row" accessibilityLabel={`${review.rating} of 5 stars`}>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <StarIcon key={n} size={14} color={n <= review.rating ? "#0E6274" : "#D6DEE0"} />
-          ))}
-        </View>
+    <View style={{ backgroundColor: palette.white, borderRadius: radius.tile, padding: space[4], gap: space[2] }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: space[2] }}>
+        <Text variant="bodyStrong">{review.player_first_name ?? "Player"}</Text>
+        <Text variant="bodyBold" tone="info" accessibilityLabel={`${review.rating} mein se 5`}>
+          {stars(review.rating)}
+        </Text>
       </View>
-      {review.comment ? <Text className="font-plex-medium text-owner-ink text-[13.5px] leading-[19px]">{review.comment}</Text> : null}
-      <Text className="font-mono-medium text-owner-ink-faint text-[11.5px]">{formatShortDate(review.created_at)}</Text>
-
+      {review.comment ? <Text variant="body">{review.comment}</Text> : null}
+      <Text variant="caption" tone="muted">
+        {formatShortDate(review.created_at)}
+      </Text>
       {review.owner_reply ? (
-        <View className="mt-1 pl-3 border-l-2 border-owner-border-light gap-0.5">
-          <Text className="font-plex-semibold text-owner-ink-muted text-[12px]">Your reply</Text>
-          <Text className="font-plex-medium text-owner-ink text-[13px] leading-[18px]">{review.owner_reply}</Text>
+        <View style={{ backgroundColor: palette.tealTint, borderRadius: radius.md, padding: space[3], gap: 2 }}>
+          <Text variant="label" tone="info">
+            Aap ka jawab:
+          </Text>
+          <Text variant="body">{review.owner_reply}</Text>
         </View>
-      ) : replying ? (
-        <View className="gap-2 mt-1">
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder="Write a public reply…"
-            placeholderTextColor="#8399A1"
-            multiline
-            className="min-h-[60px] border border-owner-border rounded-[10px] p-3 font-plex-medium text-owner-ink text-[13.5px]"
-            style={{ textAlignVertical: "top" }}
-          />
-          <View className="flex-row gap-2.5">
-            <Pressable onPress={() => setReplying(false)} className="flex-1 h-10 rounded-[10px] border border-owner-border items-center justify-center">
-              <Text className="font-plex-semibold text-owner-ink text-[13px]">Cancel</Text>
-            </Pressable>
-            <Pressable onPress={submit} disabled={saving || !text.trim()} className="flex-1 h-10 rounded-[10px] items-center justify-center bg-owner-accent" style={{ opacity: saving || !text.trim() ? 0.5 : 1 }}>
-              <Text className="font-plex-bold text-white text-[13px]">{saving ? "Posting…" : "Post reply"}</Text>
-            </Pressable>
+      ) : !mayReply ? null : replying ? (
+        <View style={{ gap: space[2] }}>
+          <Input label="Public jawab" value={text} onChangeText={setText} multiline placeholder="Shukriya! ..." />
+          {error ? <Banner tone="danger" body={error} /> : null}
+          <View style={{ flexDirection: "row", gap: space[2] }}>
+            <Button label="Cancel" variant="soft" size="sm" onPress={() => setReplying(false)} />
+            <Button label={saving ? "Bhej rahe hain" : "Jawab bhejein"} size="sm" onPress={submit} disabled={saving || !text.trim()} />
           </View>
         </View>
       ) : (
-        <Pressable accessibilityLabel="Reply to review" onPress={() => setReplying(true)} className="self-start mt-1 px-3.5 h-9 rounded-full bg-owner-accent items-center justify-center">
-          <Text className="font-plex-bold text-white text-[12.5px]">Reply</Text>
-        </Pressable>
+        <Button label="Jawab dein" variant="soft" size="sm" onPress={() => setReplying(true)} accessibilityLabel={`${review.player_first_name ?? "Player"} ko jawab dein`} />
       )}
     </View>
   );

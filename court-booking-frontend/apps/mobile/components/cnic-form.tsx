@@ -1,4 +1,5 @@
-import { Alert, Image, Platform, Pressable, Text, View } from "react-native";
+import { Alert, Image, Platform, Pressable, View } from "react-native";
+import { Text } from "@/components/ui";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import { create } from "zustand";
@@ -61,7 +62,7 @@ function PhotoSlot({ label, uri, onPick, testID }: { label: string; uri: string 
         <Image source={{ uri }} style={{ width: "100%", height: 96, borderRadius: 8 }} resizeMode="cover" accessibilityLabel={`${label} photo`} />
       ) : (
         <View className="items-center justify-center rounded-lg border border-dashed border-owner-border" style={{ height: 96 }}>
-          <Text className="font-plex-medium text-owner-ink-faint text-[12px]">Photo nahi</Text>
+          <Text variant="caption" tone="subtle">Photo nahi</Text>
         </View>
       )}
       <View className="flex-row gap-2">
@@ -71,7 +72,7 @@ function PhotoSlot({ label, uri, onPick, testID }: { label: string; uri: string 
           accessibilityLabel={`${label}: gallery`}
           className="flex-1 min-h-11 rounded-lg border border-owner-border items-center justify-center"
         >
-          <Text className="font-plex-semibold text-owner-accent text-[12.5px]">{uri ? "Badlein" : "Gallery"}</Text>
+          <Text variant="caption" tone="link" weight="bold">{uri ? "Badlein" : "Gallery"}</Text>
         </Pressable>
         {Platform.OS !== "web" ? (
           <Pressable
@@ -80,7 +81,7 @@ function PhotoSlot({ label, uri, onPick, testID }: { label: string; uri: string 
             accessibilityLabel={`${label}: camera`}
             className="flex-1 min-h-11 rounded-lg border border-owner-border items-center justify-center"
           >
-            <Text className="font-plex-semibold text-owner-accent text-[12.5px]">Camera</Text>
+            <Text variant="caption" tone="link" weight="bold">Camera</Text>
           </Pressable>
         ) : null}
       </View>
@@ -109,7 +110,7 @@ export function CnicFields() {
         <PhotoSlot label="Card ka saamne wala hissa" uri={d.front} onPick={(u) => d.set({ front: u })} testID="cnic-front" />
         <PhotoSlot label="Card ka peeche wala hissa" uri={d.back} onPick={(u) => d.set({ back: u })} testID="cnic-back" />
       </View>
-      <Text className="font-plex-medium text-owner-ink-faint text-[12px]">
+      <Text variant="caption" tone="subtle">
         Aap ka CNIC sirf verification ke liye hai. Ye players ko kabhi nahi dikhta, aur app mein sirf aakhri hindsa dikhaya jata hai.
       </Text>
     </View>

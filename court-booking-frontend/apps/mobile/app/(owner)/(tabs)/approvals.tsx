@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, View } from "react-native";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
+import { FlashList } from "@shopify/flash-list";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleCheck } from "lucide-react-native";
 import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
+import { Banner, Button, EmptyState, ErrorState, SegmentedToggle, SkeletonCard, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -14,17 +17,19 @@ import { noLongerPendingState } from "@/lib/round2-format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { PERM } from "@/lib/overview";
+import { bulkApprovable, bulkApproveAmount, oldestWaitMinutes, waitLabel } from "@/lib/owner-floodlight";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { NoAccess } from "@/components/no-access";
-import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
-import { ApprovalCard, ApproveSheet, DuplicateConfirmSheet, RefundConfirmSheet, RejectSheet } from "@/components/approval-card";
-import { EmptyState } from "../_dashboard-components";
+import { ApprovalCard, ApproveSheet, BulkApproveSheet, DuplicateConfirmSheet, RefundConfirmSheet, RejectSheet } from "@/components/approval-card";
+import { HeroLayout } from "../_fl";
 
 const PAGE_SIZE = 50;
+type View3 = "all" | "awaiting" | "closed";
 
-/** Round 2 (A1/A5): every payment waiting for review as a list, newest first. Acting on a card removes only that card;
- * a card whose booking the player cancelled turns grey in place with "Theek hai". */
+/** Approvals board: every payment waiting for review, newest first (Round 2 A1/A5). Acting on a card removes only that
+ * card; a card whose booking the player cancelled turns grey in place with "Theek hai". Teal hero, "Chahiye vs Screenshot"
+ * cards, the duplicate warning and the separate duplicate confirm (Stage 2 B.a). Bulk approve is N single calls (B8). */
 export default function ApprovalsScreen() {
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
@@ -40,6 +45,7 @@ export default function ApprovalsScreen() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [show, setShow] = useState<View3>("all");
   // Stage 2 (B.b): staff without the approve permission see the note up front (GET /owners/me/permissions); a 403
   // NOT_STAFF_PERMITTED (older backend, or a permission removed meanwhile) still swaps the buttons for the same note.
   const [noPermission, setNoPermission] = useState(false);
@@ -49,6 +55,7 @@ export default function ApprovalsScreen() {
   // Stage 2 (B.a): the separate "used before" confirm, with the amount/mode the owner already chose.
   const [dup, setDup] = useState<{ id: string; usedOn: number; amount: number | undefined; mode: ApproveAcceptMode | undefined } | null>(null);
   const [dupError, setDupError] = useState<string | null>(null);
+  const [bulk, setBulk] = useState<{ ids: string[]; progress: string | null; error: string | null; busy: boolean } | null>(null);
 
   const query = useInfiniteQuery({
     queryKey: ["owner-approvals-queue", activeVenueId, filterDate, filterCourts.join(",")],
@@ -79,11 +86,16 @@ export default function ApprovalsScreen() {
   const { awaiting, closed } = approvalsHeaderCounts(serverTotal, fetched, removed, greyed);
   const current = sheet ? items.find((it) => it.payment_id === sheet.id) ?? null : null;
   const dupItem = dup ? items.find((it) => it.payment_id === dup.id) ?? null : null;
+  const oldest = oldestWaitMinutes(items);
+  const bulkable = bulkApprovable(items, locked);
+  const shown = show === "all" ? items : items.filter((it) => (show === "awaiting" ? it.state === "awaiting" : it.state !== "awaiting"));
+  const bulkItems = bulk ? items.filter((it) => bulk.ids.includes(it.payment_id)) : [];
 
   function refreshSide() {
     queryClient.invalidateQueries({ queryKey: ["owner-badges"] });
     queryClient.invalidateQueries({ queryKey: ["owner-overview"] });
     queryClient.invalidateQueries({ queryKey: ["owner-history"] });
+    queryClient.invalidateQueries({ queryKey: ["owner-ledger"] });
   }
 
   function drop(id: string) {
@@ -153,6 +165,38 @@ export default function ApprovalsScreen() {
     );
   }
 
+  /** Bulk approve = one call per payment, in order (no batch endpoint, contract B8). A refusal leaves that card in place
+   * with its reason; a duplicate the server flags meanwhile is NOT confirmed here (it needs its own confirm). */
+  async function runBulk() {
+    if (!bulk) return;
+    const list = bulkItems;
+    let ok = 0;
+    const failed: string[] = [];
+    setBulk({ ...bulk, busy: true, error: null, progress: `0 / ${list.length}` });
+    for (const it of list) {
+      try {
+        await api.payments.approve(it.payment_id, bulkApproveAmount(it), undefined, undefined);
+        ok += 1;
+        setRemoved((prev) => new Set(prev).add(it.payment_id));
+      } catch (e) {
+        const state = noLongerPendingState(e);
+        if (state) setGreyed((g) => ({ ...g, [it.payment_id]: state }));
+        else if (e instanceof ApiError && e.code === "NOT_STAFF_PERMITTED") setNoPermission(true);
+        else setErrors((er) => ({ ...er, [it.payment_id]: e instanceof ApiError && e.code === "DUPLICATE_PROOF_CONFIRM_REQUIRED" ? "Ye screenshot pehle use ho chuka hai: is card par alag se Approve dabayein." : friendlyErrorMessage(e) }));
+        failed.push(it.player_name ?? "Player");
+      }
+      setBulk((b) => (b ? { ...b, progress: `${ok + failed.length} / ${list.length}` } : b));
+    }
+    refreshSide();
+    queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+    if (failed.length === 0) {
+      setBulk(null);
+      setNotice(`${ok} payments approve ho gayi.`);
+    } else {
+      setBulk((b) => (b ? { ...b, busy: false, error: `${ok} approve hui. Ye ruk gayi: ${failed.join(", ")}. Un ke card par wajah likhi hai.` } : b));
+    }
+  }
+
   function reject(item: ApprovalQueueItem, reason: string) {
     act(item.payment_id, () => api.payments.reject(item.payment_id, reason), () => {
       setSheet(null);
@@ -175,55 +219,92 @@ export default function ApprovalsScreen() {
 
   if (perms.settled && !perms.can("view_ledger")) return <NoAccess what="Approvals" withBack={false} />;
 
-  return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
-      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <View className="flex-1 gap-0.5">
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">Payment review</Text>
-          <Text testID="approvals-count" className="font-plex-bold text-owner-ink text-[17px] -tracking-[0.2px]" accessibilityRole="header">
-            {query.data ? `${awaiting} approvals baqi` : "Approvals"}
+  const loading = venuesLoading || query.isLoading || !perms.settled;
+  const hero = (
+    <View style={{ gap: space[4] }}>
+      <View style={{ gap: space[1] }}>
+        <Text variant="h1" tone="hero" accessibilityRole="header">
+          Approvals
+        </Text>
+        <Text testID="approvals-count" variant="bodyBold" tone="hero">
+          {query.data ? `${awaiting} approvals baqi` : "Approvals"}
+        </Text>
+        {query.data && awaiting > 0 && oldest !== null ? (
+          <Text variant="body" tone="heroMuted">{`Sab se purani ${waitLabel(oldest)} se wait kar rahi hai`}</Text>
+        ) : null}
+        {query.data && closed > 0 ? (
+          <Text testID="approvals-count-closed" variant="meta" tone="heroMuted">
+            {`(${closed} cancel/expire hue, Theek hai dabayein)`}
           </Text>
-          {query.data && closed > 0 ? (
-            <Text testID="approvals-count-closed" className="font-plex-medium text-owner-ink-muted text-[12.5px]">
-              {`(${closed} cancel/expire hue, Theek hai dabayein)`}
-            </Text>
-          ) : null}
-        </View>
+        ) : null}
       </View>
+      {query.data && closed > 0 && awaiting > 0 ? (
+        <SegmentedToggle
+          tone="dark"
+          testID="approvals-view"
+          accessibilityLabel="Kaun se dikhayein"
+          value={show}
+          onChange={setShow}
+          options={[
+            { value: "all", label: "Sab" },
+            { value: "awaiting", label: "Baqi", count: awaiting },
+            { value: "closed", label: "Cancel/expire", count: closed },
+          ]}
+        />
+      ) : null}
+    </View>
+  );
+
+  const top = (
+    <HeroLayout hero={hero} testID="approvals-hero">
       {filterDate || filterCourts.length ? (
-        <View className="px-5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
-          <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">
-            {`Filter: ${filterDate ? formatDayHeader(filterDate) : "Sab din"}${filterCourts.length ? ` - ${filterCourts.length} court(s)` : ""}`}
-          </Text>
-          <Pressable onPress={() => router.setParams({ date: undefined, courts: undefined })} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Sab dikhao</Text>
-          </Pressable>
-        </View>
+        <Banner
+          tone="info"
+          body={`Filter: ${filterDate ? formatDayHeader(filterDate) : "Sab din"}${filterCourts.length ? ` - ${filterCourts.length} court(s)` : ""}`}
+          action={<Button label="Sab dikhao" variant="soft" size="sm" onPress={() => router.setParams({ date: undefined, courts: undefined })} />}
+        />
       ) : null}
       {notice ? (
-        <View className="px-5 py-2.5 flex-row items-center justify-between gap-3" style={{ backgroundColor: "#E4F0EA" }}>
-          <Text className="flex-1 font-plex-semibold text-[12.5px]" style={{ color: "#14563A" }}>
-            {notice}
+        <Banner
+          tone="open"
+          body={notice}
+          action={/Refunds/.test(notice) ? <Button label="Refunds" variant="soft" size="sm" onPress={() => router.push("/(owner)/(tabs)/refunds")} /> : undefined}
+        />
+      ) : null}
+      {bulkable.length >= 2 && (show !== "closed") ? (
+        <View testID="bulk-card" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], paddingLeft: 14, boxShadow: shadow.card }}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.sm, backgroundColor: palette.openTint, alignItems: "center", justifyContent: "center" }}>
+            <CircleCheck size={20} color={palette.open} />
+          </View>
+          <Text variant="body" style={{ flex: 1, minWidth: 150 }}>
+            <Text variant="bodyBold">{`${bulkable.length} screenshots`}</Text> ka amount bilkul match hai
           </Text>
-          <Pressable onPress={() => router.push("/(owner)/(tabs)/refunds")} accessibilityRole="link" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Refunds</Text>
-          </Pressable>
+          <Button label="Sab approve" size="sm" onPress={() => setBulk({ ids: bulkable.map((b) => b.payment_id), progress: null, error: null, busy: false })} testID="bulk-open" />
         </View>
       ) : null}
-
-      {venuesLoading || query.isLoading || !perms.settled ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#0E6274" />
+      {loading ? (
+        <View style={{ gap: space[3] }} accessibilityLabel="Loading">
+          <SkeletonCard />
+          <SkeletonCard />
         </View>
       ) : query.isError && !query.data ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
+        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} />
       ) : items.length === 0 ? (
-        <EmptyState title="Sab ho gaya" subtitle="Abhi koi payment approval ke liye nahi hai." />
-      ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-4 pt-4 pb-8 gap-3.5">
-          {items.map((it) => (
+        <EmptyState title="Sab ho gaya" body="Abhi koi payment approval ke liye nahi hai." icon={CircleCheck} />
+      ) : null}
+    </HeroLayout>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.ground }}>
+      <FlashList
+        data={loading || (query.isError && !query.data) ? [] : shown}
+        keyExtractor={(it) => it.payment_id}
+        ListHeaderComponent={top}
+        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        renderItem={({ item: it }) => (
+          <View style={{ paddingHorizontal: space[4], paddingTop: space[3] }}>
             <ApprovalCard
-              key={it.payment_id}
               item={it}
               courtText={courtText(it)}
               busy={busyId === it.payment_id}
@@ -245,36 +326,28 @@ export default function ApprovalsScreen() {
                 setSheet({ kind: "refund", id: it.payment_id });
               }}
             />
-          ))}
-          {query.hasNextPage ? (
-            <Pressable
-              onPress={() => query.fetchNextPage()}
-              accessibilityRole="button"
-              style={{ minHeight: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "#101C21", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" }}
-            >
-              <Text className="font-plex-semibold text-owner-ink text-[14px]">{query.isFetchingNextPage ? "Load ho raha hai" : "Aur dikhao"}</Text>
-            </Pressable>
-          ) : null}
-        </ScrollView>
-      )}
+          </View>
+        )}
+        ListFooterComponent={
+          query.hasNextPage ? (
+            <View style={{ paddingHorizontal: space[4], paddingTop: space[4] }}>
+              <Pressable
+                onPress={() => query.fetchNextPage()}
+                accessibilityRole="button"
+                style={{ minHeight: 48, borderRadius: radius.md, borderWidth: 1.5, borderColor: palette.lineStrong, alignItems: "center", justifyContent: "center", backgroundColor: palette.white }}
+              >
+                <Text variant="bodyBold">{query.isFetchingNextPage ? "Load ho raha hai" : "Aur dikhao"}</Text>
+              </Pressable>
+            </View>
+          ) : null
+        }
+      />
 
       {sheet?.kind === "approve" && current && current.state === "awaiting" ? (
-        <ApproveSheet
-          item={current}
-          busy={busyId === current.payment_id}
-          error={sheetError}
-          onClose={() => setSheet(null)}
-          onConfirm={(amount, mode) => approve(current, amount, mode)}
-        />
+        <ApproveSheet item={current} busy={busyId === current.payment_id} error={sheetError} onClose={() => setSheet(null)} onConfirm={(amount, mode) => approve(current, amount, mode)} />
       ) : null}
       {sheet?.kind === "reject" && current && current.state === "awaiting" ? (
-        <RejectSheet
-          item={current}
-          busy={busyId === current.payment_id}
-          error={sheetError}
-          onClose={() => setSheet(null)}
-          onConfirm={(reason) => reject(current, reason)}
-        />
+        <RejectSheet item={current} busy={busyId === current.payment_id} error={sheetError} onClose={() => setSheet(null)} onConfirm={(reason) => reject(current, reason)} />
       ) : null}
       {sheet?.kind === "refund" && current ? (
         <RefundConfirmSheet
@@ -296,7 +369,10 @@ export default function ApprovalsScreen() {
           onConfirm={() => approve(dupItem, dup.amount, dup.mode, true)}
         />
       ) : null}
+      {bulk ? (
+        <BulkApproveSheet items={bulkItems} busy={bulk.busy} progress={bulk.progress} error={bulk.error} onClose={() => setBulk(null)} onConfirm={runBulk} />
+      ) : null}
       {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
-    </SafeAreaView>
+    </View>
   );
 }

@@ -1,20 +1,15 @@
-import { Pressable, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useIsFocused } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { useIsFocused } from "expo-router";
 import type { BottomTabBarProps } from "expo-router/tabs";
+import { CalendarDays, Ellipsis, ShieldCheck, Wallet } from "lucide-react-native";
+import { TabBar, type IconComponent, type TabItem } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useMyPermissions } from "@/lib/use-my-permissions";
-import { OV } from "@/lib/overview";
-import { OWNER_TABS, tabAllowed, type OwnerTabKey } from "@/lib/owner-access";
-import { ApprovalsIcon, DotsIcon, GridIcon, LedgerTabIcon } from "@/components/overview/icons";
-import { RefreshIcon } from "@/components/icons";
-
-export type OwnerTab = OwnerTabKey;
+import { activeBarKey, ownerBarTabs, showWalkinFab, type OwnerBarKey } from "@/lib/owner-floodlight";
 
 export function badgeText(n: number): string {
   return n > 99 ? "99+" : String(n);
@@ -38,67 +33,46 @@ export function useOwnerBadges(active = true) {
   return q.data ?? { approvals: 0, refunds: 0 };
 }
 
-/** The real tab bar of the owner `Tabs` navigator (app/(owner)/(tabs)/_layout.tsx): switching tabs no longer pushes a
- * new screen onto a Stack (the old fake tab bar did, so the stack grew and Back walked through tab history). Staff only
- * see the tabs their permissions open; while a staff account's permissions are still loading only "Aur" is shown, so a
- * forbidden tab never flashes. */
+const ICON: Record<OwnerBarKey, IconComponent> = { aaj: CalendarDays, approvals: ShieldCheck, paisa: Wallet, aur: Ellipsis };
+
+/**
+ * The real tab bar of the owner `Tabs` navigator (OwnerToday board): Aaj · Approvals · teal "+" walk-in · Paisa · Aur, the
+ * Floodlight glass TabBar. Paisa groups the Ledger and Refunds tab routes (both stay real routes for deep links and
+ * notification paths). Staff only see the cells their permissions open and the "+" only with `walkin`; while a staff
+ * account's permissions are still loading only "Aur" is shown, so a forbidden tab never flashes.
+ */
 export function OwnerTabBar({ state, navigation }: BottomTabBarProps) {
   const role = useAuthStore((s) => s.user?.role);
   const { can, settled } = useMyPermissions();
   // Focus of the whole tab group in the owner Stack: false while walk-in, history, ... are pushed over the tabs.
   const tabsFocused = useIsFocused();
   const badges = useOwnerBadges(tabsFocused);
-  const insets = useSafeAreaInsets();
-  const count: Partial<Record<OwnerTab, number>> = { approvals: badges.approvals, refunds: badges.refunds };
   const activeRoute = state.routes[state.index]?.name;
+  const lit = activeBarKey(activeRoute);
   const staffPending = role === "staff" && !settled;
+  const tabs = staffPending ? ownerBarTabs(() => false) : ownerBarTabs(can);
+  const count: Partial<Record<OwnerBarKey, number>> = { approvals: badges.approvals, paisa: can("mark_refunds") ? badges.refunds : 0 };
 
-  return (
-    <View
-      accessibilityRole="tablist"
-      className="flex-row bg-owner-surface border-t border-owner-border"
-      style={{ paddingBottom: Math.max(insets.bottom, 6) }}
-    >
-      {OWNER_TABS.filter((t) => (staffPending ? t.key === "more" : tabAllowed(t.key, can))).map((t) => {
-        const on = t.route === activeRoute;
-        const color = on ? OV.ink : OV.muted;
-        const n = count[t.key] ?? 0;
-        const route = state.routes.find((r) => r.name === t.route);
-        return (
-          <Pressable
-            key={t.key}
-            onPress={() => {
-              if (!route) return;
-              const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-              if (!on && !event.defaultPrevented) navigation.navigate(route.name, route.params);
-            }}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            accessibilityLabel={n > 0 ? `${t.label}, ${badgeText(n)} pending` : t.label}
-            className="flex-1 items-center justify-center gap-0.5"
-            style={{ minHeight: 58 }}
-          >
-            <View>
-              {t.key === "overview" ? <GridIcon color={color} /> : null}
-              {t.key === "approvals" ? <ApprovalsIcon color={color} /> : null}
-              {t.key === "refunds" ? <RefreshIcon size={22} color={color} strokeWidth={1.9} /> : null}
-              {t.key === "ledger" ? <LedgerTabIcon color={color} /> : null}
-              {t.key === "more" ? <DotsIcon color={color} /> : null}
-              {n > 0 ? (
-                <View
-                  className="absolute items-center justify-center rounded-full"
-                  style={{ top: -6, right: -12, minWidth: 18, height: 18, paddingHorizontal: 4, backgroundColor: OV.orange }}
-                >
-                  <Text className="font-plex-bold text-owner-ink text-[10.5px]">{badgeText(n)}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text className="text-[11.5px]" style={{ color, fontFamily: on ? "IBMPlexSans_700Bold" : "IBMPlexSans_500Medium" }}>
-              {t.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+  const items: TabItem[] = tabs.map((t) => {
+    const n = count[t.key] ?? 0;
+    const route = state.routes.find((r) => r.name === t.route);
+    const on = lit === t.key;
+    return {
+      key: t.key,
+      label: t.label,
+      icon: ICON[t.key],
+      active: on,
+      badge: n > 0 ? n : null,
+      accessibilityLabel: n > 0 ? `${t.label}, ${badgeText(n)} baqi` : t.label,
+      testID: `owner-tab-${t.key}`,
+      onPress: () => {
+        if (!route) return;
+        const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+        if (!on && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+      },
+    };
+  });
+
+  const fab = !staffPending && showWalkinFab(can) ? { accessibilityLabel: "Walk-in booking add karein", onPress: () => router.push("/(owner)/walkin"), testID: "owner-fab-walkin" } : undefined;
+  return <TabBar items={items} fab={fab} testID="owner-tabbar" />;
 }

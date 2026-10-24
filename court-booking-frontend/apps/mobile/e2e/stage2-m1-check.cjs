@@ -189,11 +189,12 @@ function defaultState() {
     await page.waitForTimeout(400);
     await shot(page, "s2-02-duplicate-confirm");
     const confirmText = await page.getByTestId("duplicate-confirm").first().innerText();
-    check("B.a separate confirm with the exact question", confirmText.trim() === "Ye screenshot pehle bhi 2 bookings par use hua hai. Phir bhi approve karein?", confirmText);
+    check("B.a separate confirm with the exact question", confirmText.trim().startsWith("Ye screenshot pehle bhi 2 bookings par use hua hai. Phir bhi approve karein?"), confirmText);
     check("B.a nothing sent before the second confirm", !reqs.some((r) => r.p === "/payments/pDup/approve"));
+    await waitFor(async () => (await page.getByRole("button", { name: "Approve karein", exact: true }).count()) === 0, 4000);
     check("B.a approve sheet closed behind it", (await page.getByRole("button", { name: "Approve karein", exact: true }).count()) === 0);
     await (await vis(page.getByRole("button", { name: "Wapas" }))).click();
-    await page.waitForTimeout(400);
+    await waitFor(async () => (await page.getByTestId("duplicate-confirm").count()) === 0, 4000);
     check("B.a Wapas: no request, card stays", !reqs.some((r) => r.p === "/payments/pDup/approve") && (await card(page, "Daud Duplicate").count()) === 1 && (await page.getByTestId("duplicate-confirm").count()) === 0);
 
     await card(page, "Daud Duplicate").getByRole("button", { name: "Approve" }).click();
@@ -209,7 +210,7 @@ function defaultState() {
     await (await vis(page.getByRole("button", { name: "Approve karein" }))).click();
     await page.getByTestId("duplicate-confirm").first().waitFor({ timeout: 8000 });
     const t2 = await page.getByTestId("duplicate-confirm").first().innerText();
-    check("B.a 409 DUPLICATE_PROOF_CONFIRM_REQUIRED opens the confirm with the server count", t2.trim() === "Ye screenshot pehle bhi 3 bookings par use hua hai. Phir bhi approve karein?", t2);
+    check("B.a 409 DUPLICATE_PROOF_CONFIRM_REQUIRED opens the confirm with the server count", t2.trim().startsWith("Ye screenshot pehle bhi 3 bookings par use hua hai. Phir bhi approve karein?"), t2);
     check("B.a 409: no raw error text", (await page.getByText(/confirm|DUPLICATE_PROOF/).count()) === 0);
     await (await vis(page.getByRole("button", { name: "Phir bhi approve karein" }))).click();
     await waitFor(async () => (await card(page, "Saad Server").count()) === 0, 8000);
@@ -268,8 +269,8 @@ function defaultState() {
     const { ctx, page } = await setup(browser, state);
     await page.goto(BASE + "/approvals", { waitUntil: "domcontentloaded", timeout: 240000 });
     await page.getByTestId("approvals-count").first().waitFor({ timeout: 180000 });
-    await waitFor(async () => (await page.getByRole("button", { name: "Approve" }).count()) === 3, 15000);
-    check("B.b staff with approve_payments: Approve shown, no locked note", (await page.getByRole("button", { name: "Approve" }).count()) === 3 && (await page.getByTestId("approval-locked").count()) === 0);
+    await waitFor(async () => (await page.getByRole("button", { name: "Approve", exact: true }).count()) === 3, 15000);
+    check("B.b staff with approve_payments: Approve shown, no locked note", (await page.getByRole("button", { name: "Approve", exact: true }).count()) === 3 && (await page.getByTestId("approval-locked").count()) === 0);
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
     await page.getByTestId("total-slots-card").first().waitFor({ timeout: 180000 });
     await waitFor(async () => (await bcard(page, "bkp").count()) === 1, 15000);
@@ -290,7 +291,7 @@ function defaultState() {
     await shot(page, "s2-staff-overview");
     check("staff account: lands on Overview (owner screens), not the login / setup wizard", landed && !/venue-setup|login/.test(page.url()), page.url());
     check("staff account: the gate never opened the setup wizard", !reqs.some((r) => r.method === "POST" && r.p === "/venues"));
-    check("staff account: no CNIC banner / premium notices", (await page.getByText(/CNIC dein|Shanakhti/).count()) === 0);
+    check("staff account: no CNIC banner / premium notices", (await page.getByText(/CNIC dein|CNIC verify|Shanakhti/).count()) === 0);
     check("staff account: no '+ Add venue'", (await page.getByText("+ Add venue").count()) === 0);
     await page.goto(BASE + "/more", { waitUntil: "domcontentloaded", timeout: 240000 });
     await page.getByText("Venue settings").first().waitFor({ timeout: 60000 });
@@ -367,7 +368,7 @@ function defaultState() {
     await bcard(page, "bkp").getByRole("button", { name: /^Booking completed:/ }).click();
     await page.getByTestId("completion-hint").first().waitFor({ timeout: 8000 });
     check("C.3 booked row hint: 'dono se booking Completed ho jayegi'", /dono se booking Completed ho jayegi/.test(await page.getByTestId("completion-hint").first().innerText()));
-    await (await vis(page.getByRole("button", { name: "Close" }))).click();
+    await (await vis(page.getByRole("button", { name: "Band karein" }))).click();
     await page.waitForTimeout(400);
 
     // No-show: confirm sheet, Wapas sends nothing, server error shown, then success.
@@ -409,7 +410,10 @@ function defaultState() {
       await waitFor(async () => reqs.filter((r) => r.p === "/bookings/bkp/no-show").length === 3, 8000);
       check("C.3 detail no-show posts once more", reqs.filter((r) => r.p === "/bookings/bkp/no-show").length === 3);
     }
-    await (await vis(page.getByRole("button", { name: "Band karein" }))).click();
+    // a saved follow-up closes the whole detail flow (Floodlight: back to the list with fresh numbers); close it if still up
+    await page.waitForTimeout(1200);
+    const still = await vis(page.getByRole("button", { name: "Band karein" }));
+    if (still) await still.click();
     await page.waitForTimeout(400);
 
     // Overview line -> History with status_pending over the any-date range.

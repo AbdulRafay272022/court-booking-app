@@ -92,7 +92,7 @@ async function waitBadge(page, want, timeout = 25000) {
   {
     const { ctx, page, reqs } = await setup(browser, { notifications: () => [] });
     await page.goto(BASE + "/approvals", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Payment review").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("approvals-count").first().waitFor({ timeout: 180000 });
     await page.getByRole("button", { name: "Details" }).waitFor({ timeout: 30000 });
     check("approvals: Details + History link shown", (await page.getByRole("link", { name: "History mein dekhein" }).count()) === 1);
     check("approvals: approve/reject still there", (await page.getByText("Approve", { exact: true }).count()) === 1 && (await page.getByText("Reject", { exact: true }).count()) === 1);
@@ -104,6 +104,7 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.getByRole("link", { name: "History mein dekhein" }).click();
     await page.waitForURL(/history/, { timeout: 15000 });
     await page.getByTestId("history-highlighted").first().waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !document.body.innerText.includes("Band karein"), null, { timeout: 5000 }).catch(() => {});
     const h = reqs.filter((r) => r.p === "/owners/bookings-history").pop();
     check("approvals: History opens with the booking's date range", h && h.q.includes("from=" + SLOT_DAY) && h.q.includes("to=" + SLOT_DAY), h && h.q);
     check("approvals: booking highlighted on History (no popup)", /b-77/.test(page.url()) && (await page.getByText("Sirf ye booking dikhayi ja rahi hai").count()) >= 1 && (await page.getByText("Band karein").count()) === 0);
@@ -114,7 +115,7 @@ async function waitBadge(page, want, timeout = 25000) {
   {
     const { ctx, page, reqs } = await setup(browser, { notifications: () => [] });
     await page.goto(BASE + "/refunds", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Refunds to pay").first().waitFor({ timeout: 120000 });
+    await page.getByText("Refunds dene hain").first().waitFor({ timeout: 120000 });
     await page.getByRole("button", { name: "Details" }).waitFor({ timeout: 30000 });
     await page.getByRole("button", { name: "Details" }).click();
     await page.getByText("KH-0000004D").first().waitFor({ timeout: 15000 });
@@ -127,6 +128,7 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.getByRole("link", { name: "History mein dekhein" }).click();
     await page.waitForURL(/history/, { timeout: 15000 });
     await page.getByTestId("history-highlighted").first().waitFor({ timeout: 15000 });
+    await page.waitForFunction(() => !document.body.innerText.includes("Band karein"), null, { timeout: 5000 }).catch(() => {});
     const h = reqs.filter((r) => r.p === "/owners/bookings-history").pop();
     check("refunds: History opens with the booking's date range", h && h.q.includes("from=" + SLOT_DAY) && h.q.includes("to=" + SLOT_DAY), h && h.q);
     check("refunds: booking highlighted on History (no popup)", /b-77/.test(page.url()) && (await page.getByText("Sirf ye booking dikhayi ja rahi hai").count()) >= 1 && (await page.getByText("Band karein").count()) === 0);
@@ -144,7 +146,7 @@ async function waitBadge(page, want, timeout = 25000) {
     ];
     const { ctx, page } = await setup(browser, { notifications: () => list });
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     check("bell: badge shows 3 (duplicate folded, >24h row ignored)", await waitBadge(page, "3", 30000), "got " + (await badgeText(page)));
 
     list = [entry("n5", "payment_submitted", new Date().toISOString(), "b5"), ...list];
@@ -154,7 +156,7 @@ async function waitBadge(page, want, timeout = 25000) {
     await page.getByText("Notifications", { exact: true }).first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(800);
     await page.goBack();
-    await page.getByText("Overview").first().waitFor({ timeout: 30000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 30000 });
     await page.waitForTimeout(800);
     check("bell: badge clears after opening notifications", (await badgeText(page)) === null, "got " + (await badgeText(page)));
     const stored = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("khelo.notif.readAt.")));
@@ -169,7 +171,7 @@ async function waitBadge(page, want, timeout = 25000) {
     const many = Array.from({ length: 130 }, (_, i) => entry("m" + i, "booking_confirmed", minAgo(1 + i * 6), "ref" + i));
     const { ctx, page } = await setup(browser, { notifications: () => many });
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Overview").first().waitFor({ timeout: 180000 });
+    await page.getByTestId("today-hero").first().waitFor({ timeout: 180000 });
     check("bell: caps at 99+", await waitBadge(page, "99+", 30000), "got " + (await badgeText(page)));
     await ctx.close();
   }

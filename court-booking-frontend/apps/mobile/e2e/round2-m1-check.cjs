@@ -113,8 +113,9 @@ async function setup(browser, state) {
     if ((m = /^\/owners\/bookings\/([^/]+)\/completion$/.exec(p))) return json(row(m[1], { completion: { result: "no", received_pkr: 3000, reason: "x", marked_at: iso(0), marked_by_name: "Owner" } }));
     if (/^\/courts\/[^/]+\/availability$/.test(p)) {
       const d = url.searchParams.get("date");
-      const s = (hh, status) => ({ starts_at: at(d, hh), ends_at: at(d, hh + 1), status, price: 2000, advance_amount: 1000, held_until: null, booking_id: null, is_mine: false, reason: null, after_midnight: false });
-      return json({ court_id: "c", date: d, slot_minutes: 60, slots: [s(22, "available"), s(23, "booked")] });
+      // relative to now (a fixed 10 PM slot made this check fail after 11 PM PKT): one free slot ahead, one booked
+      const s = (h, status) => ({ starts_at: iso(h), ends_at: iso(h + 1), status, price: 2000, advance_amount: 1000, held_until: null, booking_id: null, is_mine: false, reason: null, after_midnight: false });
+      return json({ court_id: "c", date: d, slot_minutes: 60, slots: [s(0.5, "available"), s(1.5, "booked")] });
     }
     if (p === "/owners/refunds") return json(state.refunds());
     if ((m = /^\/owners\/refunds\/([^/]+)\/mark-refunded$/.exec(p))) {
@@ -210,7 +211,7 @@ function defaultState() {
     check("A1 card shows sport + court", (await card(page, "Ali Raza").innerText()).includes("Court 1") && (await card(page, "Ali Raza").innerText()).includes("padel"));
     const chipA = await card(page, "Ali Raza").getByTestId("amount-chip").innerText();
     const chipB = await card(page, "Bilal Khan").getByTestId("amount-chip").innerText();
-    check("A1 expected vs OCR chip (text, not colour only)", /Match: screenshot PKR 2,000 - chahiye PKR 2,000/.test(chipA) && /Farq hai: screenshot PKR 10,000/.test(chipB), chipA + " | " + chipB);
+    check("A1 expected vs OCR chip (text, not colour only)", /Chahiye\s*PKR 2,000[\s\S]*Screenshot mein · Match\s*PKR 2,000 ✓/.test(chipA) && /Screenshot mein · Farq hai\s*PKR 10,000/.test(chipB), chipA + " | " + chipB);
     check("A1 each card has Details, History link, Approve, Reject", (await card(page, "Ali Raza").getByRole("button", { name: "Details" }).count()) === 1 && (await card(page, "Ali Raza").getByRole("link", { name: "History mein dekhein" }).count()) === 1 && (await card(page, "Ali Raza").getByRole("button", { name: "Approve" }).count()) === 1 && (await card(page, "Ali Raza").getByRole("button", { name: "Reject" }).count()) === 1);
 
     // A3 thumbnail + viewer, with an expired first URL (refetched once).
@@ -280,7 +281,7 @@ function defaultState() {
     await card(page, "Ehsan Ullah").getByRole("button", { name: "Reject" }).click();
     await page.getByText("Keyboard ke mic se bolein").first().waitFor({ timeout: 8000 });
     check("A9 reject reason has the keyboard mic hint", (await page.getByText("Keyboard ke mic se bolein").count()) >= 1);
-    await (await vis(page.getByRole("button", { name: "Amount match nahi karta" }))).click();
+    await (await vis(page.getByRole("radio", { name: "Amount match nahi karta" }))).click();
     await (await vis(page.getByRole("button", { name: "Reject karein" }))).click();
     await waitFor(async () => (await page.locator('[data-testid="approval-card-grey"]').filter({ hasText: "Ehsan Ullah" }).count()) === 1, 8000);
     await page.locator('[data-testid="approval-card-grey"]').first().scrollIntoViewIfNeeded();
@@ -325,6 +326,7 @@ function defaultState() {
     await page.getByTestId("history-focus-banner").first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(500);
     await shot(page, "05-history-focus");
+    await page.waitForFunction(() => !document.body.innerText.includes("Band karein"), null, { timeout: 5000 }).catch(() => {});
     check("A2 sheet closed before navigating (no popup on History)", (await page.getByText("Band karein").count()) === 0);
     check("A2 History shows 'Sirf ye booking' + Filter hatayen", (await page.getByText("Sirf ye booking dikhayi ja rahi hai").count()) === 1 && (await page.getByRole("button", { name: "Filter hatayen" }).count()) === 1);
     check("A2 History highlights the target card", (await page.getByTestId("history-highlighted").count()) === 1);
@@ -385,9 +387,9 @@ function defaultState() {
 
     await total.getByRole("button", { name: "Free 19" }).click();
     await page.getByText("Khali slots").first().waitFor({ timeout: 10000 });
-    await waitFor(async () => (await page.getByLabel(/10:00 PM Free/).count()) > 0, 10000);
-    check("A7 Free -> slots sheet showing only free slots", (await page.getByLabel(/10:00 PM Free/).count()) >= 1 && (await page.getByLabel(/11:00 PM Booked/).count()) === 0);
-    await (await vis(page.getByRole("button", { name: "Close" }))).click();
+    await waitFor(async () => (await page.getByLabel(/, khaali$/).count()) > 0, 10000);
+    check("A7 Free -> slots sheet showing only free slots", (await page.getByLabel(/, khaali$/).count()) >= 1 && (await page.getByLabel(/, booked$/).count()) === 0);
+    await (await vis(page.getByRole("button", { name: "Band karein" }))).click();
     await page.waitForTimeout(400);
 
     // A8 completion "Nahi".
@@ -395,7 +397,7 @@ function defaultState() {
     await (await vis(page.getByText("Nahi", { exact: true }))).click();
     await page.getByText("Baqi mein se kitna mila? (PKR)").first().waitFor({ timeout: 8000 });
     await shot(page, "07-completion");
-    const input = await vis(page.getByLabel("Baqi mein se kitna mila, PKR"));
+    const input = await vis(page.getByLabel("Baqi mein se kitna mila? (PKR)"));
     check("A8 field defaults to 0", (await input.inputValue()) === "0");
     check("A8 live line at 0", (await page.getByText("Save karne par Due PKR 2,500 rahega.").count()) === 1);
     const save = async () => vis(page.getByRole("button", { name: "Save karein" }));
@@ -434,7 +436,7 @@ function defaultState() {
     const state = defaultState();
     const { ctx, page, reqs } = await setup(browser, state);
     await page.goto(BASE + "/refunds", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Refunds to pay").first().waitFor({ timeout: 180000 });
+    await page.getByText("Refunds dene hain").first().waitFor({ timeout: 180000 });
     await page.getByText("Mujtaba Anwer").first().waitFor({ timeout: 30000 });
     check("A10 'Hissa wapas' chip on a partly refunded card", (await page.getByTestId("chip-partial").count()) === 1);
     // Stage 2: duplicate_proof -> warning chip (icon + text) on that card only
@@ -446,7 +448,7 @@ function defaultState() {
     await shot(page, "08-refund");
     const bd = await page.getByTestId("refund-breakdown").first().innerText();
     check("A10 breakdown card (sent / policy / already / remaining)", /Player ne bheje\s*PKR 10,000/.test(bd) && /Refund banta hai \(policy\)\s*PKR 2,000/.test(bd) && /Pehle wapas kiye\s*PKR 500/.test(bd) && /Ab baqi wapas dena\s*PKR 1,500/.test(bd), bd.replace(/\n/g, " | "));
-    const amt = await vis(page.getByLabel("Kitna wapas bheja, PKR"));
+    const amt = await vis(page.getByLabel("Kitna wapas bheja? (PKR)"));
     check("A10 amount prefilled with the remaining", (await amt.inputValue()) === "1500");
     await amt.fill("10000");
     check("A10 clear over-limit error", (await page.getByText("Aap ne 10,000 likha, lekin sirf PKR 1,500 wapas banta hai.").count()) === 1);
@@ -468,7 +470,7 @@ function defaultState() {
     await page.waitForTimeout(400);
     await page.getByRole("button", { name: "Abbas Zafar refund" }).click();
     await page.getByTestId("refund-none").first().waitFor({ timeout: 8000 });
-    check("A10 remaining 0 -> no form + why", (await page.getByText("Koi refund baqi nahi").count()) === 1 && (await page.getByLabel("Kitna wapas bheja, PKR").count()) === 0);
+    check("A10 remaining 0 -> no form + why", (await page.getByText("Koi refund baqi nahi").count()) === 1 && (await page.getByLabel("Kitna wapas bheja? (PKR)").count()) === 0);
     await ctx.close();
   }
 
@@ -486,11 +488,13 @@ function defaultState() {
     await waitFor(async () => (await page.getByTestId("approval-locked").count()) > 0, 8000);
     await shot(page, "10-no-permission");
     check("QA staff refusal: every card shows the no-permission note", (await page.getByTestId("approval-locked").count()) === 5);
+    // the approve sheet animates out after the 403 (Floodlight Sheet): give it a moment before counting buttons
+    await waitFor(async () => (await page.getByRole("button", { name: "Approve" }).count()) === 0, 4000);
     check("QA staff refusal: Approve/Reject/Theek hai hidden", (await page.getByRole("button", { name: "Approve" }).count()) === 0 && (await page.getByRole("button", { name: "Theek hai" }).count()) === 0);
     check("QA staff refusal text", (await page.getByText("Aap ke paas is kaam ki ijazat nahi. Owner se ijazat mangein.").count()) >= 1 && (await page.getByText(/not your booking|aapki booking nahi/i).count()) === 0);
     check("QA refused card stays", (await card(page, "Ali Raza").count()) === 1);
     await page.goto(BASE + "/refunds", { waitUntil: "domcontentloaded", timeout: 240000 });
-    await page.getByText("Refunds to pay").first().waitFor({ timeout: 180000 });
+    await page.getByText("Refunds dene hain").first().waitFor({ timeout: 180000 });
     await waitFor(async () => (await page.getByTestId("refunds-no-permission").count()) > 0, 20000);
     await shot(page, "11-refunds-no-permission");
     check("QA refunds: one no-permission state", (await page.getByTestId("refunds-no-permission").count()) === 1 && (await page.getByText("Aap ke paas is kaam ki ijazat nahi").count()) >= 1);

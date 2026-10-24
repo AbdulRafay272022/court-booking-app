@@ -1,185 +1,116 @@
 import type { ReactNode } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { ChevronDown } from "lucide-react-native";
+import { palette, radius, size, space, type Tone } from "@court-booking/ui-tokens";
+import { Button, Checkbox as FlCheckbox, Chip, FontScaleProvider, LangProvider, Pill as FlPill, RoleProvider, Sheet, Text, useFontScale, useLang, useRole } from "@/components/ui";
 
-import { ChevronDownIcon } from "@/components/icons";
-import { CloseIcon } from "./icons";
-import { OV } from "@/lib/overview";
+/**
+ * Owner sheet / control kit, now a thin layer over the Floodlight library (@/components/ui): every owner sheet (booking
+ * detail, completion, no-show, refund, pickers, approvals) shares the DS Sheet, Button, Chip and Checkbox. The old
+ * IBM Plex / hex look is gone. Kept as a module so the call sites (and their e2e labels) stay the same.
+ */
 
-/** A bottom sheet (Modal, so it also works on Expo web). Mount it only while open. */
+/** A bottom sheet. Mount it only while open (it presents itself on mount; Close / backdrop / swipe call onClose). */
 export function BottomSheet({
+  open = true,
   title,
   subtitle,
   onClose,
   children,
   footer,
-  tall,
+  testID,
 }: {
+  /** Default true (mount-while-open). Set false to let the sheet animate out first: onClose fires once it is gone, which is
+   * how one sheet hands over to the next without two @gorhom modals stacking (the stack dismissed both on Expo web). */
+  open?: boolean;
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /** Kept for old call sites: the DS Sheet sizes itself to the content up to the screen height. */
   tall?: boolean;
+  testID?: string;
 }) {
+  // @gorhom renders the sheet in a portal at the app root, OUTSIDE the owner layout's providers: re-provide the owner
+  // role, language and font scale to the content so buttons stay teal (never the player orange) inside sheets.
+  const role = useRole();
+  const lang = useLang();
+  const fs = useFontScale();
+  const wrap = (node: ReactNode) => (
+    <RoleProvider role={role}>
+      <LangProvider lang={lang}>
+        <FontScaleProvider scale={fs}>{node}</FontScaleProvider>
+      </LangProvider>
+    </RoleProvider>
+  );
   return (
-    <Modal transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-        <Pressable
-          className="flex-1 justify-end"
-          style={{ backgroundColor: "rgba(12,31,29,0.45)" }}
-          onPress={onClose}
-        >
-          <Pressable
-            className="bg-owner-surface rounded-t-3xl"
-            style={{ maxHeight: "92%", height: tall ? "92%" : undefined }}
-            onPress={(e) => e.stopPropagation?.()}
-          >
-            <View className="flex-row items-start justify-between gap-3 px-5 pt-5 pb-3">
-              <View className="flex-1 gap-1">
-                <Text className="font-plex-bold text-owner-ink text-[20px] -tracking-[0.3px]" accessibilityRole="header">
-                  {title}
-                </Text>
-                {subtitle ? <Text className="font-plex-medium text-owner-ink-faint text-[13px]">{subtitle}</Text> : null}
-              </View>
-              <Pressable
-                onPress={onClose}
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-                className="w-11 h-11 rounded-xl border border-owner-border items-center justify-center"
-              >
-                <CloseIcon />
-              </Pressable>
-            </View>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerClassName="px-5 pb-6 gap-3"
-              style={{ flexGrow: 0, flexShrink: 1 }}
-            >
-              {children}
-            </ScrollView>
-            {footer ? <View className="px-5 pb-7 pt-2 border-t border-owner-border-light">{footer}</View> : null}
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+    <Sheet open={open} onClose={onClose} title={title} subtitle={subtitle} footer={footer ? wrap(footer) : undefined} testID={testID}>
+      {wrap(children)}
+    </Sheet>
   );
 }
 
-export function Pill({
-  label,
-  selected,
-  onPress,
-  tone = "neutral",
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  tone?: "neutral" | "green" | "red" | "amber";
-}) {
-  const tint = {
-    neutral: { bg: "#EDF1F2", fg: OV.ink },
-    green: { bg: OV.accentSoft, fg: OV.accent },
-    red: { bg: "#EFEDEB", fg: OV.ink },
-    amber: { bg: OV.amberBg, fg: OV.amberDark },
-  }[tone];
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      className="px-3.5 rounded-full items-center justify-center"
-      style={{ minHeight: 44, backgroundColor: selected ? OV.ink : tint.bg }}
-    >
-      <Text className="font-plex-semibold text-[13px]" style={{ color: selected ? "#FFFFFF" : tint.fg }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
+/** Filter pill (Sab / Booked / Cancelled ...). Selected = role tint + "✓" (never colour alone). */
+export function Pill({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void; tone?: "neutral" | "green" | "red" | "amber" }) {
+  return <Chip label={label} selected={selected} onPress={onPress} />;
 }
 
-/** Looks like a dropdown field; opens a sheet. */
-export function SelectButton({
-  label,
-  value,
-  onPress,
-  disabled,
-  compact,
-}: {
-  label?: string;
-  value: string;
-  onPress: () => void;
-  disabled?: boolean;
-  compact?: boolean;
-}) {
+/** Looks like a dropdown field; opens a sheet. The value wraps (never "…"). */
+export function SelectButton({ label, value, onPress, disabled, compact }: { label?: string; value: string; onPress: () => void; disabled?: boolean; compact?: boolean }) {
   return (
-    <View className={compact ? "" : "gap-1.5"}>
-      {label ? <Text className="font-plex-semibold text-owner-ink-muted text-[12.5px]">{label}</Text> : null}
+    <View style={{ gap: compact ? 0 : space[2] }}>
+      {label ? <Text variant="label">{label}</Text> : null}
       <Pressable
         onPress={onPress}
         disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={label ? `${label}: ${value}` : value}
-        className="flex-row items-center justify-between rounded-xl bg-owner-surface px-4"
-        style={{ minHeight: compact ? 44 : 52, borderWidth: 1.5, borderColor: disabled ? OV.border : OV.ink, opacity: disabled ? 0.6 : 1 }}
+        accessibilityState={{ disabled: !!disabled }}
+        style={{
+          minHeight: compact ? size.tap : 52,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space[2],
+          paddingHorizontal: space[4],
+          paddingVertical: space[2],
+          borderRadius: radius.input,
+          backgroundColor: palette.white,
+          borderWidth: 1.5,
+          borderColor: palette.lineStrong,
+          opacity: disabled ? 0.6 : 1,
+        }}
       >
-        <Text className="font-plex-semibold text-owner-ink text-[15px] flex-1" numberOfLines={1}>
+        <Text variant="bodyStrong" style={{ flex: 1 }}>
           {value}
         </Text>
-        <ChevronDownIcon color={OV.ink} />
+        <ChevronDown size={18} color={palette.night} />
       </Pressable>
     </View>
   );
 }
 
-export function OutlineButton({ label, onPress, flex }: { label: string; onPress: () => void; flex?: boolean }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      className={`${flex ? "flex-1" : ""} rounded-xl bg-owner-surface items-center justify-center px-3`}
-      style={{ minHeight: 48, borderWidth: 1.5, borderColor: OV.ink }}
-    >
-      <Text className="font-plex-semibold text-owner-ink text-[14px]">{label}</Text>
-    </Pressable>
-  );
+/** Secondary action in a sheet footer / card. */
+export function OutlineButton({ label, onPress, flex, disabled, testID }: { label: string; onPress: () => void; flex?: boolean; disabled?: boolean; testID?: string }) {
+  return <Button label={label} onPress={onPress} variant="soft" size="md" disabled={disabled} block={!flex} style={flex ? { flex: 1 } : undefined} testID={testID} />;
 }
 
-export function OrangeButton({
-  label,
-  onPress,
-  flex,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  flex?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      className={`${flex ? "flex-1" : ""} rounded-xl items-center justify-center px-3`}
-      style={{ minHeight: 48, backgroundColor: OV.orange, opacity: disabled ? 0.5 : 1 }}
-    >
-      <Text className="font-plex-bold text-owner-ink text-[14px]">{label}</Text>
-    </Pressable>
-  );
+/** The one main action (owner = teal + white, from the role theme). */
+export function PrimaryButton({ label, onPress, flex, disabled, loading, testID }: { label: string; onPress: () => void; flex?: boolean; disabled?: boolean; loading?: boolean; testID?: string }) {
+  return <Button label={label} onPress={onPress} variant="primary" size="md" disabled={disabled} loading={loading} block={!flex} style={flex ? { flex: 1 } : undefined} testID={testID} />;
 }
 
-export function SmallChip({ label, bg, fg, icon, onPress }: { label: string; bg: string; fg: string; icon?: ReactNode; onPress?: () => void }) {
-  const inner = (
-    <View className="flex-row items-center gap-1 px-2.5 rounded-full" style={{ backgroundColor: bg, minHeight: 26 }}>
-      {icon}
-      <Text className="font-plex-semibold text-[11.5px]" style={{ color: fg }}>
-        {label}
-      </Text>
-    </View>
-  );
+/** Destructive confirm (Reject karein / No-show mark karein / Phir bhi approve karein). */
+export function DangerButton({ label, onPress, flex, disabled, testID }: { label: string; onPress: () => void; flex?: boolean; disabled?: boolean; testID?: string }) {
+  return <Button label={label} onPress={onPress} variant="dangerSolid" size="md" disabled={disabled} block={!flex} style={flex ? { flex: 1 } : undefined} testID={testID} />;
+}
+
+/** Small status chip (icon + text, toned by the Floodlight tones). */
+export function SmallChip({ label, tone = "neutral", icon, onPress }: { label: string; tone?: Tone; icon?: ReactNode; onPress?: () => void }) {
+  const inner = <FlPill label={label} tone={tone} icon={icon} size="sm" />;
   if (!onPress) return inner;
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={8}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={{ minHeight: size.tap, justifyContent: "center" }}>
       {inner}
     </Pressable>
   );
@@ -187,23 +118,15 @@ export function SmallChip({ label, bg, fg, icon, onPress }: { label: string; bg:
 
 export function Checkbox({ checked, label, sub, onPress }: { checked: boolean; label: string; sub?: string; onPress: () => void }) {
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked }}
-      className="flex-row items-center gap-3"
-      style={{ minHeight: 48 }}
-    >
-      <View
-        className="w-6 h-6 rounded-md items-center justify-center"
-        style={{ borderWidth: 2, borderColor: checked ? OV.accent : OV.faint, backgroundColor: checked ? OV.accent : "#FFFFFF" }}
-      >
-        {checked ? <Text className="font-plex-bold text-white text-[14px] leading-[16px]">{"✓"}</Text> : null}
+    <FlCheckbox checked={checked} onChange={() => onPress()} label={label}>
+      <View style={{ gap: 1 }}>
+        <Text variant="bodyBold">{label}</Text>
+        {sub ? (
+          <Text variant="caption" tone="muted">
+            {sub}
+          </Text>
+        ) : null}
       </View>
-      <View className="flex-1">
-        <Text className="font-plex-semibold text-owner-ink text-[15px]">{label}</Text>
-        {sub ? <Text className="font-plex-medium text-owner-ink-faint text-[12px]">{sub}</Text> : null}
-      </View>
-    </Pressable>
+    </FlCheckbox>
   );
 }

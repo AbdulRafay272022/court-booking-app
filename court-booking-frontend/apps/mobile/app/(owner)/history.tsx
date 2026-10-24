@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { HistoryStatusFilter } from "@court-booking/types";
@@ -10,15 +9,18 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { addDays, daysOfMonth, formatDayHeader, formatPKR, monthOf, pktDateString, weekOf } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { OV, STATUS_FILTERS } from "@/lib/overview";
-import { ChevronLeftIcon, SearchIcon } from "@/components/icons";
+import { STATUS_FILTERS } from "@/lib/overview";
+import { shareCsv } from "@/lib/export-csv";
+import { Download, Search } from "lucide-react-native";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Banner, Button, Chip, EmptyState, ErrorState, Input, Screen, SkeletonCard, Text } from "@/components/ui";
+import { OwnerHeader, PaisaSwitch } from "./_fl";
 import { NoAccess } from "@/components/no-access";
 import { useMyPermissions } from "@/lib/use-my-permissions";
-import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { BookingCard } from "@/components/overview/booking-card";
 import { DateChooserSheet, MultiSelectSheet, courtsSummary } from "@/components/overview/pickers";
-import { OutlineButton, Pill, SelectButton } from "@/components/overview/ui";
+import { OutlineButton, SelectButton } from "@/components/overview/ui";
 
 type Preset = "aaj" | "kal" | "hafta" | "mahina" | "custom";
 
@@ -76,6 +78,8 @@ export default function HistoryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.booking]);
   const preset = detectPreset(from, to);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounced search (the server is hit once the typing pauses).
@@ -143,100 +147,117 @@ export default function HistoryScreen() {
 
   if (perms.settled && !perms.can("view_ledger")) return <NoAccess what="Bookings history" />;
 
+  async function exportCsv() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const csv = await api.owners.bookingsHistoryCsv({
+        venueId: activeVenueId,
+        dateFrom: from <= to ? from : to,
+        dateTo: from <= to ? to : from,
+        courtIds,
+        statuses: statuses as HistoryStatusFilter[],
+        q: q || undefined,
+      });
+      await shareCsv(csv, `bookings_${from}_${to}.csv`);
+    } catch (e) {
+      setExportError(friendlyErrorMessage(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const statusChip = (key: string) => {
+    const on = statuses.length === 1 && statuses[0] === key;
+    return (
+      <Chip
+        key={key}
+        label={STATUS_FILTERS.find((f) => f.key === key)?.label ?? key}
+        selected={on}
+        onPress={() => setStatuses(on ? [] : [key])}
+      />
+    );
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-4 py-4 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(owner)/(tabs)/today"))}
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center"
-        >
-          <ChevronLeftIcon />
-        </Pressable>
-        <View className="flex-1">
-          <Text className="font-plex-bold text-owner-ink text-[20px] -tracking-[0.3px]" accessibilityRole="header">
-            Bookings history
-          </Text>
-          <Text className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-            {from === to ? formatDayHeader(from) : `${formatDayHeader(from)} - ${formatDayHeader(to)}`}
-          </Text>
-        </View>
+    <Screen scroll={false} gutter={false} testID="history-screen">
+      <View style={{ paddingHorizontal: space[4], gap: space[3], paddingBottom: space[2] }}>
+        <OwnerHeader
+          title="History"
+          subtitle={from === to ? formatDayHeader(from) : `${formatDayHeader(from)} - ${formatDayHeader(to)}`}
+          onBack={() => (router.canGoBack() ? router.back() : router.replace("/(owner)/(tabs)/today"))}
+          right={<Button label={exporting ? "Ban raha hai" : "CSV"} variant="soft" size="sm" icon={<Download size={16} color={palette.night} />} onPress={exportCsv} disabled={exporting || !first || first.total === 0} accessibilityLabel="History CSV export karein" />}
+        />
+        <PaisaSwitch current="history" tone="light" />
       </View>
 
       {focusOnly && highlight ? (
-        <View testID="history-focus-banner" className="px-4 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
-          <Text className="flex-1 font-plex-semibold text-owner-ink text-[12.5px]">Sirf ye booking dikhayi ja rahi hai</Text>
-          <Pressable onPress={clearFocus} accessibilityRole="button" accessibilityLabel="Filter hatayen" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Filter hatayen</Text>
-          </Pressable>
+        <View testID="history-focus-banner" style={{ marginHorizontal: space[4] }}>
+          <Banner tone="info" body="Sirf ye booking dikhayi ja rahi hai" action={<Button label="Filter hatayen" variant="soft" size="sm" onPress={clearFocus} accessibilityLabel="Filter hatayen" />} />
         </View>
       ) : null}
-      <ScrollView ref={scrollRef} className="flex-1" contentContainerClassName="px-4 pt-4 pb-10 gap-3.5" keyboardShouldPersistTaps="handled">
-        <View className="flex-row flex-wrap gap-2">
-          <Pill label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
-          <Pill label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />
-          <Pill label="Is hafte" selected={preset === "hafta"} onPress={() => setPreset("hafta")} />
-          <Pill label="Is mahine" selected={preset === "mahina"} onPress={() => setPreset("mahina")} />
-          <Pill label="Custom" selected={preset === "custom"} onPress={() => setPreset("custom")} />
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[8], gap: 14 }} keyboardShouldPersistTaps="handled">
+        {exportError ? <Banner tone="danger" title="Export nahi hua" body={exportError} /> : null}
+        <Input
+          label="Search"
+          value={text}
+          onChangeText={setText}
+          placeholder="Naam, phone ya booking ID"
+          accessibilityLabel="Search"
+          autoCapitalize="none"
+          returnKeyType="search"
+          trailing={<View style={{ paddingHorizontal: space[3] }}><Search size={18} color={palette.muted} /></View>}
+        />
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+          <Chip label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
+          <Chip label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />
+          <Chip label="Is hafte" selected={preset === "hafta"} onPress={() => setPreset("hafta")} />
+          <Chip label="Is mahine" selected={preset === "mahina"} onPress={() => setPreset("mahina")} />
+          <Chip label="Custom" selected={preset === "custom"} onPress={() => setPreset("custom")} />
         </View>
         {preset === "custom" ? (
-          <View className="flex-row gap-3">
-            <View className="flex-1">
+          <View style={{ flexDirection: "row", gap: space[3], flexWrap: "wrap" }}>
+            <View style={{ flexGrow: 1, flexBasis: 130 }}>
               <SelectButton label="Se" value={formatDayHeader(from)} onPress={() => setSheet("from")} />
             </View>
-            <View className="flex-1">
+            <View style={{ flexGrow: 1, flexBasis: 130 }}>
               <SelectButton label="Tak" value={formatDayHeader(to)} onPress={() => setSheet("to")} />
             </View>
           </View>
         ) : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Jaldi filter">
+          <Chip label="Sab" selected={statuses.length === 0} onPress={() => setStatuses([])} />
+          {["completed", "short_paid", "cancelled", "status_pending"].map(statusChip)}
+        </View>
         <SelectButton label="Courts" value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} disabled={allCourts.length === 0} />
         <SelectButton
           label="Status"
           value={statuses.length === 0 ? "Sab status" : statuses.map((s) => STATUS_FILTERS.find((f) => f.key === s)?.label ?? s).join(", ")}
           onPress={() => setSheet("status")}
         />
-        <View
-          className="flex-row items-center gap-2 rounded-xl bg-owner-surface px-3.5"
-          style={{ minHeight: 52, borderWidth: 1.5, borderColor: OV.border }}
-        >
-          <SearchIcon />
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder="Naam, phone ya booking ID"
-            placeholderTextColor={OV.faint}
-            accessibilityLabel="Search"
-            autoCapitalize="none"
-            returnKeyType="search"
-            className="flex-1 font-plex-medium text-owner-ink text-[15px]"
-          />
-        </View>
 
         {first ? (
-          <View className="flex-row justify-between rounded-2xl bg-owner-surface px-4 py-3" style={{ borderWidth: 1.5, borderColor: OV.border }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[3], backgroundColor: palette.white, borderRadius: radius.tile, padding: space[4] }}>
             <Total label="Bookings" value={String(first.totals.count)} />
             <Total label="Total" value={formatPKR(first.totals.total)} />
             <Total label="Collected" value={formatPKR(first.totals.collected)} />
-            <Total label="Due" value={formatPKR(first.totals.due)} color={first.totals.due > 0 ? OV.red : undefined} />
+            <Total label="Due" value={formatPKR(first.totals.due)} danger={first.totals.due > 0} />
           </View>
         ) : null}
 
         {venuesLoading || query.isLoading ? (
-          <View className="py-14 items-center">
-            <ActivityIndicator color={OV.accent} />
+          <View style={{ gap: space[3] }} accessibilityLabel="Loading">
+            <SkeletonCard />
+            <SkeletonCard />
           </View>
         ) : forbidden ? (
-          <Text className="font-plex-medium text-owner-danger text-[14px] py-6">Aapke paas bookings history dekhne ki ijazat nahi hai.</Text>
+          <Banner tone="neutral" body="Aapke paas bookings history dekhne ki ijazat nahi hai." />
         ) : query.isError && !query.data ? (
-          <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
+          <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} />
         ) : items.length === 0 && !(focusOnly && focusDetail.isFetching) ? (
-          <View className="py-12 items-center gap-1">
-            <Text className="font-plex-bold text-owner-ink text-[16px]">Koi booking nahi mili</Text>
-            <Text className="font-plex-medium text-owner-ink-faint text-[13px] text-center">Tareekh ya filter badal kar dekhein.</Text>
-          </View>
+          <EmptyState title="Koi booking nahi mili" body="Tareekh ya filter badal kar dekhein." icon={Search} />
         ) : (
-          <View className="gap-3.5" onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
+          <View style={{ gap: 14 }} onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
             {items.map((row) => (
               <View
                 key={`${row.booking_id}:${row.kind}:${row.status_key}`}
@@ -256,7 +277,7 @@ export default function HistoryScreen() {
             {focusOnly && highlight ? null : query.hasNextPage ? (
               <OutlineButton label={query.isFetchingNextPage ? "Load ho raha hai" : "Aur dikhao"} onPress={() => query.fetchNextPage()} />
             ) : (
-              <Text className="font-plex-medium text-owner-ink-faint text-[12.5px] text-center">{`${first?.total ?? items.length} mein se sab dikha diye`}</Text>
+              <Text variant="caption" tone="muted" align="center">{`${first?.total ?? items.length} mein se sab dikha diye`}</Text>
             )}
           </View>
         )}
@@ -310,15 +331,17 @@ export default function HistoryScreen() {
       {detailId ? (
         <BookingDetailSheet bookingId={detailId} hideHistoryLink onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} />
       ) : null}
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-function Total({ label, value, color }: { label: string; value: string; color?: string }) {
+function Total({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
-    <View className="items-start gap-0.5">
-      <Text className="font-plex-medium text-owner-ink-muted text-[11.5px]">{label}</Text>
-      <Text className="font-mono-semibold text-[14px]" style={{ color: color ?? OV.ink }}>
+    <View style={{ gap: 2 }}>
+      <Text variant="caption" tone="muted">
+        {label}
+      </Text>
+      <Text variant="bodyStrong" tone={danger ? "danger" : "primary"}>
         {value}
       </Text>
     </View>

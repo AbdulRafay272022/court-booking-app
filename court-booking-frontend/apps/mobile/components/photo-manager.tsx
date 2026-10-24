@@ -1,5 +1,7 @@
+import { palette } from "@court-booking/ui-tokens";
+import { Text } from "@/components/ui";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Image, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Platform, Pressable, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 
@@ -139,14 +141,14 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
   return (
     <View className="bg-owner-surface border border-owner-border rounded-xl p-4 gap-3">
       <View className="flex-row items-center justify-between">
-        <Text className="font-plex-bold text-owner-ink text-[14px]">{title}</Text>
-        <Text className="font-plex-medium text-owner-ink-faint text-[12px]">
+        <Text variant="body" weight="black">{title}</Text>
+        <Text variant="caption" tone="subtle">
           {photoUrls.length} / {max}
         </Text>
       </View>
 
       {photoUrls.length === 0 ? (
-        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">{readOnly ? "No photos yet." : "No photos yet. Add a few so players can see the place."}</Text>
+        <Text variant="meta" tone="subtle">{readOnly ? "No photos yet." : "No photos yet. Add a few so players can see the place."}</Text>
       ) : (
         <View className="flex-row flex-wrap gap-2.5">
           {photoUrls.map((url, i) => (
@@ -155,8 +157,8 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                 <Image source={{ uri: url }} style={{ width: 104, height: 104, borderRadius: 8 }} resizeMode="cover" />
                 {i === 0 ? (
                   <View className="absolute top-1 left-1 flex-row items-center gap-1 bg-black/60 rounded px-1.5 py-0.5">
-                    <StarIcon size={10} color="#FFFFFF" />
-                    <Text className="text-white font-plex-semibold text-[9.5px]">Cover</Text>
+                    <StarIcon size={10} color={palette.white} />
+                    <Text variant="caption" tone="onDark" weight="bold">Cover</Text>
                   </View>
                 ) : null}
               </View>
@@ -170,7 +172,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                   className="px-1.5 py-1 rounded bg-owner-bg"
                   style={{ opacity: i === 0 ? 0.35 : 1 }}
                 >
-                  <Text className="font-plex-bold text-owner-ink text-[13px]">◀</Text>
+                  <Text variant="meta" weight="black">◀</Text>
                 </Pressable>
                 {i !== 0 ? (
                   <Pressable
@@ -179,7 +181,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                     onPress={() => mutate([photoKeys[i], ...photoKeys.filter((_, j) => j !== i)])}
                     className="px-1.5 py-1 rounded bg-owner-bg"
                   >
-                    <Text className="font-plex-semibold text-owner-accent text-[10.5px]">Cover</Text>
+                    <Text variant="caption" tone="link" weight="bold">Cover</Text>
                   </Pressable>
                 ) : null}
                 <Pressable
@@ -189,7 +191,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                   className="px-1.5 py-1 rounded bg-owner-bg"
                   style={{ opacity: i === photoUrls.length - 1 ? 0.35 : 1 }}
                 >
-                  <Text className="font-plex-bold text-owner-ink text-[13px]">▶</Text>
+                  <Text variant="meta" weight="black">▶</Text>
                 </Pressable>
               </View>
               <Pressable
@@ -198,7 +200,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                 onPress={() => mutate(photoKeys.filter((_, j) => j !== i))}
                 className="items-center py-1 rounded bg-owner-bg"
               >
-                <Text className="font-plex-semibold text-[11px]" style={{ color: "#A8432C" }}>Delete</Text>
+                <Text variant="caption" weight="bold" style={{ color: palette.danger }}>Delete</Text>
               </Pressable>
               </>
               )}
@@ -216,7 +218,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
           className="flex-1 h-11 rounded-[10px] border border-owner-border items-center justify-center flex-row gap-2"
           style={{ opacity: atLimit || busy ? 0.5 : 1 }}
         >
-          {busy ? <ActivityIndicator color="#0E6274" size="small" /> : <Text className="font-plex-semibold text-owner-ink text-[13.5px]">＋ Gallery (select several)</Text>}
+          {busy ? <ActivityIndicator color={palette.teal} size="small" /> : <Text variant="meta" weight="bold">＋ Gallery (select several)</Text>}
         </Pressable>
         <Pressable
           accessibilityLabel="Add photo from camera"
@@ -225,12 +227,12 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
           className="flex-1 h-11 rounded-[10px] border border-owner-border items-center justify-center"
           style={{ opacity: atLimit || busy ? 0.5 : 1 }}
         >
-          <Text className="font-plex-semibold text-owner-ink text-[13.5px]">＋ Camera</Text>
+          <Text variant="meta" weight="bold">＋ Camera</Text>
         </Pressable>
       </View>
       )}
       {atLimit && !readOnly ? (
-        <Text className="font-plex-medium text-owner-ink-faint text-[12px]">Limit reached ({max}). Delete one to add another.</Text>
+        <Text variant="caption" tone="subtle">Limit reached ({max}). Delete one to add another.</Text>
       ) : null}
     </View>
   );

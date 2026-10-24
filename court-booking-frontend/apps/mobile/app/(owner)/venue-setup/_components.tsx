@@ -1,10 +1,17 @@
-import { createContext, useContext, useState } from "react";
-import { Pressable, Text, TextInput, TextInputProps, View } from "react-native";
-import { CheckIcon } from "@/components/icons";
+import { createContext, useContext } from "react";
+import { View, type TextInputProps } from "react-native";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Button, Chip as FlChip, Input, StepBar, Text } from "@/components/ui";
 
-/** Venue settings for a staff member without the right permission: inside a read-only fence every TextField stops
- * being editable, Chips stop toggling and Primary/Secondary buttons (the Saves) are not rendered. Outside a fence
- * (the wizard, owners) nothing changes. */
+/**
+ * Wizard + Venue settings form kit (OWizard / OSettings boards), now a thin layer over the Floodlight library: SectionCard =
+ * white card, TextField = DS Input (label always visible, role focus border), Chip = DS Chip (role tint + "✓"),
+ * Primary/SecondaryButton = DS Button. Kept as a module so the many call sites (and their e2e labels) stay the same.
+ *
+ * Venue settings for a staff member without the right permission: inside a read-only fence every TextField stops being
+ * editable, Chips stop toggling and Primary/Secondary buttons (the Saves) are not rendered. Outside a fence (the wizard,
+ * owners) nothing changes.
+ */
 const ReadOnlyContext = createContext(false);
 
 /** True inside a read-only fence (for parts that are neither TextFields nor Chips, e.g. a hint to hide). */
@@ -17,16 +24,16 @@ export function ReadOnlyFence({ readOnly, children }: { readOnly: boolean; child
   return (
     <ReadOnlyContext.Provider value>
       {/* pointerEvents also stops the pickers, toggles and links that are not TextFields or Chips */}
-      <View pointerEvents="none" accessibilityState={{ disabled: true }} testID="read-only-fence" className="gap-4">
+      <View pointerEvents="none" accessibilityState={{ disabled: true }} testID="read-only-fence" style={{ gap: space[4] }}>
         {children}
       </View>
     </ReadOnlyContext.Provider>
   );
 }
 
-export function SectionCard({ children }: { children: React.ReactNode }) {
+export function SectionCard({ children, testID }: { children: React.ReactNode; testID?: string }) {
   return (
-    <View className="bg-owner-surface border border-owner-border rounded-2xl p-6 gap-5">
+    <View testID={testID} style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[5], gap: space[5] }}>
       {children}
     </View>
   );
@@ -34,140 +41,55 @@ export function SectionCard({ children }: { children: React.ReactNode }) {
 
 export function SectionLabel({ children }: { children: string }) {
   return (
-    <Text className="font-plex-semibold text-owner-ink-faint text-[11px] tracking-[1.2px]">
+    <Text variant="eyebrow" tone="muted" style={{ letterSpacing: 1.2 }}>
       {children.toUpperCase()}
     </Text>
   );
 }
 
 export function FieldLabel({ children }: { children: string }) {
-  return <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">{children}</Text>;
+  return <Text variant="label">{children}</Text>;
 }
 
-interface TextFieldProps extends TextInputProps {
+interface TextFieldProps extends Omit<TextInputProps, "style"> {
   label: string;
+  /** Kept for old call sites: numbers are always tabular now, never monospace. */
   mono?: boolean;
-  /** Inline validation error to render under the input (accepts null so callers can pass a
-   * validator's return value directly without a ternary). Red border + red hint below. */
+  /** Inline validation error to render under the input (accepts null so callers can pass a validator's return value
+   * directly). Red border + red line below, announced. */
   error?: string | null;
+  style?: unknown;
 }
 
-export function TextField({ label, mono, style, error, ...props }: TextFieldProps) {
+export function TextField({ label, mono: _mono, style: _style, error, editable, ...props }: TextFieldProps) {
   const readOnly = useContext(ReadOnlyContext);
-  const [focused, setFocused] = useState(false);
-  const borderColor = error ? "#C13525" : focused ? "#0E6274" : "#DCE3E6";
   return (
-    <View className="gap-2 flex-1">
-      <FieldLabel>{label}</FieldLabel>
-      <TextInput
-        {...props}
-        editable={readOnly ? false : props.editable}
-        onFocus={(e) => {
-          setFocused(true);
-          props.onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          props.onBlur?.(e);
-        }}
-        placeholderTextColor="#8399A1"
-        className={mono ? "font-mono-medium" : "font-plex-medium"}
-        style={[
-          {
-            height: 48,
-            paddingHorizontal: 14,
-            borderRadius: 9,
-            backgroundColor: readOnly ? "#F4F6F7" : "#FFFFFF",
-            borderWidth: focused || error ? 1.5 : 1,
-            borderColor,
-            fontSize: 15,
-            color: "#101C21",
-          },
-          style,
-        ]}
-      />
-      {error ? (
-        <Text accessibilityRole="alert" className="font-plex-medium text-[12.5px]" style={{ color: "#C13525" }}>
-          {error}
-        </Text>
-      ) : null}
+    <View style={{ flexGrow: 1, flexShrink: 1 }}>
+      <Input label={label} error={error} editable={readOnly ? false : editable} {...props} />
     </View>
   );
 }
 
-export function Chip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
+export function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   const readOnly = useContext(ReadOnlyContext);
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={readOnly}
-      className="min-h-11 px-4 rounded-lg flex-row items-center gap-1.5"
-      style={{
-        backgroundColor: selected ? "#0E6274" : "#FFFFFF",
-        borderWidth: selected ? 0 : 1,
-        borderColor: "#DCE3E6",
-      }}
-    >
-      {selected ? <CheckIcon size={13} color="#FFFFFF" strokeWidth={2.8} /> : null}
-      <Text
-        className="font-plex-semibold text-sm"
-        style={{ color: selected ? "#FFFFFF" : "#5B7079" }}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
+  return <FlChip label={label} selected={selected} onPress={onPress} disabled={readOnly} />;
 }
 
-/** Smart submit: muted grey and inert while `disabled` (the form isn't valid yet), the full owner
- * teal once it is. `loading` blocks a second submit. */
-export function PrimaryButton({
-  label,
-  onPress,
-  disabled,
-  loading,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-}) {
+/** Smart submit: inert while `disabled` (the form isn't valid yet), the owner teal once it is. `loading` blocks a second
+ * submit. Not rendered inside a read-only fence. */
+export function PrimaryButton({ label, onPress, disabled, loading, testID }: { label: string; onPress: () => void; disabled?: boolean; loading?: boolean; testID?: string }) {
   const readOnly = useContext(ReadOnlyContext);
   if (readOnly) return null;
-  return (
-    <Pressable
-      onPress={() => {
-        if (!disabled && !loading) onPress();
-      }}
-      disabled={disabled || loading}
-      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
-      className="min-h-12 px-7 rounded-lg items-center justify-center"
-      style={{ backgroundColor: disabled ? "#DCE3E6" : "#0E6274", opacity: loading ? 0.7 : 1 }}
-    >
-      <Text className="font-plex-semibold text-[14.5px]" style={{ color: disabled ? "#8399A1" : "#FFFFFF" }}>
-        {loading ? "Saving…" : label}
-      </Text>
-    </Pressable>
-  );
+  return <Button label={label} onPress={onPress} disabled={disabled} loading={loading} size="md" testID={testID} />;
 }
 
 export function SecondaryButton({ label, onPress }: { label: string; onPress: () => void }) {
   const readOnly = useContext(ReadOnlyContext);
   if (readOnly) return null;
-  return (
-    <Pressable
-      onPress={onPress}
-      className="min-h-12 px-6 rounded-lg border border-owner-border items-center justify-center"
-    >
-      <Text className="font-plex-semibold text-owner-ink-muted text-[14.5px]">{label}</Text>
-    </Pressable>
-  );
+  return <Button label={label} onPress={onPress} variant="soft" size="md" />;
+}
+
+/** OWizard step bar: 1 Venue · 2 Courts · 3 Review (DS StepBar; done steps also carry a tick, never colour alone). */
+export function WizardSteps({ current }: { current: 0 | 1 | 2 }) {
+  return <StepBar tone="light" current={current} labels={["1 · Venue", "2 · Courts", "3 · Review"].map((l, i) => (i < current ? `✓ ${l}` : l))} />;
 }

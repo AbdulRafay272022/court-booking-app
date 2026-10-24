@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, ScrollView, View } from "react-native";
 import { router } from "expo-router";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Banner, ErrorState, Pill, Screen, SegmentedToggle, Skeleton, Text, useToast } from "@/components/ui";
 import * as Location from "expo-location";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -27,8 +28,6 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { formatWhen } from "@/lib/format";
-import { ChevronLeftIcon } from "@/components/icons";
-import { ErrorState } from "@/components/error-state";
 import { NoAccess } from "@/components/no-access";
 import { moreItemAllowed, venueSettingsAccess } from "@/lib/owner-access";
 import { useMyPermissions } from "@/lib/use-my-permissions";
@@ -52,6 +51,13 @@ import { courtLabel } from "@/components/court-label";
 import { confirmAction } from "@/lib/confirm";
 import { findSport, sameSport } from "@/lib/sport";
 import { Chip, FieldLabel, PrimaryButton, ReadOnlyFence, SecondaryButton, SectionCard, SectionLabel, TextField, useReadOnly } from "./venue-setup/_components";
+import { OwnerHeader, ownerBack } from "./_fl";
+
+/** Alert.alert is a silent no-op on Expo web: the cards below report through the screen's Floodlight toast instead. */
+const notifier: { show: (o: { message: string; tone?: "neutral" | "success" | "danger" }) => void } = { show: () => undefined };
+function notify(title: string, body: string, tone: "success" | "danger" = "danger") {
+  notifier.show({ message: `${title}: ${body}`, tone });
+}
 
 type Section = "venue" | "courts";
 const NEW_COURT_KEY = "__new__";
@@ -59,6 +65,8 @@ const NEW_COURT_KEY = "__new__";
 export default function VenueSettingsScreen() {
   const { activeVenue, isLoading: venuesLoading } = useOwnerVenues();
   const perms = useMyPermissions();
+  const toast = useToast();
+  notifier.show = toast.show;
   const [section, setSection] = useState<Section>("venue");
   // Only ACTIVE courts are editable here -- a deactivated ("deleted") court shouldn't be a
   // tab in the settings editor. Its history still lives in the ledger (post-batch #2).
@@ -87,45 +95,43 @@ export default function VenueSettingsScreen() {
   // Per section, what this account may change (the backend's own rules); the rest is shown read-only.
   const access = venueSettingsAccess(perms.can, perms.isStaff);
 
+  const status = activeVenue?.status;
   return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top", "bottom"]}>
-      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <Pressable onPress={() => router.back()} accessibilityLabel="Back" accessibilityRole="button" className="w-11 h-11 rounded-[10px] bg-owner-bg items-center justify-center">
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px] flex-1">Venue settings</Text>
-      </View>
-      {perms.settled && access.note ? (
-        <View testID="venue-settings-read-only-note" className="px-5 py-3 border-b border-owner-border" style={{ backgroundColor: "#FDF6E9" }}>
-          <Text className="font-plex-semibold text-[13px]" style={{ color: "#6B4708" }}>
-            {access.note}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* Venue-level settings and court-level settings are two separate sections, so an owner never edits a court's price
-          while looking at the venue's bank details (or the other way round). */}
-      <View className="px-5 py-3 bg-owner-surface border-b border-owner-border flex-row gap-2">
-        {(["venue", "courts"] as const).map((k) => (
-          <Pressable
-            key={k}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: section === k }}
-            onPress={() => setSection(k)}
-            className="flex-1 rounded-lg items-center justify-center"
-            style={{ minHeight: 44, backgroundColor: section === k ? "#0E6274" : "#F4F6F7" }}
-          >
-            <Text className="font-plex-semibold text-[14px]" style={{ color: section === k ? "#FFFFFF" : "#5B7079" }}>
-              {k === "venue" ? "Venue" : `Courts${courts.length ? ` (${courts.length})` : ""}`}
-            </Text>
-          </Pressable>
-        ))}
+    <Screen scroll={false} gutter={false} keyboard testID="venue-settings">
+      <View style={{ paddingHorizontal: space[4], gap: space[3], paddingBottom: space[2] }}>
+        <OwnerHeader title="Venue settings" onBack={ownerBack} />
+        {activeVenue ? (
+          <View testID="settings-hub-card" style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: radius.tile, padding: space[3] }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text variant="bodyStrong">{activeVenue.name}</Text>
+              <Text variant="meta" tone="muted">{`${[activeVenue.area, activeVenue.city].filter(Boolean).join(", ")} · ${activeVenue.photo_urls?.length ?? 0} photos`}</Text>
+            </View>
+            <Pill size="sm" tone={status === "approved" ? "open" : status === "rejected" ? "danger" : "waiting"} label={status === "approved" ? "Live ✓" : status === "rejected" ? "Approve nahi" : "Review mein"} />
+          </View>
+        ) : null}
+        {perms.settled && access.note ? (
+          <View testID="venue-settings-read-only-note">
+            <Banner tone="waiting" body={access.note} />
+          </View>
+        ) : null}
+        {/* Venue-level settings and court-level settings are two separate sections, so an owner never edits a court's price
+            while looking at the venue's bank details (or the other way round). */}
+        <SegmentedToggle
+          testID="settings-section"
+          accessibilityLabel="Settings ka hissa"
+          value={section}
+          onChange={setSection}
+          options={[
+            { value: "venue", label: "Venue" },
+            { value: "courts", label: courts.length ? `Courts (${courts.length})` : "Courts" },
+          ]}
+        />
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-4" keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[8], gap: space[4] }} keyboardShouldPersistTaps="handled">
         {!perms.settled ? (
           // wait for the permissions answer so a staff member never sees an editable form flash
-          <ActivityIndicator color="#0E6274" />
+          <Skeleton height={120} r={radius.card} />
         ) : section === "venue" ? (
           activeVenue ? (
             <>
@@ -160,7 +166,7 @@ export default function VenueSettingsScreen() {
               />
             </>
           ) : (
-            <ActivityIndicator color="#0E6274" />
+            <Skeleton height={120} r={radius.card} />
           )
         ) : (
           <>
@@ -196,12 +202,12 @@ export default function VenueSettingsScreen() {
               />
             ) : loading ? (
               <View className="py-10 items-center justify-center">
-                <ActivityIndicator color="#0E6274" />
+                <Skeleton height={120} r={radius.card} />
               </View>
             ) : courtQuery.isError ? (
-              <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} tone="owner" />
+              <ErrorState message={friendlyErrorMessage(courtQuery.error)} onRetry={() => courtQuery.refetch()} />
             ) : !activeCourtId || !court ? (
-              <Text className="font-plex-medium text-owner-ink-faint text-center py-10">{access.courts ? 'No courts yet. Tap "+ Court" to add your first one.' : "No courts yet."}</Text>
+              <Text variant="body" tone="muted" align="center" style={{ paddingVertical: space[8] }}>{access.courts ? 'Abhi koi court nahi. "+ Court" daba kar pehla court banayein.' : "Abhi koi court nahi."}</Text>
             ) : (
               <>
                 {/* keyed by court so switching court re-seeds the form from that court (no effect needed) */}
@@ -221,7 +227,7 @@ export default function VenueSettingsScreen() {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -319,7 +325,7 @@ function VenueBasicsCard({ venue, activeSports }: { venue: Venue; activeSports: 
           ))}
         </View>
         {blockedSport ? (
-          <Text className="font-plex-medium text-owner-danger text-[12.5px]">
+          <Text variant="meta" weight="bold" tone="danger">
             You still have a {blockedSport} court. Change or delete it in Courts before removing this sport.
           </Text>
         ) : null}
@@ -345,16 +351,12 @@ function VenueBasicsCard({ venue, activeSports }: { venue: Venue; activeSports: 
       {/* Bank changes are the highest-risk edit on this screen. Inline nudge, no re-verification
           wall -- see the web mirror for the trade-off note. */}
       {readOnly ? null : (
-        <Text className="font-plex-medium text-owner-warn text-[12.5px]">
+        <Text variant="meta" tone="waiting">
           These fields decide where players send their money. Update carefully.
         </Text>
       )}
       {message ? (
-        <Text
-          accessibilityRole="alert"
-          className="font-plex-semibold text-[13.5px]"
-          style={{ color: message.ok ? "#0E6274" : "#C13525" }}
-        >
+        <Text accessibilityRole="alert" variant="bodyBold" tone={message.ok ? "info" : "danger"}>
           {message.text}
         </Text>
       ) : null}
@@ -378,9 +380,9 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
       });
       // players see this policy before they pay, and the owner lists read it too
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      Alert.alert("Saved", "Cancellation policy updated for every court.");
+      notify("Save ho gaya", "Cancellation policy har court par lag gayi.", "success");
     } catch (e) {
-      Alert.alert("Couldn't save", friendlyErrorMessage(e));
+      notify("Couldn't save", friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -444,7 +446,7 @@ function BookingHorizonCard({ venueId, initialDays }: { venueId: string; initial
         />
       </View>
       {message ? (
-        <Text accessibilityRole="alert" className="font-plex-semibold text-[13.5px]" style={{ color: message.ok ? "#0E6274" : "#C13525" }}>
+        <Text accessibilityRole="alert" variant="bodyBold" tone={message.ok ? "info" : "danger"}>
           {message.text}
         </Text>
       ) : null}
@@ -489,7 +491,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
           await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
           onDeleted();
         } catch (e) {
-          Alert.alert("Couldn't delete", friendlyErrorMessage(e));
+          notify("Couldn't delete", friendlyErrorMessage(e));
           setDeleting(false);
         }
       },
@@ -499,15 +501,15 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
 
   async function save() {
     if (!identity.name.trim()) {
-      Alert.alert("Name your court", "Give the court a name.");
+      notify("Name your court", "Give the court a name.");
       return;
     }
     if (problem) {
-      Alert.alert("Check this court", problem);
+      notify("Check this court", problem);
       return;
     }
     if (advanceProblem) {
-      Alert.alert("Check the advance rule", advanceProblem);
+      notify("Check the advance rule", advanceProblem);
       return;
     }
     setSaving(true);
@@ -525,9 +527,9 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
       await queryClient.invalidateQueries({ queryKey: ["court", court.id] });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       await queryClient.invalidateQueries({ queryKey: ["advance-explain", court.id] });
-      Alert.alert("Saved", `${courtLabel(identity.name.trim(), identity.sport)}: details, hours, prices and advance rule updated.`);
+      notify("Save ho gaya", `${courtLabel(identity.name.trim(), identity.sport)}: tafseel, ghante, qeemat aur advance update ho gaye.`, "success");
     } catch (e) {
-      Alert.alert("Couldn't save", friendlyErrorMessage(e));
+      notify("Couldn't save", friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -535,7 +537,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
 
   return (
     <>
-      <Text className="font-plex-bold text-owner-ink text-[17px]">{courtLabel(court.name, court.sport)}</Text>
+      <Text variant="title">{courtLabel(court.name, court.sport)}</Text>
       <CourtIdentityFields
         name={identity.name}
         sport={identity.sport}
@@ -559,7 +561,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
           className="min-h-11 items-center justify-center"
           style={{ opacity: deleting || saving ? 0.5 : 1 }}
         >
-          <Text className="font-plex-semibold text-owner-danger text-[13.5px]">
+          <Text variant="bodyBold" tone="danger">
             {deleting ? "Deleting…" : "Delete this court"}
           </Text>
         </Pressable>
@@ -580,11 +582,11 @@ function NewCourtForm({ venue, onAdded, onDiscard }: { venue: Venue; onAdded: (c
 
   async function create() {
     if (!identity.name.trim()) {
-      Alert.alert("Name your court", "Give the court a name.");
+      notify("Name your court", "Give the court a name.");
       return;
     }
     if (problem) {
-      Alert.alert("Check this court", problem);
+      notify("Check this court", problem);
       return;
     }
     setSaving(true);
@@ -600,7 +602,7 @@ function NewCourtForm({ venue, onAdded, onDiscard }: { venue: Venue; onAdded: (c
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       onAdded(court.id);
     } catch (e) {
-      Alert.alert("Couldn't add court", friendlyErrorMessage(e));
+      notify("Couldn't add court", friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -685,7 +687,7 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
 
   async function add() {
     if (!startDate || !endDate) {
-      Alert.alert("Missing dates", "Pick a start and end date/time for the blackout.");
+      notify("Missing dates", "Pick a start and end date/time for the blackout.");
       return;
     }
     setAdding(true);
@@ -700,7 +702,7 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
       setEndDate("");
       await queryClient.invalidateQueries({ queryKey: ["court-blackouts", courtId] });
     } catch (e) {
-      Alert.alert("Couldn't add blackout", friendlyErrorMessage(e));
+      notify("Couldn't add blackout", friendlyErrorMessage(e));
     } finally {
       setAdding(false);
     }
@@ -710,12 +712,12 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
     <SectionCard>
       <SectionLabel>Blackout dates</SectionLabel>
       {(blackoutsQuery.data ?? []).length === 0 ? (
-        <Text className="font-plex-medium text-owner-ink-faint text-[13px]">No blackout dates yet.</Text>
+        <Text variant="meta" tone="muted">Abhi koi band din nahi.</Text>
       ) : (
         (blackoutsQuery.data ?? []).map((b) => (
-          <View key={b.id} className="border border-owner-border rounded-[10px] p-3">
-            <Text className="font-plex-semibold text-owner-ink text-sm">{b.title ?? "Blocked"}</Text>
-            <Text className="font-mono-medium text-owner-ink-faint text-xs mt-0.5">
+          <View key={b.id} style={{ backgroundColor: palette.ground, borderRadius: radius.md, padding: space[3], gap: 2 }}>
+            <Text variant="bodyBold">{b.title ?? "Band"}</Text>
+            <Text variant="caption" tone="muted">
               {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
             </Text>
           </View>
@@ -724,7 +726,7 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
       {/* adding a blackout needs edit_court_settings (POST /courts/{id}/blackouts); others only see the list */}
       {canEdit ? (
         <>
-          <View className="h-px bg-owner-border-light" />
+          <View style={{ height: 1, backgroundColor: palette.divider }} />
           <FieldLabel>Add a blackout</FieldLabel>
           <TextField label="Title (optional)" value={title} onChangeText={setTitle} placeholder="Maintenance" />
           <DayPicker label="Starts on" value={startDate} onChange={setStartDate} />
