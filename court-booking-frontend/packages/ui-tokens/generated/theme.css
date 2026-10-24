@@ -43,6 +43,8 @@
   --color-fl-a-glass-light-border: rgba(255,255,255,0.9);
   --color-fl-a-glass-dark: rgba(255,255,255,0.1);
   --color-fl-a-glass-dark-border: rgba(255,255,255,0.16);
+  --color-fl-a-glass-on-teal: rgba(12,31,29,0.16);
+  --color-fl-a-glass-on-teal-border: rgba(255,255,255,0.22);
   --color-fl-a-on-photo: rgba(12,31,29,0.62);
   --color-fl-a-on-photo-strong: rgba(12,31,29,0.42);
   --color-fl-a-on-photo-border: rgba(255,255,255,0.3);

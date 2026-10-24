@@ -87,6 +87,10 @@ export const alpha = {
   /** Dark glass on night heroes / photos. */
   glassDark: "rgba(255,255,255,0.1)",
   glassDarkBorder: "rgba(255,255,255,0.16)",
+  /** Glass on the TEAL owner hero (chips, tiles, venue switch): a night tint, not white. White text on the white 0.1
+   * glass over the lightest teal stop was 4.21:1 (QA); on this tint it is >= 5.9:1. */
+  glassOnTeal: "rgba(12,31,29,0.16)",
+  glassOnTealBorder: "rgba(255,255,255,0.22)",
   /** Chips and buttons sitting on photos. */
   /** Text chips on photos. Board: 0.38 with blur; raised to 0.62 so white text passes 4.5:1 even on a white photo. */
   onPhoto: "rgba(12,31,29,0.62)",

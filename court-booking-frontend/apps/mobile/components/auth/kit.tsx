@@ -17,6 +17,7 @@ import { formatCountdown } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { api } from "@/lib/api";
 import { ownerColors, playerColors } from "@/lib/colors";
+import { palette } from "@court-booking/ui-tokens";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { recallOtpExpiry, usePendingAuth } from "@/lib/pending-auth";
 import { retryAfterSeconds, useCountdown } from "@/lib/use-countdown";
@@ -570,7 +571,7 @@ export function ChoicePills({
                 borderColor: selected ? c.ink : invalid ? c.danger : c.border,
               }}
             >
-              <Text className={fontFor(tone, "bold")} style={{ fontSize: 14, color: selected ? "#FFFFFF" : c.inkMuted }}>
+              <Text className={fontFor(tone, "bold")} style={{ fontSize: 14, color: selected ? palette.white : c.inkMuted }}>
                 {o.label}
               </Text>
             </Pressable>
@@ -641,7 +642,8 @@ export function SubmitButton({
         opacity: ready && busy ? 0.7 : 1,
       }}
     >
-      <Text className={fontFor(tone, "bold")} style={{ fontSize: 16.5, color: ready ? "#FFFFFF" : c.inkFainter }}>
+      <Text className={fontFor(tone, "bold")} style={{ fontSize: 16.5, // white only on the owner teal; the player orange always carries ink (white on orange is 2.86:1)
+        color: ready ? (tone === "player" ? palette.night : palette.white) : c.inkFainter }}>
         {busy ? busyLabel : label}
       </Text>
     </Pressable>

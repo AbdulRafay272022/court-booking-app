@@ -87,6 +87,12 @@ const STEP_LABELS = {
   booked: { ru: "Booking pakki", en: "Booking confirmed" },
 } as const;
 
+/** A FAILED step says what went wrong (QA: a red cross next to "Venue check kar raha hai" read as still checking). */
+const FAILED_LABELS = {
+  proof: { ru: "Screenshot waqt par nahi aaya", en: "No screenshot in time" },
+  check: { ru: "Venue ne booking nahi li", en: "The venue did not accept it" },
+} as const;
+
 /**
  * Timeline steps for a booking. `proofSent` says whether a payment screenshot exists (for a cancelled booking we cannot tell
  * from the status alone). A cancelled / expired booking marks the step it stopped at as failed.
@@ -112,5 +118,9 @@ export function journeySteps(b: StatusInput & { proofSent?: boolean }, lang: "ru
       states = b.proofSent ? ["done", "done", "failed", "next"] : ["done", "failed", "next", "next"];
       break;
   }
-  return keys.map((key, i) => ({ key, label: STEP_LABELS[key][lang], state: states[i] }));
+  return keys.map((key, i) => ({
+    key,
+    label: states[i] === "failed" && (key === "proof" || key === "check") ? FAILED_LABELS[key][lang] : STEP_LABELS[key][lang],
+    state: states[i],
+  }));
 }

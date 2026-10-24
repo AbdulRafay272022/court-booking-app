@@ -75,7 +75,8 @@ const PLACEHOLDER_BG = [palette.teal, palette.night, palette.tealDeep, palette.o
 export function CourtPlaceholder({ seed, width, height }: { seed: string; width: number; height: number }) {
   const k = placeholderIndex(seed);
   return (
-    <View style={{ width, height, backgroundColor: PLACEHOLDER_BG[k] }}>
+    // decorative court drawing: hidden from screen readers (the card's own label says "no photo yet")
+    <View style={{ width, height, backgroundColor: PLACEHOLDER_BG[k] }} aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Svg width={width} height={height} viewBox="0 0 358 150" preserveAspectRatio="none">
         <Path d={ARTS[k]} stroke={alpha.courtLines} strokeWidth={2} fill="none" />
       </Svg>

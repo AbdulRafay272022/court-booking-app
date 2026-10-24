@@ -309,7 +309,7 @@ export default function VenueCourtsPage() {
 
       {/* Stage 2: same timers fields as Venue Settings (parity), tucked under "Advanced"; PUT right after the venue is created. */}
       <details className="group rounded-2xl border border-owner-border bg-owner-surface" data-testid="wizard-advanced">
-        <summary className="cursor-pointer list-none min-h-11 px-5 py-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C1F1D]">
+        <summary className="cursor-pointer list-none min-h-11 px-5 py-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fl-night">
           <span className="text-[14.5px] font-bold text-owner-ink">{t("timer.advanced")}</span>
           <span className="text-[12.5px] text-owner-ink-faint">{t("timer.advancedHint")}</span>
         </summary>

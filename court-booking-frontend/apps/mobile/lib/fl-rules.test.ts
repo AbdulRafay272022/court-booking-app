@@ -194,6 +194,16 @@ test("journey steps: Hold -> Screenshot -> Venue check -> Pakki", () => {
   assert.equal(journeySteps({ status: "held" })[3].label, "Booking pakki");
 });
 
+test("journey steps: a failed step names what went wrong (never 'checking' next to a cross)", () => {
+  const rej = journeySteps({ status: "cancelled", proofSent: true });
+  assert.equal(rej[2].state, "failed");
+  assert.equal(rej[2].label, "Venue ne booking nahi li");
+  assert.equal(journeySteps({ status: "cancelled", proofSent: true }, "en")[2].label, "The venue did not accept it");
+  const exp = journeySteps({ status: "cancelled" });
+  assert.equal(exp[1].label, "Screenshot waqt par nahi aaya");
+  assert.equal(journeySteps({ status: "payment_submitted" })[2].label, "Venue check kar raha hai");
+});
+
 test("countdown: from a real expiry timestamp", () => {
   const exp = "2026-10-24T15:15:00Z";
   const c = countdown(exp, NOW);

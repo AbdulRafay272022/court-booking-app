@@ -40,7 +40,7 @@ export function HeroLayout({ hero, children, testID }: { hero: ReactNode; childr
 /** Glass chip on the teal hero ("6 bookings", "PKR 1,250 baqi"). Text is white on the dark glass (passes on the gradient). */
 export function HeroChip({ label, onPress, accessibilityLabel, testID }: { label: string; onPress?: () => void; accessibilityLabel?: string; testID?: string }) {
   const body = (
-    <View style={{ minHeight: 34, paddingHorizontal: space[3], paddingVertical: 6, borderRadius: radius.pill, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, justifyContent: "center" }}>
+    <View style={{ minHeight: 34, paddingHorizontal: space[3], paddingVertical: 6, borderRadius: radius.pill, backgroundColor: alpha.glassOnTeal, borderWidth: 1, borderColor: alpha.glassOnTealBorder, justifyContent: "center" }}>
       <Text variant="label" tone="hero">
         {label}
       </Text>

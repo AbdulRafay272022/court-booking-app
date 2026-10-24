@@ -134,3 +134,46 @@ test("no hex / rgba colour literal in mobile components/ui, the dev page or web 
   assert.ok(scanned >= 20, `expected the component libraries to exist (scanned ${scanned})`);
   assert.deepEqual(bad, []);
 });
+
+// QA (Phase E): every mobile screen dir and component dir, plus the web screen dirs the Floodlight pass touched. Comments
+// may name a colour ("#0A5F59 text on the #E3F4F1 tint"); code may not.
+test("no hex / rgba colour literal in ANY mobile screen or component, or in the Floodlight web screens", () => {
+  const root = join(__dirname, "..");
+  const web = join(root, "..", "web");
+  const dirs = [
+    join(root, "app"),
+    join(root, "components"),
+    ...["app/booking", "app/bookings", "app/search", "app/venues", "app/dashboard/owner", "app/venue-setup", "components/booking", "components/bookings", "components/discovery", "components/owner", "components/venue", "components/fl"].map((d) => join(web, d)),
+  ];
+  const singles = ["components/amenity-badges.tsx", "components/favorite-button.tsx", "components/photo-gallery.tsx", "components/venue-reviews.tsx"].map((f) => join(web, f));
+  const bad: string[] = [];
+  let scanned = 0;
+  for (const f of [...dirs.flatMap(files), ...singles.filter(existsSync)]) {
+    scanned++;
+    let inBlock = false;
+    readFileSync(f, "utf8")
+      .split("\n")
+      .forEach((raw, i) => {
+        let line = raw;
+        if (inBlock) {
+          const end = line.indexOf("*/");
+          if (end < 0) return;
+          line = line.slice(end + 2);
+          inBlock = false;
+        }
+        line = line.replace(/\/\*.*?\*\//g, "");
+        const open = line.indexOf("/*");
+        if (open >= 0) {
+          line = line.slice(0, open);
+          inBlock = true;
+        }
+        line = line.replace(/(^|[^:])\/\/.*$/, "$1").replace(/\{\s*\/\*.*$/, "");
+        const clean = line.replace(/&#x?[0-9a-fA-F]+;/g, "");
+        for (const m of clean.match(HEX) ?? []) bad.push(`${relative(root, f)}:${i + 1} ${m}`);
+        if (RGBA.test(clean)) bad.push(`${relative(root, f)}:${i + 1} rgba()`);
+        RGBA.lastIndex = 0;
+      });
+  }
+  assert.ok(scanned >= 150, `expected the screen dirs to exist (scanned ${scanned})`);
+  assert.deepEqual(bad, []);
+});

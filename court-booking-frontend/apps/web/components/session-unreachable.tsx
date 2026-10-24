@@ -20,7 +20,7 @@ export function SessionUnreachable({ onRetry }: { onRetry: () => void }) {
       </div>
       <button
         onClick={onRetry}
-        className="h-12 px-8 rounded-[14px] bg-player-accent text-white font-bold text-[15px]"
+        className="h-12 px-8 rounded-[14px] bg-fl-orange text-fl-night font-bold text-[15px]"
       >
         {t("common.error.retry")}
       </button>

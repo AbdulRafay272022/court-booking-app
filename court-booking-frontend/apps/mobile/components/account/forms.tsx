@@ -1,3 +1,4 @@
+import { palette } from "@court-booking/ui-tokens";
 import { useState } from "react";
 import { Alert, Image, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
@@ -299,7 +300,7 @@ export function ProfileForm({ tone, changePhoneRoute }: { tone: Tone; changePhon
                   }}
                   style={[smallBtn, { flex: 1, backgroundColor: c.accent, borderColor: c.accent }]}
                 >
-                  <Text className={fontFor(tone, "bold")} style={{ fontSize: 13.5, color: "#FFFFFF" }}>
+                  <Text className={fontFor(tone, "bold")} style={{ fontSize: 13.5, color: tone === "player" ? palette.night : palette.white }}>
                     Continue
                   </Text>
                 </Pressable>

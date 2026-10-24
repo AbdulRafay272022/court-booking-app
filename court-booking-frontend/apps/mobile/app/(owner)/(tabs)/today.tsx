@@ -144,7 +144,7 @@ export default function OwnerTodayScreen() {
           accessibilityRole="button"
           accessibilityLabel={`Venue badlein. Abhi: ${activeVenue?.name ?? "venue"}`}
           testID="venue-switch"
-          style={{ flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingLeft: 6, paddingRight: 14, paddingVertical: 6, borderRadius: 26, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder }}
+          style={{ flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 52, paddingLeft: 6, paddingRight: 14, paddingVertical: 6, borderRadius: 26, backgroundColor: alpha.glassOnTeal, borderWidth: 1, borderColor: alpha.glassOnTealBorder }}
         >
           <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.white, alignItems: "center", justifyContent: "center" }}>
             <Text variant="button" color={palette.night}>
