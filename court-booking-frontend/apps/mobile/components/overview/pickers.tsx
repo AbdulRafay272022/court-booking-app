@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { IconButton, Text, useRoleTheme } from "@/components/ui";
 
 import { addMonths, daysOfMonth, formatMonth, monthOf, mondayFirstWeekdayOf, pktDateString } from "@/lib/format";
-import { ChevronLeftIcon, ChevronRightIcon } from "@/components/icons";
-import { OV } from "@/lib/overview";
-import { BottomSheet, Checkbox, OrangeButton, OutlineButton } from "./ui";
+import { BottomSheet, Checkbox, OutlineButton, PrimaryButton } from "./ui";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -20,6 +21,7 @@ export function DateChooserSheet({
   onPick: (date: string) => void;
   onClose: () => void;
 }) {
+  const t = useRoleTheme();
   const [month, setMonth] = useState(monthOf(value));
   const today = pktDateString();
   const days = daysOfMonth(month);
@@ -34,66 +36,59 @@ export function DateChooserSheet({
       title={title}
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: space[3] }}>
           <OutlineButton flex label="Aaj" onPress={() => onPick(today)} />
-          <OrangeButton flex label="Band karein" onPress={onClose} />
+          <PrimaryButton flex label="Band karein" onPress={onClose} />
         </View>
       }
     >
-      <View className="flex-row items-center justify-between">
-        <Pressable
-          onPress={() => setMonth(addMonths(month, -1))}
-          accessibilityLabel="Pichla mahina"
-          className="w-11 h-11 rounded-xl border border-owner-border items-center justify-center"
-        >
-          <ChevronLeftIcon />
-        </Pressable>
-        <Text className="font-plex-bold text-owner-ink text-[16px]" accessibilityRole="header">
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <IconButton icon={ChevronLeft} variant="mist" accessibilityLabel="Pichla mahina" onPress={() => setMonth(addMonths(month, -1))} />
+        <Text variant="bodyStrong" accessibilityRole="header">
           {formatMonth(month)}
         </Text>
-        <Pressable
-          onPress={() => setMonth(addMonths(month, 1))}
-          accessibilityLabel="Agla mahina"
-          className="w-11 h-11 rounded-xl border border-owner-border items-center justify-center"
-        >
-          <ChevronRightIcon />
-        </Pressable>
+        <IconButton icon={ChevronRight} variant="mist" accessibilityLabel="Agla mahina" onPress={() => setMonth(addMonths(month, 1))} />
       </View>
-      <View className="flex-row">
+      <View style={{ flexDirection: "row" }}>
         {WEEKDAYS.map((d) => (
-          <Text key={d} className="flex-1 text-center font-plex-semibold text-owner-ink-faint text-[11.5px]">
+          <Text key={d} variant="caption" weight="bold" tone="muted" align="center" style={{ flex: 1 }}>
             {d}
           </Text>
         ))}
       </View>
-      {weeks.map((week, wi) => (
-        <View key={wi} className="flex-row gap-1">
-          {week.map((d, di) => {
-            if (!d) return <View key={di} className="flex-1" style={{ height: 44 }} />;
-            const selected = d === value;
-            return (
-              <Pressable
-                key={d}
-                onPress={() => onPick(d)}
-                accessibilityRole="button"
-                accessibilityLabel={d}
-                accessibilityState={{ selected }}
-                className="flex-1 items-center justify-center rounded-xl"
-                style={{
-                  height: 44,
-                  backgroundColor: selected ? OV.accent : "transparent",
-                  borderWidth: d === today && !selected ? 1.5 : 0,
-                  borderColor: OV.accent,
-                }}
-              >
-                <Text className="font-plex-semibold text-[14px]" style={{ color: selected ? "#FFFFFF" : OV.ink }}>
-                  {Number(d.slice(8))}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
+      <View style={{ gap: space[1] }}>
+        {weeks.map((week, wi) => (
+          <View key={wi} style={{ flexDirection: "row", gap: space[1] }}>
+            {week.map((d, di) => {
+              if (!d) return <View key={di} style={{ flex: 1, height: 44 }} />;
+              const selected = d === value;
+              return (
+                <Pressable
+                  key={d}
+                  onPress={() => onPick(d)}
+                  accessibilityRole="button"
+                  accessibilityLabel={d}
+                  accessibilityState={{ selected }}
+                  style={{
+                    flex: 1,
+                    height: 44,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: radius.sm,
+                    backgroundColor: selected ? t.primary.bg : "transparent",
+                    borderWidth: d === today && !selected ? 1.5 : 0,
+                    borderColor: palette.teal,
+                  }}
+                >
+                  <Text variant="bodyBold" color={selected ? t.primary.fg : palette.night}>
+                    {String(Number(d.slice(8)))}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </View>
     </BottomSheet>
   );
 }
@@ -143,9 +138,9 @@ export function MultiSelectSheet({
       title={title}
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: space[3] }}>
           <OutlineButton flex label="Cancel" onPress={onClose} />
-          <OrangeButton flex label="Lagayein" onPress={() => onApply([...picked])} />
+          <PrimaryButton flex label="Lagayein" onPress={() => onApply([...picked])} />
         </View>
       }
     >

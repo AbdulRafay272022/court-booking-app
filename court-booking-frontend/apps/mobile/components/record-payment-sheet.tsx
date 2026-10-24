@@ -1,21 +1,24 @@
 import { useState } from "react";
-import { ActivityIndicator, Modal, Pressable, Text, TextInput, View } from "react-native";
+import { View } from "react-native";
 import type { PaymentMethod } from "@court-booking/types";
+import { space } from "@court-booking/ui-tokens";
+import { Chip, Input, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
+import { BottomSheet, PrimaryButton } from "@/components/overview/ui";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash_at_venue", label: "Cash" },
   { value: "bank_transfer_proof", label: "Bank transfer" },
-  { value: "other", label: "Other" },
+  { value: "other", label: "Kuch aur" },
 ];
 
 /**
- * "Record payment" (Section 32 Part 5): the owner records money actually received against a booking's
- * remaining balance -- refuses to record more than what's still owed, and shows the balance remaining
- * after. Booking is marked fully paid server-side (balance_due = 0) once the entries sum to the price.
+ * "Payment record karein" (Section 32 Part 5, flag split_payments): the owner records money actually received against a
+ * booking's remaining balance before the slot is over (POST /bookings/{id}/payment-entries). Refuses more than what is
+ * still owed. After the slot, "Baqi mil gaye" uses the completion call instead.
  */
 export function RecordPaymentSheet({
   bookingId,
@@ -58,92 +61,33 @@ export function RecordPaymentSheet({
   }
 
   return (
-    <Modal transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end" style={{ backgroundColor: "rgba(0,0,0,0.4)" }} onPress={onClose}>
-        <Pressable className="bg-owner-surface rounded-t-3xl px-5 pt-5 pb-8 gap-4" onPress={(e) => e.stopPropagation?.()}>
-          <View className="flex-row items-start justify-between gap-3">
-            <View className="gap-1 flex-1">
-              <Text className="font-plex-bold text-[11px] tracking-[0.1em]" style={{ color: "#0E6274" }}>
-                RECORD PAYMENT
-              </Text>
-              <Text className="font-plex-bold text-owner-ink text-[17px]">{playerLabel}</Text>
-              <Text className="font-mono-medium text-owner-ink-faint text-[13px]">
-                PKR {formatPKR(balanceDue)} still owed
-              </Text>
-            </View>
-            <Pressable onPress={onClose} accessibilityLabel="Close" className="w-11 h-11 rounded-xl bg-owner-bg items-center justify-center">
-              <Text className="font-plex-bold text-owner-ink text-base">✕</Text>
-            </Pressable>
-          </View>
-
-          <View className="gap-2">
-            <Text className="font-plex-semibold text-owner-ink text-[13px]">Amount (PKR)</Text>
-            <TextInput
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="number-pad"
-              className="font-mono-semibold text-owner-ink text-[22px] px-4 rounded-xl border border-owner-border"
-              style={{ height: 54 }}
-            />
-            {!valid && amount.length > 0 ? (
-              <Text className="font-plex-medium text-[12.5px]" style={{ color: "#8C3823" }}>
-                {amountNum > balanceDue ? `Can't be more than PKR ${formatPKR(balanceDue)}` : "Enter an amount greater than zero"}
-              </Text>
-            ) : null}
-          </View>
-
-          <View className="gap-2">
-            <Text className="font-plex-semibold text-owner-ink text-[13px]">How was it paid?</Text>
-            <View className="flex-row gap-2">
-              {METHODS.map((m) => {
-                const selected = m.value === method;
-                return (
-                  <Pressable
-                    key={m.value}
-                    onPress={() => setMethod(m.value)}
-                    className="flex-1 rounded-xl items-center justify-center"
-                    style={{
-                      minHeight: 44,
-                      backgroundColor: selected ? "#0E6274" : "#F4F6F7",
-                    }}
-                  >
-                    <Text className="font-plex-semibold text-[13px]" style={{ color: selected ? "#FFFFFF" : "#5B7079" }}>
-                      {m.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View className="gap-2">
-            <Text className="font-plex-semibold text-owner-ink text-[13px]">Note (optional)</Text>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="e.g. paid at the counter"
-              className="font-plex-medium text-owner-ink text-[14px] px-4 rounded-xl border border-owner-border"
-              style={{ height: 48 }}
-            />
-          </View>
-
-          {error ? (
-            <Text className="font-plex-semibold text-[13px]" style={{ color: "#8C3823" }}>
-              {error}
-            </Text>
-          ) : null}
-
-          <Pressable
-            onPress={handleSubmit}
-            disabled={!valid || submitting}
-            className="rounded-xl items-center justify-center flex-row gap-2"
-            style={{ minHeight: 50, backgroundColor: "#0E6274", opacity: valid && !submitting ? 1 : 0.5 }}
-          >
-            {submitting ? <ActivityIndicator color="#FFFFFF" /> : null}
-            <Text className="font-plex-bold text-white text-[15px]">Record PKR {valid ? formatPKR(amountNum) : "0"}</Text>
-          </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <BottomSheet
+      title="Payment record karein"
+      subtitle={`${playerLabel} · PKR ${formatPKR(balanceDue)} baqi`}
+      onClose={onClose}
+      footer={<PrimaryButton label={`PKR ${valid ? formatPKR(amountNum) : "0"} record karein`} onPress={handleSubmit} disabled={!valid} loading={submitting} />}
+    >
+      <Input
+        label="Kitna mila (PKR)"
+        value={amount}
+        onChangeText={setAmount}
+        keyboardType="number-pad"
+        error={!valid && amount.length > 0 ? (amountNum > balanceDue ? `PKR ${formatPKR(balanceDue)} se zyada nahi` : "Zero se zyada likhein") : null}
+      />
+      <View style={{ gap: space[2] }}>
+        <Text variant="label">Kaise mila?</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+          {METHODS.map((m) => (
+            <Chip key={m.value} label={m.label} shape="tile" selected={m.value === method} onPress={() => setMethod(m.value)} />
+          ))}
+        </View>
+      </View>
+      <Input label="Note (optional)" value={note} onChangeText={setNote} placeholder="Maslan: counter par diya" />
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
+    </BottomSheet>
   );
 }

@@ -1,38 +1,51 @@
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { View } from "react-native";
+import { Ban, TriangleAlert } from "lucide-react-native";
 import { approvalSummary, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
+import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
+import { Avatar, Banner, Button, Input, MoneyRows, Pill, RadioGroup, Text } from "@/components/ui";
 
 import { formatPKR } from "@/lib/format";
-import { OV, duplicateChipCount, duplicateUsedText } from "@/lib/overview";
+import { duplicateChipCount, duplicateUsedText } from "@/lib/overview";
 import { refundAmountFor } from "@/lib/refund-confirm";
 import { STATE_CHIP, isGrey, parsePkr, slotWhen } from "@/lib/round2-format";
-import { AlertTriangleIcon, BanIcon, CheckIcon, XIcon } from "@/components/icons";
-import { AlertCircleIcon } from "@/components/overview/icons";
-import { BottomSheet, OrangeButton, OutlineButton } from "@/components/overview/ui";
+import { waitLabel } from "@/lib/owner-floodlight";
+import { BottomSheet, DangerButton, OutlineButton, PrimaryButton } from "@/components/overview/ui";
 import { BookingLinks } from "@/components/booking-links";
 import { ScreenshotThumb } from "@/components/screenshot-viewer";
 
+/** Client-side reject presets (the API takes free text, contract: POST /payments/{id}/reject {reason}). "Kuch aur" = type
+ * your own. */
 export const REJECT_REASONS = ["Amount match nahi karta", "Screenshot parha nahi ja raha", "Duplicate lagta hai", "Kuch aur"];
 
-/** Expected vs screenshot amount, icon + text (colour is never the only signal). */
-function AmountChip({ item }: { item: ApprovalQueueItem }) {
+/**
+ * Approvals board: "Chahiye" (what this booking needs now) next to "Screenshot mein" (what OCR read), each a text box, so
+ * a match / difference / unread screenshot is told by words + a tick, never by colour alone.
+ */
+function AmountBoxes({ item }: { item: ApprovalQueueItem }) {
   const v = item.ocr_verdict;
-  const tone =
-    v === "match"
-      ? { bg: OV.greenBg, fg: OV.greenDark, icon: <CheckIcon size={13} color={OV.greenDark} strokeWidth={2.6} />, word: "Match" }
-      : v === "mismatch"
-        ? { bg: OV.redBg, fg: OV.red, icon: <XIcon size={13} color={OV.red} />, word: "Farq hai" }
-        : { bg: "#EFF2F3", fg: OV.muted, icon: <AlertCircleIcon size={13} color={OV.muted} />, word: "Parha nahi gaya" };
-  const text =
+  const read =
     item.ocr_amount != null
-      ? `${tone.word}: screenshot PKR ${formatPKR(item.ocr_amount)} - chahiye PKR ${formatPKR(item.expected_amount)}`
-      : `${tone.word}: chahiye PKR ${formatPKR(item.expected_amount)}, screenshot khud dekhein`;
+      ? `PKR ${formatPKR(item.ocr_amount)}${v === "match" ? " ✓" : ""}`
+      : "Parha nahi gaya";
+  const word = v === "match" ? "Match" : v === "mismatch" ? "Farq hai" : "Khud dekhein";
+  const box = v === "match" ? { bg: palette.openTint, fg: palette.open } : v === "mismatch" ? { bg: palette.dangerTint, fg: palette.danger } : { bg: palette.waitingTint, fg: palette.waiting };
   return (
-    <View testID="amount-chip" className="flex-row items-center gap-1.5 self-start rounded-full px-3" style={{ minHeight: 30, backgroundColor: tone.bg }}>
-      {tone.icon}
-      <Text className="font-plex-semibold text-[12.5px]" style={{ color: tone.fg, flexShrink: 1 }}>
-        {text}
-      </Text>
+    <View testID="amount-chip" accessible accessibilityLabel={`Chahiye PKR ${formatPKR(item.expected_amount)}. Screenshot mein ${read}. ${word}`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      <View style={{ flexGrow: 1, flexBasis: 96, backgroundColor: palette.ground, borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: space[2], gap: 2 }}>
+        <Text variant="caption" weight="bold" tone="muted">
+          Chahiye
+        </Text>
+        <Text variant="bodyStrong">{`PKR ${formatPKR(item.expected_amount)}`}</Text>
+      </View>
+      <View style={{ flexGrow: 1, flexBasis: 96, backgroundColor: box.bg, borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: space[2], gap: 2 }}>
+        <Text variant="caption" weight="bold" color={box.fg}>
+          {`Screenshot mein · ${word}`}
+        </Text>
+        <Text variant="bodyStrong" color={box.fg}>
+          {read}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -44,9 +57,9 @@ export function duplicateText(n: number): string {
 
 function DuplicateChip({ n }: { n: number }) {
   return (
-    <View testID="duplicate-chip" className="flex-row items-center gap-1.5 self-start rounded-full px-3" style={{ minHeight: 30, backgroundColor: OV.redBg, borderWidth: 1, borderColor: OV.redBorder }}>
-      <AlertTriangleIcon size={14} color={OV.red} />
-      <Text className="font-plex-bold text-[12.5px]" style={{ color: OV.red, flexShrink: 1 }}>
+    <View testID="duplicate-chip" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: palette.dangerTint, borderRadius: radius.xs, paddingHorizontal: 10, paddingVertical: 7 }}>
+      <TriangleAlert size={15} color={palette.danger} />
+      <Text variant="meta" weight="bold" tone="danger" style={{ flexShrink: 1 }}>
         {`Duplicate: ${duplicateText(n)}`}
       </Text>
     </View>
@@ -77,121 +90,81 @@ export function ApprovalCard({
   onAcknowledge: (moneyReceived: boolean) => void;
 }) {
   const grey = isGrey(item);
-  const initials = (item.player_name ?? "?").slice(0, 2).toUpperCase();
+  const dupN = grey ? null : duplicateChipCount(item.duplicate);
+  const hasShot = item.has_screenshot || !!item.proof_url;
   return (
     <View
       testID={grey ? "approval-card-grey" : "approval-card"}
       accessibilityLabel={`${item.player_name ?? "Player"} approval`}
-      className="rounded-2xl p-4 gap-3"
-      style={{ backgroundColor: grey ? "#F1F3F4" : "#FFFFFF", borderWidth: 1.5, borderColor: grey ? "#D3DADD" : OV.border, opacity: 1 }}
+      style={{ backgroundColor: grey ? palette.mist : palette.white, borderRadius: radius.card, padding: 14, gap: space[3], boxShadow: grey ? undefined : shadow.card }}
     >
-      {grey ? (
-        <View className="flex-row items-center gap-1.5 self-start rounded-full px-3" style={{ minHeight: 30, backgroundColor: "#E3E7E9" }}>
-          <BanIcon size={13} color={OV.muted} />
-          <Text className="font-plex-bold text-[12.5px]" style={{ color: "#3E5058" }}>
-            {STATE_CHIP[item.state as Exclude<typeof item.state, "awaiting">]}
-          </Text>
-        </View>
-      ) : null}
+      {grey ? <Pill tone="neutral" icon={<Ban size={13} color={palette.body} />} label={STATE_CHIP[item.state as Exclude<typeof item.state, "awaiting">]} /> : null}
 
-      <View className="flex-row items-center gap-3">
-        <View className="w-11 h-11 rounded-full items-center justify-center" style={{ backgroundColor: grey ? "#8399A1" : OV.accent }}>
-          <Text className="font-plex-semibold text-white text-[15px]">{initials}</Text>
-        </View>
-        <View className="flex-1 gap-0.5">
-          <Text className="font-plex-bold text-[16px]" style={{ color: grey ? "#3E5058" : OV.ink }}>
-            {item.player_name ?? "Player"}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+        <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} />
+        <View style={{ flex: 1, gap: 1 }}>
+          <Text variant="bodyStrong">{item.player_name ?? "Player"}</Text>
+          <Text variant="meta" tone="muted">
+            {courtText}
           </Text>
-          <Text className="font-plex-medium text-owner-ink-muted text-[13px]">{courtText}</Text>
-          <Text testID="approval-when" className="font-plex-semibold text-[13.5px]" style={{ color: grey ? "#3E5058" : OV.ink }}>
+          <Text testID="approval-when" variant="meta" weight="bold">
             {slotWhen(item.starts_at, item.ends_at)}
           </Text>
         </View>
+        {!grey ? (
+          <Text variant="caption" weight="bold" tone="muted">
+            {waitLabel(Math.max(0, Math.round(item.minutes_since_submission ?? 0)))}
+          </Text>
+        ) : null}
       </View>
 
-      {!grey ? <AmountChip item={item} /> : null}
-      {(() => {
-        // hidden for a 0 count ("0 bookings" read as a false alarm); the approve flow still asks for the confirm
-        const dupN = grey ? null : duplicateChipCount(item.duplicate);
-        return dupN != null ? <DuplicateChip n={dupN} /> : null;
-      })()}
-      {item.has_screenshot || item.proof_url ? <ScreenshotThumb paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : null}
+      {!grey ? (
+        <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
+          {hasShot ? <ScreenshotThumb compact paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : null}
+          <View style={{ flex: 1, gap: space[2] }}>
+            <AmountBoxes item={item} />
+            {dupN != null ? <DuplicateChip n={dupN} /> : null}
+          </View>
+        </View>
+      ) : hasShot ? (
+        <ScreenshotThumb paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} />
+      ) : null}
 
       <BookingLinks bookingId={item.booking_id} startsAt={item.starts_at} onDetails={onDetails} />
 
-      {error ? <Text className="font-plex-medium text-owner-danger text-[12.5px]">{error}</Text> : null}
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
 
       {locked ? (
-        <View testID="approval-locked" className="rounded-xl px-3.5 py-3" style={{ backgroundColor: "#F1F3F4", borderWidth: 1, borderColor: "#D3DADD" }}>
-          <Text className="font-plex-semibold text-owner-ink text-[13px]">Aap ke paas is kaam ki ijazat nahi. Owner se ijazat mangein.</Text>
+        <View testID="approval-locked">
+          <Banner tone="neutral" body="Aap ke paas is kaam ki ijazat nahi. Owner se ijazat mangein." />
         </View>
       ) : grey ? (
         item.has_screenshot ? (
-          <View className="gap-2">
-            <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">Player ne screenshot bheja tha. Kya paisa aapke account mein aaya?</Text>
-            <ActionButton label="Paisa nahi aaya - Theek hai" tone="outline" disabled={busy} onPress={() => onAcknowledge(false)} />
-            <ActionButton label="Paisa aa gaya - Refund banayein" tone="teal" disabled={busy} onPress={() => onAcknowledge(true)} />
+          <View style={{ gap: space[2] }}>
+            <Text variant="meta" tone="muted">
+              Player ne screenshot bheja tha. Kya paisa aapke account mein aaya?
+            </Text>
+            <Button label="Paisa nahi aaya - Theek hai" variant="soft" size="md" block disabled={busy} onPress={() => onAcknowledge(false)} />
+            <Button label="Paisa aa gaya - Refund banayein" variant="primary" size="md" block disabled={busy} onPress={() => onAcknowledge(true)} />
           </View>
         ) : (
-          <ActionButton label="Theek hai" tone="teal" disabled={busy} onPress={() => onAcknowledge(false)} />
+          <Button label="Theek hai" variant="primary" size="md" block disabled={busy} onPress={() => onAcknowledge(false)} />
         )
       ) : (
-        <View className="flex-row gap-2.5">
-          <ActionButton flex label="Approve" tone="green" disabled={busy} onPress={onApprove} />
-          <ActionButton label="Reject" tone="reject" disabled={busy} onPress={onReject} />
+        <View style={{ flexDirection: "row", gap: space[2] }}>
+          <Button label="Approve" variant="primary" size="md" disabled={busy} onPress={onApprove} style={{ flex: 2 }} />
+          <Button label="Reject" variant="danger" size="md" disabled={busy} onPress={onReject} style={{ flex: 1, paddingHorizontal: space[3] }} />
         </View>
       )}
     </View>
   );
 }
 
-function ActionButton({
-  label,
-  tone,
-  onPress,
-  disabled,
-  flex,
-}: {
-  label: string;
-  tone: "green" | "reject" | "teal" | "outline";
-  onPress: () => void;
-  disabled?: boolean;
-  flex?: boolean;
-}) {
-  const s = {
-    green: { bg: "#1F7A52", fg: "#FFFFFF", border: "#1F7A52" },
-    reject: { bg: "#FFFFFF", fg: "#A8432C", border: "#DDBAB1" },
-    teal: { bg: OV.accent, fg: "#FFFFFF", border: OV.accent },
-    outline: { bg: "#FFFFFF", fg: OV.ink, border: OV.ink },
-  }[tone];
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        flex: flex ? 1 : undefined,
-        minWidth: flex ? undefined : 104,
-        minHeight: 48,
-        paddingHorizontal: 14,
-        borderRadius: 11,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: s.bg,
-        borderWidth: 1.5,
-        borderColor: s.border,
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
-      <Text className="font-plex-semibold text-[14.5px]" style={{ color: s.fg }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/** Approve: confirm the amount really received; when the screenshot shows MORE than the advance, a banner with two choices. */
+/** Approve: confirm the amount really received; when the screenshot shows MORE than the advance, two choices. */
 export function ApproveSheet({
   item,
   busy,
@@ -219,9 +192,9 @@ export function ApproveSheet({
       subtitle={`${item.player_name ?? "Player"} - ${slotWhen(item.starts_at, item.ends_at)}`}
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: space[3] }}>
           <OutlineButton flex label="Wapas" onPress={onClose} />
-          <OrangeButton
+          <PrimaryButton
             flex
             label={busy ? "Approve ho raha hai" : "Approve karein"}
             disabled={!valid || busy}
@@ -231,73 +204,43 @@ export function ApproveSheet({
       }
     >
       {over ? (
-        <View testID="overpayment-banner" className="rounded-xl p-3.5 gap-1" style={{ backgroundColor: OV.amberBg, borderWidth: 1, borderColor: OV.amberBorder }}>
-          <Text className="font-plex-bold text-[14px]" style={{ color: OV.amberDark }}>
-            {`Screenshot mein PKR ${formatPKR(over.ocr_amount)} hain, advance sirf PKR ${formatPKR(over.expected)} chahiye tha.`}
-          </Text>
-          <Text className="font-plex-medium text-[12.5px]" style={{ color: OV.amberDark }}>
-            Screenshot ki parhai sirf ishara hai. Faisla aap karein.
-          </Text>
+        <View testID="overpayment-banner">
+          <Banner
+            tone="waiting"
+            title={`Screenshot mein PKR ${formatPKR(over.ocr_amount)} hain, advance sirf PKR ${formatPKR(over.expected)} chahiye tha.`}
+            body="Screenshot ki parhai sirf ishara hai. Faisla aap karein."
+          />
         </View>
       ) : null}
       {over ? (
-        <View className="gap-2" accessibilityRole="radiogroup">
-          <Choice
-            selected={mode === "advance_only"}
-            onPress={() => setMode("advance_only")}
-            label={`Sirf PKR ${formatPKR(over.expected)} manzoor - baqi PKR ${formatPKR(over.excess)} wapas karna hoga`}
-            sub="Baqi raqam Refunds mein chali jayegi."
-          />
-          <Choice
-            selected={mode === "full"}
-            onPress={() => setMode("full")}
-            label={`Poora PKR ${formatPKR(over.ocr_amount)} manzoor (extra advance)`}
-            sub="Poori raqam is booking ki payment mein jama hogi."
-          />
-        </View>
+        <RadioGroup
+          accessibilityLabel="Kitna manzoor"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "advance_only", label: `Sirf PKR ${formatPKR(over.expected)} manzoor - baqi PKR ${formatPKR(over.excess)} wapas karna hoga`, hint: "Baqi raqam Refunds mein chali jayegi." },
+            { value: "full", label: `Poora PKR ${formatPKR(over.ocr_amount)} manzoor (extra advance)`, hint: "Poori raqam is booking ki payment mein jama hogi." },
+          ]}
+        />
       ) : null}
 
       {checks ? (
-        <View className="gap-1.5">
-          <Text className="font-plex-semibold text-owner-ink text-[13.5px]">Asal mein kitna mila? (PKR)</Text>
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            keyboardType="number-pad"
-            accessibilityLabel="Asal mein kitna mila, PKR"
-            className="font-mono-medium text-owner-ink"
-            style={{ minHeight: 48, paddingHorizontal: 13, borderRadius: 10, borderWidth: 1.5, borderColor: valid ? OV.border : OV.red, fontSize: 15 }}
-          />
-          {summary ? (
-            <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
-              {`${summary.text}. Approve ke baad mila PKR ${formatPKR(summary.totalAfter)}, venue par baqi PKR ${formatPKR(summary.balanceAfter)}.`}
-            </Text>
-          ) : null}
-        </View>
+        <Input
+          label="Asal mein kitna mila? (PKR)"
+          value={text}
+          onChangeText={setText}
+          keyboardType="number-pad"
+          accessibilityLabel="Asal mein kitna mila, PKR"
+          error={valid ? null : "Sahi raqam likhein"}
+          help={summary ? `${summary.text}. Approve ke baad mila PKR ${formatPKR(summary.totalAfter)}, venue par baqi PKR ${formatPKR(summary.balanceAfter)}.` : undefined}
+        />
       ) : null}
-      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
     </BottomSheet>
-  );
-}
-
-function Choice({ selected, onPress, label, sub }: { selected: boolean; onPress: () => void; label: string; sub: string }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected, checked: selected }}
-      aria-checked={selected}
-      accessibilityLabel={label}
-      style={{ minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, borderWidth: selected ? 2 : 1.5, borderColor: selected ? OV.accent : OV.border, backgroundColor: selected ? OV.accentSoft : "#FFFFFF" }}
-    >
-      <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: selected ? OV.accent : OV.faint, alignItems: "center", justifyContent: "center" }}>
-        {selected ? <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: OV.accent }} /> : null}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text className="font-plex-semibold text-owner-ink text-[14px]">{label}</Text>
-        <Text className="font-plex-medium text-owner-ink-faint text-[12px]">{sub}</Text>
-      </View>
-    </Pressable>
   );
 }
 
@@ -324,36 +267,25 @@ export function DuplicateConfirmSheet({
       subtitle={`${item.player_name ?? "Player"} - ${slotWhen(item.starts_at, item.ends_at)}`}
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: space[3] }}>
           <OutlineButton flex label="Wapas" onPress={onClose} />
-          <Pressable
-            onPress={onConfirm}
-            disabled={busy}
-            accessibilityRole="button"
-            accessibilityLabel="Phir bhi approve karein"
-            style={{ flex: 1, minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#8C3823", opacity: busy ? 0.5 : 1 }}
-          >
-            <Text className="font-plex-bold text-white text-[14px]">{busy ? "Approve ho raha hai" : "Phir bhi approve karein"}</Text>
-          </Pressable>
+          <DangerButton flex label={busy ? "Approve ho raha hai" : "Phir bhi approve karein"} disabled={busy} onPress={onConfirm} />
         </View>
       }
     >
-      <View testID="duplicate-confirm" className="flex-row items-start gap-2.5 rounded-xl p-3.5" style={{ backgroundColor: OV.redBg, borderWidth: 1, borderColor: OV.redBorder }}>
-        <AlertTriangleIcon size={20} color={OV.red} />
-        <Text className="flex-1 font-plex-bold text-[14.5px]" style={{ color: OV.red }}>
-          {`${duplicateText(usedOn)}. Phir bhi approve karein?`}
-        </Text>
+      <View testID="duplicate-confirm">
+        <Banner tone="danger" icon={TriangleAlert} title={`${duplicateText(usedOn)}. Phir bhi approve karein?`} body="Pehle apne account mein check karein ke ye paisa is booking ke liye alag se aaya hai." />
       </View>
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
-        Pehle apne account mein check karein ke ye paisa is booking ke liye alag se aaya hai.
-      </Text>
-      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
     </BottomSheet>
   );
 }
 
-/** "Paisa aa gaya - Refund banayein" is a money action: confirm it with the amount and the booking first (it used to
- * create the refund on a single tap). */
+/** "Paisa aa gaya - Refund banayein" is a money action: confirm it with the amount and the booking first. */
 export function RefundConfirmSheet({
   item,
   courtText,
@@ -376,27 +308,33 @@ export function RefundConfirmSheet({
       subtitle="Player ne booking cancel kar di thi, lekin paisa aap ke account mein aa gaya."
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: space[3] }}>
           <OutlineButton flex label="Wapas" onPress={onClose} />
-          <OrangeButton flex label={busy ? "Ban raha hai" : "Haan, refund banayein"} disabled={busy} onPress={onConfirm} />
+          <PrimaryButton flex label={busy ? "Ban raha hai" : "Haan, refund banayein"} disabled={busy} onPress={onConfirm} />
         </View>
       }
     >
-      <View testID="refund-confirm" className="rounded-xl p-4 gap-2" style={{ backgroundColor: OV.accentSoft, borderWidth: 1, borderColor: OV.border }}>
-        <Text className="font-plex-semibold text-owner-ink-muted text-[12.5px]">Wapas karna hoga</Text>
-        <Text testID="refund-confirm-amount" className="font-mono-semibold text-owner-ink text-[26px]">{`PKR ${formatPKR(amount)}`}</Text>
-        <Text className="font-plex-bold text-owner-ink text-[14.5px]">{item.player_name ?? "Player"}</Text>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13px]">{`${courtText} - ${slotWhen(item.starts_at, item.ends_at)}`}</Text>
+      <View testID="refund-confirm" style={{ backgroundColor: palette.tealTint, borderRadius: radius.input, padding: space[4], gap: space[2] }}>
+        <Text variant="meta" weight="bold" tone="info">
+          Wapas karna hoga
+        </Text>
+        <Text testID="refund-confirm-amount" variant="h3">{`PKR ${formatPKR(amount)}`}</Text>
+        <Text variant="bodyStrong">{item.player_name ?? "Player"}</Text>
+        <Text variant="meta" tone="muted">{`${courtText} - ${slotWhen(item.starts_at, item.ends_at)}`}</Text>
       </View>
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
-        Ye refund "Refunds" mein chala jayega. Paisa app ke bahar (JazzCash/bank) bhejein, phir wahan "Paid" mark karein.
+      <Text variant="meta" tone="muted">
+        Ye refund &quot;Refunds&quot; mein chala jayega. Paisa app ke bahar (JazzCash/bank) bhejein, phir wahan &quot;Paid&quot; mark karein.
       </Text>
-      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
     </BottomSheet>
   );
 }
 
-/** Reject: pick a reason (or write one); the keyboard's own mic does voice typing (no native module). */
+/** OSheets frame 2 "Payment reject karein?": reason radios (client presets) + free text; the reason is required. */
 export function RejectSheet({
   item,
   busy,
@@ -412,58 +350,92 @@ export function RejectSheet({
 }) {
   const [picked, setPicked] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const reason = picked === "Kuch aur" ? note.trim() : picked;
+  const reason = picked === "Kuch aur" ? note.trim() : picked && note.trim() ? `${picked}. ${note.trim()}` : picked;
   return (
     <BottomSheet
-      title="Reject kyun?"
-      subtitle={`${item.player_name ?? "Player"} - ${slotWhen(item.starts_at, item.ends_at)}`}
+      title="Payment reject karein?"
+      subtitle={`${item.player_name ?? "Player"} · ${slotWhen(item.starts_at, item.ends_at)} · PKR ${formatPKR(item.expected_amount)}`}
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: space[3] }}>
           <OutlineButton flex label="Wapas" onPress={onClose} />
-          <Pressable
-            onPress={() => reason && onConfirm(reason)}
-            disabled={!reason || busy}
-            accessibilityRole="button"
-            accessibilityLabel="Reject karein"
-            style={{ flex: 1, minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#8C3823", opacity: !reason || busy ? 0.5 : 1 }}
-          >
-            <Text className="font-plex-bold text-white text-[14px]">{busy ? "Reject ho raha hai" : "Reject karein"}</Text>
-          </Pressable>
+          <DangerButton flex label={busy ? "Reject ho raha hai" : "Reject karein"} disabled={!reason || busy} onPress={() => reason && onConfirm(reason)} />
         </View>
       }
     >
-      <View className="flex-row flex-wrap gap-2">
-        {REJECT_REASONS.map((r) => (
-          <Pressable
-            key={r}
-            onPress={() => setPicked(r)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: picked === r }}
-            style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: 10, justifyContent: "center", backgroundColor: picked === r ? "#8C3823" : "#F4F6F7" }}
-          >
-            <Text className="font-plex-semibold text-[13px]" style={{ color: picked === r ? "#FFFFFF" : OV.muted }}>
-              {r}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      <TextInput
-        value={note}
-        onChangeText={(t) => {
-          setNote(t);
-          if (t.trim() && picked !== "Kuch aur") setPicked("Kuch aur");
-        }}
-        multiline
-        textAlignVertical="top"
-        placeholder="Apni wajah likhein"
-        placeholderTextColor={OV.faint}
+      <Text variant="bodyBold">Wajah chunein</Text>
+      <RadioGroup
+        danger
         accessibilityLabel="Reject ki wajah"
-        className="font-plex-medium text-owner-ink text-[15px]"
-        style={{ minHeight: 88, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: OV.border }}
+        value={picked}
+        onChange={setPicked}
+        options={REJECT_REASONS.map((r) => ({ value: r, label: r }))}
+        testID="reject-reasons"
       />
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">Keyboard ke mic se bolein</Text>
-      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+      <Input
+        label={picked === "Kuch aur" ? "Apni wajah (zaroori)" : "Player ke liye note (optional)"}
+        value={note}
+        onChangeText={setNote}
+        multiline
+        placeholder="Apni wajah likhein"
+        accessibilityLabel="Reject ki wajah"
+        help="Keyboard ke mic se bolein"
+      />
+      <Banner tone="waiting" body="Reject karne par slot fori khul jayega aur player ko wajah WhatsApp/push par milegi." />
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
     </BottomSheet>
   );
 }
+
+/** Bulk "Sab approve" confirm: lists exactly which payments go (OCR-matched only) and their amounts before anything is
+ * sent. There is no batch endpoint (B8): the screen sends them one by one. */
+export function BulkApproveSheet({
+  items,
+  busy,
+  progress,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  items: ApprovalQueueItem[];
+  busy: boolean;
+  progress: string | null;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <BottomSheet
+      title={`${items.length} payments approve karein?`}
+      subtitle="Sirf woh jin ke screenshot ka amount bilkul match hai, koi duplicate nahi."
+      onClose={onClose}
+      testID="bulk-approve-sheet"
+      footer={
+        <View style={{ flexDirection: "row", gap: space[3] }}>
+          <OutlineButton flex label="Wapas" onPress={onClose} />
+          <PrimaryButton flex label={busy ? "Approve ho rahe hain" : "Haan, sab approve"} disabled={busy || items.length === 0} onPress={onConfirm} testID="bulk-approve-confirm" />
+        </View>
+      }
+    >
+      <MoneyRows rows={items.map((it) => ({ label: `${it.player_name ?? "Player"} · ${slotWhen(it.starts_at, it.ends_at)}`, value: `PKR ${formatPKR(it.expected_amount)}` }))} />
+      <Text variant="meta" tone="muted">
+        Har payment alag se approve hogi. Koi ek ruk jaye (maslan player ne cancel kar di) to woh card wahin rahega, baqi chalti rahengi.
+      </Text>
+      {progress ? (
+        <Text variant="meta" weight="bold" tone="info" testID="bulk-progress">
+          {progress}
+        </Text>
+      ) : null}
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
+    </BottomSheet>
+  );
+}
+

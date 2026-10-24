@@ -1,5 +1,7 @@
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { router } from "expo-router";
+import { size, space } from "@court-booking/ui-tokens";
+import { Button, Text } from "@/components/ui";
 
 import { pktDateString } from "@/lib/format";
 
@@ -14,22 +16,17 @@ export function openInHistory(bookingId: string, startsAt: string, beforeNavigat
 /** "Details" (opens the shared booking sheet) + "History mein dekhein". Used on every Approvals and Refunds card. */
 export function BookingLinks({ bookingId, startsAt, onDetails, beforeNavigate }: { bookingId: string; startsAt: string; onDetails: () => void; beforeNavigate?: () => void }) {
   return (
-    <View className="flex-row items-center gap-2.5">
-      <Pressable
-        onPress={onDetails}
-        accessibilityRole="button"
-        accessibilityLabel="Details"
-        style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: "#DCE3E6", backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" }}
-      >
-        <Text className="font-plex-semibold text-owner-ink text-[13.5px]">Details</Text>
-      </Pressable>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+      <Button label="Details" variant="soft" size="sm" onPress={onDetails} accessibilityLabel="Details" />
       <Pressable
         onPress={() => openInHistory(bookingId, startsAt, beforeNavigate)}
         accessibilityRole="link"
         accessibilityLabel="History mein dekhein"
-        style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 6 }}
+        style={{ minHeight: size.tap, justifyContent: "center", paddingHorizontal: space[2] }}
       >
-        <Text className="font-plex-bold text-owner-accent text-[13.5px] underline">History mein dekhein</Text>
+        <Text variant="bodyBold" tone="link" style={{ textDecorationLine: "underline" }}>
+          History mein dekhein
+        </Text>
       </Pressable>
     </View>
   );

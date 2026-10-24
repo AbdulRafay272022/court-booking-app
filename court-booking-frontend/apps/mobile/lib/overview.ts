@@ -1,29 +1,30 @@
 import type { BookingStatusKey, MyPermissions, OwnerBookingRow, StaffPermissionKey } from "@court-booking/types";
 
+import { palette } from "@court-booking/ui-tokens";
+
 import { pktDateString } from "@/lib/format";
 
-// Colours for the owner overview. Same hex values as the owner tokens in tailwind.config.js (used inline where a
-// style object is needed, e.g. dynamic bar widths and row tints).
+// Colours for the owner screens: Floodlight tokens only (packages/ui-tokens is the one place with hex). No orange here:
+// on the owner side orange is only the notification badge and the timeline "now" line (role.owner.badge / nowLine).
 export const OV = {
-  ink: "#101C21",
-  muted: "#5B7079",
-  faint: "#8399A1",
-  border: "#DCE3E6",
-  accent: "#0E6274",
-  accentSoft: "#EBF2F4",
-  greenBg: "#E4F0EA",
-  greenBorder: "#A9CFBD",
-  green: "#1F7A52",
-  greenDark: "#14563A",
-  redBg: "#F8E5E0",
-  redBorder: "#DDBAB1",
-  red: "#8C3823",
-  amberBg: "#FBF0DD",
-  amberBorder: "#E8D3A8",
-  amber: "#9C5C0A",
-  amberDark: "#7A480A",
-  orange: "#FF6A2B",
-  bar: { booked: "#0E6274", pending: "#F08A3C", blocked: "#8399A1", free: "#DCE9E7" },
+  ink: palette.night,
+  muted: palette.muted,
+  faint: palette.muted2,
+  border: palette.line,
+  accent: palette.teal,
+  accentSoft: palette.tealTint,
+  greenBg: palette.openTint,
+  greenBorder: palette.open,
+  green: palette.open,
+  greenDark: palette.open,
+  redBg: palette.dangerTint,
+  redBorder: palette.dangerBorder,
+  red: palette.danger,
+  amberBg: palette.waitingTint,
+  amberBorder: palette.waitingBorder,
+  amber: palette.waiting,
+  amberDark: palette.waiting,
+  bar: { booked: palette.teal, pending: palette.amber, blocked: palette.muted2, free: palette.tealHalf },
 };
 
 /** "1 ghanta", "2 ghanta", "90 minute". */
@@ -72,7 +73,7 @@ export const TONE_STYLE: Record<Tone, { bg: string; border: string }> = {
   green: { bg: OV.greenBg, border: OV.greenBorder },
   red: { bg: OV.redBg, border: OV.redBorder },
   amber: { bg: OV.amberBg, border: OV.amberBorder },
-  neutral: { bg: "#FFFFFF", border: OV.border },
+  neutral: { bg: palette.white, border: OV.border },
 };
 
 /** Channel labels (A4). "app" covers the in-app chat AND the website (they cannot be told apart), so never "App chat".

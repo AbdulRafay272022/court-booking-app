@@ -1,29 +1,33 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { TriangleAlert } from "lucide-react-native";
 import { refundBreakdown, type OwnerRefund } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
+import { Banner, Button, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatDayHeader, formatPKR, formatWhen } from "@/lib/format";
-import { OV, PERM, duplicateCreditText } from "@/lib/overview";
+import { PERM, duplicateCreditText } from "@/lib/overview";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
-import { AlertTriangleIcon } from "@/components/icons";
 import { NoAccess } from "@/components/no-access";
-import { ErrorState } from "@/components/error-state";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { BookingLinks } from "@/components/booking-links";
 import { RefundSheet } from "@/components/refund-sheet";
-import { EmptyState } from "../_dashboard-components";
+import { HeroLayout, PaisaSwitch } from "../_fl";
 
-/** Section 32 Part 10 + Round 2 (A10): the owner's "Refunds to pay" screen. A refund here was always sent OUTSIDE
- * the app (JazzCash/bank) -- there is no payment gateway. This just records that it happened. */
+const DAY = 86400_000;
+
+/** OPaisa frame 2 "Refunds dene hain" (Section 32 Part 10 + Round 2 A10). A refund here was always sent OUTSIDE the app
+ * (JazzCash/bank): there is no payment gateway; this records that it happened. Tap opens the confirm sheet (amount +
+ * player shown again, reference required). */
 export default function RefundsScreen() {
+  const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
   const filterDate = routeParams.date || undefined;
@@ -49,102 +53,126 @@ export default function RefundsScreen() {
   const noPermission = !allowed || (query.error instanceof ApiError && query.error.code === "NOT_STAFF_PERMITTED");
   const showCount = !loading && !query.isError && !noPermission;
   const courtText = (r: OwnerRefund) => courtLabel(r.court_name, r.court_sport ?? sportForCourtName(activeVenue?.courts, r.court_name));
+  const totalOwed = list.reduce((s, r) => s + Math.max(0, refundBreakdown(r).remaining), 0);
+  const oldestDays = list.length ? Math.max(...list.map((r) => Math.floor((Date.now() - Date.parse(r.created_at)) / DAY))) : 0;
 
   if (perms.settled && !allowed) return <NoAccess what="Refunds" withBack={false} />;
 
-  return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
-      <View className="px-5 py-5 bg-owner-surface border-b border-owner-border flex-row items-center gap-3">
-        <View className="flex-1 gap-0.5">
-          <Text className="font-plex-bold text-owner-ink text-[16.5px] -tracking-[0.2px]">Refunds to pay</Text>
-          {showCount ? (
-            <Text testID="refunds-count" className="font-plex-medium text-owner-ink-faint text-[12.5px]">
-              {list.length === 0 ? "Abhi koi refund baqi nahi" : `${list.length} refund${list.length === 1 ? "" : "s"} baqi`}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-      {filterDate ? (
-        <View className="px-5 py-2.5 bg-owner-accent-soft flex-row items-center justify-between gap-3">
-          <Text className="flex-1 font-plex-medium text-owner-ink text-[12.5px]">{`Filter: ${formatDayHeader(filterDate)}${filterCourts.length ? ` - ${filterCourts.length} court(s)` : ""}`}</Text>
-          <Pressable onPress={() => router.setParams({ date: undefined, courts: undefined })} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text className="font-plex-bold text-owner-accent text-[13px] underline">Sab dikhao</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#0E6274" />
-        </View>
-      ) : noPermission ? (
-        <View testID="refunds-no-permission" className="flex-1 items-center justify-center px-8 gap-2">
-          <Text className="font-plex-bold text-owner-ink text-[16px] text-center">Aap ke paas is kaam ki ijazat nahi</Text>
-          <Text className="font-plex-medium text-owner-ink-muted text-[13.5px] text-center">
-            Refunds dekhne aur paid mark karne ki ijazat owner deta hai. Owner se ijazat mangein.
+  const hero = (
+    <View style={{ gap: space[4] }}>
+      <Text variant="h1" tone="hero" accessibilityRole="header">
+        Refunds dene hain
+      </Text>
+      <PaisaSwitch current="refunds" />
+      {showCount ? (
+        <View style={{ gap: space[1] }}>
+          <Text variant="bodyBold" tone="hero">
+            Kul wapas dena hai
+          </Text>
+          <Text variant="display" tone="hero">{`PKR ${formatPKR(totalOwed)}`}</Text>
+          <Text testID="refunds-count" variant="meta" tone="heroMuted">
+            {list.length === 0
+              ? "Abhi koi refund baqi nahi"
+              : `${list.length} refund${list.length === 1 ? "" : "s"} baqi${oldestDays > 0 ? ` · sab se purana ${oldestDays} din` : ""}`}
           </Text>
         </View>
-      ) : query.isError ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
-      ) : list.length === 0 ? (
-        <EmptyState title="Sab hisaab barabar" subtitle="Koi refund bhejna baqi nahi hai." />
-      ) : (
-        <ScrollView className="flex-1" contentContainerClassName="px-5 pt-4 pb-8 gap-3">
-          {list.map((refund) => {
-            const b = refundBreakdown(refund);
-            return (
-              <View
-                key={refund.id}
-                className="bg-owner-surface border rounded-xl p-4 gap-3"
-                style={{ borderColor: refund.is_overdue ? "#DDBAB1" : "#DCE3E6" }}
-              >
-                <Pressable
-                  onPress={() => setOpenId(refund.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${refund.player_name ?? "Player"} refund`}
-                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}
-                >
-                  <View className="flex-1 gap-0.5">
-                    <Text className="font-plex-bold text-owner-ink text-[14.5px]">{refund.player_name ?? refund.player_phone ?? "Player"}</Text>
-                    <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{`${courtText(refund)} - ${formatWhen(refund.starts_at)}`}</Text>
-                    {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (
-                      <View
-                        testID="refund-dup-chip"
-                        className="flex-row items-center gap-1.5 self-start rounded-full px-2.5 mt-1"
-                        style={{ minHeight: 26, backgroundColor: OV.redBg, borderWidth: 1, borderColor: OV.redBorder }}
-                      >
-                        <AlertTriangleIcon size={13} color={OV.red} />
-                        <Text className="font-plex-bold text-[11.5px]" style={{ color: OV.red, flexShrink: 1 }}>
-                          {duplicateCreditText(refund.duplicate_proof.used_on_bookings)}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {refund.is_overdue ? (
-                      <Text className="font-plex-semibold text-[11.5px]" style={{ color: "#A8432C" }}>
-                        {`Der ho gayi - ${formatWhen(refund.created_at)} se baqi`}
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.ground }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        refreshControl={allowed ? <RefreshControl refreshing={query.isRefetching && !query.isLoading} onRefresh={() => query.refetch()} tintColor={t.ring} colors={[t.ring]} /> : undefined}
+      >
+        <HeroLayout hero={hero} testID="refunds-hero">
+          {filterDate ? (
+            <Banner
+              tone="info"
+              body={`Filter: ${formatDayHeader(filterDate)}${filterCourts.length ? ` - ${filterCourts.length} court(s)` : ""}`}
+              action={<Button label="Sab dikhao" variant="soft" size="sm" onPress={() => router.setParams({ date: undefined, courts: undefined })} />}
+            />
+          ) : null}
+
+          {loading ? (
+            <View style={{ gap: space[3] }} accessibilityLabel="Loading">
+              <Skeleton height={150} r={radius.card} />
+              <Skeleton height={150} r={radius.card} />
+            </View>
+          ) : noPermission ? (
+            <View testID="refunds-no-permission">
+              <Banner tone="neutral" title="Aap ke paas is kaam ki ijazat nahi" body="Refunds dekhne aur paid mark karne ki ijazat owner deta hai. Owner se ijazat mangein." />
+            </View>
+          ) : query.isError ? (
+            <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} />
+          ) : list.length === 0 ? (
+            <EmptyState title="Sab hisaab barabar" body="Koi refund bhejna baqi nahi hai." />
+          ) : (
+            list.map((refund) => {
+              const b = refundBreakdown(refund);
+              return (
+                <View key={refund.id} style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[3], boxShadow: shadow.card, borderWidth: refund.is_overdue ? 1.5 : 0, borderColor: palette.dangerBorder }}>
+                  <Pressable
+                    onPress={() => setOpenId(refund.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${refund.player_name ?? "Player"} refund`}
+                    style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space[3] }}
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text variant="bodyStrong">{refund.player_name ?? refund.player_phone ?? "Player"}</Text>
+                      <Text variant="meta" tone="muted">{`${courtText(refund)} · ${formatWhen(refund.starts_at)}`}</Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end", gap: space[1] }}>
+                      <Text variant="title">{`PKR ${formatPKR(b.remaining)}`}</Text>
+                      {b.status === "partial" ? <Pill testID="chip-partial" size="sm" tone="waiting" label="Hissa wapas" /> : null}
+                      {b.alreadyRefunded > 0 ? (
+                        <Text variant="caption" tone="muted">{`PKR ${formatPKR(b.refundDue)} mein se baqi`}</Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                  {refund.reason ? (
+                    <Text variant="meta" tone="body">
+                      {`Wajah: ${refund.reason}`}
+                    </Text>
+                  ) : null}
+                  {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (
+                    <View testID="refund-dup-chip" style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: palette.dangerTint }}>
+                      <TriangleAlert size={13} color={palette.danger} />
+                      <Text variant="caption" weight="bold" tone="danger" style={{ flexShrink: 1 }}>
+                        {duplicateCreditText(refund.duplicate_proof.used_on_bookings)}
                       </Text>
-                    ) : null}
-                  </View>
-                  <View className="items-end gap-1">
-                    <Text className="font-mono-semibold text-owner-ink text-[15px]">{`PKR ${formatPKR(b.remaining)}`}</Text>
-                    {b.status === "partial" ? (
-                      <View testID="chip-partial" className="rounded-full px-2.5" style={{ minHeight: 24, justifyContent: "center", backgroundColor: OV.amberBg }}>
-                        <Text className="font-plex-semibold text-[11.5px]" style={{ color: OV.amberDark }}>
-                          Hissa wapas
-                        </Text>
-                      </View>
-                    ) : null}
-                    {b.alreadyRefunded > 0 ? (
-                      <Text className="font-plex-medium text-owner-ink-faint text-[11px]">{`PKR ${formatPKR(b.refundDue)} mein se baqi`}</Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-                <BookingLinks bookingId={refund.booking_id} startsAt={refund.starts_at} onDetails={() => setDetailId(refund.booking_id)} />
-              </View>
-            );
-          })}
-        </ScrollView>
-      )}
+                    </View>
+                  ) : null}
+                  {refund.is_overdue ? (
+                    <Text variant="caption" weight="bold" tone="danger">
+                      {`Der ho gayi - ${formatWhen(refund.created_at)} se baqi`}
+                    </Text>
+                  ) : null}
+                  {refund.player_phone ? (
+                    <View style={{ backgroundColor: palette.ground, borderRadius: radius.md, paddingHorizontal: space[3], paddingVertical: 10, gap: 2 }}>
+                      <Text variant="caption" tone="muted">
+                        Player ka number
+                      </Text>
+                      <Text variant="bodyBold" selectable>
+                        {refund.player_phone}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {b.remaining > 0 ? <Button label="Bhej diya · record karein" block size="md" onPress={() => setOpenId(refund.id)} accessibilityLabel={`${refund.player_name ?? "Player"}: refund bhej diya, record karein`} /> : null}
+                  <BookingLinks bookingId={refund.booking_id} startsAt={refund.starts_at} onDetails={() => setDetailId(refund.booking_id)} />
+                </View>
+              );
+            })
+          )}
+          {list.length > 0 ? (
+            <Text variant="caption" tone="muted">
+              Paisa app ke bahar (JazzCash / bank) bhejein, phir yahan record karein. Tap karne par amount aur player dobara dikhte hain.
+            </Text>
+          ) : null}
+        </HeroLayout>
+      </ScrollView>
       {open ? (
         <RefundSheet
           key={open.id}
@@ -160,6 +188,6 @@ export default function RefundsScreen() {
         />
       ) : null}
       {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
-    </SafeAreaView>
+    </View>
   );
 }

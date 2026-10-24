@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Image, Modal, PanResponder, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Image, Modal, PanResponder, Platform, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { CloseIcon } from "@/components/overview/icons";
+import { Maximize2, X } from "lucide-react-native";
+import { alpha, palette, radius, size } from "@court-booking/ui-tokens";
+import { IconButton, Text } from "@/components/ui";
 
 const MIN_SCALE = 1; // 1 = the whole screenshot fits the screen
 const MAX_SCALE = 4;
@@ -41,27 +43,34 @@ function useProofUrl(paymentId: string, initialUrl?: string | null) {
 }
 
 /** Inline screenshot: max ~160 px high, contain, rounded, caption "Bara karke dekhein". Tapping opens the full-screen viewer. */
-export function ScreenshotThumb({ paymentId, url: initialUrl, alt = "Payment screenshot" }: { paymentId: string; url?: string | null; alt?: string }) {
+export function ScreenshotThumb({ paymentId, url: initialUrl, alt = "Payment screenshot", compact }: { paymentId: string; url?: string | null; alt?: string; compact?: boolean }) {
+  // compact = the Approvals board tile (88 high, 76 wide) next to the amounts; the full-screen viewer is the same.
+  const h = compact ? 88 : 160;
   const [open, setOpen] = useState(false);
   const proof = useProofUrl(paymentId, initialUrl);
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 6, width: compact ? 76 : undefined }}>
       <Pressable
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={`${alt}: bara karke dekhein`}
         testID="screenshot-thumb"
-        style={{ height: 160, borderRadius: 12, overflow: "hidden", backgroundColor: "#F4F6F7", borderWidth: 1, borderColor: "#DCE3E6", alignItems: "center", justifyContent: "center" }}
+        style={{ height: h, borderRadius: radius.md, overflow: "hidden", backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" }}
       >
         {proof.url && !proof.failed ? (
-          <Image source={{ uri: proof.url }} onError={proof.onError} resizeMode="contain" accessibilityLabel={alt} style={{ width: "100%", height: 160 }} />
+          <Image source={{ uri: proof.url }} onError={proof.onError} resizeMode="contain" accessibilityLabel={alt} style={{ width: "100%", height: h }} />
         ) : proof.loading ? (
-          <ActivityIndicator color="#0E6274" />
+          <ActivityIndicator color={palette.teal} />
         ) : (
-          <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">Screenshot load nahi hua. Dabayein.</Text>
+          <Text variant="caption" tone="muted" align="center">{compact ? "Load nahi hua" : "Screenshot load nahi hua. Dabayein."}</Text>
         )}
+        <View pointerEvents="none" style={{ position: "absolute", right: 6, bottom: 6, width: 30, height: 30, borderRadius: radius.xs, backgroundColor: alpha.onPhoto, alignItems: "center", justifyContent: "center" }}>
+          <Maximize2 size={16} color={palette.white} />
+        </View>
       </Pressable>
-      <Text className="font-plex-semibold text-owner-accent text-[12.5px]">Bara karke dekhein</Text>
+      <Text variant={compact ? "caption" : "meta"} weight="bold" tone="link">
+        Bara karke dekhein
+      </Text>
       {open ? <ScreenshotViewer paymentId={paymentId} initialUrl={proof.url ?? initialUrl} onClose={() => setOpen(false)} /> : null}
     </View>
   );
@@ -144,20 +153,12 @@ export function ScreenshotViewer({ paymentId, initialUrl, onClose }: { paymentId
 
   return (
     <Modal transparent={false} animationType="fade" onRequestClose={onClose} presentationStyle="fullScreen">
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#0B1214" }} edges={["top", "bottom"]}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: palette.night }} edges={["top", "bottom"]}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8 }}>
-          <Text style={{ color: "#FFFFFF", fontSize: 15 }} className="font-plex-semibold">
+          <Text variant="bodyStrong" tone="onDark">
             Payment screenshot
           </Text>
-          <Pressable
-            onPress={onClose}
-            accessibilityLabel="Band karein"
-            accessibilityRole="button"
-            testID="viewer-close"
-            style={{ width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.16)" }}
-          >
-            <CloseIcon color="#FFFFFF" />
-          </Pressable>
+          <IconButton icon={X} variant="onDark" accessibilityLabel="Band karein" onPress={onClose} testID="viewer-close" />
         </View>
 
         <View
@@ -181,29 +182,29 @@ export function ScreenshotViewer({ paymentId, initialUrl, onClose }: { paymentId
             </Animated.View>
           ) : proof.failed || (proof.error && !proof.url) ? (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 12 }}>
-              <Text style={{ color: "#FFFFFF", textAlign: "center" }} className="font-plex-medium text-[14px]">
+              <Text variant="body" tone="onDark" align="center">
                 {proof.error ? friendlyErrorMessage(proof.error) : "Screenshot load nahi ho saka."}
               </Text>
-              <Pressable onPress={proof.retry} accessibilityRole="button" style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 10, justifyContent: "center", backgroundColor: "rgba(255,255,255,0.16)" }}>
-                <Text style={{ color: "#FFFFFF" }} className="font-plex-semibold text-[14px]">Dobara koshish karein</Text>
+              <Pressable onPress={proof.retry} accessibilityRole="button" style={{ minHeight: size.tap, paddingHorizontal: 16, borderRadius: radius.sm, justifyContent: "center", backgroundColor: alpha.glassDark }}>
+                <Text variant="bodyBold" tone="onDark">Dobara koshish karein</Text>
               </Pressable>
             </View>
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={palette.white} />
             </View>
           )}
         </View>
 
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 10 }}>
           <ZoomButton label="-" a11y="Chhota karein" testID="viewer-zoom-out" disabled={zoom <= MIN_SCALE + 0.001} onPress={() => zoomBy(1 / STEP)} />
-          <Text testID="viewer-zoom-level" accessibilityLabel={`Zoom ${Math.round(zoom * 100)}%`} style={{ color: "#FFFFFF", minWidth: 56, textAlign: "center" }} className="font-mono-semibold text-[14px]">
+          <Text testID="viewer-zoom-level" accessibilityLabel={`Zoom ${Math.round(zoom * 100)}%`} variant="bodyBold" tone="onDark" align="center" style={{ minWidth: 56 }}>
             {`${Math.round(zoom * 100)}%`}
           </Text>
           <ZoomButton label="+" a11y="Bara karein" testID="viewer-zoom-in" disabled={zoom >= MAX_SCALE - 0.001} onPress={() => zoomBy(STEP)} />
           <ZoomButton label="Fit" a11y="Poori screen mein fit karein" testID="viewer-fit" onPress={() => apply(1, 0, 0)} />
         </View>
-        <Text style={{ color: "rgba(255,255,255,0.7)", textAlign: "center", paddingBottom: 8 }} className="font-plex-medium text-[12px]">
+        <Text variant="caption" tone="onDarkMuted" align="center" style={{ paddingBottom: 8 }}>
           Do ungliyon se zoom karein, zoom par ungli se khiskayein.
         </Text>
       </SafeAreaView>
@@ -220,9 +221,9 @@ function ZoomButton({ label, a11y, testID, onPress, disabled }: { label: string;
       accessibilityLabel={a11y}
       accessibilityState={{ disabled: !!disabled }}
       testID={testID}
-      style={{ minWidth: 52, height: 44, paddingHorizontal: 12, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.16)", opacity: disabled ? 0.45 : 1 }}
+      style={{ minWidth: 52, height: size.tap, paddingHorizontal: 12, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: alpha.glassDark, opacity: disabled ? 0.45 : 1 }}
     >
-      <Text style={{ color: "#FFFFFF" }} className="font-plex-bold text-[17px]">
+      <Text variant="cta" tone="onDark">
         {label}
       </Text>
     </Pressable>

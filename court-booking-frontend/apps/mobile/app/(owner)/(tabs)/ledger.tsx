@@ -1,23 +1,24 @@
 import { useMemo, useState } from "react";
-import { courtLabel, sportForCourtName } from "@/components/court-label";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useIsFocused } from "expo-router";
+import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { router, useIsFocused } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, Download } from "lucide-react-native";
 import type { LedgerEntry } from "@court-booking/types";
+import { alpha, palette, radius, shadow, size, space, type Tone } from "@court-booking/ui-tokens";
+import { Banner, Button, Chip, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme } from "@/components/ui";
 
+import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { shareCsv } from "@/lib/export-csv";
 import { addDays, formatPKR, formatShortDate, formatTime, pktDateString } from "@/lib/format";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { DownloadIcon } from "@/components/icons";
 import { NoAccess } from "@/components/no-access";
 import { invalidateOwnerMoney } from "@/lib/owner-cache";
 import { useMyPermissions } from "@/lib/use-my-permissions";
-import { ErrorState } from "@/components/error-state";
+import { useFeatureFlags } from "@/lib/use-feature-flags";
 import { CorrectPaymentSheet } from "@/components/correct-payment-sheet";
-import { EmptyState, Tab } from "../_dashboard-components";
+import { HeroLayout, PaisaSwitch } from "../_fl";
 
 type RangeKey = "7d" | "30d" | "month";
 
@@ -28,31 +29,37 @@ function rangeFor(key: RangeKey): { start: string; end: string } {
   return { start, end };
 }
 
-const STATUS_LABEL: Record<string, { label: string; bg: string; fg: string }> = {
-  booked: { label: "PAID", bg: "#E4F0EA", fg: "#14563A" },
-  completed: { label: "PAID", bg: "#E4F0EA", fg: "#14563A" },
-  payment_submitted: { label: "REVIEW", bg: "#FBF0DD", fg: "#9C5C0A" },
-  cancelled: { label: "CANCELLED", bg: "#F8E5E0", fg: "#8C3823" },
-  no_show: { label: "NO-SHOW", bg: "#F8E5E0", fg: "#8C3823" },
-  held: { label: "HELD", bg: "#F4F6F7", fg: "#5B7079" },
+const RANGE_LABEL: Record<RangeKey, string> = { "7d": "7 din", "30d": "30 din", month: "Is mahine" };
+const RANGE_HEAD: Record<RangeKey, string> = { "7d": "Pichle 7 din mein mila", "30d": "Pichle 30 din mein mila", month: "Is mahine mila" };
+
+/** The booking's state, as a pill on the row (text, not colour only). */
+const STATUS: Record<string, { label: string; tone: Tone }> = {
+  booked: { label: "Paid", tone: "open" },
+  completed: { label: "Mukammal", tone: "info" },
+  payment_submitted: { label: "Review", tone: "waiting" },
+  cancelled: { label: "Cancelled", tone: "danger" },
+  no_show: { label: "No-show", tone: "neutral" },
+  held: { label: "Hold", tone: "neutral" },
 };
 
-const METHOD_LABEL: Record<string, string> = {
-  bank_transfer_proof: "BANK TRANSFER",
-  cash_at_venue: "CASH",
-  other: "OTHER",
-};
+const METHOD_LABEL: Record<string, string> = { bank_transfer_proof: "Bank", cash_at_venue: "Cash", other: "Kuch aur" };
 
+/** OPaisa frame 1 (Ledger): every payment entry (GET /owners/ledger). The "Aaj" tile is `collected_today`, the SAME number
+ * the Aaj hero shows. "Theek karein" reverses one entry (POST /payment-entries/{id}/reverse, flag split_payments). */
 export default function LedgerScreen() {
+  const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [correcting, setCorrecting] = useState<LedgerEntry | null>(null);
   const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
   const queryClient = useQueryClient();
   const perms = useMyPermissions();
+  const flags = useFeatureFlags();
   const allowed = perms.can("view_ledger");
+  const mayCorrect = perms.can("record_payments") && flags.on("split_payments");
 
   const query = useQuery({
     queryKey: ["owner-ledger", activeVenueId, courtId, start, end],
@@ -67,11 +74,12 @@ export default function LedgerScreen() {
 
   async function handleExport() {
     setExporting(true);
+    setExportError(null);
     try {
       const csv = await api.owners.ledgerExportCsv(start, end, { venueId: activeVenueId, courtId });
       await shareCsv(csv, `ledger_${start}_${end}.csv`);
     } catch (e) {
-      Alert.alert("Couldn't export", friendlyErrorMessage(e));
+      setExportError(friendlyErrorMessage(e));
     } finally {
       setExporting(false);
     }
@@ -79,127 +87,152 @@ export default function LedgerScreen() {
 
   if (perms.settled && !allowed) return <NoAccess what="Ledger" withBack={false} />;
 
-  return (
-    <SafeAreaView className="flex-1 bg-owner-bg" edges={["top"]}>
-      <View className="px-5 pt-5 pb-4 bg-owner-surface border-b border-owner-border gap-4">
-        <View className="flex-row items-center justify-between">
-          <Text className="font-plex-bold text-owner-ink text-[19px] -tracking-[0.3px]" accessibilityRole="header">
-            Ledger
+  const hero = (
+    <View style={{ gap: space[4] }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[3] }}>
+        <Text variant="h1" tone="hero" accessibilityRole="header">
+          Paisa
+        </Text>
+        <Pressable
+          onPress={handleExport}
+          disabled={exporting || !ledger || ledger.entries.length === 0}
+          accessibilityRole="button"
+          accessibilityLabel="Ledger CSV export karein"
+          style={{ minHeight: size.tap, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, opacity: exporting || !ledger || ledger.entries.length === 0 ? 0.6 : 1 }}
+        >
+          <Download size={16} color={palette.white} />
+          <Text variant="bodyBold" tone="hero">
+            {exporting ? "Ban raha hai" : "CSV"}
           </Text>
-          <Pressable
-            onPress={handleExport}
-            disabled={exporting || !ledger || ledger.entries.length === 0}
-            className="flex-row items-center gap-1.5 px-3 rounded-lg border border-owner-border"
-            style={{ minHeight: 44, opacity: exporting ? 0.6 : 1 }}
-          >
-            <DownloadIcon />
-            <Text className="font-plex-semibold text-owner-ink-muted text-[13px]">{exporting ? "Exporting…" : "CSV"}</Text>
-          </Pressable>
-        </View>
-
-        {summary ? (
-          <View className="flex-row gap-2.5">
-            <SummaryTile label="Today" value={summary.collected_today} />
-            <SummaryTile label="This week" value={summary.collected_this_week} />
-            <SummaryTile label="This month" value={summary.collected_this_month} />
-          </View>
-        ) : null}
-
-        <View className="gap-2.5">
-          <Text className="font-plex-semibold text-owner-ink-faint text-[11px] tracking-[1.2px]">
-            {rangeKey === "month" ? "THIS MONTH" : rangeKey === "7d" ? "LAST 7 DAYS" : "LAST 30 DAYS"}
-          </Text>
-          <Text className="font-mono-semibold text-owner-ink text-[33px] -tracking-[0.6px]">
-            PKR {ledger ? formatPKR(ledger.summary.total_in_range) : "—"}
-          </Text>
-          <Text className="font-plex-medium text-owner-ink-faint text-[13px]">
-            {ledger ? `${ledger.entries.length} payment${ledger.entries.length === 1 ? "" : "s"}` : ""}
-          </Text>
-        </View>
-
-        {summary && (summary.outstanding_balance > 0 || summary.cancelled_refund_pending > 0) ? (
-          <View className="gap-1.5">
-            {summary.outstanding_balance > 0 ? (
-              <Text className="font-plex-medium text-[12.5px]" style={{ color: "#9C5C0A" }}>
-                PKR {formatPKR(summary.outstanding_balance)} still owed on booked slots
-              </Text>
-            ) : null}
-            {summary.cancelled_refund_pending > 0 ? (
-              <Text className="font-plex-medium text-[12.5px]" style={{ color: "#8C3823" }}>
-                PKR {formatPKR(summary.cancelled_refund_pending)} still owed back in refunds
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
-        <View className="flex-row gap-1.5">
-          <Tab label="7 days" selected={rangeKey === "7d"} onPress={() => setRangeKey("7d")} />
-          <Tab label="30 days" selected={rangeKey === "30d"} onPress={() => setRangeKey("30d")} />
-          <Tab label="This month" selected={rangeKey === "month"} onPress={() => setRangeKey("month")} />
-        </View>
+        </Pressable>
       </View>
-
-      {courts.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="grow-0 bg-owner-surface border-b border-owner-border" contentContainerClassName="px-5 py-3 gap-1.5">
-          <Tab label="All courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
-          {courts.map((c) => (
-            <Tab key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
-          ))}
-        </ScrollView>
-      ) : null}
-
-      {venuesLoading || query.isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#0E6274" />
+      <PaisaSwitch current="ledger" />
+      <View style={{ gap: space[1] }}>
+        <Text variant="bodyBold" tone="hero">
+          {RANGE_HEAD[rangeKey]}
+        </Text>
+        {ledger ? (
+          <Text testID="ledger-total" variant="display" tone="hero">{`PKR ${formatPKR(ledger.summary.total_in_range)}`}</Text>
+        ) : (
+          <Skeleton width={200} height={40} r={10} />
+        )}
+        {ledger ? <Text variant="meta" tone="heroMuted">{`${ledger.entries.length} ${ledger.entries.length === 1 ? "payment" : "payments"}`}</Text> : null}
+      </View>
+      {summary ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+          <Tile label="Aaj" value={summary.collected_today} testID="ledger-today" />
+          <Tile label="Is hafte" value={summary.collected_this_week} />
+          <Tile label="Is mahine" value={summary.collected_this_month} />
         </View>
-      ) : query.isError && !ledger ? (
-        <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} tone="owner" />
-      ) : !ledger || ledger.entries.length === 0 ? (
-        <EmptyState title="No payments in this range" subtitle="Try a longer date range or a different court." />
-      ) : (
-        <ScrollView className="flex-1 bg-owner-surface">
-          {ledger.entries
-            .slice()
-            .reverse()
-            .map((entry) => {
-              const statusStyle = STATUS_LABEL[entry.booking_status] ?? STATUS_LABEL.held;
-              const isCorrection = entry.amount_pkr < 0;
-              return (
-                <View key={entry.entry_id} className="flex-row items-center gap-3 px-5 py-3.5 border-b border-owner-border-light">
-                  <View className="gap-0.5" style={{ minWidth: 52 }}>
-                    <Text className="font-mono-semibold text-owner-ink text-[13px]">{formatShortDate(entry.recorded_at)}</Text>
-                    <Text className="font-mono-medium text-owner-ink-faint text-xs">{formatTime(entry.recorded_at)}</Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.ground }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        refreshControl={<RefreshControl refreshing={query.isRefetching && !query.isLoading} onRefresh={() => query.refetch()} tintColor={t.ring} colors={[t.ring]} />}
+      >
+        <HeroLayout hero={hero} testID="paisa-hero">
+          {exportError ? <Banner tone="danger" title="Export nahi hua" body={exportError} /> : null}
+          {summary && (summary.outstanding_balance > 0 || summary.cancelled_refund_pending > 0) ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+              {summary.outstanding_balance > 0 ? (
+                <Pressable
+                  onPress={() => router.push({ pathname: "/(owner)/history", params: { status: "booked" } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Bookings par baqi PKR ${formatPKR(summary.outstanding_balance)}`}
+                  style={{ flexGrow: 1, flexBasis: 140, backgroundColor: palette.waitingTint, borderRadius: radius.tile, padding: 14, gap: 2 }}
+                >
+                  <Text variant="meta" weight="bold" tone="waiting">
+                    Bookings par baqi
+                  </Text>
+                  <Text variant="title" tone="waiting">{`PKR ${formatPKR(summary.outstanding_balance)}`}</Text>
+                </Pressable>
+              ) : null}
+              {summary.cancelled_refund_pending > 0 ? (
+                <Pressable
+                  onPress={() => router.navigate("/(owner)/(tabs)/refunds")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Refund dena hai PKR ${formatPKR(summary.cancelled_refund_pending)}. Refunds kholein`}
+                  style={{ flexGrow: 1, flexBasis: 140, backgroundColor: palette.dangerTint, borderRadius: radius.tile, padding: 14, gap: 2 }}
+                >
+                  <Text variant="meta" weight="bold" tone="danger">
+                    Refund dena hai
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                    <Text variant="title" tone="danger">{`PKR ${formatPKR(summary.cancelled_refund_pending)}`}</Text>
+                    <ChevronRight size={18} color={palette.danger} />
                   </View>
-                  <View className="flex-1 gap-1">
-                    <Text className="font-plex-semibold text-owner-ink text-sm">{entry.player ?? "Walk-in"}</Text>
-                    <View className="flex-row gap-1.5 flex-wrap">
-                      <Badge label={statusStyle.label} bg={statusStyle.bg} fg={statusStyle.fg} />
-                      <Badge label={METHOD_LABEL[entry.method] ?? entry.method.toUpperCase()} bg="#F4F6F7" fg="#5B7079" />
-                      {entry.entry_type === "refund" ? <Badge label="REFUND" bg="#F8E5E0" fg="#8C3823" /> : null}
-                      {entry.entry_type === "correction" ? <Badge label="CORRECTION" bg="#F8E5E0" fg="#8C3823" /> : null}
-                    </View>
-                  </View>
-                  <View className="items-end gap-0.5">
-                    <Text className="font-mono-semibold text-sm" style={{ color: isCorrection ? "#8C3823" : "#141A1D" }}>
-                      {isCorrection ? "-" : ""}PKR {formatPKR(Math.abs(entry.amount_pkr))}
-                    </Text>
-                    <Text className="font-mono-medium text-owner-ink-faint text-[11px]">{courtLabel(entry.court, entry.court_sport ?? sportForCourtName(courts, entry.court))}</Text>
-                    {entry.entry_type === "refund" && entry.note ? (
-                      <Text className="font-plex-medium text-owner-ink-faint text-[11px]">{entry.note}</Text>
-                    ) : null}
-                    {!isCorrection ? (
-                      <Pressable onPress={() => setCorrecting(entry)} hitSlop={8}>
-                        <Text className="font-plex-semibold text-[11px]" style={{ color: "#8C3823" }}>
-                          Correct
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Muddat">
+            {(["7d", "30d", "month"] as const).map((k) => (
+              <Chip key={k} label={RANGE_LABEL[k]} selected={rangeKey === k} onPress={() => setRangeKey(k)} />
+            ))}
+          </View>
+          {courts.length > 1 ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Court">
+              <Chip label="Sab courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
+              {courts.map((c) => (
+                <Chip key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
+              ))}
+            </View>
+          ) : null}
+
+          {venuesLoading || query.isLoading ? (
+            <View style={{ gap: space[2] }} accessibilityLabel="Loading">
+              <Skeleton height={72} r={radius.tile} />
+              <Skeleton height={72} r={radius.tile} />
+              <Skeleton height={72} r={radius.tile} />
+            </View>
+          ) : query.isError && !ledger ? (
+            <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} />
+          ) : !ledger || ledger.entries.length === 0 ? (
+            <EmptyState title="Is muddat mein koi payment nahi" body="Lambi muddat ya doosra court chun kar dekhein." />
+          ) : (
+            <View testID="ledger-rows" style={{ backgroundColor: palette.white, borderRadius: radius.card, overflow: "hidden", boxShadow: shadow.card }}>
+              {ledger.entries
+                .slice()
+                .reverse()
+                .map((entry, i, arr) => {
+                  const st = STATUS[entry.booking_status] ?? STATUS.held;
+                  const isCorrection = entry.amount_pkr < 0;
+                  const court = courtLabel(entry.court, entry.court_sport ?? sportForCourtName(courts, entry.court));
+                  return (
+                    <View key={entry.entry_id} testID="ledger-row" style={{ flexDirection: "row", gap: space[3], padding: 14, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: palette.divider }}>
+                      <View style={{ flex: 1, gap: 3 }}>
+                        <Text variant="bodyBold">{entry.player ?? "Walk-in"}</Text>
+                        <Text variant="caption" tone="muted">{`${formatShortDate(entry.recorded_at)} · ${formatTime(entry.recorded_at)} · ${court} · ${METHOD_LABEL[entry.method] ?? entry.method}`}</Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 2 }}>
+                          <Pill size="sm" label={st.label} tone={st.tone} />
+                          {entry.entry_type === "refund" ? <Pill size="sm" label="Refund" tone="danger" /> : null}
+                          {entry.entry_type === "correction" ? <Pill size="sm" label="Correction" tone="danger" /> : null}
+                        </View>
+                        {entry.entry_type === "refund" && entry.note ? (
+                          <Text variant="caption" tone="muted">
+                            {entry.note}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <View style={{ alignItems: "flex-end", gap: 6 }}>
+                        <Text variant="bodyStrong" tone={isCorrection ? "danger" : "primary"}>
+                          {`${isCorrection ? "-" : ""}PKR ${formatPKR(Math.abs(entry.amount_pkr))}`}
                         </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </View>
-              );
-            })}
-        </ScrollView>
-      )}
+                        {!isCorrection && mayCorrect ? <Button label="Theek karein" variant="soft" size="sm" onPress={() => setCorrecting(entry)} accessibilityLabel={`${entry.player ?? "Walk-in"} ki payment theek karein`} /> : null}
+                      </View>
+                    </View>
+                  );
+                })}
+            </View>
+          )}
+        </HeroLayout>
+      </ScrollView>
 
       {correcting ? (
         <CorrectPaymentSheet
@@ -211,25 +244,17 @@ export default function LedgerScreen() {
           }}
         />
       ) : null}
-    </SafeAreaView>
-  );
-}
-
-function SummaryTile({ label, value }: { label: string; value: number }) {
-  return (
-    <View className="flex-1 rounded-xl px-3 py-2.5 gap-0.5" style={{ backgroundColor: "#F4F6F7" }}>
-      <Text className="font-plex-semibold text-owner-ink-faint text-[10.5px] tracking-[0.06em]">{label.toUpperCase()}</Text>
-      <Text className="font-mono-semibold text-owner-ink text-[15px]">PKR {formatPKR(value)}</Text>
     </View>
   );
 }
 
-function Badge({ label, bg, fg }: { label: string; bg: string; fg: string }) {
+function Tile({ label, value, testID }: { label: string; value: number; testID?: string }) {
   return (
-    <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: bg }}>
-      <Text className="font-plex-semibold text-[10.5px]" style={{ color: fg }}>
+    <View testID={testID} style={{ flexGrow: 1, flexBasis: 90, borderRadius: radius.input, paddingHorizontal: space[3], paddingVertical: 10, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, gap: 2 }}>
+      <Text variant="caption" weight="bold" tone="heroMuted">
         {label}
       </Text>
+      <Text variant="bodyBold" tone="hero">{`PKR ${formatPKR(value)}`}</Text>
     </View>
   );
 }

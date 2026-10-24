@@ -1,34 +1,39 @@
-import { Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Linking, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { Lock } from "lucide-react-native";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Button, Text } from "@/components/ui";
 
-import { BanIcon } from "./icons";
+import { useOwnerVenues } from "@/lib/use-owner-venues";
 
-/** The ONE "you can't use this" state for staff (before: a generic "Something went wrong", an editable form that 403s on
- * Save, or inline red text, depending on the screen). Shown when GET /owners/me/permissions says the key is missing, e.g.
- * a deep link or an old notification opening a screen the tab bar and "Aur" no longer offer. */
+/** The ONE "you can't use this" state for staff (OStaffView frame 2 "Ijazat nahi"). Shown when GET /owners/me/permissions
+ * says the key is missing, e.g. a deep link or an old notification opening a screen the tab bar and "Aur" no longer
+ * offer. "Owner ko WhatsApp" uses the venue's own WhatsApp number and only shows when the venue has one. */
 export function NoAccess({ what, withBack = true }: { what: string; withBack?: boolean }) {
+  const insets = useSafeAreaInsets();
+  const { activeVenue } = useOwnerVenues();
+  const wa = (activeVenue as { whatsapp?: string | null } | undefined)?.whatsapp?.replace(/[^0-9]/g, "");
   return (
-    <SafeAreaView testID="no-access" className="flex-1 bg-owner-bg" edges={withBack ? ["top", "bottom"] : ["top"]}>
-      <View className="flex-1 items-center justify-center gap-3 px-8" accessibilityRole="alert">
-        <View className="w-14 h-14 rounded-full items-center justify-center bg-owner-surface border border-owner-border">
-          <BanIcon size={24} color="#5B7079" />
-        </View>
-        <Text className="font-plex-bold text-owner-ink text-base text-center">{what} ki ijazat nahi</Text>
-        <Text className="font-plex-medium text-owner-ink-faint text-sm text-center leading-[1.45]">
-          Venue owner se yeh permission dene ko kahein. Mil jaye to yeh hissa yahan khud aa jayega.
-        </Text>
-        {withBack ? (
-          <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(owner)"))}
-            accessibilityRole="button"
-            className="mt-2 px-6 rounded-xl border border-owner-border items-center justify-center active:opacity-80"
-            style={{ minHeight: 48 }}
-          >
-            <Text className="font-plex-semibold text-owner-ink-muted text-[14.5px]">Wapas</Text>
-          </Pressable>
-        ) : null}
+    <View testID="no-access" accessibilityRole="alert" style={{ flex: 1, backgroundColor: palette.ground, justifyContent: "center", paddingHorizontal: space[6], paddingTop: insets.top, paddingBottom: insets.bottom + (withBack ? 0 : 96), gap: space[4], alignItems: "center" }}>
+      <View style={{ width: 88, height: 88, borderRadius: radius.cardL, backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" }}>
+        <Lock size={38} color={palette.night} />
       </View>
-    </SafeAreaView>
+      <Text variant="label" tone="muted" align="center">
+        {`${what} ki ijazat nahi`}
+      </Text>
+      <Text variant="h2" align="center" accessibilityRole="header">
+        Ye hissa aap ke liye band hai
+      </Text>
+      <Text variant="bodyL" tone="muted" align="center">
+        {`"${what}" ki ijazat owner ke paas hai. Owner Staff settings mein de sakta hai; milte hi ye hissa yahan khud aa jayega.`}
+      </Text>
+      <Button
+        label={withBack ? "Wapas" : "Aur par jayein"}
+        block
+        onPress={() => (withBack ? (router.canGoBack() ? router.back() : router.replace("/(owner)")) : router.navigate("/(owner)/(tabs)/more"))}
+      />
+      {wa ? <Button label="Owner ko WhatsApp" variant="soft" size="md" block onPress={() => Linking.openURL(`https://wa.me/${wa}`)} /> : null}
+    </View>
   );
 }

@@ -1,17 +1,17 @@
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
+import { CircleAlert, CircleCheck } from "lucide-react-native";
 import type { OwnerBookingRow } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
+import { palette, radius, space } from "@court-booking/ui-tokens";
+import { Banner, Input, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTimeRange } from "@/lib/format";
-import { OV } from "@/lib/overview";
 import { parsePkr } from "@/lib/round2-format";
-import { CheckIcon } from "@/components/icons";
-import { AlertCircleIcon } from "@/components/overview/icons";
-import { BottomSheet, OrangeButton, OutlineButton } from "@/components/overview/ui";
+import { BottomSheet, DangerButton, OutlineButton, PrimaryButton } from "@/components/overview/ui";
 
 /** Stage 2 (C.3): the error line for a refused no-show (Roman Urdu, never the raw server text). */
 export function noShowErrorText(e: unknown): string {
@@ -19,6 +19,10 @@ export function noShowErrorText(e: unknown): string {
   if (e instanceof ApiError && e.code === "TOO_EARLY_FOR_NO_SHOW") return "Slot abhi khatam nahi hua. Slot khatam hone ke baad No-show mark karein.";
   if (e instanceof ApiError && e.code === "INVALID_BOOKING_STATE") return "Is booking ka status badal chuka hai. Page refresh karke dekhein.";
   return friendlyErrorMessage(e);
+}
+
+function sub(row: OwnerBookingRow) {
+  return `${row.player_name ?? "Player"} · ${row.court_name} · ${formatTimeRange(row.starts_at, row.ends_at)} · ${row.short_code}`;
 }
 
 /** Stage 2 (C.3): "Nahi aaye (No-show)" confirm (a sheet, never Alert.alert: that is a no-op on Expo web). The server
@@ -36,39 +40,47 @@ export function NoShowSheet({ row, onClose, onSaved }: { row: OwnerBookingRow; o
   return (
     <BottomSheet
       title="Nahi aaye (No-show)?"
-      subtitle={`${row.player_name ?? "Player"} - ${row.court_name} - ${formatTimeRange(row.starts_at, row.ends_at)} - ${row.short_code}`}
+      subtitle={sub(row)}
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: space[3] }}>
           <OutlineButton flex label="Wapas" onPress={onClose} />
-          <Pressable
-            onPress={() => save.mutate()}
-            disabled={save.isPending}
-            accessibilityRole="button"
-            accessibilityLabel="No-show mark karein"
-            style={{ flex: 1, minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: OV.red, opacity: save.isPending ? 0.5 : 1 }}
-          >
-            <Text className="font-plex-bold text-white text-[14px]">{save.isPending ? "Save ho raha hai" : "No-show mark karein"}</Text>
-          </Pressable>
+          <DangerButton flex label={save.isPending ? "Save ho raha hai" : "No-show mark karein"} disabled={save.isPending} onPress={() => save.mutate()} />
         </View>
       }
     >
-      <View testID="no-show-confirm" className="flex-row items-start gap-2 rounded-xl px-3.5 py-3" style={{ backgroundColor: OV.redBg }}>
-        <AlertCircleIcon size={18} />
-        <Text className="flex-1 font-plex-semibold text-[13.5px]" style={{ color: OV.red }}>
-          Player khelne nahi aaya? Booking No-show mark ho jayegi.
-        </Text>
+      <View testID="no-show-confirm">
+        <Banner tone="danger" body="Player khelne nahi aaya? Booking No-show mark ho jayegi." />
       </View>
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">
+      <Text variant="meta" tone="muted">
         Ye record ke saath save hoga (kis ne, kab). Ghalti ho to baad mein Haan/Nahi se booking Completed kar sakte hain.
       </Text>
-      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
     </BottomSheet>
   );
 }
 
-/** Round 2 (A8) "Nahi": how much of the REMAINING due came in now. Adds a positive payment (never lowers what was
- * paid); entering the whole due makes the booking Mukammal; a reason is needed only while some due remains. Stage 2 (C.3):
+/** Total / Advance-or-Mila / Baqi strip at the top of the OSheets "Booking adhoora?" sheet. */
+function MoneyStrip({ items }: { items: { label: string; value: string }[] }) {
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[3], backgroundColor: palette.ground, borderRadius: radius.input, paddingHorizontal: space[4], paddingVertical: 14 }}>
+      {items.map((i) => (
+        <Text key={i.label} variant="body" tone="muted">
+          {`${i.label} `}
+          <Text variant="bodyStrong">{i.value}</Text>
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+/** Round 2 (A8) "Nahi" (OSheets "Booking adhoora?"): how much of the REMAINING due came in now. Adds a positive payment
+ * (never lowers what was paid); entering the whole due makes the booking Mukammal; a reason is needed only while some due
+ * remains (REASON_REQUIRED). POST /owners/bookings/{id}/completion {result:"no", received_now, reason}. Stage 2 (C.3):
  * saving marks the booking Completed either way (also from No-show). */
 export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRow; onClose: () => void; onSaved: () => void }) {
   const due = Math.max(0, Math.round(row.due));
@@ -99,36 +111,39 @@ export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRo
           ? "Aapke paas payments record karne ki ijazat nahi hai."
           : e instanceof ApiError && e.code === "REASON_REQUIRED"
             ? "Baqi Due ki wajah likhein."
-            : friendlyErrorMessage(e),
+            : e instanceof ApiError && e.code === "COMPLETION_TOO_EARLY"
+              ? "Slot abhi khatam nahi hua. Khatam hone ke baad save karein."
+              : friendlyErrorMessage(e),
       ),
   });
 
   return (
     <BottomSheet
       title="Booking adhoora?"
-      subtitle={`${row.player_name ?? "Player"} - ${row.court_name} - ${formatTimeRange(row.starts_at, row.ends_at)} - ${row.short_code}`}
+      subtitle={sub(row)}
       onClose={onClose}
       footer={
-        <View className="flex-row gap-3">
-          <OutlineButton flex label="Cancel" onPress={onClose} />
-          <OrangeButton flex label={save.isPending ? "Save ho raha hai" : "Save karein"} disabled={!valid || save.isPending} onPress={() => save.mutate()} />
+        <View style={{ gap: space[2] }}>
+          <View style={{ flexDirection: "row", gap: space[3] }}>
+            <OutlineButton flex label="Cancel" onPress={onClose} />
+            <PrimaryButton flex label={save.isPending ? "Save ho raha hai" : "Save karein"} disabled={!valid || save.isPending} onPress={() => save.mutate()} />
+          </View>
+          <Text variant="caption" tone="subtle">
+            Save karne par booking Completed ho jayegi. Ye record ke saath save hoga (kis ne, kab). Ghalti ho to payment correction se theek karein.
+          </Text>
         </View>
       }
     >
-      <View className="flex-row justify-between rounded-2xl px-4 py-3.5" style={{ backgroundColor: "#F4F6F7" }}>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">
-          Total <Text className="font-plex-bold text-owner-ink">{formatPKR(row.total)}</Text>
-        </Text>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">
-          Mila <Text className="font-plex-bold text-owner-ink">{formatPKR(row.total_paid)}</Text>
-        </Text>
-        <Text className="font-plex-medium text-owner-ink-muted text-[13.5px]">
-          Due <Text className="font-plex-bold text-owner-ink">{formatPKR(due)}</Text>
-        </Text>
-      </View>
+      <MoneyStrip
+        items={[
+          { label: "Total", value: formatPKR(row.total) },
+          { label: "Mila", value: formatPKR(row.total_paid) },
+          { label: "Baqi", value: formatPKR(due) },
+        ]}
+      />
 
-      <Text className="font-plex-bold text-owner-ink text-[14px] mt-1">Baqi mein se kitna mila? (PKR)</Text>
-      <TextInput
+      <Input
+        label="Baqi mein se kitna mila? (PKR)"
         value={amount}
         onChangeText={(t) => {
           setAmount(t);
@@ -136,54 +151,37 @@ export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRo
         }}
         keyboardType="number-pad"
         accessibilityLabel="Baqi mein se kitna mila, PKR"
-        className="rounded-xl px-4 font-plex-medium text-owner-ink text-[17px]"
-        style={{ minHeight: 52, borderWidth: 1.5, borderColor: inRange || amount === "" ? OV.border : OV.red }}
+        help={`0 se ${formatPKR(due)} tak. Pehle se mila hua paisa kam nahi hoga.`}
+        error={!inRange && amount !== "" ? `Sirf 0 se PKR ${formatPKR(due)} tak likhein.` : null}
       />
-      <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">{`0 se ${formatPKR(due)} tak. Pehle se mila hua paisa kam nahi hoga.`}</Text>
-      {!inRange && amount !== "" ? (
-        <Text className="font-plex-semibold text-owner-danger text-[12.5px]">{`Sirf 0 se PKR ${formatPKR(due)} tak likhein.`}</Text>
-      ) : null}
 
       {dueAfter !== null ? (
-        full ? (
-          <View testID="completion-live" className="flex-row items-center gap-2 rounded-xl px-3.5 py-3" style={{ backgroundColor: OV.greenBg }}>
-            <CheckIcon size={16} color={OV.greenDark} strokeWidth={2.6} />
-            <Text className="flex-1 font-plex-semibold text-[13.5px]" style={{ color: OV.greenDark }}>
-              Save karne par Due PKR 0 rahega. Booking Mukammal ho jayegi.
-            </Text>
-          </View>
-        ) : (
-          <View testID="completion-live" className="flex-row items-center gap-2 rounded-xl px-3.5 py-3" style={{ backgroundColor: OV.redBg }}>
-            <AlertCircleIcon size={18} />
-            <Text className="flex-1 font-plex-semibold text-[13.5px]" style={{ color: OV.red }}>
-              {`Save karne par Due PKR ${formatPKR(dueAfter)} rahega.`}
-            </Text>
-          </View>
-        )
+        <View testID="completion-live">
+          {full ? (
+            <Banner tone="open" icon={CircleCheck} body="Save karne par Due PKR 0 rahega. Booking Mukammal ho jayegi." />
+          ) : (
+            <Banner tone="danger" icon={CircleAlert} body={`Save karne par Due PKR ${formatPKR(dueAfter)} rahega.`} />
+          )}
+        </View>
       ) : null}
 
       {!full ? (
-        <>
-          <Text className="font-plex-bold text-owner-ink text-[14px] mt-1">{needsReason ? "Wajah (zaroori)" : "Wajah"}</Text>
-          <TextInput
-            value={reason}
-            onChangeText={setReason}
-            multiline
-            textAlignVertical="top"
-            accessibilityLabel="Wajah"
-            placeholder="Customer ne kaha baqi paisa kal dega."
-            placeholderTextColor={OV.faint}
-            className="rounded-xl px-4 py-3 font-plex-medium text-owner-ink text-[15px]"
-            style={{ minHeight: 100, borderWidth: 1.5, borderColor: OV.border }}
-          />
-          <Text className="font-plex-medium text-owner-ink-muted text-[12.5px]">Keyboard ke mic se bolein</Text>
-        </>
+        <Input
+          label={needsReason ? "Wajah (zaroori)" : "Wajah"}
+          value={reason}
+          onChangeText={setReason}
+          multiline
+          accessibilityLabel="Wajah"
+          placeholder="Customer ne kaha baqi paisa kal dega."
+          help="Keyboard ke mic se bol kar bhi likh sakte hain."
+        />
       ) : null}
 
-      {error ? <Text className="font-plex-medium text-owner-danger text-[13px]">{error}</Text> : null}
-      <Text className="font-plex-medium text-owner-ink-faint text-[12px]">
-        Save karne par booking Completed ho jayegi. Ye record ke saath save hoga (kis ne, kab). Ghalti ho to payment correction se theek karein.
-      </Text>
+      {error ? (
+        <Text variant="meta" weight="bold" tone="danger">
+          {error}
+        </Text>
+      ) : null}
     </BottomSheet>
   );
 }
