@@ -55,7 +55,7 @@ Then, once, **before the first deploy**:
    **iOS push** (straight to Apple, not FCM) needs three more secrets from the Apple Developer
    portal (Keys -> "+" -> Apple Push Notifications service; the `.p8` downloads once):
    `APNS_KEY` (the `.p8` text, base64-encoded like the FCM key), `APNS_KEY_ID` and
-   `APNS_TEAM_ID`. `APNS_BUNDLE_ID` defaults to `com.maidan.app`; `APNS_USE_SANDBOX` defaults to
+   `APNS_TEAM_ID`. `APNS_BUNDLE_ID` defaults to `com.aftrsolutions.khelo`; `APNS_USE_SANDBOX` defaults to
    false (right for ad-hoc / TestFlight / App Store builds, wrong for development-client builds).
    **Note:** the `bootstrap.sh` on an already-provisioned instance is a copy written at first
    boot -- editing this repo's script does not update it (Terraform ignores `user_data`), so a

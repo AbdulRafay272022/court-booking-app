@@ -28,7 +28,7 @@ def _settings(**overrides):
         "APNS_KEY": _P8,
         "APNS_KEY_ID": "ABC123DEFG",
         "APNS_TEAM_ID": "TEAM123456",
-        "APNS_BUNDLE_ID": "com.maidan.app",
+        "APNS_BUNDLE_ID": "com.aftrsolutions.khelo",
         "APNS_USE_SANDBOX": False,
     }
     values.update(overrides)
@@ -81,7 +81,7 @@ async def test_sends_a_signed_alert_with_data_under_body(monkeypatch):
 
     call = fake.calls[0]
     assert call["url"] == "https://api.push.apple.com/3/device/abcd1234"
-    assert call["headers"]["apns-topic"] == "com.maidan.app"
+    assert call["headers"]["apns-topic"] == "com.aftrsolutions.khelo"
     assert call["headers"]["apns-push-type"] == "alert"
     assert call["headers"]["apns-priority"] == "10"
     assert call["json"]["aps"]["alert"] == {"title": "Hello", "body": "World"}

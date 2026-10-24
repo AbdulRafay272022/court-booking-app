@@ -215,7 +215,7 @@ class Settings(BaseSettings):
     APNS_KEY: str = ""
     APNS_KEY_ID: str = ""
     APNS_TEAM_ID: str = ""
-    APNS_BUNDLE_ID: str = "com.maidan.app"  # must match ios.bundleIdentifier in app.json
+    APNS_BUNDLE_ID: str = "com.aftrsolutions.khelo"  # must match ios.bundleIdentifier in app.json
     # Development-client builds register sandbox tokens; ad-hoc / TestFlight / App Store use production.
     APNS_USE_SANDBOX: bool = False
 

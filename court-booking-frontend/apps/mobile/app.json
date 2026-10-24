@@ -1,14 +1,14 @@
 {
   "expo": {
     "name": "Khelo",
-    "slug": "maidan",
-    "scheme": "maidan",
+    "slug": "khelo",
+    "scheme": [
+      "khelo",
+      "maidan"
+    ],
     "version": "1.0.0",
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/4853b946-757a-45df-8e9a-70e48e0a6d94"
     },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,10 +18,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.maidan.app"
+      "bundleIdentifier": "com.aftrsolutions.khelo"
     },
     "android": {
-      "package": "com.maidan.app",
+      "package": "com.aftrsolutions.khelo",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E44E1F",
@@ -83,9 +83,12 @@
       "webBaseUrl": "https://3.6.48.6.sslip.io",
       "router": {},
       "eas": {
-        "projectId": "4853b946-757a-45df-8e9a-70e48e0a6d94"
+        "projectId": "e166063a-198d-4bf8-9e12-299a98cd8b18"
       }
     },
-    "owner": "maidan-app"
+    "owner": "abdulrafay879",
+    "updates": {
+      "url": "https://u.expo.dev/e166063a-198d-4bf8-9e12-299a98cd8b18"
+    }
   }
 }
