@@ -11,6 +11,7 @@ import { palette, radius, size, space } from "@court-booking/ui-tokens";
 
 import { Banner, Button, Header, Hero, RadioGroup, Screen, Sheet, Text, useCopy } from "@/components/ui";
 import { Logo, type useOtpFlow } from "@/components/auth/kit";
+import { PlayerOfflineBanner } from "../(player)/_components";
 
 /** Login = night hero with the logo (board frame 1); other auth screens = back header + big title (frames 2-3). */
 export function AuthShell({
@@ -48,6 +49,7 @@ export function AuthShell({
           </View>
         </Hero>
         <View style={{ paddingHorizontal: space[5], gap: space[4] }}>
+          <PlayerOfflineBanner />
           {children}
           {footer ? <View style={{ alignItems: "center", gap: space[3], paddingTop: space[2] }}>{footer}</View> : null}
         </View>
@@ -57,6 +59,7 @@ export function AuthShell({
   return (
     <Screen keyboard testID={testID}>
       {onBack ? <Header title="" onBack={onBack} /> : null}
+      <PlayerOfflineBanner />
       <View style={{ gap: space[2] }}>
         <Text variant="h1" accessibilityRole="header">
           {title}

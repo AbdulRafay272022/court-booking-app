@@ -13,7 +13,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { safeBack } from "@/lib/safe-back";
 import { PLAYER_HOME_HREF } from "@/lib/safe-back-rules";
 import { EMPTY_FILTERS, activeFilterChips, filtersToParams, filtersToQuery, parseFilters, type VenueFilters } from "@/lib/venue-filters";
-import { useFavoriteToggle } from "./_components";
+import { PlayerOfflineBanner, useFavoriteToggle } from "./_components";
 import { DEFAULT_CITY, FiltersSheet } from "./_filters";
 
 /**
@@ -63,6 +63,7 @@ export default function SearchScreen() {
 
   const header = (
     <View style={{ gap: space[3], paddingBottom: space[2] }}>
+      <PlayerOfflineBanner />
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
         <IconButton icon={ArrowLeft} accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack(PLAYER_HOME_HREF)} testID="search-back" />
         <Pressable

@@ -14,7 +14,7 @@ import { useBookingFlowStore } from "@/lib/booking-flow-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { holdErrorCopy } from "@/lib/player-flow";
 import { safeBack } from "@/lib/safe-back";
-import { DateTile, openVenueWhatsApp, sportLabel, useBookingPlace, useNow, venueWhatsApp } from "../../_components";
+import { DateTile, PlayerOfflineBanner, openVenueWhatsApp, sportLabel, useBookingPlace, useNow, venueWhatsApp } from "../../_components";
 
 interface Turn {
   id: string;
@@ -227,6 +227,9 @@ export default function BookingChatScreen() {
           ) : null}
         </View>
 
+        <View style={{ paddingHorizontal: space[4], paddingTop: space[2] }}>
+          <PlayerOfflineBanner />
+        </View>
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: space[4], gap: space[3] }} keyboardShouldPersistTaps="handled">
           {historyLoading ? (
             <View style={{ gap: space[3] }}>
@@ -274,7 +277,7 @@ export default function BookingChatScreen() {
               </Text>
             </View>
           ) : null}
-          {booking && (booking.status === "payment_submitted" || booking.status === "booked") ? (
+          {booking?.status === "payment_submitted" ? (
             <View style={{ alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36, paddingHorizontal: space[3], borderRadius: radius.md, backgroundColor: palette.openTint }} testID="chat-proof-note">
               <Check size={14} color={palette.open} strokeWidth={3} />
               <Text variant="caption" weight="black" tone="open">

@@ -109,7 +109,6 @@ export default function LoginScreen() {
           onChangeText={setPassword}
           onBlur={() => setTouched((p) => ({ ...p, password: true }))}
           error={touched.password ? errors.password : null}
-          placeholder={copy("Aap ka password", "Your password")}
           autoComplete="current-password"
           onSubmitEditing={handleLogin}
           testID="login-password"

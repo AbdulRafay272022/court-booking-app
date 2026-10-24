@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import { FontScaleProvider, LangProvider, RoleProvider, ToastProvider } from "@/components/ui";
 import { usePlayerLang } from "@/lib/player-lang";
 import { devFontScale } from "@/lib/dev-font-scale";
+import { PlayerNetworkProvider } from "../(player)/_components";
 
 export default function AuthLayout() {
   const lang = usePlayerLang((s) => s.lang);
@@ -13,6 +14,7 @@ export default function AuthLayout() {
       <LangProvider lang={lang}>
         <FontScaleProvider scale={fs}>
           <ToastProvider>
+            <PlayerNetworkProvider>
             <Stack screenOptions={{ headerShown: false }} initialRouteName="login">
               <Stack.Screen name="login" />
               <Stack.Screen name="signup" />
@@ -20,6 +22,7 @@ export default function AuthLayout() {
               <Stack.Screen name="forgot-password" />
               <Stack.Screen name="reset-password" />
             </Stack>
+            </PlayerNetworkProvider>
           </ToastProvider>
         </FontScaleProvider>
       </LangProvider>

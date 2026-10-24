@@ -16,6 +16,7 @@ import { registerForPushNotifications } from "@/lib/push-notifications";
 import { safeBack } from "@/lib/safe-back";
 import { PLAYER_HOME_HREF } from "@/lib/safe-back-rules";
 import { fetchNotificationFeed, useUnreadNotifications } from "@/lib/use-unread-notifications";
+import { PlayerOfflineBanner } from "./_components";
 
 const PAGE_SIZE = 30;
 
@@ -91,6 +92,7 @@ export default function PlayerNotificationsScreen() {
           ) : undefined
         }
       />
+      <PlayerOfflineBanner />
       {pushOff ? (
         <Banner
           tone="waiting"

@@ -5,7 +5,7 @@ import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Camera, CircleHelp, ImagePlus, Landmark, Check } from "lucide-react-native";
+import { Camera, Check, CircleHelp, Hourglass, ImagePlus, Landmark } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
 import { formatDate, formatTimeRange } from "@court-booking/types";
 import { formatPkr, palette, radius, space, windowMs } from "@court-booking/ui-tokens";
@@ -39,7 +39,7 @@ import { prepareProofImage, type PreparedProof } from "@/lib/proof-image";
 import { isRetryableUploadError } from "@/lib/proof-image-rules";
 import { openSupportWhatsApp } from "@/lib/support";
 import { cancelErrorCopy, cancelPolicyShort } from "@/lib/player-flow";
-import { StepHeading, useBookingPlace, useNow } from "../../_components";
+import { PlayerOfflineBanner, StepHeading, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
 
 /**
  * Pay board: countdown ring from the REAL hold expiry (booking.held_until), the bank details saved from the hold response
@@ -56,6 +56,7 @@ export default function PayScreen() {
   const focused = useIsFocused();
   const now = useNow(1000);
   const insets = useSafeAreaInsets();
+  useLightStatusBar();
 
   const paymentInstructions = useBookingFlowStore((s) => s.paymentInstructionsByBookingId[id]);
   // Persisted store: wait for it before saying "no payment details", or a reopened pay screen flashes the fallback.
@@ -200,6 +201,7 @@ export default function PayScreen() {
       <Screen>
         <Header title={copy("Hold ka waqt khatam", "The hold expired")} onBack={() => safeBack()} />
         <EmptyState
+          icon={Hourglass}
           title={copy("Ye slot ab aap ke liye hold nahi", "This slot is no longer held for you")}
           body={copy(
             "Waqt par screenshot nahi aaya, is liye slot dobara khul gaya hai. Agar paisa bhej diya tha to venue se baat karein.",
@@ -259,6 +261,7 @@ export default function PayScreen() {
       </Hero>
 
       <View style={{ paddingHorizontal: space[5], gap: space[4] }}>
+        <PlayerOfflineBanner />
         <Card padding={4} radiusSize="cardL" style={{ gap: space[3] }} testID="pay-bank">
           <StepHeading n={1} label={copy(`${amount} bhejein`, `Send ${amount}`)} />
           {!instructionsReady ? (

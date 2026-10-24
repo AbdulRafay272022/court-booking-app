@@ -198,3 +198,12 @@ test("doneCopy (Roman Urdu): only a booked booking says 'Court aap ka hai'", asy
   assert.equal(doneCopy("held", null, "ru").action, "pay");
   assert.match(doneCopy("cancelled", "owner", "ru").title, /Venue/);
 });
+
+test("shownStatus: an expired hold reads as expired, everything else is the backend status", async () => {
+  const { shownStatus } = await import("./player-flow");
+  const exp = shownStatus({ status: "held", held_until: new Date(NOW - 1000).toISOString(), cancelled_by: null, cancellation_reason: null }, NOW);
+  assert.deepEqual(exp, { status: "cancelled", cancelled_by: "system", cancellation_reason: "hold_expired" });
+  const live = shownStatus({ status: "held", held_until: new Date(NOW + 60_000).toISOString(), cancelled_by: null, cancellation_reason: null }, NOW);
+  assert.equal(live.status, "held");
+  assert.equal(shownStatus({ status: "booked", held_until: null, cancelled_by: null, cancellation_reason: null }, NOW).status, "booked");
+});

@@ -293,6 +293,25 @@ export function chatCandidates<T extends B>(bookings: readonly T[], now: number 
   return [...live, ...recent].slice(0, max);
 }
 
+/* ------------------------------------------------------------------ status shown */
+
+export interface ShownStatus {
+  status: Booking["status"];
+  cancelled_by: Booking["cancelled_by"];
+  cancellation_reason: string | null;
+}
+
+/**
+ * The status to SHOW: a hold whose real held_until has passed is over even if the server's expiry job has not cancelled it
+ * yet, so it reads as "Hold khatam" (not "Pay baqi"). Everything else is the backend status unchanged.
+ */
+export function shownStatus(b: Pick<Booking, "status" | "held_until" | "cancelled_by" | "cancellation_reason">, now: number = Date.now()): ShownStatus {
+  if (b.status === "held" && b.held_until && Date.parse(b.held_until) <= now) {
+    return { status: "cancelled", cancelled_by: "system", cancellation_reason: "hold_expired" };
+  }
+  return { status: b.status, cancelled_by: b.cancelled_by, cancellation_reason: b.cancellation_reason };
+}
+
 /* ------------------------------------------------------------------ bookings list */
 
 export type BookingAction = "pay" | "status" | "ticket" | "rate" | "details";

@@ -9,8 +9,8 @@ import { palette, radius, space } from "@court-booking/ui-tokens";
 import { Avatar, Banner, EmptyState, ErrorState, Screen, SkeletonCard, StatusPill, Text, useCopy, useLang } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { chatCandidates } from "@/lib/player-flow";
-import { useBookingPlace } from "../_components";
+import { chatCandidates, shownStatus } from "@/lib/player-flow";
+import { PlayerOfflineBanner, useBookingPlace } from "../_components";
 
 /**
  * PChat board frame 1 (Chat tab). The backend has NO conversation list or unread state (contract dependency B1), so this
@@ -41,6 +41,7 @@ export default function ChatTabScreen() {
       void pastQ.refetch();
       histories.forEach((h) => void h.refetch());
     }} testID="chat-tab">
+      <PlayerOfflineBanner />
       <Text variant="h1" accessibilityRole="header">
         {copy("Chat", "Chat")}
       </Text>
@@ -104,7 +105,7 @@ function ChatRow({ booking, history, loadingHistory, divider }: { booking: Booki
           {loadingHistory ? " " : last ? `${last.sender_type === "player" ? copy("Aap: ", "You: ") : ""}${last.content}` : copy("Abhi koi baat nahi hui. Poochne ke liye kholein.", "No messages yet. Open to ask.")}
         </Text>
         <View style={{ flexDirection: "row", gap: space[2], alignItems: "center", flexWrap: "wrap" }}>
-          <StatusPill booking={booking} size="sm" />
+          <StatusPill booking={shownStatus(booking)} size="sm" />
           <Text variant="caption" tone="muted">
             {when}
           </Text>

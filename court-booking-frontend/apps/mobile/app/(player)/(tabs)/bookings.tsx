@@ -9,8 +9,8 @@ import { palette, radius, size, space, statusPill } from "@court-booking/ui-toke
 import { Banner, Button, Card, Chip, EmptyState, ErrorState, Input, Screen, SegmentedToggle, Sheet, SkeletonCard, StatusPill, Text, useCopy, useLang, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { bookingAction } from "@/lib/player-flow";
-import { DateTile, useBookingPlace } from "../_components";
+import { bookingAction, shownStatus } from "@/lib/player-flow";
+import { DateTile, PlayerOfflineBanner, useBookingPlace } from "../_components";
 
 type Tab = "upcoming" | "past";
 type Filter = "all" | StatusGroup;
@@ -59,6 +59,7 @@ export default function PlayerBookingsScreen() {
 
   return (
     <Screen floatingBar="tabs" refreshing={upcomingQ.isRefetching || pastQ.isRefetching} onRefresh={refetchAll} testID="bookings-screen">
+      <PlayerOfflineBanner />
       <Text variant="h1" accessibilityRole="header">
         {copy("Meri bookings", "My bookings")}
       </Text>
@@ -150,7 +151,7 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
       >
         <DateTile iso={booking.starts_at} variant={booking.status === "booked" ? "orange" : "soft"} month />
         <View style={{ flex: 1, gap: 4 }}>
-          <StatusPill booking={booking} size="sm" />
+          <StatusPill booking={shownStatus(booking)} size="sm" />
           <Text variant="bodyStrong">{place.venue?.name ?? (place.loading ? " " : copy("Venue", "Venue"))}</Text>
           <Text variant="meta" tone="muted">
             {[place.court?.name, formatTimeRange(booking.starts_at, booking.ends_at, lang)].filter(Boolean).join(" · ")}

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useIsFocused } from "expo-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Bell, CircleDot, Feather, Goal, LayoutGrid, MapPin, QrCode, Search, Trophy } from "lucide-react-native";
-import { SPORT_OPTIONS, formatDateString, formatDuration, formatTime, formatTime24As12, formatTimeRange, nextBooking, pktDateString, startsInText, type Booking, type VenueSummary } from "@court-booking/types";
+import { CITY_OPTIONS, SPORT_OPTIONS, formatDateString, formatDuration, formatTime, formatTime24As12, formatTimeRange, nextBooking, pktDateString, startsInText, type Booking, type VenueSummary } from "@court-booking/types";
 import { alpha, initials, palette, radius, shadow, size, space, statusPill, venueCardData } from "@court-booking/ui-tokens";
 
 import { Banner, Button, Card, EmptyState, Hero, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability, type IconComponent } from "@/components/ui";
@@ -13,7 +13,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
 import { EMPTY_FILTERS, filtersToParams, type VenueFilters } from "@/lib/venue-filters";
 import { nextGame, replayList, tonightStarts } from "@/lib/player-flow";
-import { DateTile, sportLabel, useBookingPlace, useFavoriteToggle, useFirstName } from "../_components";
+import { DateTile, PlayerOfflineBanner, sportLabel, useBookingPlace, useFavoriteToggle, useFirstName, useLightStatusBar } from "../_components";
 import { DEFAULT_CITY, FiltersSheet } from "../_filters";
 
 const TILES: { sport: (typeof SPORT_OPTIONS)[number]; icon: IconComponent }[] = [
@@ -44,6 +44,7 @@ export default function PlayerHomeScreen() {
   const [draft, setDraft] = useState<VenueFilters>({ ...EMPTY_FILTERS });
   const [sheetOpen, setSheetOpen] = useState(false);
   const today = pktDateString();
+  useLightStatusBar();
 
   const upcomingQ = useQuery({ queryKey: ["bookings-mine", "upcoming"], queryFn: () => api.bookings.mine("upcoming", 1, 100), subscribed: focused });
   const pastQ = useQuery({ queryKey: ["bookings-mine", "past"], queryFn: () => api.bookings.mine("past", 1, 100) });
@@ -104,7 +105,7 @@ export default function PlayerHomeScreen() {
           >
             <MapPin size={17} color={palette.orange} />
             <Text variant="bodyBold" tone="onDark">
-              {user?.city ?? DEFAULT_CITY}
+              {CITY_OPTIONS.find((c) => c.value === user?.city)?.label.replace(/\s*\(.*\)$/, "") ?? DEFAULT_CITY}
             </Text>
           </Pressable>
           <View style={{ flexDirection: "row", gap: space[2] }}>
@@ -164,6 +165,7 @@ export default function PlayerHomeScreen() {
       </Hero>
 
       <View style={{ paddingHorizontal: t.gutter, gap: space[6] }}>
+        <PlayerOfflineBanner />
         {game ? <NextGameCard booking={game} /> : null}
         {!game && pending ? (
           <Banner

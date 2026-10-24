@@ -17,7 +17,7 @@ import { SUPPORT_WHATSAPP_NUMBER, openSupportWhatsApp } from "@/lib/support";
 import { useFavorites } from "@/lib/use-favorites";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
 import { openPrivacy, openTerms } from "@/lib/web-links";
-import { sportLabel } from "../_components";
+import { PlayerOfflineBanner, sportLabel } from "../_components";
 
 /** PAccount board frame 1: profile card, stats ONLY from the real counters on /auth/me, saved venues, menu, Logout. */
 export default function PlayerProfileScreen() {
@@ -54,6 +54,7 @@ export default function PlayerProfileScreen() {
 
   return (
     <Screen floatingBar="tabs" testID="profile-screen">
+      <PlayerOfflineBanner />
       <Card variant="night" padding={5} radiusSize="cardL" style={{ gap: space[4] }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
           {user?.avatar_url ? (

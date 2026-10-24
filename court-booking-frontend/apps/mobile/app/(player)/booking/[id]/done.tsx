@@ -30,8 +30,8 @@ import { api } from "@/lib/api";
 import { doneCopy, donePaidAmount, donePollMs } from "@/lib/booking-done";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { safeBack } from "@/lib/safe-back";
-import { cancelErrorCopy, cancelPolicySentence, cancelState } from "@/lib/player-flow";
-import { DateTile, openDirections, shareText, sportLabel, useBookingPlace, useNow } from "../../_components";
+import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from "@/lib/player-flow";
+import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
 
 /**
  * Status board + PBookings booking detail. Honest timeline Hold -> Screenshot bheja -> Venue check -> Pakki (journeySteps:
@@ -47,6 +47,7 @@ export default function BookingStatusScreen() {
   const focused = useIsFocused();
   const queryClient = useQueryClient();
   const now = useNow(30_000);
+  useLightStatusBar();
 
   const bookingQuery = useQuery({
     queryKey: ["booking", id],
@@ -96,13 +97,16 @@ export default function BookingStatusScreen() {
     );
   }
 
-  const c = doneCopy(booking.status, booking.cancelled_by, lang);
+  // A hold whose held_until has passed is over even if the expiry job has not cancelled it yet: say so (real timestamp).
+  const shown = shownStatus(booking, now);
+  const heldExpired = booking.status === "held" && shown.status === "cancelled";
+  const c = doneCopy(shown.status, shown.cancelled_by, lang);
   const booked = isConfirmed(booking.status);
   const payments = paymentsQuery.data ?? [];
   const proof = [...payments].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
   const rejected = payments.find((p) => p.review_verdict === "rejected");
   const proofSent = payments.length > 0 || booking.status === "payment_submitted";
-  const steps = journeySteps({ status: booking.status, cancelled_by: booking.cancelled_by, cancellation_reason: booking.cancellation_reason, proofSent }, lang).map((s) => ({
+  const steps = journeySteps({ ...shown, proofSent }, lang).map((s) => ({
     ...s,
     sub:
       s.key === "hold"
@@ -130,8 +134,8 @@ export default function BookingStatusScreen() {
       ? rejected?.rejection_reason ?? (booking.cancellation_reason && !/_/.test(booking.cancellation_reason) ? booking.cancellation_reason : null)
       : null;
   const systemReason =
-    booking.status === "cancelled" && booking.cancelled_by === "system"
-      ? booking.cancellation_reason === "payment_review_expired"
+    shown.status === "cancelled" && shown.cancelled_by === "system"
+      ? shown.cancellation_reason === "payment_review_expired"
         ? copy("Venue ne waqt par screenshot check nahi kiya, is liye booking khatam ho gayi.", "The venue didn't check the screenshot in time, so the booking ended.")
         : copy("Waqt par screenshot nahi aaya, is liye slot dobara khul gaya.", "The screenshot didn't arrive in time, so the slot opened again.")
       : null;
@@ -161,7 +165,7 @@ export default function BookingStatusScreen() {
       <Hero topInset={insets.top} roundedBottom>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <IconButton icon={ArrowLeft} variant="onDark" accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack()} testID="status-back" />
-          <StatusPill booking={booking} />
+          <StatusPill booking={shown} />
         </View>
         <View style={{ alignItems: "center", gap: space[3], paddingTop: space[2] }}>
           <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: heroBadge, alignItems: "center", justifyContent: "center" }} accessibilityElementsHidden importantForAccessibility="no">
@@ -177,6 +181,7 @@ export default function BookingStatusScreen() {
       </Hero>
 
       <View style={{ paddingHorizontal: space[5], gap: space[4] }}>
+        <PlayerOfflineBanner />
         {booked ? (
           <Ticket
             testID="status-ticket"
@@ -216,9 +221,9 @@ export default function BookingStatusScreen() {
         {stopReason ? <Banner tone="danger" title={copy("Venue ne kaha", "What the venue said")} body={`“${stopReason}”`} testID="status-reason" /> : null}
         {systemReason ? <Banner tone="danger" body={systemReason} testID="status-reason" /> : null}
 
-        {booking.status === "held" ? (
+        {booking.status === "held" && !heldExpired ? (
           <Button label={c.actionLabel} block onPress={() => router.replace({ pathname: "/(player)/booking/[id]/pay", params: { id } })} testID="status-pay" />
-        ) : booking.status === "cancelled" ? (
+        ) : shown.status === "cancelled" ? (
           <Button
             label={copy("Naya slot dhoondein", "Find another slot")}
             block
@@ -264,12 +269,12 @@ export default function BookingStatusScreen() {
             <Text variant="body" tone="muted">
               {policy}
             </Text>
-            {(booking.status === "held" || booking.status === "payment_submitted") ? (
+            {!heldExpired && (booking.status === "held" || booking.status === "payment_submitted") ? (
               <Text variant="meta" tone="muted">
                 {copy("Venue ke approve karne se pehle aap kabhi bhi cancel kar sakte hain.", "Until the venue approves you can cancel any time.")}
               </Text>
             ) : null}
-            {cancel.canCancel ? (
+            {cancel.canCancel && !heldExpired ? (
               <Button label={copy("Booking cancel karein", "Cancel booking")} variant="danger" size="md" block onPress={() => setCancelOpen(true)} testID="status-cancel" />
             ) : booking.status === "booked" && cancel.blocked === "window_closed" ? (
               <Text variant="meta" tone="danger">

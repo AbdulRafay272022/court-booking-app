@@ -3,7 +3,9 @@
  * Everything here is built from @/components/ui + @court-booking/ui-tokens (no hex). Candidates to promote into
  * components/ui are listed in the M1 report: DateTile, DayChip, PhotoHero.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useFocusEffect } from "expo-router";
+import { setStatusBarStyle } from "expo-status-bar";
 import { FlatList, Linking, Modal, Platform, Pressable, Share, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,8 +14,9 @@ import { X } from "lucide-react-native";
 import { alpha, palette, radius, size, space } from "@court-booking/ui-tokens";
 import { pktDateString, pktParts, type Booking } from "@court-booking/types";
 
-import { CourtPlaceholder, IconButton, Text, useCopy, useEffectiveFontScale, useRoleTheme, useToast } from "@/components/ui";
+import { CourtPlaceholder, IconButton, OfflineBanner, Text, useCopy, useEffectiveFontScale, useRoleTheme, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useNetworkStatus } from "@/lib/network-status";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { FAVORITES_KEY, useFavorites } from "@/lib/use-favorites";
@@ -169,10 +172,9 @@ export function DayChip({ date, selected, state, onPress, testID }: { date: stri
       accessibilityLabel={[`${WD[p.weekday]} ${p.day} ${MO[p.month]}`, stateWord].filter(Boolean).join(", ")}
       onPress={onPress}
       style={({ pressed }) => ({
-        flexGrow: 1,
-        flexBasis: 40,
-        minWidth: 40,
+        minWidth: 52,
         minHeight: 70,
+        paddingHorizontal: 4,
         paddingVertical: 6,
         borderRadius: radius.md,
         backgroundColor: selected ? t.selected.bg : palette.ground,
@@ -298,6 +300,36 @@ export function StepHeading({ n, label, right }: { n: number; label: string; rig
       </View>
       {right}
     </View>
+  );
+}
+
+/* ------------------------------------------------------------------ offline + status bar */
+
+const OnlineContext = createContext(true);
+
+/** ONE /health poller for the whole player (or auth) group; screens read it with usePlayerOnline(). */
+export function PlayerNetworkProvider({ children }: { children: ReactNode }) {
+  const online = useNetworkStatus();
+  return <OnlineContext.Provider value={online}>{children}</OnlineContext.Provider>;
+}
+export function usePlayerOnline(): boolean {
+  return useContext(OnlineContext);
+}
+
+/** PStates frame 3 in the flow of the page (never covers the header buttons): "Internet nahi hai" + Retry (refetch). */
+export function PlayerOfflineBanner() {
+  const online = usePlayerOnline();
+  const queryClient = useQueryClient();
+  return <OfflineBanner visible={!online} placement="inline" onRetry={() => void queryClient.refetchQueries({ type: "active" })} />;
+}
+
+/** Night-hero screens want light status-bar text while focused (the root sets "dark"). */
+export function useLightStatusBar() {
+  useFocusEffect(
+    useCallback(() => {
+      setStatusBarStyle("light");
+      return () => setStatusBarStyle("dark");
+    }, []),
   );
 }
 

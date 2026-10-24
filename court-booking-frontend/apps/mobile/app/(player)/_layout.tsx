@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import { FontScaleProvider, LangProvider, RoleProvider, ToastProvider } from "@/components/ui";
 import { usePlayerLang } from "@/lib/player-lang";
 import { devFontScale } from "@/lib/dev-font-scale";
+import { PlayerNetworkProvider } from "./_components";
 
 /** Tabs live under (tabs); search and venue detail are full-screen pushes on
  * top of them (not additional tabs) -- keeping them siblings of the Tabs
@@ -18,6 +19,7 @@ export default function PlayerLayout() {
       <LangProvider lang={lang}>
         <FontScaleProvider scale={fs}>
           <ToastProvider>
+            <PlayerNetworkProvider>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="search" />
@@ -29,6 +31,7 @@ export default function PlayerLayout() {
               <Stack.Screen name="edit-profile" />
               <Stack.Screen name="change-phone" />
             </Stack>
+            </PlayerNetworkProvider>
           </ToastProvider>
         </FontScaleProvider>
       </LangProvider>

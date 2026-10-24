@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Heart, Info, MapPin, MessageCircle, Navigation, Share2, Star } from "lucide-react-native";
@@ -36,7 +36,7 @@ import { safeBack } from "@/lib/safe-back";
 import { PLAYER_HOME_HREF } from "@/lib/safe-back-rules";
 import { decodeSportParam, sameSport } from "@/lib/sport";
 import { cancelPolicySentence, cancelPolicyShort, durationOptions, holdErrorCopy, pickerModel, venueDays } from "@/lib/player-flow";
-import { BlockTitle, DayChip, PhotoHero, StepHeading, openDirections, openVenueWhatsApp, shareText, sportLabel, useFavoriteToggle, useNow, venueWhatsApp, type DayState } from "../_components";
+import { BlockTitle, DayChip, PhotoHero, PlayerOfflineBanner, useLightStatusBar, StepHeading, openDirections, openVenueWhatsApp, shareText, sportLabel, useFavoriteToggle, useNow, venueWhatsApp, type DayState } from "../_components";
 
 /**
  * Venue board: real photos, Raasta / WhatsApp / Tafseel, booking first in 4 numbered steps (1 Court, 2 Din, 3 Kitni der,
@@ -92,6 +92,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
   const focused = useIsFocused();
   const now = useNow(30_000);
   const fav = useFavoriteToggle();
+  useLightStatusBar();
   const setPaymentInstructions = useBookingFlowStore((s) => s.setPaymentInstructions);
 
   const courts = useMemo(() => [...(venue.courts ?? [])].filter((c) => c.is_active).sort((a, b) => a.sort_order - b.sort_order), [venue.courts]);
@@ -100,7 +101,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
   const court: Court | undefined = courts.find((c) => c.id === courtId) ?? preferred;
 
   const today = pktDateString(now);
-  const days = useMemo(() => venueDays(today, venue.booking_horizon_days, 7), [today, venue.booking_horizon_days]);
+  const days = useMemo(() => venueDays(today, venue.booking_horizon_days, 14), [today, venue.booking_horizon_days]);
   const [date, setDate] = useState(days[0]);
 
   // Day dots: the court's month summary for the month(s) the 7-day strip covers (same cache key as before).
@@ -315,6 +316,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
       />
 
       <View style={{ marginTop: -44, backgroundColor: palette.ground, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingTop: space[5], paddingHorizontal: space[5], gap: space[4] }}>
+        <PlayerOfflineBanner />
         <View style={{ gap: space[2] }}>
           <Text variant="h1" accessibilityRole="header" testID="venue-name">
             {venue.name}
@@ -375,11 +377,11 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
 
               <View style={{ gap: space[2] }}>
                 <StepHeading n={2} label={copy("Din", "Day")} />
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} testID="venue-days">
                   {days.map((d) => (
                     <DayChip key={d} date={d} selected={d === date} state={dayState.get(d) ?? null} onPress={() => chooseDate(d)} testID={`day-${d}`} />
                   ))}
-                </View>
+                </ScrollView>
               </View>
 
               <View style={{ gap: space[2] }}>
@@ -473,6 +475,8 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
         </View>
 
         <ReviewsBlock venueId={venue.id} />
+        {/* the floating book bar can wrap to two rows at 320 pt + large font: keep the last content above it */}
+        <View style={{ height: space[8] * 2 }} />
       </View>
 
       <Sheet
