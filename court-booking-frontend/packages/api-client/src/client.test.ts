@@ -50,7 +50,7 @@ test("a request sent before the token was hydrated is retried with the token, ne
   const out = await h.client.request<{ ok: boolean }>("/owners/venues");
   assert.deepEqual(out, { ok: true });
   assert.equal(h.calls.filter((c) => c.url.endsWith("/auth/refresh")).length, 0);
-  assert.equal(h.calls.at(-1)?.auth, "Bearer t1");
+  assert.equal(h.calls[h.calls.length - 1]?.auth, "Bearer t1");
   assert.equal(h.unauthorized(), 0);
 });
 
@@ -66,7 +66,7 @@ test("a 401 for an old token after another request already refreshed retries wit
   h.setToken("old");
   await h.client.request("/users/me/notifications/feed");
   assert.equal(h.calls.filter((c) => c.url.endsWith("/auth/refresh")).length, 0);
-  assert.equal(h.calls.at(-1)?.auth, "Bearer new");
+  assert.equal(h.calls[h.calls.length - 1]?.auth, "Bearer new");
 });
 
 test("the same token refused still refreshes once and retries", async () => {
@@ -78,7 +78,7 @@ test("the same token refused still refreshes once and retries", async () => {
   h.setToken("t1");
   await h.client.request("/auth/me");
   assert.equal(h.calls.filter((c) => c.url.endsWith("/auth/refresh")).length, 1);
-  assert.equal(h.calls.at(-1)?.auth, "Bearer t2");
+  assert.equal(h.calls[h.calls.length - 1]?.auth, "Bearer t2");
 });
 
 test("no token at all: the 401 is surfaced, no refresh, nobody signed out", async () => {
