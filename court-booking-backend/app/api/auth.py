@@ -190,6 +190,10 @@ async def get_me(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(_require_credentials)],
 ) -> MeOut:
     session = await AuthService(db, settings).get_session_from_token(credentials.credentials)
+    if session is None:
+        # The token was valid when CurrentUser resolved but rotated/revoked before this second lookup (a refresh in
+        # another request): that is an expired session, never a 500.
+        raise AppError(status.HTTP_401_UNAUTHORIZED, ErrorCode.SESSION_EXPIRED, "Invalid or expired session")
     return MeOut(user=UserOut.model_validate(user), session=SessionOut.model_validate(session))
 
 
