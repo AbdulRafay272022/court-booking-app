@@ -65,6 +65,10 @@ EVENT_KINDS: dict[str, tuple[str, str, str, str]] = {
     "hold_expiring": ("hold_expiring", "hold_expiring", "booking", "booking"),
     "slot_reopened": ("slot_freed", "slot_reopened", "waitlist", "none"),  # reference = waitlist entry id
     "court_deactivated": ("other", "court_deactivated", "booking", "booking"),
+    # audit 2026-10-28 items 17 + 18: staff marked a no-show / short payment (owner); the player's own notice
+    "owner_staff_action": ("other", "owner_staff_action", "booking", "booking"),
+    "player_no_show": ("other", "player_no_show", "booking", "booking"),
+    "player_short": ("other", "player_short", "booking", "booking"),
     # admin / premium billing / marketing: kind only (reference is an invoice / venue we don't resolve)
     "venue_pending_review": ("other", "venue_pending_review", "venue", "none"),
     "premium_renewal_reminder": ("other", "premium_renewal_reminder", "none", "none"),

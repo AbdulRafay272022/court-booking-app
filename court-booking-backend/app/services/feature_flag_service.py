@@ -16,11 +16,12 @@ A missing row is treated as ON (fail-open) so adding a new flag key in code befo
 its seed row exists can never silently disable a live feature.
 """
 import time
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
 from app.errors import AppError, ErrorCode
-from app.models.feature_flag import FeatureFlag
+from app.models.feature_flag import DEFAULT_OFF_FLAGS, FEATURE_FLAG_SEED, FeatureFlag
 
 
 async def flag_on(db, key: str) -> bool:
@@ -64,6 +65,9 @@ class FeatureFlagService:
                 return cached
         rows = (await self.db.execute(select(FeatureFlag.key, FeatureFlag.enabled))).all()
         data = {key: enabled for key, enabled in rows}
+        # default-OFF flags without a row read as off (also in as_map, so the apps see them as off)
+        for key in DEFAULT_OFF_FLAGS:
+            data.setdefault(key, False)
         if self.cache is not None:
             self.cache.set(data)
         return data
@@ -82,11 +86,20 @@ class FeatureFlagService:
         return await self._load()
 
     async def list_flags(self) -> list[FeatureFlag]:
-        rows = (await self.db.execute(select(FeatureFlag).order_by(FeatureFlag.key))).scalars().all()
-        return list(rows)
+        rows = list((await self.db.execute(select(FeatureFlag).order_by(FeatureFlag.key))).scalars().all())
+        have = {r.key for r in rows}
+        # a default-OFF flag that was never switched on has no row yet: list it (off) so the admin panel can turn it on
+        for key in sorted(DEFAULT_OFF_FLAGS - have):
+            label, description = FEATURE_FLAG_SEED.get(key, (key, ""))
+            rows.append(FeatureFlag(key=key, label=label, description=description, enabled=False, updated_at=datetime.now(timezone.utc)))
+        return sorted(rows, key=lambda r: r.key)
 
     async def set_flag(self, key: str, enabled: bool, admin_user_id) -> FeatureFlag:
         flag = await self.db.get(FeatureFlag, key)
+        if flag is None and key in DEFAULT_OFF_FLAGS:
+            label, description = FEATURE_FLAG_SEED.get(key, (key, ""))
+            flag = FeatureFlag(key=key, label=label, description=description, enabled=False)
+            self.db.add(flag)
         if flag is None:
             raise AppError(404, ErrorCode.FEATURE_FLAG_NOT_FOUND, f"Unknown feature flag: {key}")
         flag.enabled = enabled

@@ -591,3 +591,68 @@ async def test_staff_dashboard_counts_each_person_and_lists_no_shows(
     admin = await make_user("+923001210003", role=UserRole.ADMIN)
     adm = await client.get(f"/api/v1/admin/staff-activity?venue_id={venue.id}", headers=await make_auth_headers(admin))
     assert adm.status_code == 200 and adm.json()["totals"]["no_shows"] == 1
+
+
+# ---------------------------------------------------------------- the build's new flags ship OFF without a migration
+
+
+async def test_new_flags_are_off_until_an_admin_switches_them_on(client, db_session, make_user, make_auth_headers):
+    from app.services.feature_flag_service import FeatureFlagService
+
+    svc = FeatureFlagService(db_session)
+    for key in ("cnic_visibility_gate", "iban_qr", "whatsapp_templates", "balance_proof", "player_points"):
+        assert await svc.is_on(key) is False, key
+    assert await svc.is_on("reviews") is True  # older flags still fail open
+    admin = await make_user("+923001220001", role=UserRole.ADMIN)
+    headers = await make_auth_headers(admin)
+    listed = {f["key"]: f["enabled"] for f in (await client.get("/api/v1/admin/feature-flags", headers=headers)).json()}
+    assert listed["iban_qr"] is False
+    resp = await client.patch("/api/v1/admin/feature-flags/iban_qr", headers=headers, json={"enabled": True})
+    assert resp.status_code == 200, resp.text
+    assert await FeatureFlagService(db_session).is_on("iban_qr") is True
+
+
+# ---------------------------------------------------------------- items 17 + 18: who hears about a no-show / short payment
+
+
+async def test_staff_no_show_and_short_payment_reach_the_owner_and_the_player_without_whatsapp(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    sent = []
+
+    async def no_whatsapp(self, payload):
+        sent.append(payload)
+        return {"messages": [{"id": "x"}]}
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", no_whatsapp)
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    staff = await make_staff(db_session_factory, make_user, venue, "+923001230001", ["check_in", "record_payments"], name="Bilal")
+    player = await make_user("+923001230002", name="Ali")
+    sh = await make_auth_headers(staff)
+
+    ns = await _past_booked(db_session_factory, court, player, hours_ago=5)
+    assert (await client.post(f"/api/v1/bookings/{ns.id}/no-show", headers=sh)).status_code == 200
+    owner_rows = await _log_rows(db_session_factory, owner.id, "owner_staff_action")
+    assert owner_rows and owner_rows[0].reference_id == ns.id
+    player_rows = await _log_rows(db_session_factory, player.id, "player_no_show")
+    assert player_rows and player_rows[0].reference_id == ns.id
+
+    short = await _past_booked(db_session_factory, court, player, hours_ago=3)
+    resp = await client.post(
+        f"/api/v1/owners/bookings/{short.id}/completion", headers=sh, json={"result": "no", "received_now": 300, "reason": "kal dega"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert len(await _log_rows(db_session_factory, owner.id, "owner_staff_action")) == 2
+    assert await _log_rows(db_session_factory, player.id, "player_short")
+    assert sent == [], "WhatsApp must stay silent while the whatsapp_templates flag is off"
+
+
+async def test_owner_doing_it_themselves_does_not_notify_the_owner(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923001230011", name="Sana")
+    ns = await _past_booked(db_session_factory, court, player, hours_ago=5)
+    assert (await client.post(f"/api/v1/bookings/{ns.id}/no-show", headers=await make_auth_headers(owner))).status_code == 200
+    assert await _log_rows(db_session_factory, owner.id, "owner_staff_action") == []
+    assert await _log_rows(db_session_factory, player.id, "player_no_show")

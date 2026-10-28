@@ -345,9 +345,20 @@ async def owner_booking_completion(
 ) -> OwnerBookingRowOut:
     """Booking completed (Haan / Nahi). Permission record_payments (owner always); deliberately NOT behind the
     split_payments flag so it works for plain bookings."""
-    return await OwnerOverviewService(db, settings).mark_completion(
+    row = await OwnerOverviewService(db, settings).mark_completion(
         owner, booking_id, payload.result, payload.received_pkr, payload.reason, received_now=payload.received_now
     )
+    # audit 2026-10-28 items 17 + 18: "kam mila" (money still due after completing) tells the owner (when staff did it)
+    # and the player
+    if row.due > 0:
+        from app.models.booking import Booking
+        from app.services.unsettled_notices import notify_unsettled
+
+        booking = await db.get(Booking, booking_id)
+        if booking is not None:
+            await db.refresh(booking)
+            await notify_unsettled(db, settings, booking, owner, "short", short_pkr=int(round(row.due)))
+    return row
 
 
 @router.get("/badges", response_model=OwnerBadgesOut)

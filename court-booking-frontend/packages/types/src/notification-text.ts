@@ -75,6 +75,10 @@ const EVENT_TITLES: Record<string, Record<Lang, string>> = {
   payment_final_warning: TITLES.payment_final_warning,
   owner_payment_auto_cancelled: TITLES.payment_auto_cancelled,
   phone_changed: { ru: "Phone number badal gaya", en: "Phone number changed" },
+  // audit 2026-10-28 items 17 + 18
+  owner_staff_action: { ru: "Staff ne booking mark ki", en: "Staff marked a booking" },
+  player_no_show: { ru: "Booking no-show mark hui", en: "Booking marked as no-show" },
+  player_short: { ru: "Booking par paisa baqi hai", en: "Money still due on a booking" },
 };
 
 /** "payment_review_expired" -> "Payment review expired" (both languages; used only for an event we have no copy for). */

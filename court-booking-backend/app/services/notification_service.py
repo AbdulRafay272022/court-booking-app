@@ -21,7 +21,7 @@ from app.services.web_push import topic_for as web_push_topic
 from app.services.feature_flag_service import flag_on
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
-from app.utils.timezone import format_date_relative, format_pkr, format_time_range, format_when, format_when_range
+from app.utils.timezone import format_date_relative, format_pkr, format_time, format_time_range, format_when, format_when_range
 from app.services.whatsapp_templates import TEMPLATES
 
 logger = structlog.get_logger(__name__)
@@ -41,6 +41,18 @@ def _when(starts_at: "datetime | str", ends_at: "datetime | None" = None) -> str
 class MarketingSendLimitExceeded(Exception):
     pass
 
+
+
+def _wa_link(phone: str | None) -> str | None:
+    """wa.me link for a Pakistani mobile number in any common spelling; None when it is not one."""
+    if not phone:
+        return None
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if digits.startswith("0"):
+        digits = "92" + digits[1:]
+    if len(digits) == 10 and digits.startswith("3"):
+        digits = "92" + digits
+    return f"https://wa.me/{digits}" if len(digits) == 12 and digits.startswith("923") else None
 
 class NotificationService:
     """Routes notifications by tier (see Section 8):
@@ -520,6 +532,89 @@ class NotificationService:
             bell=True,
         )
         return True
+
+    async def _audit_tier(
+        self,
+        user: User,
+        event_type: str,
+        title: str,
+        body: str,
+        *,
+        reference_id: uuid.UUID | None,
+        template_name: str | None = None,
+        template_params: list[str] | None = None,
+    ) -> None:
+        """audit 2026-10-28: push (app) + web push + bell ALWAYS; WhatsApp only while the `whatsapp_templates` flag is on
+        (the founder turns it on once Meta approved the khelo_* templates), never the unapproved generic fallback."""
+        if await flag_on(self.db, "whatsapp_templates") and template_name:
+            await self._send_push_and_whatsapp(
+                user, event_type, title, body, reference_id=reference_id,
+                template_name=template_name, template_params=template_params, bell=True,
+            )
+        else:
+            await self._send_push_tier(user, event_type, title, body, reference_id=reference_id, bell=True)
+
+    async def notify_owner_staff_action(
+        self,
+        *,
+        owner: User,
+        staff_name: str,
+        kind: str,
+        booking_id: uuid.UUID,
+        starts_at: datetime,
+        court_name: str,
+        player_name: str | None,
+        short_pkr: int = 0,
+        due_pkr: int = 0,
+    ) -> None:
+        """audit 2026-10-28 item 17: the owner hears AT ONCE when a staff member marks a no-show or records less than the
+        due ("Bilal ne 7:00 PM wali booking no-show ki")."""
+        when = format_time(starts_at)
+        who = f" ({player_name})" if player_name else ""
+        if kind == "no_show":
+            title = "Staff ne no-show mark kiya"
+            body = f"{staff_name} ne {when} wali booking no-show ki: {court_name}{who}."
+        else:
+            title = "Staff ne kam paisa darj kiya"
+            body = (
+                f"{staff_name} ne {when} wali booking par {format_pkr(short_pkr)} kam darj kiye: {court_name}{who}. "
+                f"Baqi {format_pkr(due_pkr)}."
+            )
+        await self._audit_tier(owner, "owner_staff_action", title, body, reference_id=booking_id)
+
+    async def notify_player_unsettled(
+        self,
+        *,
+        player: User,
+        kind: str,
+        booking_id: uuid.UUID,
+        code: str,
+        starts_at: datetime,
+        court_name: str,
+        total_pkr: int,
+        paid_pkr: int,
+        due_pkr: int,
+        venue_whatsapp: str | None,
+    ) -> None:
+        """audit 2026-10-28 item 18: the player is told when their booking was marked no-show, or completed with money still
+        due ("kam mila"): booking ID, total, paid, due, and the venue's WhatsApp to sort it out."""
+        link = _wa_link(venue_whatsapp)
+        contact = f" Venue se baat: {link}" if link else ""
+        money = f"Kul {format_pkr(total_pkr)}, diye {format_pkr(paid_pkr)}, baqi {format_pkr(due_pkr)}."
+        slot = f"{court_name}, {format_time(starts_at)}"
+        if kind == "no_show":
+            title = "Booking no-show mark hui"
+            body = f"Booking {code} ({slot}) no-show mark hui. {money}{contact}"
+            template = "khelo_no_show"
+            params = [code, slot, format_pkr(total_pkr), format_pkr(paid_pkr), format_pkr(due_pkr)]
+        else:
+            title = "Booking par paisa baqi hai"
+            body = f"Booking {code} ({slot}): {money}{contact}"
+            template = "khelo_short_payment"
+            params = [code, format_pkr(total_pkr), format_pkr(paid_pkr), format_pkr(due_pkr)]
+        await self._audit_tier(
+            player, f"player_{kind}", title, body, reference_id=booking_id, template_name=template, template_params=params
+        )
 
     async def notify_owner_refund_owed(
         self,

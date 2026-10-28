@@ -243,6 +243,10 @@ async def mark_booking_no_show(
             raise
         booking = await service.require_accessible_booking(booking_id, owner, permission="record_payments")
     booking = await service.owner_mark_no_show(booking, actor=owner)
+    # audit 2026-10-28 items 17 + 18: the owner (when staff did it) and the player hear about it
+    from app.services.unsettled_notices import notify_unsettled
+
+    await notify_unsettled(db, settings, booking, owner, "no_show")
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
