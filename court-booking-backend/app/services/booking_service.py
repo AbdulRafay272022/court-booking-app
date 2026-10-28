@@ -384,7 +384,7 @@ class BookingService:
 
         await self.audit.log(
             actor_user_id=recorded_by.id,
-            actor_type="owner",
+            actor_type=recorded_by.role.value,
             action="booking.walkin",
             entity_type="booking",
             entity_id=booking.id,
@@ -434,7 +434,9 @@ class BookingService:
                         )
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
 
-    async def cancel_booking(self, booking: Booking, cancelled_by: CancelledBy, reason: str | None) -> Booking:
+    async def cancel_booking(
+        self, booking: Booking, cancelled_by: CancelledBy, reason: str | None, actor: User | None = None
+    ) -> Booking:
         """Idempotent by design: a booking that's already CANCELLED is a
         safe no-op (same booking returned, unchanged) rather than a 400 --
         this matters because both the AI chat tool and a duplicate WhatsApp
@@ -477,14 +479,15 @@ class BookingService:
             # Money-correctness fix: an OWNER cancelling a paid (booked) booking owes the player a refund
             # exactly like a player cancel does (previously only PLAYER cancels were flagged).
             await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
+        # audit 2026-10-28 item 8: the REAL person (owner / staff / admin / the player), not always the booking's player
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type=cancelled_by.value,
+            actor_user_id=actor.id if actor is not None else booking.player_id,
+            actor_type=actor.role.value if actor is not None else cancelled_by.value,
             action="booking.cancelled",
             entity_type="booking",
             entity_id=booking.id,
             old_value={"status": old_status.value},
-            new_value={"status": booking.status.value, "reason": reason},
+            new_value={"status": booking.status.value, "reason": reason, "cancelled_by": cancelled_by.value},
         )
         await self.db.commit()
         await self.db.refresh(booking)
@@ -632,8 +635,9 @@ class BookingService:
             if player is not None:
                 player.total_bookings += 1
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type="system",
+            # audit 2026-10-28 item 8: the owner/staff who approved (None = auto-approve, then the system)
+            actor_user_id=recorded_by.id if recorded_by is not None else booking.player_id,
+            actor_type=recorded_by.role.value if recorded_by is not None else "system",
             action="booking.confirmed",
             entity_type="booking",
             entity_id=booking.id,
@@ -682,7 +686,7 @@ class BookingService:
         await self.db.refresh(booking)
         return booking
 
-    async def _do_check_in(self, booking: Booking, actor: str) -> Booking:
+    async def _do_check_in(self, booking: Booking, actor: str, actor_user: User | None = None) -> Booking:
         """Shared by the owner-scan (`check_in`) and player-self-scan
         (`check_in_self`) paths -- see finding #17 in AUDIT_FINDINGS.md.
         Idempotent: whichever happens first wins; a second attempt via
@@ -710,8 +714,9 @@ class BookingService:
             booking.checkin_flag_reason = "implausible_timing"
 
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type=actor,
+            # audit 2026-10-28 item 8: the owner/staff member who checked the player in (self check-in: the player)
+            actor_user_id=actor_user.id if actor_user is not None else booking.player_id,
+            actor_type=actor_user.role.value if actor_user is not None else actor,
             action="booking.checked_in",
             entity_type="booking",
             entity_id=booking.id,
@@ -721,9 +726,9 @@ class BookingService:
         await self.db.refresh(booking)
         return booking
 
-    async def check_in(self, booking: Booking) -> Booking:
-        """Owner scans the player's QR from My Bookings."""
-        return await self._do_check_in(booking, "owner")
+    async def check_in(self, booking: Booking, actor_user: User | None = None) -> Booking:
+        """Owner (or staff with check_in) scans the player's QR from My Bookings."""
+        return await self._do_check_in(booking, "owner", actor_user)
 
     async def check_in_self(self, booking: Booking, venue_qr_token: uuid.UUID) -> Booking:
         """Player scans a QR physically posted at the venue -- an

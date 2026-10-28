@@ -883,7 +883,7 @@ class PaymentService:
             )
         await self.audit.log(
             actor_user_id=approved_by.id,
-            actor_type="owner",
+            actor_type=approved_by.role.value,
             action="payment.approved",
             entity_type="payment",
             entity_id=payment.id,
@@ -923,7 +923,7 @@ class PaymentService:
             )
             await self.audit.log(
                 actor_user_id=approved_by.id,
-                actor_type="owner",
+                actor_type=approved_by.role.value,
                 action="payment.overpayment_queued",
                 entity_type="payment",
                 entity_id=payment.id,
@@ -951,7 +951,7 @@ class PaymentService:
             )
         await self.audit.log(
             actor_user_id=rejected_by.id,
-            actor_type="owner",
+            actor_type=rejected_by.role.value,
             action="payment.rejected",
             entity_type="payment",
             entity_id=payment.id,
@@ -960,7 +960,7 @@ class PaymentService:
 
         # A rejected payment releases the slot entirely (not back to "held") --
         # the player starts over with a fresh hold if they want to try again.
-        await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason)
+        await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason, actor=rejected_by)
 
         # Safety net: the owner rejected the proof, but "rejected" does not prove no money moved (the transfer may have
         # been real and the rejection for another reason -- wrong amount, wrong account, a stale screenshot). Leave a

@@ -158,7 +158,7 @@ async def cancel_booking(
     was_awaiting_approval = booking.status == BookingStatus.PAYMENT_SUBMITTED
 
     cancelled_by = CancelledBy.PLAYER if booking.player_id == user.id else CancelledBy.OWNER
-    booking = await service.cancel_booking(booking, cancelled_by, payload.reason)
+    booking = await service.cancel_booking(booking, cancelled_by, payload.reason, actor=user)
     response = BookingResponse(booking=BookingOut.model_validate(booking))
 
     # cancel_booking is idempotent (a no-op on an already-cancelled
@@ -219,7 +219,7 @@ async def check_in_booking(
 ) -> BookingResponse:
     service = BookingService(db, settings)
     booking = await service.require_accessible_booking(booking_id, owner, permission="check_in")
-    booking = await service.check_in(booking)
+    booking = await service.check_in(booking, actor_user=owner)
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 

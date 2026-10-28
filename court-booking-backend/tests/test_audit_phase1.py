@@ -302,3 +302,110 @@ async def test_badge_ignores_unreviewed_proofs_on_cancelled_or_expired_bookings(
     resp = await client.get(f"/api/v1/owners/badges?venue_id={venue.id}", headers=await make_auth_headers(owner))
     assert resp.status_code == 200, resp.text
     assert resp.json()["approvals"] == 1
+
+
+# ---------------------------------------------------------------- item 8: the audit log names the real actor
+
+
+async def make_staff(db_session_factory, make_user, venue, phone, permissions, name="Bilal"):
+    from app.models.staff import StaffMember, StaffPermission
+
+    staff = await make_user(phone, role=UserRole.STAFF, name=name)
+    async with db_session_factory() as s:
+        sm = StaffMember(staff_user_id=staff.id, venue_id=venue.id, invited_by_user_id=venue.owner_id, is_active=True)
+        s.add(sm)
+        await s.flush()
+        for p in permissions:
+            s.add(StaffPermission(staff_member_id=sm.id, permission=p))
+        await s.commit()
+    return staff
+
+
+async def _audit_rows(db_session_factory, action):
+    from sqlalchemy import select
+
+    from app.models.audit import AuditLog
+
+    async with db_session_factory() as s:
+        return list((await s.execute(select(AuditLog).where(AuditLog.action == action))).scalars().all())
+
+
+async def _booked_walkin(client, owner_headers, court, phone, paid=0, hour=10):
+    day = (date.today() + timedelta(days=3)).isoformat()
+    resp = await client.post(
+        "/api/v1/bookings/walkin",
+        headers=owner_headers,
+        json={"court_id": str(court.id), "starts_at": f"{day}T{hour:02d}:00:00Z", "player_name": "Ali", "player_phone": phone, "amount_paid": paid},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["booking"]["id"]
+
+
+async def test_staff_check_in_is_logged_as_the_staff_member(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923001180001")
+    staff = await make_staff(db_session_factory, make_user, venue, "+923001180002", ["check_in"])
+    bid = await _booked_walkin(client, await make_auth_headers(owner), court, "+923001180001")
+    resp = await client.post(f"/api/v1/bookings/{bid}/checkin", headers=await make_auth_headers(staff))
+    assert resp.status_code == 200, resp.text
+    rows = await _audit_rows(db_session_factory, "booking.checked_in")
+    assert [(r.actor_id, r.actor_type) for r in rows] == [(staff.id, "staff")]
+    assert rows[0].actor_id != player.id
+
+
+async def test_owner_cancel_and_walkin_are_logged_as_the_owner(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    await make_user("+923001180011")
+    headers = await make_auth_headers(owner)
+    bid = await _booked_walkin(client, headers, court, "+923001180011")
+    resp = await client.post(f"/api/v1/bookings/{bid}/cancel", headers=headers, json={"reason": "rain"})
+    assert resp.status_code == 200, resp.text
+    cancelled = await _audit_rows(db_session_factory, "booking.cancelled")
+    assert [(r.actor_id, r.actor_type) for r in cancelled] == [(owner.id, "owner")]
+    walkin = await _audit_rows(db_session_factory, "booking.walkin")
+    assert walkin[0].actor_id == owner.id
+
+
+async def test_bank_detail_edits_are_audited_with_masked_numbers(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, _court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    headers = await make_auth_headers(owner)
+    body = {"bank_details": {"bank": "Meezan", "account_title": "KHA Sports", "account_number": "01234567890123", "iban": "PK36MEZN0001234567890123"}}
+    assert (await client.patch(f"/api/v1/venues/{venue.id}", headers=headers, json=body)).status_code == 200
+    body["bank_details"]["account_number"] = "99990000111122"
+    assert (await client.patch(f"/api/v1/venues/{venue.id}", headers=headers, json=body)).status_code == 200
+    # the same details again change nothing and log nothing
+    assert (await client.patch(f"/api/v1/venues/{venue.id}", headers=headers, json=body)).status_code == 200
+    rows = await _audit_rows(db_session_factory, "venue.bank_details_changed")
+    assert len(rows) == 2
+    last = rows[-1]
+    assert last.actor_id == owner.id
+    assert last.old_value["account_number"] == "**********0123"
+    assert last.new_value["account_number"] == "**********1122"
+    assert last.new_value["iban"].endswith("0123") and "MEZN" not in last.new_value["iban"]
+    assert last.new_value["account_title"] == "KHA Sports"
+
+
+async def test_staff_permission_changes_are_audited(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from sqlalchemy import select
+
+    from app.models.staff import StaffMember
+
+    owner, venue, _court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    staff = await make_staff(db_session_factory, make_user, venue, "+923001180021", ["view_ledger"])
+    async with db_session_factory() as s:
+        sm_id = (await s.execute(select(StaffMember.id).where(StaffMember.staff_user_id == staff.id))).scalar_one()
+    headers = await make_auth_headers(owner)
+    resp = await client.patch(f"/api/v1/staff/{sm_id}/permissions", headers=headers, json={"permissions": ["view_ledger", "check_in"]})
+    assert resp.status_code == 200, resp.text
+    rows = await _audit_rows(db_session_factory, "staff.permissions_changed")
+    assert rows and rows[0].actor_id == owner.id
+    assert rows[0].old_value == {"permissions": ["view_ledger"]}
+    assert rows[0].new_value == {"permissions": ["check_in", "view_ledger"]}

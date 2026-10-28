@@ -1585,7 +1585,7 @@ class AIChatService:
             uuid.UUID(tool_input["booking_id"]), user
         )
         booking = await self.booking_service.cancel_booking(
-            booking, CancelledBy.PLAYER, tool_input.get("reason")
+            booking, CancelledBy.PLAYER, tool_input.get("reason"), actor=user
         )
         return {"status": booking.status.value}
 

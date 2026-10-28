@@ -184,7 +184,7 @@ async def update_venue(
 ) -> VenueOut:
     service = VenueService(db, settings)
     venue = await service.require_owned_venue(venue_id, owner)
-    venue = await service.update_venue(venue, payload)
+    venue = await service.update_venue(venue, payload, actor=owner)
     return await service.to_out(venue, requesting_user=owner)
 
 
