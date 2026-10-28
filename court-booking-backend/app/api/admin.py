@@ -10,6 +10,7 @@ from app.models.booking import BookingStatus
 from app.models.user import User
 from app.models.venue import Venue, VenueStatus
 from app.models.user import UserRole
+from app.schemas.staff_activity import StaffActivityOut
 from app.schemas.admin import (
     AdminBookingOut,
     AdminDashboardOut,
@@ -325,3 +326,17 @@ async def unhide_review(
     )
     await db.commit()
     return out
+
+
+@router.get("/staff-activity", response_model=StaffActivityOut)
+async def admin_staff_activity(
+    db: DbSession,
+    admin: RequireAdmin,
+    venue_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> StaffActivityOut:
+    """Audit 2026-10-28 item 16: the same staff dashboard as the owner's, for any venue."""
+    from app.services.staff_activity_service import staff_activity
+
+    return StaffActivityOut(**await staff_activity(db, admin, venue_id, date_from, date_to))

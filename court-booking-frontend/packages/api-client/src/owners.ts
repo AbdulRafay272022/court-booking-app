@@ -1,4 +1,5 @@
 import type {
+  StaffActivity,
   Booking,
   Growth,
   Ledger,
@@ -142,6 +143,12 @@ export function createOwnersApi(client: ApiClient) {
 
     /** Stage 2: what this account may do per venue (hide buttons up front for staff). */
     myPermissions: () => client.request<MyPermissions>("/owners/me/permissions"),
+
+    /** Audit 2026-10-28 item 16: per person activity at one venue (owner / admin only). Dates are Pakistan YYYY-MM-DD. */
+    staffActivity: (venueId: string, dateFrom?: string, dateTo?: string) =>
+      client.request<StaffActivity>(
+        `/owners/staff-activity?${new URLSearchParams({ venue_id: venueId, ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) }).toString()}`,
+      ),
 
     /** Stage 2: CNIC (never returns the number, only a masked form). */
     identity: () => client.request<OwnerIdentity>("/owners/identity"),

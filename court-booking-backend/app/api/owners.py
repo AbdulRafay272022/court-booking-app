@@ -15,6 +15,7 @@ from app.models.payment import Payment
 from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.services.duplicate_proof import used_on_bookings
+from app.schemas.staff_activity import StaffActivityOut
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
 from app.schemas.owner_dashboard import ApprovalsQueuePageOut, GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
@@ -429,3 +430,18 @@ async def owner_mark_refund_paid(
     out.player_phone = booking.player_phone
     out.is_overdue = False
     return out
+
+
+@router.get("/staff-activity", response_model=StaffActivityOut)
+async def owner_staff_activity(
+    db: DbSession,
+    owner: RequireStaffCapable,
+    venue_id: uuid.UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> StaffActivityOut:
+    """Audit 2026-10-28 item 16: per person (owner + staff) bookings marked, no-shows, check-ins, walk-ins, short payments,
+    cash recorded, transfers credited, refunds paid, and the no-show list with who marked it and when. Owner (or admin) only."""
+    from app.services.staff_activity_service import staff_activity
+
+    return StaffActivityOut(**await staff_activity(db, owner, venue_id, date_from, date_to))

@@ -126,6 +126,8 @@ export default function OwnerMoreScreen() {
           badge: staffList.data && staffList.data.length > 0 ? { text: String(staffList.data.length), tone: "neutral" } : null,
           onPress: go("/(owner)/staff"),
         },
+        // audit 2026-10-28 item 16: what each person marked and recorded (owner only)
+        { key: "staffActivity", label: "Staff ka kaam", sub: "No-show, cash, kam mila: kis ne kya kiya", icon: Users, ownerOnly: true, onPress: go("/(owner)/staff-activity") },
         { key: "growth", label: "Growth suggestions", sub: "Kam bharne wale ghante", icon: TrendingUp, tone: "open", gate: "growth", flag: "growth_suggestions", onPress: go("/(owner)/growth") },
         { key: "reviews", label: "Reviews", sub: "Players ki rai aur jawab", icon: Star, gate: "reviews", flag: "reviews", onPress: go("/(owner)/reviews") },
         { key: "notifications", label: "Notifications", sub: "Payments, bookings, refunds", icon: Bell, onPress: go("/(owner)/notifications") },

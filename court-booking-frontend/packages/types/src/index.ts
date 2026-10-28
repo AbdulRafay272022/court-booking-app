@@ -20,6 +20,7 @@ export * from "./admin";
 export * from "./owner-billing";
 export * from "./feature-flag";
 export * from "./staff";
+export * from "./staff-activity";
 export * from "./errors";
 export * from "./validation";
 export * from "./datetime";

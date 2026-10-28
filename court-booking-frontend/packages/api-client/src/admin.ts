@@ -1,4 +1,5 @@
 import type {
+  StaffActivity,
   AdminIdentityFull,
   AdminIdentityPage,
   AdminOwnerInvoice,
@@ -33,6 +34,12 @@ export function createAdminApi(client: ApiClient) {
     stats: () => client.request<PlatformStats>("/admin/stats"),
 
     overview: () => client.request<AdminOverview>("/admin/overview"),
+
+    /** Audit 2026-10-28 item 16: the staff dashboard for any venue. */
+    staffActivity: (venueId: string, dateFrom?: string, dateTo?: string) =>
+      client.request<StaffActivity>(
+        `/admin/staff-activity?${new URLSearchParams({ venue_id: venueId, ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) }).toString()}`,
+      ),
 
     /** Owner premium billing price list. */
     premiumFeatures: () => client.request<PremiumFeature[]>("/admin/premium-features"),

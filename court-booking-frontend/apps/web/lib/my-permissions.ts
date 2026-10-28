@@ -56,6 +56,7 @@ export const ROUTE_NEEDS: { prefix: string; needs: StaffPermission[] | "owner" }
   { prefix: "/dashboard/owner/reviews", needs: ["respond_reviews"] },
   { prefix: "/dashboard/owner/settings", needs: ["edit_court_settings", "manage_photos", "view_ledger"] },
   { prefix: "/dashboard/owner/staff", needs: "owner" },
+  { prefix: "/dashboard/owner/staff-activity", needs: "owner" },
   { prefix: "/dashboard/owner/premium", needs: "owner" },
 ];
 

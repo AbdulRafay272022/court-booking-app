@@ -78,6 +78,7 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
     ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: t("odash.nav.reviews") }] : []),
     { href: "/dashboard/owner/settings", label: t("odash.nav.settings") },
     ...(!isStaff ? [{ href: "/dashboard/owner/staff", label: t("odash.nav.staff") }] : []),
+    ...(!isStaff ? [{ href: "/dashboard/owner/staff-activity", label: t("odash.sact.nav") }] : []),
     ...(!isStaff ? [{ href: "/dashboard/owner/premium", label: t("odash.nav.premium") }] : []),
     { href: "/account", label: t("odash.nav.account") },
   ];

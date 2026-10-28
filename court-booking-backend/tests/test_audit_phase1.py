@@ -533,3 +533,61 @@ async def test_owner_sees_settings_still_running_on_defaults(
     assert {u["code"] for u in body["unconfirmed_settings"]} == {"advance"}
     # the public never sees it
     assert "unconfirmed_settings" not in (await client.get(f"/api/v1/venues/{venue.id}")).json()
+
+
+# ---------------------------------------------------------------- item 16: the staff dashboard
+
+
+async def _past_booked(db_session_factory, court, player, hours_ago=3, price=2000, paid=500):
+    from datetime import datetime, timezone
+
+    from app.models.booking import Booking, BookingStatus
+
+    starts = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours_ago)
+    async with db_session_factory() as s:
+        b = Booking(court_id=court.id, player_id=player.id, starts_at=starts, ends_at=starts + timedelta(hours=1),
+                    status=BookingStatus.BOOKED, price=price, advance_amount=500, amount_paid=paid, balance_due=price - paid)
+        s.add(b)
+        await s.flush()
+        if paid:
+            from app.models.payment_entry import PaymentEntry, PaymentMethod
+
+            s.add(PaymentEntry(booking_id=b.id, amount_pkr=paid, method=PaymentMethod.BANK_TRANSFER_PROOF))
+        await s.commit()
+        return b
+
+
+async def test_staff_dashboard_counts_each_person_and_lists_no_shows(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    staff = await make_staff(db_session_factory, make_user, venue, "+923001210001", ["check_in", "record_payments", "walkin"], name="Bilal")
+    player = await make_user("+923001210002", name="Ali")
+    sh = await make_auth_headers(staff)
+    oh = await make_auth_headers(owner)
+    # Bilal: one no-show, one cash walk-in
+    ns = await _past_booked(db_session_factory, court, player, hours_ago=5)
+    assert (await client.post(f"/api/v1/bookings/{ns.id}/no-show", headers=sh)).status_code == 200
+    await _booked_walkin(client, sh, court, "+923001210002", paid=700, hour=11)
+    # the owner: one short payment ("kam mila": received 300 of the 1500 still due)
+    short = await _past_booked(db_session_factory, court, player, hours_ago=3)
+    resp = await client.post(
+        f"/api/v1/owners/bookings/{short.id}/completion", headers=oh,
+        json={"result": "no", "received_now": 300, "reason": "baqi kal dega"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    out = (await client.get(f"/api/v1/owners/staff-activity?venue_id={venue.id}", headers=oh)).json()
+    people = {p["name"]: p for p in out["people"]}
+    assert people["Bilal"]["no_shows"] == 1 and people["Bilal"]["walkins"] == 1
+    assert people["Bilal"]["cash_pkr"] == 700 and people["Bilal"]["cash_entries"] == 1
+    owner_row = next(p for p in out["people"] if p["role"] == "owner")
+    assert owner_row["short_payments"] == 1 and owner_row["short_amount_pkr"] == 1200
+    assert owner_row["cash_pkr"] == 300
+    assert out["totals"]["total_recorded_pkr"] == 1000
+    assert [(n["marked_by_name"], n["player_name"]) for n in out["no_shows"]] == [("Bilal", "Ali")]
+    # staff may not see the dashboard; an admin may, for any venue
+    assert (await client.get("/api/v1/owners/staff-activity", headers=sh)).status_code == 403
+    admin = await make_user("+923001210003", role=UserRole.ADMIN)
+    adm = await client.get(f"/api/v1/admin/staff-activity?venue_id={venue.id}", headers=await make_auth_headers(admin))
+    assert adm.status_code == 200 and adm.json()["totals"]["no_shows"] == 1
