@@ -22,6 +22,8 @@ import {
   type CourtSetup,
   type CreateVenueInput,
   type Venue,
+  unconfirmedSettingLabel,
+  venueMissingLabel,
 } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -108,6 +110,24 @@ export default function VenueSettingsScreen() {
             </View>
             <Pill size="sm" tone={status === "approved" ? "open" : status === "rejected" ? "danger" : "waiting"} label={status === "approved" ? "Live ✓" : status === "rejected" ? "Approve nahi" : "Review mein"} />
           </View>
+        ) : null}
+        {activeVenue?.missing_for_approval && activeVenue.missing_for_approval.length > 0 ? (
+          // audit 2026-10-28 item 9: what the venue needs before the admin can approve it
+          <Banner
+            tone="danger"
+            title="Venue live hone se pehle ye cheezein zaroori hain"
+            body={activeVenue.missing_for_approval.map((m) => `• ${venueMissingLabel(m, "ru")}`).join("\n")}
+            testID="venue-missing"
+          />
+        ) : null}
+        {activeVenue?.unconfirmed_settings && activeVenue.unconfirmed_settings.length > 0 ? (
+          // audit 2026-10-28 item 15: a live venue is never blocked; saving confirms the hidden defaults
+          <Banner
+            tone="waiting"
+            title="Ye settings abhi default par chal rahi hain. Dekh kar apni value save karein:"
+            body={activeVenue.unconfirmed_settings.map((u) => `• ${unconfirmedSettingLabel(u, "ru")}`).join("\n")}
+            testID="unconfirmed-settings"
+          />
         ) : null}
         {perms.settled && access.note ? (
           <View testID="venue-settings-read-only-note">

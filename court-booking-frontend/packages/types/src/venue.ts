@@ -89,6 +89,8 @@ export interface Venue {
   longitude?: number | null;
   /** audit 2026-10-28 item 9: what the venue still needs before it can go live (owner + admin views only). */
   missing_for_approval?: VenueMissingItem[] | null;
+  /** audit 2026-10-28 item 15: settings still running on a hidden default; the owner confirms them by saving. */
+  unconfirmed_settings?: VenueMissingItem[] | null;
 }
 
 /** One gap that stops a venue going live (backend app/services/venue_completeness.py). */

@@ -36,3 +36,24 @@ def missing_for_approval(venue: Venue, bank_details: dict | None) -> list[dict]:
         if not [r for r in (court.pricing_rules or []) if getattr(r, "is_active", True) and float(r.price_per_slot or 0) > 0]:
             missing.append({"code": "pricing", "court": court.name})
     return missing
+
+
+# audit 2026-10-28 item 15: settings an EXISTING venue still runs on a hidden default (NULL column). Live venues are not
+# blocked; the owner sees a banner listing them and confirms by saving (every save now sends real values).
+TIMER_FIELDS = (
+    "hold_minutes",
+    "reminders_enabled",
+    "first_reminder_after_min",
+    "repeat_every_min",
+    "max_reminders",
+    "auto_cancel_enabled",
+    "auto_cancel_after_min",
+)
+
+
+def unconfirmed_settings(venue: Venue) -> list[dict]:
+    out: list[dict] = [{"code": f, "court": None} for f in TIMER_FIELDS if getattr(venue, f, None) is None]
+    for court in venue.courts or []:
+        if court.is_active and getattr(court, "advance_type", None) is None:
+            out.append({"code": "advance", "court": court.name})
+    return out

@@ -226,4 +226,6 @@ export const ruSetup = {
   "setup.missing.hint": "Venue settings mein ye bhar dein; admin tab approve kar sakega.",
   "setup.set.staffReadOnly": "Aap ye settings sirf dekh sakte hain. Badalne ke liye owner se ijazat lein.",
   "setup.set.staffCourtsOnly": "Aap courts, auqaat aur qeemat badal sakte hain. Venue ki details aur bank details sirf owner badal sakta hai.",
+  "setup.unconfirmed.title": "Ye settings abhi default par chal rahi hain. Dekh kar apni value save karein:",
+  "setup.unconfirmed.hint": "Venue live hai aur chalta rahega; ye sirf yaad dehaani hai.",
 } as const;

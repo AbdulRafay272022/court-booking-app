@@ -511,3 +511,25 @@ async def test_cancelling_an_online_paid_booking_puts_it_on_refunds_and_tells_th
         disputes = (await s.execute(select(PaymentDispute).where(PaymentDispute.booking_id == bid))).scalars().all()
     assert [(d.reason, float(d.refund_amount)) for d in disputes] == [("player_cancelled_paid_booking", 1000.0)]
     assert len(await _log_rows(db_session_factory, owner.id, "refund_owed")) >= 1
+
+
+# ---------------------------------------------------------------- item 15: hidden defaults are listed for the owner
+
+
+async def test_owner_sees_settings_still_running_on_defaults(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, _court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    headers = await make_auth_headers(owner)
+    body = (await client.get(f"/api/v1/venues/{venue.id}", headers=headers)).json()
+    codes = {(u["code"], u["court"]) for u in body["unconfirmed_settings"]}
+    assert ("hold_minutes", None) in codes and ("advance", "Court 1") in codes
+    # saving the timers with real values confirms them
+    timers = {"hold_minutes": 15, "reminders_enabled": True, "first_reminder_after_min": 10, "repeat_every_min": 30,
+              "max_reminders": 5, "auto_cancel_enabled": True, "auto_cancel_after_min": 120}
+    resp = await client.put(f"/api/v1/owners/venues/{venue.id}/timers", headers=headers, json=timers)
+    assert resp.status_code == 200, resp.text
+    body = (await client.get(f"/api/v1/venues/{venue.id}", headers=headers)).json()
+    assert {u["code"] for u in body["unconfirmed_settings"]} == {"advance"}
+    # the public never sees it
+    assert "unconfirmed_settings" not in (await client.get(f"/api/v1/venues/{venue.id}")).json()

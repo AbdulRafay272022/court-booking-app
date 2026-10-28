@@ -508,9 +508,10 @@ class VenueService:
         )
         out.bank_details = self.decrypted_bank_details(venue) if can_see_bank_details else None
         if can_see_bank_details:
-            from app.services.venue_completeness import missing_for_approval
+            from app.services.venue_completeness import missing_for_approval, unconfirmed_settings
 
             out.missing_for_approval = missing_for_approval(venue, out.bank_details)
+            out.unconfirmed_settings = unconfirmed_settings(venue)
         # checkin_qr_token isn't encrypted like bank_details, so model_validate
         # above already populated it from the ORM object -- explicitly clear
         # it for anyone who isn't the owner/admin rather than relying on a

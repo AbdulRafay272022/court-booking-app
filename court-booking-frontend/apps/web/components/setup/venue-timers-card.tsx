@@ -256,7 +256,7 @@ function TimersEditor({ venueId, data }: { venueId: string; data: VenueTimers })
   const t = useT();
   const lang = useLang();
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<TimerDraft>(() => draftFromValues(data.values));
+  const [draft, setDraft] = useState<TimerDraft>(() => draftFromValues(data.values, data.defaults ?? VENUE_TIMER_DEFAULTS));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const defaults = data.defaults ?? VENUE_TIMER_DEFAULTS;
@@ -267,7 +267,7 @@ function TimersEditor({ venueId, data }: { venueId: string; data: VenueTimers })
     setMessage(null);
     try {
       const res = await api.owners.updateVenueTimers(venueId, valuesFromDraft(draft));
-      setDraft(draftFromValues(res.values));
+      setDraft(draftFromValues(res.values, res.defaults ?? VENUE_TIMER_DEFAULTS));
       queryClient.setQueryData(["venue-timers", venueId], res);
       setMessage({ kind: "ok", text: t("set2.timers.saved") });
     } catch (e) {

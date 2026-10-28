@@ -128,3 +128,31 @@ export function refundPolicyShort(
   if (h != null && h > 0) return ru ? `${h} ghante pehle tak refund` : `Refund up to ${h} ${h === 1 ? "hour" : "hours"} before`;
   return ru ? "Shuru hone se pehle tak refund" : "Refund any time before the start";
 }
+
+const UNCONFIRMED: Record<TextLang, Record<string, string>> = {
+  ru: {
+    hold_minutes: "Slot hold ka waqt",
+    reminders_enabled: "Payment reminders on/off",
+    first_reminder_after_min: "Pehla reminder kab",
+    repeat_every_min: "Reminder kitni der baad dobara",
+    max_reminders: "Zyada se zyada reminders",
+    auto_cancel_enabled: "Khud cancel on/off",
+    auto_cancel_after_min: "Khud cancel kitni der baad",
+    advance: "{court} ka advance",
+  },
+  en: {
+    hold_minutes: "Slot hold time",
+    reminders_enabled: "Payment reminders on/off",
+    first_reminder_after_min: "First reminder after",
+    repeat_every_min: "Repeat reminder every",
+    max_reminders: "Maximum reminders",
+    auto_cancel_enabled: "Auto-cancel on/off",
+    auto_cancel_after_min: "Auto-cancel after",
+    advance: "Advance for {court}",
+  },
+};
+
+/** audit 2026-10-28 item 15: the words for a setting that still runs on a hidden default. */
+export function unconfirmedSettingLabel(item: { code: string; court: string | null }, lang: TextLang = "en"): string {
+  return (UNCONFIRMED[lang][item.code] ?? item.code).replace("{court}", item.court ?? "court");
+}

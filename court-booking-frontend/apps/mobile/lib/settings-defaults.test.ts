@@ -16,6 +16,7 @@ import {
 
 import {
   EMPTY_TIMER_DRAFT,
+  FILLED_TIMER_DRAFT,
   effectiveTimerDraft,
   timerDraftFromValues,
   timerDraftIsEmpty,
@@ -63,29 +64,26 @@ test("advance default says 'abhi poori raqam' only when split_payments is off", 
   assert.match(advanceDefaultHintText(false, "ru"), /abhi poori raqam$/);
 });
 
-test("timer draft: null = default, round trip, validation, preview", () => {
+test("timer draft (audit item 15): server nulls become the real defaults, empty boxes are required", () => {
   assert.ok(timerDraftIsEmpty(EMPTY_TIMER_DRAFT));
-  assert.deepEqual(timerDraftToValues(EMPTY_TIMER_DRAFT), {
-    hold_minutes: null, reminders_enabled: null, first_reminder_after_min: null, repeat_every_min: null,
-    max_reminders: null, auto_cancel_enabled: null, auto_cancel_after_min: null,
-  });
-  const e = effectiveTimerDraft(EMPTY_TIMER_DRAFT);
-  assert.deepEqual(e, { hold: "15", remindersOn: true, first: "10", every: "30", max: "5", autoCancelOn: true, cancelAfter: "120" });
-  assert.equal(timerPreview(EMPTY_TIMER_DRAFT), "Reminder 10, 40, 70, 100 minute par. 115 par aakhri warning, 120 par cancel.");
+  assert.deepEqual(FILLED_TIMER_DRAFT, { hold: "15", remindersOn: true, first: "10", every: "30", max: "5", autoCancelOn: true, cancelAfter: "120" });
+  assert.equal(timerPreview(FILLED_TIMER_DRAFT), "Reminder 10, 40, 70, 100 minute par. 115 par aakhri warning, 120 par cancel.");
 
   const v = { hold_minutes: 20, reminders_enabled: true, first_reminder_after_min: null, repeat_every_min: 15, max_reminders: null, auto_cancel_enabled: false, auto_cancel_after_min: null };
-  assert.deepEqual(timerDraftToValues(timerDraftFromValues(v)), v);
+  // what the server had as null comes back as the default VALUE, which a save then confirms
+  assert.deepEqual(timerDraftToValues(timerDraftFromValues(v)), { ...v, first_reminder_after_min: 10, max_reminders: 5, auto_cancel_after_min: 120 });
   assert.equal(timerPreview(timerDraftFromValues(v)), "Reminder 10, 25, 40, 55, 70 minute par. Auto-cancel band hai.");
 
-  assert.ok(timerDraftProblems({ ...EMPTY_TIMER_DRAFT, hold: "4" }).errors.hold);
-  assert.ok(timerDraftProblems({ ...EMPTY_TIMER_DRAFT, hold: "181" }).errors.hold);
-  assert.ok(timerDraftProblems({ ...EMPTY_TIMER_DRAFT, every: "2" }).errors.every);
-  assert.ok(timerDraftProblems({ ...EMPTY_TIMER_DRAFT, cancelAfter: "" }).errors.cancelAfter);
-  assert.equal(timerPreview({ ...EMPTY_TIMER_DRAFT, every: "2" }), null);
+  assert.ok(timerDraftProblems({ ...FILLED_TIMER_DRAFT, hold: "4" }).errors.hold);
+  assert.ok(timerDraftProblems({ ...FILLED_TIMER_DRAFT, hold: "181" }).errors.hold);
+  assert.ok(timerDraftProblems({ ...FILLED_TIMER_DRAFT, every: "2" }).errors.every);
+  assert.equal(timerDraftProblems({ ...FILLED_TIMER_DRAFT, cancelAfter: "" }).errors.cancelAfter, "Ye bharna zaroori hai.");
+  assert.equal(timerDraftProblems({ ...FILLED_TIMER_DRAFT, hold: "" }).errors.hold, "Ye bharna zaroori hai.");
+  assert.equal(timerPreview({ ...FILLED_TIMER_DRAFT, every: "2" }), null);
   // reminders off: their boxes are not checked; auto-cancel off: its box is not checked
-  assert.deepEqual(timerDraftProblems({ ...EMPTY_TIMER_DRAFT, remindersOn: false, every: "2" }).errors, {});
-  assert.deepEqual(timerDraftProblems({ ...EMPTY_TIMER_DRAFT, autoCancelOn: false, cancelAfter: "1" }).errors, {});
-  assert.equal(timerPreview({ ...EMPTY_TIMER_DRAFT, remindersOn: false }), "Koi reminder nahi jayega. 115 par aakhri warning, 120 par cancel.");
+  assert.deepEqual(timerDraftProblems({ ...FILLED_TIMER_DRAFT, remindersOn: false, every: "2" }).errors, {});
+  assert.deepEqual(timerDraftProblems({ ...FILLED_TIMER_DRAFT, autoCancelOn: false, cancelAfter: "1" }).errors, {});
+  assert.equal(timerPreview({ ...FILLED_TIMER_DRAFT, remindersOn: false }), "Koi reminder nahi jayega. 115 par aakhri warning, 120 par cancel.");
 });
 
 test("CNIC mask", () => {
@@ -109,7 +107,7 @@ test("CNIC mask", () => {
 test("CNIC is never persisted; the wizard store persists timers (v5) with a migration", () => {
   const store = src("lib/venue-setup-store.ts");
   assert.match(store, /version: 5/);
-  assert.match(store, /state\.timers = \{ \.\.\.EMPTY_TIMER_DRAFT/);
+  assert.match(store, /state\.timers = \{ \.\.\.FILLED_TIMER_DRAFT/);
   assert.doesNotMatch(store.replace(/The CNIC is NOT here[^\n]*/g, ""), /cnic/i, "no CNIC field in the persisted draft");
   const form = src("components/cnic-form.tsx");
   assert.doesNotMatch(form, /zustand\/middleware|async-storage|secure-storage|localStorage\.setItem|setItemAsync/);

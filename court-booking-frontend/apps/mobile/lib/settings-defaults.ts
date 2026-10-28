@@ -41,18 +41,25 @@ export const HOLD_LIMITS = { min: 5, max: 180 } as const;
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? null : String(v));
 
+/**
+ * audit 2026-10-28 item 15: every timer holds a REAL value. What the server still has as null (the default runs) is shown as
+ * that default number, so saving confirms it as the owner's own; an emptied box is an error (red), never "the default".
+ */
 export function timerDraftFromValues(v: VenueTimerValues | null | undefined): TimerDraft {
-  if (!v) return { ...EMPTY_TIMER_DRAFT };
+  const D = VENUE_TIMER_DEFAULTS;
   return {
-    hold: num(v.hold_minutes),
-    remindersOn: v.reminders_enabled ?? null,
-    first: num(v.first_reminder_after_min),
-    every: num(v.repeat_every_min),
-    max: num(v.max_reminders),
-    autoCancelOn: v.auto_cancel_enabled ?? null,
-    cancelAfter: num(v.auto_cancel_after_min),
+    hold: num(v?.hold_minutes ?? D.hold_minutes),
+    remindersOn: v?.reminders_enabled ?? D.reminders_enabled,
+    first: num(v?.first_reminder_after_min ?? D.first_reminder_after_min),
+    every: num(v?.repeat_every_min ?? D.repeat_every_min),
+    max: num(v?.max_reminders ?? D.max_reminders),
+    autoCancelOn: v?.auto_cancel_enabled ?? D.auto_cancel_enabled,
+    cancelAfter: num(v?.auto_cancel_after_min ?? D.auto_cancel_after_min),
   };
 }
+
+/** The wizard's starting timers: the defaults, as real values the owner sends. */
+export const FILLED_TIMER_DRAFT: TimerDraft = timerDraftFromValues(null);
 
 const toNumOrNull = (s: string | null): number | null => (s === null || s.trim() === "" ? null : Number(s));
 
@@ -95,8 +102,14 @@ export type TimerErrors = Partial<Record<TimerField, string>>;
 export function timerDraftProblems(d: TimerDraft): { errors: TimerErrors; warnings: string[] } {
   const e = effectiveTimerDraft(d);
   const errors: TimerErrors = {};
+  // audit 2026-10-28 item 15: an empty (or never filled) box is required, not "the default"
+  const blank = (f: "hold" | "first" | "every" | "max" | "cancelAfter") => d[f] === null || String(d[f]).trim() === "";
+  const need: ("hold" | "first" | "every" | "max" | "cancelAfter")[] = ["hold"];
+  if (e.remindersOn) need.push("first", "every", "max");
+  if (e.autoCancelOn) need.push("cancelAfter");
+  for (const f of need) if (blank(f)) errors[f] = "Ye bharna zaroori hai.";
   const hold = toNumOrNull(e.hold);
-  if (hold === null || !Number.isInteger(hold) || hold < HOLD_LIMITS.min || hold > HOLD_LIMITS.max) {
+  if (!errors.hold && (hold === null || !Number.isInteger(hold) || hold < HOLD_LIMITS.min || hold > HOLD_LIMITS.max)) {
     errors.hold = `Hold ka waqt ${HOLD_LIMITS.min} se ${HOLD_LIMITS.max} minute ke beech rakhein.`;
   }
   const r = validateReminderInput(

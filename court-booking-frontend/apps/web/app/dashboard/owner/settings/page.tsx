@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { unconfirmedSettingLabel } from "@court-booking/types";
+import { VenueMissingCard } from "@/components/setup/venue-missing";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,7 +25,7 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { useT } from "@/components/i18n/lang-provider";
+import { useLang, useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import { Chip, Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
 import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
@@ -64,6 +66,7 @@ type SettingsTab = "venue" | "courts";
 
 export default function VenueSettingsPage() {
   const t = useT();
+  const lang = useLang();
   const { activeVenue } = useOwnerVenues();
   const role = useAuthStore((s) => s.user?.role);
   const isOwner = role === "owner";
@@ -76,6 +79,19 @@ export default function VenueSettingsPage() {
   return (
     <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6 min-w-0">
       <h1 className="text-2xl font-bold">{t("setup.set.title")}</h1>
+      <VenueMissingCard missing={activeVenue?.missing_for_approval} />
+      {activeVenue?.unconfirmed_settings && activeVenue.unconfirmed_settings.length > 0 ? (
+        // audit 2026-10-28 item 15: a live venue is never blocked; the owner confirms the hidden defaults by saving
+        <div className="rounded-2xl border border-owner-warn-soft-border bg-owner-warn-soft p-4 text-sm" data-testid="unconfirmed-settings" role="status">
+          <p className="font-semibold text-owner-warn">{t("setup.unconfirmed.title")}</p>
+          <ul className="mt-2 list-disc pl-5 text-owner-ink-muted">
+            {activeVenue.unconfirmed_settings.map((u, i) => (
+              <li key={`${u.code}-${u.court ?? ""}-${i}`}>{unconfirmedSettingLabel(u, lang)}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-owner-ink-faint">{t("setup.unconfirmed.hint")}</p>
+        </div>
+      ) : null}
       {role === "staff" ? (
         <p className="rounded-xl border border-owner-border bg-owner-surface p-3 text-sm text-owner-ink-muted" data-testid="staff-settings-note">
           {staffReadOnly ? t("setup.set.staffReadOnly") : t("setup.set.staffCourtsOnly")}
