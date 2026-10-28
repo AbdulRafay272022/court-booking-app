@@ -72,4 +72,5 @@ export const enAppr: Record<keyof typeof ruAppr, string> = {
   "appr.dup.help": "Check with the player that this is a new payment, not a screenshot of an old one.",
   "appr.dup.confirm": "Yes, approve anyway",
   "appr.dup.back": "Back",
+  "appr.balanceChip": "Balance screenshot",
 };

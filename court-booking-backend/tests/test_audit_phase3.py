@@ -91,6 +91,10 @@ async def test_a_balance_screenshot_is_reviewed_and_credited_without_touching_th
     assert sub.json()["payment"]["expected_amount"] == 500.0  # the balance, not the advance
     badges = (await client.get("/api/v1/owners/badges", headers=oh)).json()
     assert badges["approvals"] == 1
+    queue = (await client.get("/api/v1/owners/approvals-queue", headers=oh)).json()
+    card = next(c for c in (queue["items"] if isinstance(queue, dict) else queue) if c["payment_id"] == pay_id)
+    assert card["is_balance"] is True and card["expected_amount"] == 500.0
+    assert card["checks"]["expected_amount"] == 500 and "not checked" in card["checks"]["name"]["text"]
     ok = await client.post(f"/api/v1/payments/{pay_id}/approve", headers=oh, json={"amount_pkr": 500})
     assert ok.status_code == 200, ok.text
     async with db_session_factory() as s:
@@ -137,3 +141,20 @@ async def test_bank_check_lists_every_transfer_credited_today(
     assert (await client.get("/api/v1/owners/bank-check", headers=oh, params={"date": "2020-01-01"})).json()["items"] == []
     stranger = await make_auth_headers(await make_user("+923003010033", role=UserRole.OWNER))
     assert (await client.get("/api/v1/owners/bank-check", headers=stranger, params={"venue_id": str(venue.id)})).status_code == 404
+
+
+async def test_payment_instructions_say_when_a_balance_upload_is_open_or_waiting(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    mock_upload(monkeypatch)
+    owner, _v, court = await half_advance_venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923003010042")
+    ph, oh = await make_auth_headers(player), await make_auth_headers(owner)
+    bid = await booked_with_balance(client, court, oh, ph)
+    url = f"/api/v1/bookings/{bid}/payment-instructions"
+    assert (await client.get(url, headers=ph)).json()["balance_upload"] == "off"
+    await set_flag(db_session_factory, "balance_proof")
+    assert (await client.get(url, headers=ph)).json()["balance_upload"] == "open"
+    await submit_other_proof(client, bid, ph)
+    assert (await client.get(url, headers=ph)).json()["balance_upload"] == "pending"
+    assert (await client.get(url, headers=oh)).json()["balance_upload"] == "off"  # only the player uploads

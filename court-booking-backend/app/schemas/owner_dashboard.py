@@ -75,6 +75,7 @@ class PendingApprovalOut(BaseModel):
     submitted_at: datetime
     minutes_since_submission: float
     checks: PaymentChecksOut  # Section 32 Part 7 -- the five plain-language checks
+    is_balance: bool = False  # audit Phase 3 item 2: a screenshot for the BALANCE of an already-booked booking
 
 
 class OverpaymentOut(BaseModel):

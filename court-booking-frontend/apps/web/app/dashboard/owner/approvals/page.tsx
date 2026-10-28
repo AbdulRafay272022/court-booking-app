@@ -354,6 +354,11 @@ function AmountChips({ item }: { item: ApprovalQueueItem }) {
         : t("appr.amt.unread", { expected: formatPKR(chip.expected) });
   return (
     <div className="flex flex-wrap gap-2">
+      {item.is_balance ? (
+        <span data-testid="balance-chip" className="inline-flex items-center whitespace-nowrap rounded-full border border-owner-border bg-owner-bg px-3 py-1 text-[13px] font-bold text-owner-ink">
+          {t("appr.balanceChip")}
+        </span>
+      ) : null}
       <span data-testid="amount-chip" data-kind={chip.kind} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-bold ${tone}`}>
         <span aria-hidden="true" className="font-extrabold">
           {icon}

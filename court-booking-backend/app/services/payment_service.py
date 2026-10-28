@@ -164,6 +164,8 @@ def build_payment_summary(payment: Payment, booking: Booking) -> tuple[str, str,
     (screenshot amount, else the expected one) with the expected amount for this booking's flow, and says what the
     booking will look like once approved at that amount (credit capped at the price)."""
     expected = int(round(float(booking.advance_amount)))
+    if is_balance_proof(payment) and payment.amount_claimed is not None:
+        expected = int(round(float(payment.amount_claimed)))  # Phase 3 item 2: a balance screenshot is measured against the balance
     paid = default_credit_amount(payment, booking)
     price = int(round(float(booking.price)))
     credited = min(paid, price)
@@ -197,7 +199,14 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
         # audit 2026-10-28 item 12: every sentence in English AND Roman Urdu; the owner screens pick by their language
         return PaymentCheckOut(verdict=verdict, text=en, text_ru=ru)
 
-    if payment.name_match_verdict == "match":
+    if payment.name_match_verdict == "not_checked":
+        # Phase 3 item 2: a friend often pays the balance, so the sender's name is not compared (the receiver account is)
+        name = chk(
+            "not_available",
+            f"Balance payment: the sender's name is not checked{f' (screenshot: {payer_name})' if payer_name else ''}.",
+            f"Baqi raqam: bhejne wale ka naam check nahi hota{f' (screenshot: {payer_name})' if payer_name else ''}.",
+        )
+    elif payment.name_match_verdict == "match":
         name = chk(
             "match",
             f"Name on screenshot: {payer_name}. App account: {account_name}. Matched.",

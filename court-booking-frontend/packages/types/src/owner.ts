@@ -119,6 +119,8 @@ export interface PendingApproval {
   minutes_since_submission: number;
   /** Section 32 Part 7 -- the five plain-language checks for this payment. */
   checks: PaymentChecks;
+  /** audit Phase 3 item 2: a screenshot for the BALANCE of an already-booked booking (approving never re-confirms it). */
+  is_balance?: boolean;
 }
 
 /** Section 32 Part 5: one row per PAYMENT (payment_entries), not per booking -- a booking with an advance

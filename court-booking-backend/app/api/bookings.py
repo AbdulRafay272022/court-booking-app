@@ -334,7 +334,25 @@ async def get_payment_instructions(
             )
         except ValueError:
             reason = "invalid_iban"
+    # audit 2026-10-28 Phase 3 item 2: may the player send a balance screenshot now (flag balance_proof)?
+    balance_upload = "off"
+    if kind == "balance" and booking.player_id == user.id and await flag_on(db, "balance_proof"):
+        from sqlalchemy import select
+
+        from app.models.payment import Payment
+
+        waiting = (
+            await db.execute(
+                select(Payment.id).where(
+                    Payment.booking_id == booking.id,
+                    Payment.review_verdict.is_(None),
+                    Payment.ocr_raw["purpose"].astext == "balance",
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        balance_upload = "pending" if waiting else "open"
     return BookingPaymentInstructionsOut(
+        balance_upload=balance_upload,
         kind=kind,
         amount=amount,
         bank=bank.get("bank"),

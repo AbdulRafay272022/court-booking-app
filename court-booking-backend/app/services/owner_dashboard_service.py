@@ -23,7 +23,7 @@ from app.services.availability_service import AvailabilityService
 from app.services.duplicate_proof import used_on_bookings_map
 from app.services.feature_flag_service import flag_on
 from app.services.overview_slots import operating_day_expr, starts_between_prefilter
-from app.services.payment_service import PaymentService, approval_state, build_payment_checks, overpayment_of
+from app.services.payment_service import PaymentService, approval_state, build_payment_checks, is_balance_proof, overpayment_of
 from app.utils.timezone import pkt_date_of, pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
     GrowthOut,
@@ -420,7 +420,12 @@ class OwnerDashboardService:
                     player_phone=booking.player_phone,
                     ocr_verdict=payment.ocr_verdict,
                     ocr_amount=float(payment.ocr_amount) if payment.ocr_amount is not None else None,
-                    expected_amount=float(booking.advance_amount),
+                    expected_amount=(
+                        float(payment.amount_claimed)
+                        if is_balance_proof(payment) and payment.amount_claimed is not None
+                        else float(booking.advance_amount)
+                    ),
+                    is_balance=is_balance_proof(payment),
                     proof_url=PaymentService.proof_url(payment),
                     submitted_at=payment.created_at,
                     minutes_since_submission=round((now - payment.created_at).total_seconds() / 60, 1),

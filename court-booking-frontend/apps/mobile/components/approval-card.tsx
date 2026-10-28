@@ -99,6 +99,7 @@ export function ApprovalCard({
       style={{ backgroundColor: grey ? palette.mist : palette.white, borderRadius: radius.card, padding: 14, gap: space[3], boxShadow: grey ? undefined : shadow.card }}
     >
       {grey ? <Pill tone="neutral" icon={<Ban size={13} color={palette.body} />} label={STATE_CHIP[item.state as Exclude<typeof item.state, "awaiting">]} /> : null}
+      {item.is_balance ? <Pill tone="info" label="Baqi raqam (balance) ka screenshot" size="sm" testID="balance-chip" /> : null}
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
         <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} uri={item.player_avatar_url} />

@@ -113,4 +113,8 @@ export const ruPlay = {
   "play.done.refundAsk": "Refund maango ({amount})",
   "play.done.refundNote": "Wajah (agar chaho)",
   "play.done.refundSend": "Refund ki darkhwast bhejo",
+  "play.pay.balanceUploadHint": "Transfer kar diya? Uska screenshot yahan bhejo.",
+  "play.pay.balanceUploadButton": "Baqi ka screenshot bhejo",
+  "play.pay.balanceUploadSent": "Screenshot bhej diya. Venue check kar ke darj karega.",
+  "play.pay.balanceUploadPending": "Baqi raqam ka screenshot venue ke paas hai. Woh check kar ke darj karega.",
 } as const;

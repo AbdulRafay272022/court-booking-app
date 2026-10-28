@@ -32,6 +32,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { safeBack } from "@/lib/safe-back";
 import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from "@/lib/player-flow";
 import { RaastQr } from "@/components/raast-qr";
+import { BalanceProofUpload } from "@/components/balance-proof-upload";
 import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
 
 /**
@@ -292,6 +293,7 @@ export default function BookingStatusScreen() {
             {balancePay.data.iban ? <Text variant="body" selectable>{`IBAN: ${balancePay.data.iban}`}</Text> : null}
             <Text variant="meta" tone="muted" selectable>{copy(`Transfer note mein likhein: ${balancePay.data.reference}`, `Write in the transfer note: ${balancePay.data.reference}`)}</Text>
             {balancePay.data.qr_payload ? <RaastQr payload={balancePay.data.qr_payload} /> : null}
+            <BalanceProofUpload bookingId={id} state={balancePay.data.balance_upload ?? "off"} />
           </Card>
         ) : null}
 

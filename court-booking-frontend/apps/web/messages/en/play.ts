@@ -113,4 +113,8 @@ export const enPlay = {
   "play.done.refundAsk": "Ask for a refund ({amount})",
   "play.done.refundNote": "Reason (optional)",
   "play.done.refundSend": "Send the refund request",
+  "play.pay.balanceUploadHint": "Sent it? Send the screenshot here.",
+  "play.pay.balanceUploadButton": "Send balance screenshot",
+  "play.pay.balanceUploadSent": "Screenshot sent. The venue will check it and record it.",
+  "play.pay.balanceUploadPending": "Your balance screenshot is with the venue. They will check it and record it.",
 } as const;

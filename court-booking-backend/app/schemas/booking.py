@@ -212,6 +212,9 @@ class BookingPaymentInstructionsOut(BaseModel):
     reference: str
     qr_payload: str | None = None
     qr_unavailable_reason: str | None = None
+    # Phase 3 item 2: "open" = the player can upload a balance screenshot now, "pending" = one is waiting for the owner,
+    # "off" = not offered (flag off, nothing due, or not the player's own booking)
+    balance_upload: str = "off"
 
 
 class RefundRequestIn(BaseModel):

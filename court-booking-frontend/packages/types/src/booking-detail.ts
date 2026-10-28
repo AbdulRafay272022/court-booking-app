@@ -174,4 +174,6 @@ export interface BookingPaymentInstructions {
   /** Raast QR text with the amount filled in; null when the `iban_qr` flag is off or there is no valid IBAN. */
   qr_payload: string | null;
   qr_unavailable_reason: "flag_off" | "no_iban" | "invalid_iban" | "nothing_due" | null;
+  /** audit Phase 3 item 2 (flag balance_proof): "open" = the player may send a balance screenshot now, "pending" = one is with the owner. */
+  balance_upload?: "open" | "pending" | "off";
 }
