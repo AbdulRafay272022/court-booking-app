@@ -74,7 +74,8 @@ async def test_cancel_after_screenshot_turns_card_grey_and_tells_owner(world, cl
     assert page["total"] == 1
     item = page["items"][0]
     assert item["state"] == "cancelled_by_player" and item["cancelled_at"] is not None and item["has_screenshot"] is True
-    assert (await client.get(BADGES, headers=oh)).json()["approvals"] == 1
+    # audit 2026-10-28 item 7: the greyed card stays on the page, but the badge only counts proofs the owner can act on
+    assert (await client.get(BADGES, headers=oh)).json()["approvals"] == 0
     # the owner gets a bell row (in_app: no device token) with the booking as reference
     rows = await log_rows(db_session_factory, owner.id, "owner_player_cancelled")
     assert len(rows) == 1 and str(rows[0].reference_id) == booking_id and rows[0].channel == "in_app"
