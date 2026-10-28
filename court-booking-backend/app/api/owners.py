@@ -16,6 +16,7 @@ from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.services.duplicate_proof import used_on_bookings
 from app.schemas.staff_activity import StaffActivityOut
+from app.schemas.bank_check import BankCheckOut
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
 from app.schemas.owner_dashboard import ApprovalsQueuePageOut, GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
@@ -456,3 +457,14 @@ async def owner_staff_activity(
     from app.services.staff_activity_service import staff_activity
 
     return StaffActivityOut(**await staff_activity(db, owner, venue_id, date_from, date_to))
+
+
+@router.get("/bank-check", response_model=BankCheckOut)
+async def owner_bank_check(
+    db: DbSession, owner: RequireStaffCapable, venue_id: uuid.UUID | None = None, date_: date | None = Query(None, alias="date")
+) -> BankCheckOut:
+    """Audit 2026-10-28 Phase 3 item 2: "bank se mila lein" -- every transfer credited on one Pakistan day, to tick off against
+    the bank statement (owner; staff with view_ledger; admin with venue_id)."""
+    from app.services.bank_check_service import bank_check
+
+    return BankCheckOut(**await bank_check(db, owner, venue_id, date_))

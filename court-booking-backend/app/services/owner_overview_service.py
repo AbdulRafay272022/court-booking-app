@@ -1087,7 +1087,11 @@ class OwnerOverviewService:
                         Court.venue_id.in_(approval_venues),
                         Court.is_active.is_(True),
                         Payment.review_verdict.is_(None),
-                        Booking.status.in_(AWAITING_STATES),
+                        or_(
+                            Booking.status.in_(AWAITING_STATES),
+                            # audit 2026-10-28 Phase 3 item 2: a balance screenshot on a booked booking is work too
+                            and_(Booking.status == BookingStatus.BOOKED, Payment.ocr_raw["purpose"].astext == "balance"),
+                        ),
                     )
                 )
                 or 0

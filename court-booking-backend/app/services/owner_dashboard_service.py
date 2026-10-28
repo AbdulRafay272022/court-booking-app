@@ -395,7 +395,7 @@ class OwnerDashboardService:
             model = PendingApprovalOut
             if queue:
                 model = ApprovalQueueItemOut
-                state = approval_state(booking)
+                state = approval_state(booking, payment)
                 extra = dict(
                     state=state,
                     cancelled_at=booking.updated_at if booking.status == BookingStatus.CANCELLED else None,
