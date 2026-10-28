@@ -1,5 +1,6 @@
 import type {
   StaffActivity,
+  BankCheck,
   Booking,
   Growth,
   Ledger,
@@ -145,6 +146,8 @@ export function createOwnersApi(client: ApiClient) {
     myPermissions: () => client.request<MyPermissions>("/owners/me/permissions"),
 
     /** Audit 2026-10-28 item 16: per person activity at one venue (owner / admin only). Dates are Pakistan YYYY-MM-DD. */
+    bankCheck: (venueId: string, date?: string) =>
+      client.request<BankCheck>(`/owners/bank-check?${new URLSearchParams({ venue_id: venueId, ...(date ? { date } : {}) }).toString()}`),
     staffActivity: (venueId: string, dateFrom?: string, dateTo?: string) =>
       client.request<StaffActivity>(
         `/owners/staff-activity?${new URLSearchParams({ venue_id: venueId, ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) }).toString()}`,
