@@ -342,3 +342,32 @@ async def test_webhook_button_answers_the_short_payment(client, db_session_facto
     assert claim.status == "disputed"
     assert await _balance(db_session_factory, player) == 5
     assert sent and "venue" in sent[-1]["text"]["body"].lower()
+
+
+async def test_khelo_whatsapp_templates_go_out_only_with_the_flag(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+    from app.services.whatsapp_service import WhatsAppService
+    from tests.round2_helpers import future_day, hold
+
+    sent = []
+
+    async def fake_send(self, payload):
+        sent.append(payload)
+        return {"messages": [{"id": "wamid.t"}]}
+
+    monkeypatch.setattr(WhatsAppService, "_send", fake_send)
+    mock_upload(monkeypatch)
+    owner, _v, court = await half_advance_venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone="+923003110141")
+    player = await make_user("+923003110142")
+    ph, oh = await make_auth_headers(player), await make_auth_headers(owner)
+    await hold(client, court, ph, future_day(5))
+    assert await log_rows(db_session_factory, user_id=player.id, event_type="advance_payment_wa") == []
+
+    await set_flag(db_session_factory, "whatsapp_templates")
+    await hold(client, court, ph, future_day(4))
+    rows = await log_rows(db_session_factory, user_id=player.id, event_type="advance_payment_wa")
+    assert len(rows) == 1  # noqa: the day-5 hold (flag off) sent none and rows[0].template_name == "khelo_advance_payment"
+    # the approval sends the receipt and (money still due) the balance instructions
+    bid = await booked_with_balance(client, court, oh, ph)
+    assert await log_rows(db_session_factory, user_id=player.id, event_type="payment_receipt_wa")
+    assert any(p.get("template", {}).get("name") == "khelo_payment_receipt" for p in sent)
+    assert bid

@@ -369,6 +369,11 @@ class NotificationService:
             f"Reminder: your booking at {court_name} is {_when(starts_at, ends_at)}.",
             reference_id=booking_id,
         )
+        when = _when(starts_at, ends_at)
+        await self.send_khelo_whatsapp(
+            user, "booking_reminder_wa", f"Yaad dehaani: {court_name}, {when}. Waqt par pohanchein.",
+            template_name="khelo_booking_reminder", template_params=[court_name, when, "Khelo"], reference_id=booking_id,
+        )
 
     # -- Tier 2 ----------------------------------------------------------
 
@@ -557,6 +562,31 @@ class NotificationService:
             )
         else:
             await self._send_push_tier(user, event_type, title, body, reference_id=reference_id, bell=True)
+
+    async def send_khelo_whatsapp(
+        self, user: User, event_type: str, body: str, *, template_name: str, template_params: list[str],
+        reference_id: uuid.UUID | None = None,
+    ) -> None:
+        """audit 2026-10-28 Phase 3 item 8: a WhatsApp-ONLY copy of something the app already shows (hold instructions,
+        balance, receipt, reminder, walk-in welcome), sent with an approved khelo_* template. Nothing at all while the
+        `whatsapp_templates` flag is off (push / bell for these already exist elsewhere, so they are not doubled). Once per
+        (user, event, reference). Never raises."""
+        try:
+            if not await flag_on(self.db, "whatsapp_templates"):
+                return
+            if reference_id is not None and await self.has_sent(user.id, event_type, reference_id):
+                return
+            template_used, error = await self._whatsapp_smart_best_effort(
+                user, body, template_name=template_name, template_params=template_params
+            )
+            template = TEMPLATES.get(template_name)
+            await self._log(
+                user_id=user.id, channel="whatsapp", event_type=event_type, reference_id=reference_id,
+                cost_category=template.category if template else "utility", template_name=template_used,
+                status_value="failed" if error else "sent", error_message=error,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notification.khelo_whatsapp_failed", event_type=event_type, error=type(exc).__name__)
 
     async def notify_owner_cnic_result(self, *, owner: User, approved: bool, reason: str | None) -> None:
         """audit 2026-10-28 Phase 2 item 1: the admin approved / did not approve the owner's CNIC."""

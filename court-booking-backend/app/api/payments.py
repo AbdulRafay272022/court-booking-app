@@ -121,6 +121,40 @@ async def _after_money(db, settings, booking) -> None:
         structlog.get_logger().warning("phase3.after_money_failed", exc_info=True)
 
 
+async def _receipt_whatsapp(db, settings, booking, credited: int) -> None:
+    """audit Phase 3 item 8: khelo_payment_receipt (+ khelo_balance_payment when money is still due) on WhatsApp, only with the
+    whatsapp_templates flag on; the app's own push already says the booking is confirmed."""
+    if credited <= 0 or booking.player_id is None:
+        return
+    from app.services.owner_overview_service import short_code
+    from app.utils.timezone import format_pkr
+
+    player = await db.get(User, booking.player_id)
+    if player is None:
+        return
+    code = short_code(booking.id)
+    notifications = NotificationService(db, settings)
+    paid, due = float(booking.amount_paid or 0), float(booking.balance_due or 0)
+    await notifications.send_khelo_whatsapp(
+        player, "payment_receipt_wa",
+        f"Booking {code}: {format_pkr(credited)} mil gaye. Kul ada {format_pkr(paid)}, baqi {format_pkr(due)}. Shukriya!",
+        template_name="khelo_payment_receipt",
+        template_params=[code, format_pkr(credited), format_pkr(paid), format_pkr(due)],
+        reference_id=None,
+    )
+    if due > 0:
+        court = await db.get(Court, booking.court_id)
+        venue = await db.get(Venue, court.venue_id) if court else None
+        bank = (VenueService(db, settings).decrypted_bank_details(venue) or {}) if venue else {}
+        account = " / ".join(x for x in (bank.get("bank"), bank.get("account_title"), bank.get("iban") or bank.get("account_number")) if x)
+        if account:
+            await notifications.send_khelo_whatsapp(
+                player, "balance_payment_wa",
+                f"Booking {code}: baqi {format_pkr(due)}. Transfer se dena ho to is account mein bhejein: {account}.",
+                template_name="khelo_balance_payment", template_params=[code, format_pkr(due), account], reference_id=booking.id,
+            )
+
+
 @router.post("/payments/{payment_id}/approve", response_model=PaymentSubmitResponse)
 async def approve_payment(
     payment_id: uuid.UUID,
@@ -137,6 +171,7 @@ async def approve_payment(
     )
     payment_service.require_awaiting(payment, booking)
     await payment_service.require_duplicate_confirmed(payment, bool(payload and payload.confirm_duplicate))
+    paid_before = int(round(float(booking.amount_paid or 0)))
 
     payment = await payment_service.approve_payment(
         payment,
@@ -147,6 +182,7 @@ async def approve_payment(
     )
     await db.refresh(booking)
     await _after_money(db, settings, booking)
+    await _receipt_whatsapp(db, settings, booking, int(round(float(booking.amount_paid or 0))) - paid_before)
 
     court = await db.get(Court, booking.court_id)
     player = await db.get(User, booking.player_id) if booking.player_id else None

@@ -87,6 +87,19 @@ async def hold_booking(
                     owner=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
                     reference_id=booking.id,
                 )
+            # audit Phase 3 item 8: the advance instructions on WhatsApp too (approved template, flag whatsapp_templates)
+            from app.utils.timezone import format_pkr, format_slot_label
+
+            account = " / ".join(
+                x for x in (bank_details.get("bank"), bank_details.get("account_title"), bank_details.get("iban") or bank_details.get("account_number")) if x
+            ) or "venue se poochein"
+            await NotificationService(db, settings).send_khelo_whatsapp(
+                user, "advance_payment_wa",
+                f"{venue.name}: {court.name} hold ho gaya. Advance {format_pkr(booking.advance_amount)} is account mein bhejein: {account}.",
+                template_name="khelo_advance_payment",
+                template_params=[venue.name, f"{court.name}, {format_slot_label(booking.starts_at, booking.ends_at)}", format_pkr(booking.advance_amount), account],
+                reference_id=booking.id,
+            )
 
     return BookingHoldResponse(booking=BookingOut.model_validate(booking), payment_instructions=payment_instructions)
 
@@ -127,6 +140,15 @@ async def create_walkin_booking(
         legacy_units=legacy,
         whatsapp_opt_in=payload.whatsapp_opt_in,
     )
+    if booking.whatsapp_opt_in and booking.player_id:
+        venue = await db.get(Venue, court.venue_id)
+        player = await db.get(User, booking.player_id)
+        if venue is not None and player is not None:
+            await NotificationService(db, settings).send_khelo_whatsapp(
+                player, "walkin_welcome_wa",
+                f"{venue.name} mein khelne ka shukriya! Agli booking Khelo app se karein aur rasid WhatsApp par payein.",
+                template_name="khelo_walkin_welcome", template_params=[venue.name], reference_id=booking.id,
+            )
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
