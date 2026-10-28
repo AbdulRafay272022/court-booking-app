@@ -16,14 +16,14 @@ Status legend: TODO / DONE / PARTIAL / BLOCKED
 | 6 | player photo everywhere | DONE | 22c6849 | app needs EAS build |
 | 7 | approvals badge | DONE | 220c6ed |  |
 | 8 | audit real actor + bank edits | DONE | 573fcd1 |  |
-| 9 | admin approve completeness | TODO | | |
-| 10 | refund entry bugs | TODO | | |
-| 11 | web staff permissions | TODO | | |
-| 12 | web English -> Roman Urdu | TODO | | |
-| 13 | cards: no indoor/outdoor chips; amenities hover/tap | TODO | | |
-| 14 | refund policy everywhere + "Refund maangein" | TODO | | |
-| 15 | settings required, no default controls | TODO | | |
-| 16 | staff dashboard | TODO | | |
+| 9 | admin approve completeness | DONE | eeba958 |  |
+| 10 | refund entry bugs | PARTIAL | 9e86ad6 | cash refund row -> Phase 2 item 3 |
+| 11 | web staff permissions | DONE | 2574091 |  |
+| 12 | web English -> Roman Urdu | DONE | 44d888b | loanwords/admin/legal kept, decisions #7 |
+| 13 | cards: no indoor/outdoor chips; amenities hover/tap | DONE | 9bce471 |  |
+| 14 | refund policy everywhere + "Refund maangein" | PARTIAL | 7094919 | 'Refund maangein' -> Phase 2 item 3 |
+| 15 | settings required, no default controls | DONE | 69544bd | decisions #8 #9 |
+| 16 | staff dashboard | DONE | d7dc3df | app needs EAS build |
 | 17 | owner instant notice on staff no-show/short | TODO | | |
 | 18 | player notice on no-show/short | TODO | | |
 | 19 | walk-in phone + opt-in tick | TODO | | |
