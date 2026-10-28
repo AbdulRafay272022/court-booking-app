@@ -1,10 +1,13 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { View } from "react-native";
 import { Ban, TriangleAlert } from "lucide-react-native";
-import { approvalSummary, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
+import { approvalSummary, type ApprovalPlayerContext, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
 import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
 import { Avatar, Banner, Button, Input, MoneyRows, Pill, RadioGroup, Text } from "@/components/ui";
 
+import { api } from "@/lib/api";
+import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { duplicateChipCount, duplicateUsedText } from "@/lib/overview";
 import { refundAmountFor } from "@/lib/refund-confirm";
@@ -118,6 +121,8 @@ export function ApprovalCard({
           </Text>
         ) : null}
       </View>
+
+      {item.player_context ? <PlayerContext ctx={item.player_context} /> : null}
 
       {!grey ? (
         <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
@@ -440,3 +445,35 @@ export function BulkApproveSheet({
   );
 }
 
+/** audit 2026-10-28 Phase 3 item 5 (flag player_dues): this player's record and open dues at this venue. The booking is
+ * never blocked; "Done" records the old balance as received. */
+function PlayerContext({ ctx }: { ctx: ApprovalPlayerContext }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function done(id: string) {
+    setBusy(id);
+    setError(null);
+    try {
+      await api.phase3.dueDone(id);
+      await queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+      await queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <View style={{ gap: space[2] }} testID="approval-player-context">
+      <Text variant="meta" weight="bold" tone={ctx.no_shows > 0 ? "danger" : "muted"}>{`No-show ${ctx.no_shows} / kul bookings ${ctx.total_bookings}`}</Text>
+      {ctx.dues.map((d) => (
+        <View key={d.id} style={{ flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" }} testID="approval-due">
+          <Text variant="body" style={{ flex: 1 }}>{`Purana baqi ${d.code}: PKR ${formatPKR(d.due_pkr)}`}</Text>
+          <Button label="Done" size="sm" variant="soft" loading={busy === d.id} onPress={() => done(d.id)} testID="approval-due-done" />
+        </View>
+      ))}
+      {error ? <Banner tone="danger" body={error} /> : null}
+    </View>
+  );
+}

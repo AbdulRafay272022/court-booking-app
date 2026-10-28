@@ -16,7 +16,7 @@ export default function OwnerStaffActivityPage() {
         <p className="text-sm text-owner-ink-muted">{t("odash.sact.subtitle")}</p>
       </div>
       {activeVenueId ? (
-        <StaffActivityView queryKey={["staff-activity", activeVenueId]} load={(from, to) => api.owners.staffActivity(activeVenueId, from, to)} />
+        <StaffActivityView queryKey={["staff-activity", activeVenueId]} load={(from, to) => api.owners.staffActivity(activeVenueId, from, to)} canDecide />
       ) : null}
     </div>
   );

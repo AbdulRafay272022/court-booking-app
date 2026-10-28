@@ -33,6 +33,7 @@ import { safeBack } from "@/lib/safe-back";
 import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from "@/lib/player-flow";
 import { RaastQr } from "@/components/raast-qr";
 import { BalanceProofUpload } from "@/components/balance-proof-upload";
+import { BookingExtrasCard } from "@/components/booking-extras";
 import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
 
 /**
@@ -296,6 +297,8 @@ export default function BookingStatusScreen() {
             <BalanceProofUpload bookingId={id} state={balancePay.data.balance_upload ?? "off"} />
           </Card>
         ) : null}
+
+        {booking.player_id ? <BookingExtrasCard bookingId={id} /> : null}
 
         {detail ? (
           <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-payment-lines">

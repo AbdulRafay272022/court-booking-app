@@ -51,6 +51,7 @@ export const ROUTE_NEEDS: { prefix: string; needs: StaffPermission[] | "owner" }
   { prefix: "/dashboard/bookings", needs: ["view_ledger"] },
   { prefix: "/dashboard/owner/ledger", needs: ["view_ledger"] },
   { prefix: "/dashboard/owner/bank-check", needs: ["view_ledger"] },
+  { prefix: "/dashboard/owner/dues", needs: ["view_ledger"] },
   { prefix: "/dashboard/owner/refunds", needs: ["mark_refunds"] },
   { prefix: "/dashboard/owner/checkin", needs: ["check_in"] },
   { prefix: "/dashboard/owner/growth", needs: ["view_growth"] },

@@ -336,6 +336,49 @@ function useCardText(item: ApprovalQueueItem) {
   return { who, court, when, sent: fmt.relative(item.submitted_at) };
 }
 
+/** audit Phase 3 item 5: this player's old dues at this venue (booking ID + "Done") and "No-show X / kul bookings Y". The new
+ * booking is never blocked by them. */
+function PlayerContext({ ctx }: { ctx: NonNullable<ApprovalQueueItem["player_context"]> }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function done(id: string) {
+    setBusy(id);
+    setError(null);
+    try {
+      await api.phase3.dueDone(id);
+      await queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+      await queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+    } catch (e) {
+      setError(friendlyErrorMessage(e, t));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-owner-border bg-owner-bg px-3 py-2 text-[13px]" data-testid="player-context">
+      <span className={ctx.no_shows > 0 ? "font-bold text-owner-danger" : "text-owner-ink-muted"}>
+        {t("odash.p3.record", { noShows: String(ctx.no_shows), total: String(ctx.total_bookings) })}
+      </span>
+      {ctx.dues.map((d) => (
+        <div key={d.id} className="flex flex-wrap items-center justify-between gap-2" data-testid="player-due">
+          <span className="font-bold text-owner-ink">{t("odash.p3.oldDue", { code: d.code, amount: formatPKR(d.due_pkr) })}</span>
+          <button
+            type="button"
+            disabled={busy === d.id}
+            onClick={() => done(d.id)}
+            className="cursor-pointer whitespace-nowrap rounded-full border border-owner-ink px-3 py-1 text-[12.5px] font-bold disabled:opacity-60"
+          >
+            {t("odash.p3.done")}
+          </button>
+        </div>
+      ))}
+      {error ? <span className="text-owner-danger">{error}</span> : null}
+    </div>
+  );
+}
+
 function AmountChips({ item }: { item: ApprovalQueueItem }) {
   const t = useT();
   const chip = amountChip(item);
@@ -487,6 +530,7 @@ function AwaitingCard({
             <p className="text-[12.5px] text-owner-ink-faint">{t("appr.sent", { when: sent })}</p>
           </div>
           <AmountChips item={item} />
+          {item.player_context ? <PlayerContext ctx={item.player_context} /> : null}
         </div>
         <div className="min-w-0">
           <Shot item={item} who={who} />

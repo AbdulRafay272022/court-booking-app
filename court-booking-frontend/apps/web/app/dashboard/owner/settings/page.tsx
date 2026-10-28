@@ -137,6 +137,15 @@ export default function VenueSettingsPage() {
               initialCutoff={activeVenue.cancellation_cutoff_hours}
             />
           ) : null}
+          {/* audit Phase 3 item 3: the owner-funded points discount (shown to players only while player_points is on). */}
+          {activeVenue && isOwner ? (
+            <VenuePointsCard
+              key={`points-${activeVenue.id}`}
+              venueId={activeVenue.id}
+              initialEnabled={!!activeVenue.points_discount_enabled}
+              initialAmount={activeVenue.points_discount_pkr ?? 500}
+            />
+          ) : null}
           {/* Stage 2: hold / reminders / auto-cancel per venue (null = default), saved with PUT .../timers. */}
           {activeVenue ? <VenueTimersCard key={`timers-${activeVenue.id}`} venueId={activeVenue.id} /> : null}
           {/* Stage 2: the owner's own CNIC (account-level, not per venue); staff never see it. */}
@@ -577,6 +586,48 @@ function VenueCancellationCard({
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
       <SaveMessage message={message} />
       <PrimaryButton label={t("setup.set.saveCancel")} onClick={save} busy={saving} />
+    </div>
+  );
+}
+
+function VenuePointsCard({ venueId, initialEnabled, initialAmount }: { venueId: string; initialEnabled: boolean; initialAmount: number }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [enabled, setEnabled] = useState(initialEnabled);
+  const [amount, setAmount] = useState(String(initialAmount));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+  const valid = /^\d{1,6}$/.test(amount.trim()) && Number(amount) <= 100000;
+
+  async function save() {
+    if (!valid) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api.venues.update(venueId, { points_discount_enabled: enabled, points_discount_pkr: Number(amount) });
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ kind: "ok", text: t("odash.p3.pointsSaved") });
+    } catch (e) {
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-owner-border bg-white p-5" data-testid="venue-points">
+      <h3 className="text-[16px] font-bold">{t("odash.p3.pointsTitle")}</h3>
+      <p className="text-[13.5px] text-owner-ink-muted">{t("odash.p3.pointsHelp")}</p>
+      <label className="flex cursor-pointer items-center gap-2 text-[14px] font-semibold">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-5 w-5" />
+        {t("odash.p3.pointsOn")}
+      </label>
+      <label className="flex flex-col gap-1 text-[13px] font-semibold">
+        {t("odash.p3.pointsAmount")}
+        <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-40 rounded-xl border border-owner-border px-3 py-2 text-[15px]" />
+      </label>
+      <SaveMessage message={message} />
+      <PrimaryButton label={t("odash.p3.pointsSave")} onClick={save} busy={saving} />
     </div>
   );
 }

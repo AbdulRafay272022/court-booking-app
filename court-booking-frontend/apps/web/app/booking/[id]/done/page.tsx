@@ -2,6 +2,7 @@
 
 import { courtLabel } from "@/components/court-label";
 import { PaymentInstructionsCard } from "@/components/booking/payment-instructions-card";
+import { BookingExtrasCard } from "@/components/booking/booking-extras-card";
 
 import { use, useState } from "react";
 import { useRequireAuth } from "@/lib/use-require-auth";
@@ -110,6 +111,9 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
           // audit 2026-10-28 item 20: the balance can be sent by transfer too (bank details + Raast QR when switched on)
           <PaymentInstructionsCard bookingId={id} />
         ) : null}
+
+        {/* audit Phase 3: points rule + discount, the short-payment question, "Pohanch gaya" / "Main aaya tha" */}
+        <BookingExtrasCard bookingId={id} />
 
         <section className="flex flex-col gap-2 rounded-fl-card bg-fl-white p-5" data-testid="detail-payments">
           <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.paymentsTitle")}</h2>

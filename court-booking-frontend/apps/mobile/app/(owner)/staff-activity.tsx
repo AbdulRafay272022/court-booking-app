@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, formatWhen, pktDateString, type StaffActivityRow } from "@court-booking/types";
 import { formatPkr, palette, radius, space } from "@court-booking/ui-tokens";
-import { Chip, EmptyState, ErrorState, Screen, SkeletonCard, Text } from "@/components/ui";
+import { Banner, Button, Chip, EmptyState, ErrorState, Screen, SkeletonCard, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -67,9 +67,24 @@ export default function StaffActivityScreen() {
             </Text>
           ) : (
             data.no_shows.map((n) => (
-              <View key={n.booking_id} style={{ backgroundColor: palette.white, borderRadius: radius.tile, padding: space[3], gap: 2 }}>
+              <View
+                key={n.booking_id}
+                testID={n.highlight ? "sact-no-show-red" : "sact-no-show"}
+                style={{
+                  backgroundColor: n.highlight ? palette.dangerTint : palette.white,
+                  borderColor: n.highlight ? palette.dangerBorder : "transparent",
+                  borderWidth: n.highlight ? 1.5 : 0,
+                  borderRadius: radius.tile,
+                  padding: space[3],
+                  gap: 2,
+                }}
+              >
                 <Text variant="bodyStrong">{[n.player_name ?? "Player", n.court_name, n.starts_at ? formatWhen(n.starts_at, new Date(), "ru") : null].filter(Boolean).join(" · ")}</Text>
                 <Text variant="meta" tone="muted">{`${n.marked_by_name ?? "?"} ne mark kiya, ${formatWhen(n.marked_at, new Date(), "ru")}`}</Text>
+                {n.highlight ? <Text variant="meta" weight="bold" tone="danger">GPS: player venue par tha</Text> : null}
+                {n.player_replied ? <Text variant="body">{`Player ne kaha: main aaya tha${n.player_note ? ` ("${n.player_note}")` : ""}`}</Text> : null}
+                {n.owner_decision ? <Text variant="meta" tone="muted">{n.owner_decision === "reverse" ? "Aap ne no-show hata diya." : "Aap ne no-show rakha."}</Text> : null}
+                {n.reply_id && !n.owner_decision ? <NoShowDecision replyId={n.reply_id} /> : null}
               </View>
             ))
           )}
@@ -100,6 +115,34 @@ function PersonCard({ p }: { p: StaffActivityRow }) {
       {line("Transfer", formatPkr(p.transfers_pkr))}
       {line("Refund diye", formatPkr(p.refunds_paid_pkr))}
       {line("Kul darj", formatPkr(p.total_recorded_pkr))}
+    </View>
+  );
+}
+
+/** audit 2026-10-28 Phase 3 item 6: the owner's answer to "Main aaya tha" (keep the no-show, or take it off). */
+function NoShowDecision({ replyId }: { replyId: string }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function decide(decision: "keep" | "reverse") {
+    setBusy(decision);
+    setError(null);
+    try {
+      await api.phase3.decideNoShow(replyId, decision);
+      await queryClient.invalidateQueries({ queryKey: ["staff-activity"] });
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <View style={{ gap: space[2], paddingTop: space[1] }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+        <Button label="No-show rakhein" size="sm" variant="soft" loading={busy === "keep"} onPress={() => decide("keep")} testID="sact-noshow-keep" />
+        <Button label="No-show hatayein" size="sm" loading={busy === "reverse"} onPress={() => decide("reverse")} testID="sact-noshow-reverse" />
+      </View>
+      {error ? <Banner tone="danger" body={error} /> : null}
     </View>
   );
 }

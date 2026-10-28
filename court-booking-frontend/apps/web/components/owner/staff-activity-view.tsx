@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { addDays, pktDateString, type StaffActivity } from "@court-booking/types";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -17,7 +18,23 @@ const PRESETS = [7, 30, 90] as const;
  * staff): bookings marked, no-shows, check-ins, walk-ins, short payments ("kam mila"), cash, transfers, refunds, total; and
  * the no-show list with who marked it and when. Numbers come from audit_log + payment_entries on the server.
  */
-export function StaffActivityView({ queryKey, load }: { queryKey: unknown[]; load: (from: string, to: string) => Promise<StaffActivity> }) {
+export function StaffActivityView({
+  queryKey,
+  load,
+  canDecide = false,
+}: {
+  queryKey: unknown[];
+  load: (from: string, to: string) => Promise<StaffActivity>;
+  /** audit Phase 3 item 6: the venue's own view may keep / reverse a no-show the player answered ("Main aaya tha"). */
+  canDecide?: boolean;
+}) {
+  const decideClient = useQueryClient();
+  const onDecideNoShow = canDecide
+    ? async (replyId: string, decision: "keep" | "reverse") => {
+        await api.phase3.decideNoShow(replyId, decision);
+        await decideClient.invalidateQueries({ queryKey: queryKey.slice(0, 1) });
+      }
+    : null;
   const t = useT();
   const fmt = useFmt();
   const [days, setDays] = useState<(typeof PRESETS)[number]>(30);
@@ -117,13 +134,35 @@ export function StaffActivityView({ queryKey, load }: { queryKey: unknown[]; loa
             ) : (
               <ul className="flex flex-col divide-y divide-owner-border-light rounded-2xl border border-owner-border bg-owner-surface">
                 {query.data.no_shows.map((n) => (
-                  <li key={n.booking_id} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 text-sm">
-                    <span className="font-semibold">
-                      {n.player_name ?? t("odash.sact.player")} · {n.court_name ?? ""} · {n.starts_at ? fmt.when(n.starts_at) : ""}
-                    </span>
-                    <span className="text-owner-ink-muted">
-                      {t("odash.sact.markedBy", { name: n.marked_by_name ?? "?", when: fmt.when(n.marked_at) })}
-                    </span>
+                  <li
+                    key={n.booking_id}
+                    data-testid={n.highlight ? "no-show-highlight" : "no-show-row"}
+                    className={`flex flex-col gap-1 px-4 py-3 text-sm ${n.highlight ? "border-l-4 border-red-600 bg-red-50" : ""}`}
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-semibold">
+                        {n.player_name ?? t("odash.sact.player")} · {n.court_name ?? ""} · {n.starts_at ? fmt.when(n.starts_at) : ""}
+                      </span>
+                      <span className="text-owner-ink-muted">
+                        {t("odash.sact.markedBy", { name: n.marked_by_name ?? "?", when: fmt.when(n.marked_at) })}
+                      </span>
+                    </div>
+                    {n.highlight ? <span className="font-bold text-red-700">{t("odash.p3.gpsThere")}</span> : null}
+                    {n.player_replied ? (
+                      <span className="text-owner-ink">{t("odash.p3.playerSaysCame")}{n.player_note ? `: "${n.player_note}"` : ""}</span>
+                    ) : null}
+                    {n.reply_id && !n.owner_decision && onDecideNoShow ? (
+                      <span className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => onDecideNoShow(n.reply_id!, "keep")} className="cursor-pointer rounded-full border border-owner-border px-3 py-1 text-[12.5px] font-bold">
+                          {t("odash.p3.keepNoShow")}
+                        </button>
+                        <button type="button" onClick={() => onDecideNoShow(n.reply_id!, "reverse")} className="cursor-pointer rounded-full border border-owner-ink px-3 py-1 text-[12.5px] font-bold">
+                          {t("odash.p3.reverseNoShow")}
+                        </button>
+                      </span>
+                    ) : n.owner_decision ? (
+                      <span className="text-owner-ink-muted">{n.owner_decision === "reverse" ? t("odash.p3.reversed") : t("odash.p3.kept")}</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>

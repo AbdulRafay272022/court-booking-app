@@ -86,6 +86,7 @@ export default function OwnerMoreScreen() {
       items: [
         { key: "ledger", label: "Ledger", sub: "Har payment ka hisaab", icon: Receipt, tone: "open", perm: "view_ledger", onPress: () => router.navigate("/(owner)/(tabs)/ledger") },
         { key: "bankCheck", label: "Bank se mila lein", sub: "Aaj transfer se kitna aaya", icon: Receipt, perm: "view_ledger", onPress: go("/(owner)/bank-check") },
+        { key: "dues", label: "Baqi raqam (dues)", sub: "Kis booking par paisa baqi hai", icon: Receipt, perm: "view_ledger", onPress: go("/(owner)/dues") },
         {
           key: "refunds",
           label: "Refunds",
