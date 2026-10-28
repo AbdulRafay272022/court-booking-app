@@ -1,4 +1,5 @@
 import type {
+  RefundQueueEntry,
   StaffActivity,
   AdminIdentityFull,
   AdminIdentityPage,
@@ -25,7 +26,7 @@ import { toQuery } from "./util";
 export function createAdminApi(client: ApiClient) {
   return {
     /** Stage 2 CNIC review. The full view writes an audit row on every call. */
-    ownerIdentities: (filter: "missing" | "duplicates" | "unverified" | "all" = "all", page = 1) =>
+    ownerIdentities: (filter: "missing" | "duplicates" | "unverified" | "rejected" | "all" = "all", page = 1) =>
       client.request<AdminIdentityPage>(`/admin/owner-identities${toQuery({ filter, page })}`),
     ownerIdentity: (userId: string) => client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}`),
     verifyOwnerIdentity: (userId: string) =>
@@ -98,6 +99,9 @@ export function createAdminApi(client: ApiClient) {
       client.request<AdminUser[]>(`/admin/users${toQuery(params)}`),
 
     disputes: () => client.request<Dispute[]>("/admin/disputes"),
+
+    /** audit 2026-10-28 Phase 2 item 4: every refund owed on the platform (the app admin's Refunds screen). */
+    refundQueue: () => client.request<RefundQueueEntry[]>("/admin/disputes/refund-queue"),
 
     suspendUser: (userId: string, reason: string) =>
       client.request<AdminUser>(`/admin/users/${userId}/suspend`, {
