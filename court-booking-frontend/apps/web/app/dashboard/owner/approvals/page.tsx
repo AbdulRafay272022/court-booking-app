@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
-import { useT } from "@/components/i18n/lang-provider";
+import { useLang, useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
 import { pollInterval } from "@/lib/polling";
@@ -625,14 +625,15 @@ const CHECK_COLORS: Record<string, string> = {
 };
 const CHECK_ICONS: Record<string, string> = { match: "\u2713", mismatch: "\u2715", warning: "!" };
 
-function CheckRow({ check }: { check: { verdict: string; text: string } }) {
+function CheckRow({ check }: { check: { verdict: string; text: string; text_ru?: string | null } }) {
+  const lang = useLang();
   const color = CHECK_COLORS[check.verdict] ?? "var(--color-fl-muted2)";
   return (
     <li className="flex items-start gap-2.5">
       <span aria-hidden="true" className="mt-0.5 w-4 shrink-0 text-center text-[13px] font-extrabold" style={{ color }}>
         {CHECK_ICONS[check.verdict] ?? "\u2013"}
       </span>
-      <span className="flex-1 text-[13px] leading-[18px] text-owner-ink">{check.text}</span>
+      <span className="flex-1 text-[13px] leading-[18px] text-owner-ink">{lang === "ru" ? (check.text_ru ?? check.text) : check.text}</span>
     </li>
   );
 }

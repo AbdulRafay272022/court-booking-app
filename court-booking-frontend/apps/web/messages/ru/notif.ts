@@ -2,8 +2,8 @@
 // Owner-facing text uses "karein", player-facing text uses "karo" (the tone rule).
 export const ruNotif = {
   // Owner nav
-  "notif.nav.overview": "Overview",
-  "notif.nav.bookings": "Bookings",
+  "notif.nav.overview": "Aaj ka jaiza",
+  "notif.nav.bookings": "Bookings ki tareekh",
   "notif.nav.walkin": "Booking add karein",
   "notif.nav.pendingAria": "{label}, {n} intezar mein",
   "notif.nav.pendingCount": "{n} intezar mein",

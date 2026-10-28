@@ -42,6 +42,8 @@ export interface Payment {
 export interface PaymentCheck {
   verdict: "match" | "mismatch" | "warning" | "not_available" | "not_configured";
   text: string;
+  /** audit 2026-10-28 item 12: the same sentence in Roman Urdu (older API builds: absent, fall back to `text`). */
+  text_ru?: string | null;
 }
 
 /** Section 32 Part 7 -- the five plain-language checks shown on the
@@ -51,6 +53,7 @@ export interface PaymentChecks {
   name: PaymentCheck;
   amount: PaymentCheck;
   balance_text: string;
+  balance_text_ru?: string | null;
   time: PaymentCheck;
   bank: PaymentCheck;
   duplicate: PaymentCheck;

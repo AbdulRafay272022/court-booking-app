@@ -115,7 +115,10 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen bg-owner-bg" />;
   }
 
-  const currentLabel = NAV.find((n) => isNavActive(pathname, n.href))?.label ?? t("odash.nav.dashboard");
+  // Pages that are not in the sidebar still get their own title in the phone top bar (audit 2026-10-28 B8: check-in said "Dashboard").
+  const currentLabel =
+    NAV.find((n) => isNavActive(pathname, n.href))?.label ??
+    (pathname.startsWith("/dashboard/owner/checkin") ? t("odash.meta.checkin") : t("odash.nav.dashboard"));
 
   const sidebarBody = (
     <>

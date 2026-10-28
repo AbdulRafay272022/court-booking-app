@@ -169,18 +169,26 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
     at that amount, not just the current state."""
     payer_name = payment.ocr_payer_name
 
+    def chk(verdict: str, en: str, ru: str) -> PaymentCheckOut:
+        # audit 2026-10-28 item 12: every sentence in English AND Roman Urdu; the owner screens pick by their language
+        return PaymentCheckOut(verdict=verdict, text=en, text_ru=ru)
+
     if payment.name_match_verdict == "match":
-        name = PaymentCheckOut(
-            verdict="match", text=f"Name on screenshot: {payer_name}. App account: {account_name}. Matched."
+        name = chk(
+            "match",
+            f"Name on screenshot: {payer_name}. App account: {account_name}. Matched.",
+            f"Screenshot par naam: {payer_name}. App account: {account_name}. Mil gaya.",
         )
     elif payment.name_match_verdict == "mismatch":
-        name = PaymentCheckOut(
-            verdict="mismatch", text=f"Name on screenshot: {payer_name}. App account: {account_name}. Not matched."
+        name = chk(
+            "mismatch",
+            f"Name on screenshot: {payer_name}. App account: {account_name}. Not matched.",
+            f"Screenshot par naam: {payer_name}. App account: {account_name}. Nahi mila.",
         )
     elif not payer_name:
-        name = PaymentCheckOut(verdict="not_available", text="Name not visible on the screenshot.")
+        name = chk("not_available", "Name not visible on the screenshot.", "Screenshot par naam nazar nahi aa raha.")
     else:
-        name = PaymentCheckOut(verdict="not_available", text=f"Name on screenshot: {payer_name}.")
+        name = chk("not_available", f"Name on screenshot: {payer_name}.", f"Screenshot par naam: {payer_name}.")
 
     total = float(booking.price)
     summary_status, summary_text, paid_amt, expected_amt, total_after, balance_after = build_payment_summary(
@@ -190,84 +198,106 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
         f"Total {format_pkr(total)}. Paid after approval {format_pkr(total_after)}. "
         f"Balance due at the venue: {format_pkr(balance_after)}."
     )
+    balance_text_ru = (
+        f"Kul {format_pkr(total)}. Approve ke baad mila: {format_pkr(total_after)}. "
+        f"Venue par baqi: {format_pkr(balance_after)}."
+    )
     ocr_amount = float(payment.ocr_amount) if payment.ocr_amount is not None else None
     expected = float(payment.amount_claimed) if payment.amount_claimed is not None else None
     if ocr_amount is None:
-        amount = PaymentCheckOut(verdict="not_available", text="Amount not visible on the screenshot.")
+        amount = chk("not_available", "Amount not visible on the screenshot.", "Screenshot par raqam nazar nahi aa rahi.")
     elif payment.ocr_verdict == "match":
-        amount = PaymentCheckOut(
-            verdict="match",
-            text=f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}. Matched.",
+        amount = chk(
+            "match",
+            f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}. Matched.",
+            f"Screenshot par {format_pkr(ocr_amount)}. Abhi aana tha: {format_pkr(expected or 0)}. Mil gaya.",
         )
     elif expected is not None and ocr_amount < expected:
-        amount = PaymentCheckOut(
-            verdict="mismatch",
-            text=f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(expected - ocr_amount)} less than expected.",
+        amount = chk(
+            "mismatch",
+            f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(expected - ocr_amount)} less than expected.",
+            f"Screenshot par {format_pkr(ocr_amount)}: {format_pkr(expected - ocr_amount)} kam.",
         )
     elif expected is not None and ocr_amount > expected:
-        amount = PaymentCheckOut(
-            verdict="mismatch",
-            text=f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(ocr_amount - expected)} more than expected.",
+        amount = chk(
+            "mismatch",
+            f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(ocr_amount - expected)} more than expected.",
+            f"Screenshot par {format_pkr(ocr_amount)}: {format_pkr(ocr_amount - expected)} zyada.",
         )
     else:
-        amount = PaymentCheckOut(
-            verdict="mismatch",
-            text=f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}.",
+        amount = chk(
+            "mismatch",
+            f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}.",
+            f"Screenshot par {format_pkr(ocr_amount)}. Abhi aana tha: {format_pkr(expected or 0)}.",
         )
 
     if payment.time_check_verdict == "within_timer":
-        # `booking.held_until` is cleared to None once the booking leaves
-        # HELD (mark_payment_submitted/confirm_booking both null it out) --
-        # by the time this card is rendered the booking has almost always
-        # already moved past HELD, so the verdict itself (computed and
-        # stored once, at submission time, before it was cleared) is the
-        # source of truth here, not whatever held_until reads *now*. Show
-        # the fuller sentence when it's still available, a shorter but
-        # still correct one otherwise -- never downgrade the verdict itself.
+        # `booking.held_until` is cleared to None once the booking leaves HELD, so the stored verdict (computed at
+        # submission time) is the source of truth; show the fuller sentence only when the times are still there.
         if payment.ocr_timestamp and booking.held_until:
-            time_check = PaymentCheckOut(
-                verdict="match",
-                text=(
-                    f"Paid {format_time(payment.ocr_timestamp)}. Booking started {format_time(booking.created_at)}. "
-                    f"Timer ended {format_time(booking.held_until)}. Within the timer."
-                ),
+            time_check = chk(
+                "match",
+                f"Paid {format_time(payment.ocr_timestamp)}. Booking started {format_time(booking.created_at)}. "
+                f"Timer ended {format_time(booking.held_until)}. Within the timer.",
+                f"Payment {format_time(payment.ocr_timestamp)} par hui. Booking {format_time(booking.created_at)} par shuru hui. "
+                f"Timer {format_time(booking.held_until)} par khatam. Waqt ke andar.",
             )
         elif payment.ocr_timestamp:
-            time_check = PaymentCheckOut(verdict="match", text=f"Paid {format_time(payment.ocr_timestamp)}. Within the timer.")
+            time_check = chk(
+                "match",
+                f"Paid {format_time(payment.ocr_timestamp)}. Within the timer.",
+                f"Payment {format_time(payment.ocr_timestamp)} par hui. Waqt ke andar.",
+            )
         else:
-            time_check = PaymentCheckOut(verdict="match", text="Within the timer.")
+            time_check = chk("match", "Within the timer.", "Waqt ke andar.")
     elif payment.time_check_verdict == "before_hold":
-        time_check = PaymentCheckOut(verdict="warning", text="Paid before the booking started.")
+        time_check = chk("warning", "Paid before the booking started.", "Payment booking shuru hone se pehle ki hai.")
     elif payment.time_check_verdict == "after_timer":
-        time_check = PaymentCheckOut(verdict="warning", text="Paid after the timer ended.")
+        time_check = chk("warning", "Paid after the timer ended.", "Payment timer khatam hone ke baad hui.")
     else:
-        time_check = PaymentCheckOut(verdict="warning", text="Time not visible.")
+        time_check = chk("warning", "Time not visible.", "Waqt nazar nahi aa raha.")
 
-    bank_label = payment.ocr_bank or "an unknown bank/wallet"
+    bank_en = payment.ocr_bank or "an unknown bank/wallet"
+    bank_ru = payment.ocr_bank or "na-maloom bank/wallet"
     if payment.receiver_match_verdict == "match":
-        bank = PaymentCheckOut(verdict="match", text=f"Paid via {bank_label}. Receiver matches the venue's saved bank details.")
+        bank = chk(
+            "match",
+            f"Paid via {bank_en}. Receiver matches the venue's saved bank details.",
+            f"{bank_ru} se payment. Paane wala venue ki bank details se mil gaya.",
+        )
     elif payment.receiver_match_verdict == "mismatch":
-        bank = PaymentCheckOut(
-            verdict="mismatch", text=f"Paid via {bank_label}. Receiver does not match the venue's saved bank details."
+        bank = chk(
+            "mismatch",
+            f"Paid via {bank_en}. Receiver does not match the venue's saved bank details.",
+            f"{bank_ru} se payment. Paane wala venue ki bank details se NAHI mila.",
         )
     elif payment.receiver_match_verdict == "not_configured":
-        bank = PaymentCheckOut(
-            verdict="not_configured", text=f"Paid via {bank_label}. The venue hasn't saved bank details to check against."
+        bank = chk(
+            "not_configured",
+            f"Paid via {bank_en}. The venue hasn't saved bank details to check against.",
+            f"{bank_ru} se payment. Venue ki bank details save nahi, is liye check nahi ho saka.",
         )
     else:
-        bank = PaymentCheckOut(verdict="not_available", text=f"Paid via {bank_label}. Receiver name not visible.")
+        bank = chk(
+            "not_available",
+            f"Paid via {bank_en}. Receiver name not visible.",
+            f"{bank_ru} se payment. Paane wale ka naam nazar nahi aa raha.",
+        )
 
     if payment.is_duplicate:
-        duplicate = PaymentCheckOut(
-            verdict="mismatch", text="This screenshot (or transaction reference) matches a payment already on file."
+        duplicate = chk(
+            "mismatch",
+            "This screenshot (or transaction reference) matches a payment already on file.",
+            "Ye screenshot (ya transaction number) pehle bhi kisi payment mein aa chuka hai.",
         )
     else:
-        duplicate = PaymentCheckOut(verdict="match", text="No duplicate found.")
+        duplicate = chk("match", "No duplicate found.", "Koi duplicate nahi mila.")
 
     return PaymentChecksOut(
         name=name,
         amount=amount,
         balance_text=balance_text,
+        balance_text_ru=balance_text_ru,
         time=time_check,
         bank=bank,
         duplicate=duplicate,
