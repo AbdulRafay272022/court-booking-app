@@ -222,4 +222,6 @@ export const enSetup = {
   "setup.set.endsOn": "Ends on",
   "setup.set.endsAt": "Ends at",
   "setup.set.blackoutButton": "Add blackout",
+  "setup.missing.title": "Before the venue can go live it needs:",
+  "setup.missing.hint": "Fill these in Venue settings; then the admin can approve it.",
 } as const;

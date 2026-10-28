@@ -82,3 +82,32 @@ export function whatsappLink(phone: string | null | undefined, text?: string): s
   if (!/^923\d{9}$/.test(digits)) return null;
   return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 }
+
+const MISSING: Record<TextLang, Record<string, string>> = {
+  ru: {
+    court: "Kam se kam ek court",
+    schedule: "{court} ke khulne ke auqaat",
+    pricing: "{court} ki qeemat",
+    bank_details: "Bank details (bank, account title, account number)",
+    photo: "Kam se kam ek venue photo",
+    address: "Venue ka pata",
+    location: "Map par venue ki jagah",
+    sports: "Kaun se khel milte hain",
+  },
+  en: {
+    court: "At least one court",
+    schedule: "Opening hours for {court}",
+    pricing: "A price for {court}",
+    bank_details: "Bank details (bank, account title, account number)",
+    photo: "At least one venue photo",
+    address: "The venue address",
+    location: "The venue's pin on the map",
+    sports: "Which sports are offered",
+  },
+};
+
+/** audit 2026-10-28 item 9: the words for one gap that stops a venue going live. */
+export function venueMissingLabel(item: { code: string; court: string | null }, lang: TextLang = "en"): string {
+  const text = MISSING[lang][item.code] ?? item.code;
+  return text.replace("{court}", item.court ?? (lang === "ru" ? "court" : "the court"));
+}

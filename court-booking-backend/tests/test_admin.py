@@ -7,6 +7,29 @@ from app.models.user import UserRole
 from app.models.venue import VenueStatus
 
 
+
+async def _complete(db_session_factory, venue):
+    """audit 2026-10-28 item 9: an approvable venue needs a court with hours and a price, a photo and bank details."""
+    from datetime import time as _time
+
+    from app.config import get_settings as _gs
+    from app.models.court import Court
+    from app.models.pricing import PricingRule
+    from app.models.schedule import ScheduleTemplate
+    from app.models.venue import Venue
+    from app.utils.encryption import encrypt_json
+
+    async with db_session_factory() as s:
+        v = await s.get(Venue, venue.id)
+        v.photos = ["venues/test.jpg"]
+        v.bank_details = encrypt_json({"bank": "HBL", "account_title": "Arena", "account_number": "12345678"}, _gs())
+        court = Court(venue_id=venue.id, name="Court 1", sport="padel", slot_minutes=60)
+        s.add(court)
+        await s.flush()
+        s.add(ScheduleTemplate(court_id=court.id, day_of_week=0, open_time=_time(6, 0), close_time=_time(23, 0)))
+        s.add(PricingRule(court_id=court.id, name="Standard", price_per_slot=1000, advance_percentage=100))
+        await s.commit()
+
 async def test_non_admin_cannot_access_stats(client, make_user, make_auth_headers):
     owner = await make_user("+923008000001", role=UserRole.OWNER)
     headers = await make_auth_headers(owner)
@@ -48,6 +71,7 @@ async def test_venue_approval_survives_a_failed_whatsapp_notification(
     admin = await make_user("+923008000090", role=UserRole.ADMIN)
     owner = await make_user("+923008000091", role=UserRole.OWNER)
     venue = await make_venue(owner, status=VenueStatus.PENDING)
+    await _complete(db_session_factory, venue)
     headers = await make_auth_headers(admin)
 
     resp = await client.post(f"/api/v1/admin/venues/{venue.id}/approve", headers=headers)
@@ -68,7 +92,7 @@ async def test_venue_approval_survives_a_failed_whatsapp_notification(
     assert "132001" in (whatsapp[0].error_message or "")
 
 
-async def test_admin_can_approve_pending_venue(client, make_user, make_venue, make_auth_headers, monkeypatch):
+async def test_admin_can_approve_pending_venue(client, make_user, make_venue, make_auth_headers, monkeypatch, db_session_factory):
     # Mock at the _send level (shared by send_text and send_template) since
     # the owner won't have an open 24h WhatsApp window in this test, so the
     # approval notification goes out as the venue_approved template, not
@@ -84,6 +108,7 @@ async def test_admin_can_approve_pending_venue(client, make_user, make_venue, ma
     admin = await make_user("+923008000004", role=UserRole.ADMIN)
     owner = await make_user("+923008000005", role=UserRole.OWNER)
     venue = await make_venue(owner, status=VenueStatus.PENDING)
+    await _complete(db_session_factory, venue)
     headers = await make_auth_headers(admin)
 
     resp = await client.post(f"/api/v1/admin/venues/{venue.id}/approve", headers=headers)

@@ -163,6 +163,9 @@ class VenueOut(BaseModel):
     # Public venue coordinates (read-only; same decoding as the list item); null if missing.
     latitude: float | None = None
     longitude: float | None = None
+    # audit 2026-10-28 item 9: what the venue still needs before it can go live (owner + admin views only; see
+    # app/services/venue_completeness.py). Each item: {"code": "schedule", "court": "Court 1"}.
+    missing_for_approval: list[dict] | None = None
 
 
 class VenueDetailResponse(BaseModel):

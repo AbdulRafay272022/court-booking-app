@@ -1,7 +1,8 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, status
+from app.errors import AppError, ErrorCode
 from sqlalchemy import select
 
 from app.dependencies import AppSettings, DbSession, FeatureFlags, PageParams, RequireAdmin
@@ -135,6 +136,17 @@ async def _review_venue(
     venue_service = VenueService(db, settings)
     venue = await venue_service.get_venue(venue_id)
     old_status = venue.status.value
+    if new_status == VenueStatus.APPROVED:
+        from app.services.venue_completeness import missing_for_approval
+
+        missing = missing_for_approval(venue, venue_service.decrypted_bank_details(venue))
+        if missing:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.VENUE_INCOMPLETE,
+                "This venue is not complete yet, so it cannot go live.",
+                details={"missing": missing},
+            )
     venue = await venue_service.set_status(venue, new_status, reason)
 
     await AuditService(db).log(

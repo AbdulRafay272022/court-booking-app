@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { venueMissingLabel } from "@court-booking/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
@@ -92,6 +93,17 @@ export default function AdminVenuesPage() {
                 <div className="text-sm text-owner-danger">No bank details provided.</div>
               )}
 
+              {v.missing_for_approval && v.missing_for_approval.length > 0 ? (
+                <div className="rounded-lg border border-owner-danger/30 bg-owner-danger/5 p-3 text-sm" data-testid="venue-missing">
+                  <p className="font-semibold text-owner-danger">Cannot go live yet. Missing:</p>
+                  <ul className="mt-1 list-disc pl-5 text-owner-ink-muted">
+                    {v.missing_for_approval.map((m, i) => (
+                      <li key={`${m.code}-${m.court ?? ""}-${i}`}>{venueMissingLabel(m, "en")}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               {actionFor?.venueId === v.id ? (
                 <div className="flex flex-col gap-3 border-t border-owner-border-light pt-4">
                   <p className="text-sm font-semibold text-owner-ink-muted">
@@ -123,7 +135,13 @@ export default function AdminVenuesPage() {
                 </div>
               ) : (
                 <div className="flex gap-2.5">
-                  <button onClick={() => approve(v.id)} disabled={busyId === v.id} className="flex-1 h-11 rounded-lg text-white font-bold text-sm disabled:opacity-60" style={{ background: "#1F7A52" }}>
+                  <button
+                    onClick={() => approve(v.id)}
+                    disabled={busyId === v.id || (v.missing_for_approval?.length ?? 0) > 0}
+                    title={(v.missing_for_approval?.length ?? 0) > 0 ? "Complete the missing items first" : undefined}
+                    className="flex-1 h-11 rounded-lg text-white font-bold text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ background: "#1F7A52" }}
+                  >
                     Approve
                   </button>
                   <button onClick={() => setActionFor({ venueId: v.id, type: "changes" })} className="px-4 h-11 rounded-lg border border-owner-border font-semibold text-sm">

@@ -22,3 +22,10 @@ test("whatsapp links accept the usual Pakistani spellings and refuse junk", () =
   assert.equal(whatsappLink("021 1234567"), null);
   assert.equal(whatsappLink(null), null);
 });
+
+test("venue gaps are worded per court in both languages", async () => {
+  const { venueMissingLabel } = await import("./booking-detail");
+  assert.equal(venueMissingLabel({ code: "schedule", court: "Court 1" }, "ru"), "Court 1 ke khulne ke auqaat");
+  assert.equal(venueMissingLabel({ code: "pricing", court: "Court A" }, "en"), "A price for Court A");
+  assert.equal(venueMissingLabel({ code: "bank_details", court: null }, "en"), "Bank details (bank, account title, account number)");
+});

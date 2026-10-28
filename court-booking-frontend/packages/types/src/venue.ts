@@ -87,6 +87,14 @@ export interface Venue {
   /** Public venue coordinates (null if missing; absent on older API builds). */
   latitude?: number | null;
   longitude?: number | null;
+  /** audit 2026-10-28 item 9: what the venue still needs before it can go live (owner + admin views only). */
+  missing_for_approval?: VenueMissingItem[] | null;
+}
+
+/** One gap that stops a venue going live (backend app/services/venue_completeness.py). */
+export interface VenueMissingItem {
+  code: "court" | "schedule" | "pricing" | "bank_details" | "photo" | "address" | "location" | "sports" | string;
+  court: string | null;
 }
 
 export interface VenueListResponse {

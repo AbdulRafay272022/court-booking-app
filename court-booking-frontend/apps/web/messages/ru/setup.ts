@@ -222,4 +222,6 @@ export const ruSetup = {
   "setup.set.endsOn": "Khatam hone ki tareekh",
   "setup.set.endsAt": "Khatam hone ka waqt",
   "setup.set.blackoutButton": "Blackout add karein",
+  "setup.missing.title": "Venue live hone se pehle ye cheezein zaroori hain:",
+  "setup.missing.hint": "Venue settings mein ye bhar dein; admin tab approve kar sakega.",
 } as const;

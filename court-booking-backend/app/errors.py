@@ -77,6 +77,7 @@ class ErrorCode:
     # Venue
     VENUE_NOT_APPROVED = "VENUE_NOT_APPROVED"
     VENUE_NOT_FOUND = "VENUE_NOT_FOUND"
+    VENUE_INCOMPLETE = "VENUE_INCOMPLETE"  # audit 2026-10-28 item 9: approve refused, details.missing lists the gaps
     NOT_VENUE_OWNER = "NOT_VENUE_OWNER"
 
     # Payment

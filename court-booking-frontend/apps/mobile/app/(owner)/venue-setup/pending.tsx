@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { MessageCircle } from "lucide-react-native";
-import type { Venue } from "@court-booking/types";
+import { venueMissingLabel, type Venue } from "@court-booking/types";
 import { palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Button, ErrorState, Pill, Screen, SkeletonCard, Text, Timeline } from "@/components/ui";
 
@@ -73,6 +73,15 @@ export default function VenuePendingScreen() {
         </Text>
       </View>
       {isChangesRequested && venue.rejection_reason ? <Banner tone="waiting" title="Admin ka note" body={venue.rejection_reason} /> : null}
+      {venue.missing_for_approval && venue.missing_for_approval.length > 0 ? (
+        // audit 2026-10-28 item 9: the admin cannot approve until these are filled
+        <Banner
+          tone="danger"
+          title="Venue live hone se pehle ye cheezein zaroori hain"
+          body={venue.missing_for_approval.map((m) => `• ${venueMissingLabel(m, "ru")}`).join("\n")}
+          testID="venue-missing"
+        />
+      ) : null}
 
       <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[5] }}>
         <Timeline

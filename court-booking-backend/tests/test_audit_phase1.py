@@ -409,3 +409,48 @@ async def test_staff_permission_changes_are_audited(
     assert rows and rows[0].actor_id == owner.id
     assert rows[0].old_value == {"permissions": ["view_ledger"]}
     assert rows[0].new_value == {"permissions": ["check_in", "view_ledger"]}
+
+
+# ---------------------------------------------------------------- item 9: no venue goes live incomplete
+
+
+async def test_admin_cannot_approve_an_incomplete_venue_and_sees_what_is_missing(
+    client, make_user, make_venue, make_court, make_auth_headers
+):
+    admin = await make_user("+923001190001", role=UserRole.ADMIN)
+    owner = await make_user("+923001190002", role=UserRole.OWNER)
+    venue = await make_venue(owner, status=VenueStatus.PENDING, photos=[])
+    await make_court(venue, name="Court 1")
+    headers = await make_auth_headers(admin)
+    resp = await client.post(f"/api/v1/admin/venues/{venue.id}/approve", headers=headers)
+    assert resp.status_code == 400
+    body = resp.json()["error"]
+    assert body["code"] == "VENUE_INCOMPLETE"
+    codes = {(m["code"], m["court"]) for m in body["details"]["missing"]}
+    assert codes == {("photo", None), ("bank_details", None), ("schedule", "Court 1"), ("pricing", "Court 1")}
+    # the owner sees the same list on their own venue
+    mine = (await client.get(f"/api/v1/venues/{venue.id}", headers=await make_auth_headers(owner))).json()
+    assert {(m["code"], m["court"]) for m in mine["missing_for_approval"]} == codes
+
+
+async def test_a_complete_venue_is_approved(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from app.config import get_settings
+    from app.utils.encryption import encrypt_json
+
+    admin = await make_user("+923001190011", role=UserRole.ADMIN)
+    owner = await make_user("+923001190012", role=UserRole.OWNER)
+    venue = await make_venue(
+        owner,
+        status=VenueStatus.PENDING,
+        photos=["venues/a.jpg"],
+        bank_details=encrypt_json({"bank": "HBL", "account_title": "Arena", "account_number": "12345678"}, get_settings()),
+    )
+    court = await make_court(venue)
+    await make_schedule(court, day_of_week=0, open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court)
+    resp = await client.post(f"/api/v1/admin/venues/{venue.id}/approve", headers=await make_auth_headers(admin))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "approved"
+    assert resp.json()["missing_for_approval"] == []
