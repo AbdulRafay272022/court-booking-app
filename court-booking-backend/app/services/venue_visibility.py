@@ -25,6 +25,63 @@ def is_public(venue: Venue) -> bool:
     return venue.status == VenueStatus.APPROVED and bool(venue.is_active)
 
 
+# ---- audit 2026-10-28 Phase 2 item 2: flag `cnic_visibility_gate` (default OFF) also hides a venue whose OWNER's CNIC is not
+# approved. The owner can still set everything up; players see nothing (search, venue page, availability, AI chat, map,
+# saved venues, holds). Only the `public_*` helpers below consult the flag, so every surface changes together.
+
+GATE_FLAG = "cnic_visibility_gate"
+
+
+async def cnic_gate_on(db: AsyncSession) -> bool:
+    from app.services.feature_flag_service import flag_on
+
+    return await flag_on(db, GATE_FLAG)
+
+
+def _approved_owner_ids():
+    from sqlalchemy import select
+
+    from app.models.owner_identity import OwnerIdentity
+
+    return select(OwnerIdentity.user_id).where(OwnerIdentity.cnic_status == "approved")
+
+
+async def public_filters(db: AsyncSession) -> list:
+    """SQL conditions for "players may see this venue" (use in every player-facing venue query)."""
+    conds = [Venue.status == VenueStatus.APPROVED, Venue.is_active.is_(True)]
+    if await cnic_gate_on(db):
+        conds.append(Venue.owner_id.in_(_approved_owner_ids()))
+    return conds
+
+
+async def owner_cnic_approved(db: AsyncSession, owner_id) -> bool:
+    from sqlalchemy import select
+
+    from app.models.owner_identity import OwnerIdentity
+
+    status_value = await db.scalar(select(OwnerIdentity.cnic_status).where(OwnerIdentity.user_id == owner_id))
+    return status_value == "approved"
+
+
+async def is_public_for_players(db: AsyncSession, venue: Venue) -> bool:
+    if not is_public(venue):
+        return False
+    if await cnic_gate_on(db):
+        return await owner_cnic_approved(db, venue.owner_id)
+    return True
+
+
+async def hidden_reason(db: AsyncSession, venue: Venue) -> str | None:
+    """For the owner's banner: why players cannot see this venue right now (None = they can)."""
+    if venue.status != VenueStatus.APPROVED:
+        return "not_approved"
+    if not venue.is_active:
+        return "inactive"
+    if await cnic_gate_on(db) and not await owner_cnic_approved(db, venue.owner_id):
+        return "cnic"
+    return None
+
+
 async def is_insider(db: AsyncSession, venue: Venue, viewer: User | None) -> bool:
     """The owner, an admin, or active staff of this venue."""
     if viewer is None:
@@ -39,7 +96,7 @@ async def is_insider(db: AsyncSession, venue: Venue, viewer: User | None) -> boo
 
 
 async def can_view(db: AsyncSession, venue: Venue, viewer: User | None) -> bool:
-    return is_public(venue) or await is_insider(db, venue, viewer)
+    return await is_public_for_players(db, venue) or await is_insider(db, venue, viewer)
 
 
 async def require_viewable(db: AsyncSession, venue: Venue | None, viewer: User | None) -> Venue:

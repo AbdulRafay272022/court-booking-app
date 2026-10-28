@@ -67,12 +67,12 @@ class BookingService:
         walk-in (create_walkin) is exempt, since that's their own venue."""
         from app.models.venue import Venue, VenueStatus
 
-        from app.services.venue_visibility import is_public
+        from app.services.venue_visibility import is_public_for_players
 
         venue = await self.db.get(Venue, court.venue_id)
         # audit 2026-10-28 item 2: a soft-deleted venue (is_active=False, its courts left active) was still holdable by
-        # court id. Same public rule as the venue page and availability.
-        if venue is None or venue.status != VenueStatus.APPROVED or not is_public(venue):
+        # court id. Same public rule as the venue page and availability (incl. the Phase 2 CNIC gate when it is on).
+        if venue is None or venue.status != VenueStatus.APPROVED or not await is_public_for_players(self.db, venue):
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.VENUE_NOT_APPROVED, "This venue is not yet approved for bookings"
             )

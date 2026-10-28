@@ -241,7 +241,9 @@ class VenueService:
         play the candidates are filtered/sorted in Python and paginated afterwards; otherwise SQL paginates."""
         base_query = select(Venue)
         if only_approved:
-            base_query = base_query.where(Venue.status == VenueStatus.APPROVED, Venue.is_active.is_(True))
+            from app.services.venue_visibility import public_filters
+
+            base_query = base_query.where(*(await public_filters(self.db)))
         if city:
             base_query = base_query.where(func.lower(Venue.city) == city.lower())
         if area:
@@ -361,11 +363,12 @@ class VenueService:
 
     async def list_areas(self) -> list[str]:
         """Distinct non-empty areas of approved, active venues, sorted case-insensitively."""
+        from app.services.venue_visibility import public_filters
+
         result = await self.db.execute(
             select(Venue.area)
             .where(
-                Venue.status == VenueStatus.APPROVED,
-                Venue.is_active.is_(True),
+                *(await public_filters(self.db)),
                 Venue.area.is_not(None),
                 func.trim(Venue.area) != "",
             )
@@ -512,6 +515,9 @@ class VenueService:
 
             out.missing_for_approval = missing_for_approval(venue, out.bank_details)
             out.unconfirmed_settings = unconfirmed_settings(venue)
+            from app.services.venue_visibility import hidden_reason
+
+            out.player_hidden_reason = await hidden_reason(self.db, venue)
         # checkin_qr_token isn't encrypted like bank_details, so model_validate
         # above already populated it from the ORM object -- explicitly clear
         # it for anyone who isn't the owner/admin rather than relying on a

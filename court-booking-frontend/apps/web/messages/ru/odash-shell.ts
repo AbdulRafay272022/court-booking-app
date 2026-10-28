@@ -93,4 +93,5 @@ export const ruOdashShell = {
   "odash.sact.noShowTitle": "No-show ki list",
   "odash.sact.noShowEmpty": "Is muddat mein koi no-show nahi.",
   "odash.sact.markedBy": "{name} ne mark kiya, {when}",
+  "odash.venue.banner.hiddenCnic": "players ko abhi nazar nahi aa raha, kyunke aap ka CNIC abhi approve nahi hua. CNIC approve hote hi venue dikhne lagega.",
 } as const;

@@ -91,6 +91,9 @@ export interface Venue {
   missing_for_approval?: VenueMissingItem[] | null;
   /** audit 2026-10-28 item 15: settings still running on a hidden default; the owner confirms them by saving. */
   unconfirmed_settings?: VenueMissingItem[] | null;
+  /** audit 2026-10-28 Phase 2 item 2: why players cannot see the venue now ("cnic" = the CNIC gate is on and the owner's CNIC
+   * is not approved); null = they can. Owner + admin views only. */
+  player_hidden_reason?: "cnic" | "not_approved" | "inactive" | null;
 }
 
 /** One gap that stops a venue going live (backend app/services/venue_completeness.py). */

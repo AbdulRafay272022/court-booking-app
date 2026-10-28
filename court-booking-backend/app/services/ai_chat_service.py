@@ -1317,13 +1317,13 @@ class AIChatService:
     async def _public_venue(self, venue_id: uuid.UUID):
         """The venue if players may see it (approved + active, venue_visibility.is_public), else None (audit 2026-10-28
         item 2: the chat used to describe and quote pending / rejected / deleted venues by id)."""
-        from app.services.venue_visibility import is_public
+        from app.services.venue_visibility import is_public_for_players
 
         try:
             venue = await self.venue_service.get_venue(venue_id)
         except HTTPException:
             return None
-        return venue if is_public(venue) else None
+        return venue if await is_public_for_players(self.db, venue) else None
 
     async def _tool_get_venue_info(self, tool_input: dict) -> dict:
         venue = await self._public_venue(uuid.UUID(tool_input["venue_id"]))

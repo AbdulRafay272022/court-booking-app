@@ -168,6 +168,9 @@ class VenueOut(BaseModel):
     missing_for_approval: list[dict] | None = None
     # audit 2026-10-28 item 15: settings still running on a hidden default (owner + admin only): confirm by saving
     unconfirmed_settings: list[dict] | None = None
+    # audit 2026-10-28 Phase 2 item 2: why players cannot see this venue right now ("cnic" while the CNIC gate is on and the
+    # owner's CNIC is not approved; "not_approved" / "inactive"); None = players can see it. Owner + admin views only.
+    player_hidden_reason: str | None = None
 
 
 class VenueDetailResponse(BaseModel):

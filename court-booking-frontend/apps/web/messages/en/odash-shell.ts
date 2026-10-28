@@ -95,4 +95,5 @@ export const enOdashShell: Record<keyof typeof ruOdashShell, string> = {
   "odash.sact.noShowTitle": "No-shows",
   "odash.sact.noShowEmpty": "No no-shows in this period.",
   "odash.sact.markedBy": "Marked by {name}, {when}",
+  "odash.venue.banner.hiddenCnic": "is not visible to players yet because your CNIC is not approved. It shows as soon as the CNIC is approved.",
 };

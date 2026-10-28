@@ -72,3 +72,58 @@ async def test_an_upload_that_does_not_look_like_a_card_is_flagged_for_the_admin
     assert "not_cnic_like" in shot["flags"]
     card = (await client.post("/api/v1/owners/identity", headers=oh, files=_files(front=CARD, back=CARD))).json()
     assert "not_cnic_like" not in card["flags"]
+
+
+# ---------------------------------------------------------------- item 2: cnic_visibility_gate (flag, default OFF)
+
+
+async def _gate(db_session_factory, on: bool):
+    from app.models.feature_flag import FeatureFlag
+
+    async with db_session_factory() as s:
+        row = await s.get(FeatureFlag, "cnic_visibility_gate")
+        if row is None:
+            s.add(FeatureFlag(key="cnic_visibility_gate", label="CNIC gate", enabled=on))
+        else:
+            row.enabled = on
+        await s.commit()
+
+
+async def test_cnic_gate_hides_unapproved_owners_venues_everywhere_only_when_on(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from datetime import date, time, timedelta
+
+    from app.models.owner_identity import OwnerIdentity
+
+    owner = await make_user("+923002020001", role=UserRole.OWNER)
+    venue = await make_venue(owner, name="Gate Arena")
+    court = await make_court(venue)
+    for d in range(7):
+        await make_schedule(court, day_of_week=d, open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court)
+    player = await make_user("+923002020002")
+    ph = await make_auth_headers(player)
+    starts = f"{(date.today() + timedelta(days=3)).isoformat()}T10:00:00Z"
+
+    # flag OFF (default): nothing changes, even without any CNIC
+    assert (await client.get(f"/api/v1/venues/by-slug/{venue.slug}")).status_code == 200
+    assert [v["name"] for v in (await client.get("/api/v1/venues")).json()["venues"]] == ["Gate Arena"]
+
+    await _gate(db_session_factory, True)
+    assert (await client.get(f"/api/v1/venues/by-slug/{venue.slug}")).status_code == 404
+    assert (await client.get("/api/v1/venues")).json()["venues"] == []
+    assert (await client.put(f"/api/v1/venues/{venue.id}/favorite", headers=ph)).status_code == 404
+    hold = await client.post("/api/v1/bookings/hold", headers=ph, json={"court_id": str(court.id), "starts_at": starts})
+    assert hold.status_code == 400
+    # the owner still sees it, with the reason for the banner
+    mine = (await client.get(f"/api/v1/venues/{venue.id}", headers=await make_auth_headers(owner))).json()
+    assert mine["player_hidden_reason"] == "cnic"
+
+    # approve the owner's CNIC: visible again
+    async with db_session_factory() as s:
+        s.add(OwnerIdentity(user_id=owner.id, cnic_encrypted={"v": 1}, cnic_last4="1234", cnic_hash="a" * 64,
+                            front_key="f", back_key="b", flags=[], cnic_status="approved"))
+        await s.commit()
+    assert (await client.get(f"/api/v1/venues/by-slug/{venue.slug}")).status_code == 200
+    assert [v["name"] for v in (await client.get("/api/v1/venues")).json()["venues"]] == ["Gate Arena"]

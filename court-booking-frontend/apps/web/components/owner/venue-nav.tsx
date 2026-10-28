@@ -95,6 +95,17 @@ export function VenuePicker({
  * status, so this reflects the SELECTED one, with a way to its status page. */
 export function VenueStatusBanner({ venue }: { venue: Venue }) {
   const t = useT();
+  if (venue.status === "approved" && venue.player_hidden_reason === "cnic") {
+    // audit 2026-10-28 Phase 2 item 2: approved, but hidden from players until the owner's CNIC is approved
+    return (
+      <div role="status" data-testid="venue-hidden-cnic" className="mx-8 mt-6 rounded-xl border border-owner-danger/30 bg-owner-danger/5 px-4 py-3 text-[13.5px] font-medium text-owner-danger">
+        <strong>{venue.name}</strong> {t("odash.venue.banner.hiddenCnic")}{" "}
+        <Link href="/dashboard/owner/settings#cnic" className="font-bold underline">
+          {t("cnic.banner.go")}
+        </Link>
+      </div>
+    );
+  }
   if (venue.status === "approved") return null;
   const copy: Record<Exclude<VenueStatus, "approved">, string> = {
     pending: t("odash.venue.banner.pending"),
