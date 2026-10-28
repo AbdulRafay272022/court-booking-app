@@ -93,6 +93,7 @@ from app.schemas.owner_overview import (
     SlotCourtCountsOut,
 )
 from app.services.booking_service import BookingService
+from app.services.payment_service import AWAITING_STATES
 from app.services.overview_slots import (
     CONFIRMED_STATUSES,
     count_slots,
@@ -1079,7 +1080,15 @@ class OwnerOverviewService:
                     select(func.count(Payment.id))
                     .join(Booking, Booking.id == Payment.booking_id)
                     .join(Court, Court.id == Booking.court_id)
-                    .where(Court.venue_id.in_(approval_venues), Court.is_active.is_(True), Payment.review_verdict.is_(None))
+                    # audit 2026-10-28 item 7: only proofs the owner can still ACT on (the booking is still held / payment
+                    # submitted). An unreviewed proof on a cancelled or expired booking is shown greyed on the Approvals
+                    # page for acknowledgement, but it is not work, so the badge (web sidebar, app tab, Today line) skips it.
+                    .where(
+                        Court.venue_id.in_(approval_venues),
+                        Court.is_active.is_(True),
+                        Payment.review_verdict.is_(None),
+                        Booking.status.in_(AWAITING_STATES),
+                    )
                 )
                 or 0
             )

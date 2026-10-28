@@ -265,3 +265,40 @@ async def test_owner_rows_carry_the_players_photo(
     today = (await client.get(f"/api/v1/owners/today?date_={day.isoformat()}&venue_id={venue.id}", headers=headers)).json()
     booked = [s for c in today["courts"] for s in c["slots"] if s.get("booking_id")]
     assert booked and all(s["player_avatar_url"] == "https://cdn.example/avatars/hina.jpg" for s in booked)
+
+
+# ---------------------------------------------------------------- item 7: the approvals badge counts only actionable proofs
+
+
+async def _booking_with_proof(db_session_factory, court, player, status, start_hour, cancelled_by=None):
+    from datetime import datetime, timezone
+
+    from app.models.booking import Booking, BookingStatus, CancelledBy
+    from app.models.payment import Payment
+
+    day = date.today() + timedelta(days=4)
+    starts = datetime(day.year, day.month, day.day, start_hour, 0, tzinfo=timezone.utc)
+    async with db_session_factory() as s:
+        b = Booking(
+            court_id=court.id, player_id=player.id, starts_at=starts, ends_at=starts + timedelta(hours=1),
+            status=BookingStatus(status), price=1000, advance_amount=1000,
+            cancelled_by=CancelledBy(cancelled_by) if cancelled_by else None,
+        )
+        s.add(b)
+        await s.flush()
+        s.add(Payment(booking_id=b.id, proof_key="proofs/x.jpg", amount_claimed=1000))
+        await s.commit()
+        return b
+
+
+async def test_badge_ignores_unreviewed_proofs_on_cancelled_or_expired_bookings(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923001170001")
+    await _booking_with_proof(db_session_factory, court, player, "payment_submitted", 9)
+    await _booking_with_proof(db_session_factory, court, player, "cancelled", 11, cancelled_by="player")
+    await _booking_with_proof(db_session_factory, court, player, "cancelled", 13, cancelled_by="system")
+    resp = await client.get(f"/api/v1/owners/badges?venue_id={venue.id}", headers=await make_auth_headers(owner))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["approvals"] == 1
