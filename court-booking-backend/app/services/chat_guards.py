@@ -197,6 +197,10 @@ def decide(fold: FoldResult, facts: PlatformFacts, *, support: str | None = None
     if pending == "name" and turn.intent in ("affirmative", "negative", "other") and not turn.got:
         return None  # "Ali Raza" answers the name question: the model carries on with the proposal
 
+    # 0. a name that fits two venues equally ("legends arena" with "Legends Arena North" and "South"): ask which one, nothing else
+    if turn.venue_choices and not state.has("venue"):
+        return Decision(T.render("ask_venue", lang, venues=turn.venue_choices, short=True), "ask_venue", "venue", list(turn.venue_choices))
+
     # 1. a date that has already passed
     if turn.past_date and "date" not in turn.got:
         return Decision(T.render("past_date", lang), "past_date", "date")

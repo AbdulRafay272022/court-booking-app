@@ -289,7 +289,47 @@ def _t_steer_back(lang: Lang, sports: list[str] | None = None, **_: object) -> s
     return "I can only help with booking a court." + (f" Which sport would you like to play: {listed}?" if listed else "")
 
 
+def _other_venue_line(item: dict, lang: Lang) -> str:
+    """One line of the "other venues" list: name, sports, and what is free (audit Phase 3 item 7)."""
+    name, sports, kind = item.get("name", ""), item.get("sports") or "", item.get("kind", "unknown")
+    when, count = item.get("when") or "", int(item.get("count") or 0)
+    head = f"{name} ({sports})" if sports else name
+    if lang == "ru":
+        tail = {
+            "free_at": f"{when} khali hai",
+            "busy_at": f"{when} khali nahi",
+            "free_count": f"{when} {count} slot khali" if count == 1 else f"{when} {count} slots khali",
+            "none_free": f"{when} koi slot khali nahi",
+        }.get(kind)
+    else:
+        tail = {
+            "free_at": f"free {when}",
+            "busy_at": f"not free {when}",
+            "free_count": f"{count} free slot {when}" if count == 1 else f"{count} free slots {when}",
+            "none_free": f"nothing free {when}",
+        }.get(kind)
+    return f"{head}: {tail}" if tail else head
+
+
+def _t_other_venues(lang: Lang, venues: list[dict] | None = None, sport: str | None = None, **_: object) -> str:
+    items = venues or []
+    lines = _numbered([_other_venue_line(i, lang) for i in items])
+    if lang == "ru":
+        intro = f"{sport} ke liye ye venues bhi hain:" if sport else "Ye venues bhi hain:"
+        return f"{intro}\n{lines}\nKaun sa venue chahiye?"
+    intro = f"Other venues with {sport}:" if sport else "Other venues:"
+    return f"{intro}\n{lines}\nWhich venue would you like?"
+
+
+def _t_other_venues_none(lang: Lang, sport: str | None = None, **_: object) -> str:
+    if lang == "ru":
+        return f"Abhi {sport} ke liye koi aur venue nahi hai." if sport else "Abhi koi aur venue nahi hai."
+    return f"There is no other venue with {sport} right now." if sport else "There is no other venue right now."
+
+
 _TEMPLATES: dict[str, Callable[..., str]] = {
+    "other_venues": _t_other_venues,
+    "other_venues_none": _t_other_venues_none,
     "greeting": _t_greeting,
     "greeting_plain": _t_greeting_plain,
     "thanks": _t_thanks,

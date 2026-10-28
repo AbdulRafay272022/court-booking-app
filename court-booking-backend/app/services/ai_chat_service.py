@@ -599,6 +599,10 @@ class AIChatService:
         if turn.intent == "hours_question":
             await load_hours(self.db, list(facts.venues) if state.venue_id is None else [v for v in [facts.venue(state.venue_id)] if v])
 
+        # 1b. "koi dusra venue?": 2-3 OTHER venues with what is free, answered by code (audit 2026-10-28 Phase 3 item 7)
+        if turn.other_venue and not facts.empty:
+            return await self._other_venues_answer(fold, facts)
+
         # 2. guards that answer WITHOUT the model: greetings / thanks / "ok", an unsupported sport, price / location / hours from facts,
         #    and the ONE next question while something required is still unknown
         decision = chat_guards.decide(fold, facts, support=self._support_line())
@@ -882,6 +886,56 @@ class AIChatService:
                 ask_name=ask_name, price_only=price_only,
             )
         )
+
+    async def _other_venues_answer(self, fold: FoldResult, facts: PlatformFacts, limit: int = 3) -> ChatResult:
+        """"koi dusra venue?" / "another venue": up to `limit` approved venues OTHER than the one in play (of the player's sport when one is
+        known), each with what is really free -- at the date + time already said (and the duration, else the court minimum), or the number of
+        free starts on the date, from the same availability code the day view uses. Free venues first. Never the model."""
+        from app.models.court import Court
+        from app.models.venue import Venue
+
+        state = fold.state
+        lang = state.language
+        sport = state.sport
+        candidates = [v for v in facts.venues_with_sport(sport) if v.id != state.venue_id]
+        if not candidates:
+            text = chat_templates.render("other_venues_none", lang, sport=sport)
+            state.pending, state.options = None, []
+            return ChatResult(reply=sanitize_reply(text), actions=[], model=None, tool_calls=[], state=state.to_dict(), kind="other_venues")
+        items: list[dict] = []
+        day = date_cls.fromisoformat(state.date) if state.date else None
+        if day is not None:
+            court_ids = [uuid.UUID(c.id) for v in candidates for c in v.courts_for(sport)]
+            courts = list((await self.db.scalars(select(Court).where(Court.id.in_(court_ids)))).all()) if court_ids else []
+            horizons = dict(
+                (await self.db.execute(select(Venue.id, Venue.booking_horizon_days).where(Venue.id.in_([uuid.UUID(v.id) for v in candidates])))).all()
+            )
+            by_venue: dict[str, list[Court]] = {}
+            for court in courts:
+                by_venue.setdefault(str(court.venue_id), []).append(court)
+            if state.start_time:
+                hh, mm = (int(x) for x in state.start_time.split(":"))
+                free = await self.availability.courts_bookable_at(
+                    courts, {c.id: int(horizons.get(c.venue_id) or 90) for c in courts}, day, time(hh, mm), state.duration_minutes
+                )
+                when = f"{display_date(state.date)}, {display_time(state.start_time)}"
+                for v in candidates:
+                    ok = any(c.id in free for c in by_venue.get(v.id, []))
+                    items.append({"name": v.name, "sports": ", ".join(v.sports), "kind": "free_at" if ok else "busy_at", "when": when, "_free": ok})
+            else:
+                counts = await self.availability.free_slot_counts_on(courts, day)
+                when = display_date(state.date)
+                for v in candidates:
+                    n = sum(counts.get(c.id, 0) for c in by_venue.get(v.id, []))
+                    items.append({"name": v.name, "sports": ", ".join(v.sports), "kind": "free_count" if n else "none_free", "count": n, "when": when, "_free": n > 0})
+            items.sort(key=lambda i: not i["_free"])  # stable: facts order within each group
+        else:
+            items = [{"name": v.name, "sports": ", ".join(v.sports), "kind": "unknown", "_free": True} for v in candidates]
+        items = items[:limit]
+        text = chat_templates.render("other_venues", lang, venues=items, sport=sport)
+        state.pending, state.options = "venue", [i["name"] for i in items]
+        logger.info("ai_chat.code_answer", kind="other_venues", count=len(items))
+        return ChatResult(reply=sanitize_reply(text), actions=[], model=None, tool_calls=["check_availability"] if day else [], state=state.to_dict(), kind="other_venues")
 
     async def _direct_answer(self, user: User, fold: FoldResult, facts: PlatformFacts) -> ChatResult | None:
         """The availability question about one exact slot ("Is Court 2 at Test Arena 1 available on Sat, 17 Oct at 9:00 PM for 2 hours?", the
@@ -1303,16 +1357,28 @@ class AIChatService:
             return {"error": "Something went wrong handling that request."}
 
     async def _tool_search_venues(self, tool_input: dict) -> dict:
-        rows, total = await self.venue_service.list_venues(
-            city=tool_input.get("city"), sport=None, limit=50
-        )
-        query = (tool_input.get("query") or "").lower()
-        venues = [
-            {"id": str(v.id), "name": v.name, "slug": v.slug, "city": v.city, "sports": v.sports}
-            for v, _dist in rows
-            if not query or query in v.name.lower()
-        ]
-        return {"venues": venues, "total": total}
+        """Every approved, publicly visible venue (list_venues applies venue_visibility.public_filters, so the CNIC gate and hidden
+        venues still hold). audit 2026-10-28 Phase 3 item 7: the name is matched fuzzily ("kha legend", "court sight"), not only as an exact
+        substring, and a city that matches nothing no longer hides every venue (the model often guesses the city)."""
+        from app.services.chat_facts import VenueFact
+        from app.services.chat_state import venue_matches
+
+        city = tool_input.get("city")
+        rows, total = await self.venue_service.list_venues(city=city, sport=None, limit=200)
+        if city and not rows:
+            rows, total = await self.venue_service.list_venues(sport=None, limit=200)
+        query = (tool_input.get("query") or "").strip()
+        picked = [v for v, _dist in rows]
+        if query:
+            exact = [v for v in picked if query.lower() in v.name.lower()]
+            if exact:
+                picked = exact
+            else:
+                facts = [VenueFact(id=str(v.id), name=v.name, city=v.city, area=v.area, address="") for v in picked]
+                ids = {f.id for f in venue_matches(query, facts)}
+                picked = [v for v in picked if str(v.id) in ids]
+        venues = [{"id": str(v.id), "name": v.name, "slug": v.slug, "city": v.city, "sports": v.sports} for v in picked[:50]]
+        return {"venues": venues, "total": total if not query else len(venues)}
 
     async def _public_venue(self, venue_id: uuid.UUID):
         """The venue if players may see it (approved + active, venue_visibility.is_public), else None (audit 2026-10-28
