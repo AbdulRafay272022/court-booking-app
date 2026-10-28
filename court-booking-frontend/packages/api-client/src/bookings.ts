@@ -3,6 +3,7 @@ import type {
   HoldBookingInput,
   HoldBookingOut,
   PlayerBookingDetail,
+  BookingPaymentInstructions,
   PaymentProofOut,
   WalkinBookingInput,
 } from "@court-booking/types";
@@ -29,6 +30,9 @@ export function createBookingsApi(client: ApiClient) {
 
     /** Audit 2026-10-28 item 4: everything the player's booking screen shows (venue, court, money lines, timeline, policy, contact). */
     detail: (id: string) => client.request<PlayerBookingDetail>(`/bookings/${id}/detail`),
+
+    /** Audit 2026-10-28 item 20: where and how much to pay now (advance or balance), plus the Raast QR when switched on. */
+    paymentInstructions: (id: string) => client.request<BookingPaymentInstructions>(`/bookings/${id}/payment-instructions`),
 
     cancel: (id: string, reason?: string) =>
       client.request<{ booking: Booking }>(`/bookings/${id}/cancel`, {

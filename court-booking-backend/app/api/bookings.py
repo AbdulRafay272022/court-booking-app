@@ -22,6 +22,7 @@ from app.schemas.booking import (
     BookingHoldIn,
     BookingHoldResponse,
     BookingOut,
+    BookingPaymentInstructionsOut,
     BookingResponse,
     BookingSelfCheckinIn,
     PaymentInstructionsOut,
@@ -288,3 +289,55 @@ async def get_booking_detail(
     from app.services.player_booking_detail import player_booking_detail
 
     return await player_booking_detail(db, settings, user, booking_id)
+
+
+@router.get("/{booking_id}/payment-instructions", response_model=BookingPaymentInstructionsOut)
+async def get_payment_instructions(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, user: CurrentUser
+) -> BookingPaymentInstructionsOut:
+    """Audit 2026-10-28 item 20: bank, account title, IBAN / account number and the amount for this booking's advance or
+    balance, read fresh from the venue (the app no longer depends on the hold response it saved), plus a Raast QR with the
+    amount filled in when the `iban_qr` flag is on."""
+    from app.services.feature_flag_service import flag_on
+    from app.services.owner_overview_service import short_code
+    from app.services.raast_qr import raast_qr_payload
+
+    service = BookingService(db, settings)
+    booking = await service.require_accessible_booking(booking_id, user)
+    court = await db.get(Court, booking.court_id)
+    venue = await db.get(Venue, court.venue_id) if court is not None else None
+    bank = (VenueService(db, settings).decrypted_bank_details(venue) if venue is not None else None) or {}
+    if booking.status in (BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED):
+        kind, amount = "advance", float(booking.advance_amount)
+    elif booking.status == BookingStatus.BOOKED and float(booking.balance_due or 0) > 0:
+        kind, amount = "balance", float(booking.balance_due)
+    else:
+        kind, amount = "none", 0.0
+    reference = short_code(booking.id)
+    qr, reason = None, None
+    iban = (bank.get("iban") or "").replace(" ", "").upper()
+    if kind == "none":
+        reason = "nothing_due"
+    elif not await flag_on(db, "iban_qr"):
+        reason = "flag_off"
+    elif not iban:
+        reason = "no_iban"
+    else:
+        try:
+            qr = raast_qr_payload(
+                iban=iban, amount_pkr=int(round(amount)), account_title=bank.get("account_title") or (venue.name if venue else ""),
+                city=venue.city if venue else None, reference=reference,
+            )
+        except ValueError:
+            reason = "invalid_iban"
+    return BookingPaymentInstructionsOut(
+        kind=kind,
+        amount=amount,
+        bank=bank.get("bank"),
+        account_title=bank.get("account_title"),
+        account_number=bank.get("account_number"),
+        iban=bank.get("iban"),
+        reference=reference,
+        qr_payload=qr,
+        qr_unavailable_reason=reason,
+    )

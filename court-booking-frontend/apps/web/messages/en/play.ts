@@ -106,4 +106,8 @@ export const enPlay = {
   "play.done.outdoor": "Outdoor",
   "play.done.waText": "Hi, I'd like to talk about my booking {id}.",
   "play.done.checkin": "Open check-in QR",
+  "play.pay.sendBalanceTo": "YOU CAN SEND THE BALANCE HERE",
+  "play.pay.amountNow": "Send now",
+  "play.pay.reference": "Write in the transfer note",
+  "play.pay.qrHint": "Scan this QR in your bank or wallet app: the account and amount fill in by themselves. Then send the screenshot.",
 } as const;

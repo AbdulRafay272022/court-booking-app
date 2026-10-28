@@ -31,6 +31,7 @@ import { doneCopy, donePaidAmount, donePollMs } from "@/lib/booking-done";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { safeBack } from "@/lib/safe-back";
 import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from "@/lib/player-flow";
+import { RaastQr } from "@/components/raast-qr";
 import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
 
 /**
@@ -63,6 +64,11 @@ export default function BookingStatusScreen() {
     queryFn: () => api.bookings.detail(id),
     enabled: !!booking,
     subscribed: focused,
+  });
+  const balancePay = useQuery({
+    queryKey: ["payment-instructions", id, booking?.status],
+    queryFn: () => api.bookings.paymentInstructions(id),
+    enabled: booking?.status === "booked" && (booking?.balance_due ?? 0) > 0,
   });
   const paymentsQuery = useQuery({
     queryKey: ["booking-payments", id, booking?.status],
@@ -272,6 +278,21 @@ export default function BookingStatusScreen() {
             ]}
           />
         </Card>
+
+        {booking.status === "booked" && booking.balance_due > 0 && balancePay.data && (balancePay.data.account_number || balancePay.data.iban) ? (
+          // audit 2026-10-28 item 20: the balance can be sent by transfer too (bank details + Raast QR when switched on)
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-balance-pay">
+            <Text variant="title" accessibilityRole="header">
+              {copy(`Baqi ${formatPkr(balancePay.data.amount)} transfer se bhi de sakte hain`, `You can also send the ${formatPkr(balancePay.data.amount)} balance by transfer`)}
+            </Text>
+            {balancePay.data.bank ? <Text variant="bodyStrong">{balancePay.data.bank}</Text> : null}
+            {balancePay.data.account_title ? <Text variant="body">{copy(`Account ka naam: ${balancePay.data.account_title}`, `Account name: ${balancePay.data.account_title}`)}</Text> : null}
+            {balancePay.data.account_number ? <Text variant="body" selectable>{`Account: ${balancePay.data.account_number}`}</Text> : null}
+            {balancePay.data.iban ? <Text variant="body" selectable>{`IBAN: ${balancePay.data.iban}`}</Text> : null}
+            <Text variant="meta" tone="muted" selectable>{copy(`Transfer note mein likhein: ${balancePay.data.reference}`, `Write in the transfer note: ${balancePay.data.reference}`)}</Text>
+            {balancePay.data.qr_payload ? <RaastQr payload={balancePay.data.qr_payload} /> : null}
+          </Card>
+        ) : null}
 
         {detail ? (
           <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-payment-lines">

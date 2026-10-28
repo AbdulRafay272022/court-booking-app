@@ -1,6 +1,7 @@
 "use client";
 
 import { courtLabel } from "@/components/court-label";
+import { PaymentInstructionsCard } from "@/components/booking/payment-instructions-card";
 
 import { use } from "react";
 import { useRequireAuth } from "@/lib/use-require-auth";
@@ -104,6 +105,11 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
             },
           ]}
         />
+
+        {booking.status === "booked" && booking.balance_due > 0 ? (
+          // audit 2026-10-28 item 20: the balance can be sent by transfer too (bank details + Raast QR when switched on)
+          <PaymentInstructionsCard bookingId={id} />
+        ) : null}
 
         <section className="flex flex-col gap-2 rounded-fl-card bg-fl-white p-5" data-testid="detail-payments">
           <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.paymentsTitle")}</h2>

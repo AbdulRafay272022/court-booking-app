@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
+import { PaymentInstructionsCard } from "@/components/booking/payment-instructions-card";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -191,17 +192,7 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
           <Banner tone="waiting" body={t("play.pay.reviewing")} />
         ) : (
           <>
-            {paymentInstructions ? (
-              <div className="flex flex-col gap-3 rounded-fl-card bg-fl-white p-5">
-                <span className="text-[12px] font-extrabold tracking-widest text-fl-muted2">{t("play.pay.sendTo")}</span>
-                {paymentInstructions.bank ? <Row label={t("play.pay.bank")} value={paymentInstructions.bank} /> : null}
-                {paymentInstructions.account_title ? <Row label={t("play.pay.accountTitle")} value={paymentInstructions.account_title} /> : null}
-                {paymentInstructions.account_number ? <Row label={t("play.pay.accountNumber")} value={paymentInstructions.account_number} mono /> : null}
-                {paymentInstructions.iban ? <Row label={t("play.pay.iban")} value={paymentInstructions.iban} mono /> : null}
-              </div>
-            ) : (
-              <div className="rounded-fl-card bg-fl-white p-5 text-[13px] text-fl-muted">{t("play.pay.noDetails")}</div>
-            )}
+            <PaymentInstructionsCard bookingId={id} fallback={paymentInstructions ?? null} />
 
             {previewUrl ? (
               <div className="flex flex-col items-center gap-2 rounded-fl-card bg-fl-white p-3">
@@ -275,15 +266,6 @@ function PayPageInner({ params }: PageProps<"/booking/[id]/pay">) {
         </div>
       ) : null}
     </main>
-  );
-}
-
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
-      <span className="text-sm text-fl-muted">{label}</span>
-      <span className={`break-all text-sm font-extrabold ${mono ? "tabular-nums tracking-wide" : ""}`}>{value}</span>
-    </div>
   );
 }
 

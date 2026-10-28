@@ -193,3 +193,19 @@ class PlayerBookingDetailOut(BaseModel):
     payments: list[PlayerPaymentLineOut]
     timeline: list[PlayerTimelineEventOut]
     refund: PlayerRefundOut | None = None
+
+
+class BookingPaymentInstructionsOut(BaseModel):
+    """audit 2026-10-28 item 20: what the player pays now and where, for the advance (held / payment_submitted) and the balance
+    (booked with money due). `qr_payload` is the Raast QR text (flag `iban_qr` on AND the venue saved a valid IBAN), else null
+    with `qr_unavailable_reason` = "flag_off" | "no_iban" | "invalid_iban" | "nothing_due"."""
+
+    kind: str  # "advance" | "balance" | "none"
+    amount: float
+    bank: str | None = None
+    account_title: str | None = None
+    account_number: str | None = None
+    iban: str | None = None
+    reference: str
+    qr_payload: str | None = None
+    qr_unavailable_reason: str | None = None

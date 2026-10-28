@@ -673,3 +673,53 @@ async def test_walkin_needs_the_players_phone_but_an_old_app_build_is_not_refuse
     assert (await client.post("/api/v1/bookings/walkin", headers=headers, json={**body, "player_phone": "0333 1234567"})).status_code == 201
     old = await legacy_client.post("/api/v1/bookings/walkin", headers=headers, json={**body, "starts_at": f"{day}T12:00:00Z"})
     assert old.status_code == 201, old.text
+
+
+# ---------------------------------------------------------------- item 20: payment instructions + Raast QR (flag iban_qr)
+
+from app.services.raast_qr import crc16_ccitt, iban_checksum_ok, raast_qr_payload  # noqa: E402
+
+VALID_IBAN = "PK36SCBL0000001123456702"  # the standard Pakistani IBAN example (mod-97 valid)
+
+
+def test_crc_and_iban_checks():
+    assert crc16_ccitt("123456789") == "29B1"  # CRC-16/CCITT-FALSE check value
+    assert iban_checksum_ok(VALID_IBAN)
+    assert not iban_checksum_ok("PK37SCBL0000001123456702")
+    assert not iban_checksum_ok("GB82WEST12345698765432")
+
+
+def test_qr_payload_carries_the_iban_amount_and_a_valid_crc():
+    payload = raast_qr_payload(iban=VALID_IBAN, amount_pkr=1500, account_title="KHA Sports (Pvt)", city="Karachi", reference="KH-AB12")
+    assert payload.startswith("000201010212")
+    assert VALID_IBAN in payload and "54071500.00" in payload and "5303586" in payload
+    assert payload[-8:-4] == "6304" and crc16_ccitt(payload[:-4]) == payload[-4:]
+
+
+async def test_payment_instructions_endpoint_flag_off_then_on(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from app.config import get_settings
+    from app.models.feature_flag import FeatureFlag
+    from app.models.venue import Venue
+    from app.utils.encryption import encrypt_json
+
+    _o, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    async with db_session_factory() as s:
+        v = await s.get(Venue, venue.id)
+        v.bank_details = encrypt_json({"bank": "SCB", "account_title": "KHA Sports", "account_number": "01123456702", "iban": VALID_IBAN}, get_settings())
+        await s.commit()
+    player = await make_user("+923001240001")
+    headers = await make_auth_headers(player)
+    held = (await client.post("/api/v1/bookings/hold", headers=headers, json={"court_id": str(court.id), "starts_at": _starts_at()})).json()
+    url = f"/api/v1/bookings/{held['booking']['id']}/payment-instructions"
+    off = (await client.get(url, headers=headers)).json()
+    assert off["kind"] == "advance" and off["amount"] == 1000 and off["iban"] == VALID_IBAN
+    assert off["qr_payload"] is None and off["qr_unavailable_reason"] == "flag_off"
+    async with db_session_factory() as s:
+        s.add(FeatureFlag(key="iban_qr", label="Raast QR", enabled=True))
+        await s.commit()
+    on = (await client.get(url, headers=headers)).json()
+    assert on["qr_payload"] and "54071000.00" in on["qr_payload"] and on["reference"].startswith("KH")
+    stranger = await make_user("+923001240002")
+    assert (await client.get(url, headers=await make_auth_headers(stranger))).status_code in (403, 404)

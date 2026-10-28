@@ -40,6 +40,7 @@ import { isRetryableUploadError } from "@/lib/proof-image-rules";
 import { openSupportWhatsApp } from "@/lib/support";
 import { cancelErrorCopy, cancelPolicyShort } from "@/lib/player-flow";
 import { PlayerOfflineBanner, StepHeading, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
+import { RaastQr } from "@/components/raast-qr";
 
 /**
  * Pay board: countdown ring from the REAL hold expiry (booking.held_until), the bank details saved from the hold response
@@ -58,7 +59,12 @@ export default function PayScreen() {
   const insets = useSafeAreaInsets();
   useLightStatusBar();
 
-  const paymentInstructions = useBookingFlowStore((s) => s.paymentInstructionsByBookingId[id]);
+  const savedInstructions = useBookingFlowStore((s) => s.paymentInstructionsByBookingId[id]);
+  // audit 2026-10-28 item 20: read fresh from the server (bank details + the Raast QR when switched on), so a hold made on
+  // WhatsApp or another phone still shows where to pay; the saved hold response is only the fast first paint.
+  const serverInstructions = useQuery({ queryKey: ["payment-instructions", id], queryFn: () => api.bookings.paymentInstructions(id) });
+  const paymentInstructions = serverInstructions.data && hasPayableDetails(serverInstructions.data) ? serverInstructions.data : savedInstructions;
+  const qrPayload = serverInstructions.data?.qr_payload ?? null;
   // Persisted store: wait for it before saying "no payment details", or a reopened pay screen flashes the fallback.
   const [instructionsReady, setInstructionsReady] = useState(() => useBookingFlowStore.persist.hasHydrated());
   useEffect(() => {
@@ -264,7 +270,7 @@ export default function PayScreen() {
         <PlayerOfflineBanner />
         <Card padding={4} radiusSize="cardL" style={{ gap: space[3] }} testID="pay-bank">
           <StepHeading n={1} label={copy(`${amount} bhejein`, `Send ${amount}`)} />
-          {!instructionsReady ? (
+          {!instructionsReady && !serverInstructions.data ? (
             <Skeleton height={120} r={radius.input} />
           ) : hasPayableDetails(paymentInstructions) ? (
             <>
@@ -287,6 +293,10 @@ export default function PayScreen() {
                 <CopyField label={copy("Account number", "Account number")} value={paymentInstructions.account_number} copyLabel={copy("Account number copy karein", "Copy account number")} testID="pay-account" />
               ) : null}
               {paymentInstructions.iban ? <CopyField label="IBAN" value={paymentInstructions.iban} copyLabel={copy("IBAN copy karein", "Copy IBAN")} testID="pay-iban" /> : null}
+              {serverInstructions.data ? (
+                <CopyField label={copy("Transfer note mein likhein", "Write in the transfer note")} value={serverInstructions.data.reference} copyLabel={copy("Code copy karein", "Copy code")} testID="pay-reference" />
+              ) : null}
+              {qrPayload ? <RaastQr payload={qrPayload} /> : null}
               <Text variant="meta" tone="muted">
                 {[
                   copy("JazzCash, Easypaisa ya kisi bhi bank app se bhejein, phir yahan wapas aayein.", "Send it from JazzCash, Easypaisa or any bank app, then come back here."),

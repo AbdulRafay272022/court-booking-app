@@ -156,3 +156,17 @@ const UNCONFIRMED: Record<TextLang, Record<string, string>> = {
 export function unconfirmedSettingLabel(item: { code: string; court: string | null }, lang: TextLang = "en"): string {
   return (UNCONFIRMED[lang][item.code] ?? item.code).replace("{court}", item.court ?? "court");
 }
+
+/** audit 2026-10-28 item 20: GET /bookings/{id}/payment-instructions (app/schemas/booking.py BookingPaymentInstructionsOut). */
+export interface BookingPaymentInstructions {
+  kind: "advance" | "balance" | "none";
+  amount: number;
+  bank: string | null;
+  account_title: string | null;
+  account_number: string | null;
+  iban: string | null;
+  reference: string;
+  /** Raast QR text with the amount filled in; null when the `iban_qr` flag is off or there is no valid IBAN. */
+  qr_payload: string | null;
+  qr_unavailable_reason: "flag_off" | "no_iban" | "invalid_iban" | "nothing_due" | null;
+}

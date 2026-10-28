@@ -106,4 +106,8 @@ export const ruPlay = {
   "play.done.outdoor": "Outdoor",
   "play.done.waText": "Salam, meri booking {id} ke baare mein baat karni hai.",
   "play.done.checkin": "Check-in QR kholo",
+  "play.pay.sendBalanceTo": "BAQI PAISA IS ACCOUNT MEIN BHEJ SAKTE HO",
+  "play.pay.amountNow": "Abhi bhejna hai",
+  "play.pay.reference": "Transfer note mein likho",
+  "play.pay.qrHint": "Apni bank ya wallet app se ye QR scan karo: account aur raqam khud bhar jayegi. Phir screenshot bhejna na bhoolo.",
 } as const;
