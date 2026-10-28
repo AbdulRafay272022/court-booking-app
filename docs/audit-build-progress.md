@@ -8,14 +8,14 @@ Status legend: TODO / DONE / PARTIAL / BLOCKED
 ## Phase 1 (no migration)
 | # | Item | Status | Commit | Notes |
 |---|---|---|---|---|
-| 1 | /auth/me 401; owner session rotation | TODO | | |
-| 2 | venue status + is_active on page, availability, holds | TODO | | |
-| 3 | AI language guard | TODO | | |
-| 4 | web booking cards clickable + detail | TODO | | |
-| 5 | scroll lock (web), app slots jump | TODO | | |
-| 6 | player photo everywhere | TODO | | |
-| 7 | approvals badge | TODO | | |
-| 8 | audit real actor + bank edits | TODO | | |
+| 1 | /auth/me 401; owner session rotation | DONE | c048bb6 |  |
+| 2 | venue status + is_active on page, availability, holds | DONE | 9f753c1 |  |
+| 3 | AI language guard | DONE | 6717d37 |  |
+| 4 | web booking cards clickable + detail | DONE | ffd8c22 | app needs EAS build |
+| 5 | scroll lock (web), app slots jump | DONE | ce5d84a | app part needs device |
+| 6 | player photo everywhere | DONE | 22c6849 | app needs EAS build |
+| 7 | approvals badge | DONE | 220c6ed |  |
+| 8 | audit real actor + bank edits | DONE | 573fcd1 |  |
 | 9 | admin approve completeness | TODO | | |
 | 10 | refund entry bugs | TODO | | |
 | 11 | web staff permissions | TODO | | |
