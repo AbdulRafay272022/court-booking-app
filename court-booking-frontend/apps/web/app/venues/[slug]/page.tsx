@@ -73,12 +73,8 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
 
   const activeCourts = venue.courts.filter((c) => c.is_active);
   const sportsText = venue.sports.map(capitalize).join(", ");
-  // Setting comes from the courts themselves: all indoor, all outdoor, or both. Hidden when there are no active courts.
-  const settings: ("indoor" | "outdoor")[] = [
-    activeCourts.some((c) => c.is_indoor) ? ("indoor" as const) : null,
-    activeCourts.some((c) => !c.is_indoor) ? ("outdoor" as const) : null,
-  ].filter((k): k is "indoor" | "outdoor" => k !== null);
-  const settingName = (k: "indoor" | "outdoor") => (k === "indoor" ? t("venue.card.indoor") : t("venue.card.outdoor"));
+  // audit 2026-10-28 item 13: no venue-level Indoor / Outdoor chips (a venue with one of each showed both, which read as a
+  // contradiction). Each court says it on its own card in the court picker (venue-schedule-client.tsx).
   // "From" price = the cheapest active pricing rule across the active courts; hidden when no court has one.
   const prices = activeCourts.flatMap((c) => (c.pricing_rules ?? []).filter((r) => r.is_active).map((r) => r.price_per_slot));
   const fromPrice = prices.length > 0 ? Math.min(...prices) : null;
@@ -154,16 +150,6 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                     {s}
                   </Link>
                 ))}
-                {settings.map((k) => (
-                  <Link
-                    key={k}
-                    href={searchHref({ city: venue.city, indoor: k === "indoor" })}
-                    data-testid="setting-tag"
-                    className={`${tagLink} rounded-full bg-fl-teal-tint px-3 py-[7px] text-[12px] font-bold text-fl-teal-deep hover:underline`}
-                  >
-                    {settingName(k)}
-                  </Link>
-                ))}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <h1 className="font-khelo-display text-[32px] font-extrabold leading-[1.05] tracking-[-1px] md:text-[44px]">{venue.name}</h1>
@@ -222,12 +208,6 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                   <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.sports")}</dt>
                   <dd className="font-bold">{sportsText}</dd>
                 </div>
-                {settings.length > 0 ? (
-                  <div className="flex flex-col gap-0.5">
-                    <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.setting")}</dt>
-                    <dd className="font-bold">{settings.map(settingName).join(" & ")}</dd>
-                  </div>
-                ) : null}
                 <div className="flex flex-col gap-0.5">
                   <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.location")}</dt>
                   <dd className="font-bold">{place}</dd>
