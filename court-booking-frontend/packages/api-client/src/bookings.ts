@@ -31,6 +31,13 @@ export function createBookingsApi(client: ApiClient) {
     /** Audit 2026-10-28 item 4: everything the player's booking screen shows (venue, court, money lines, timeline, policy, contact). */
     detail: (id: string) => client.request<PlayerBookingDetail>(`/bookings/${id}/detail`),
 
+    /** Audit 2026-10-28 Phase 2 item 3: "Refund maangein" on a cancelled booking (the owner's Refunds list + both told). */
+    requestRefund: (id: string, note?: string) =>
+      client.request<{ amount: number; status: "owed"; paid_at: null }>(`/bookings/${id}/refund-request`, {
+        method: "POST",
+        body: JSON.stringify({ note: note || undefined }),
+      }),
+
     /** Audit 2026-10-28 item 20: where and how much to pay now (advance or balance), plus the Raast QR when switched on. */
     paymentInstructions: (id: string) => client.request<BookingPaymentInstructions>(`/bookings/${id}/payment-instructions`),
 

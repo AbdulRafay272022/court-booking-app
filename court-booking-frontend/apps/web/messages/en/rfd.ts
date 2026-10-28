@@ -53,4 +53,6 @@ export const enRfd: Record<keyof typeof ruRfd, string> = {
   "rfd.reason.generic": "Reason: {reason}",
   "rfd.dup.one": "This screenshot was also credited on 1 other booking",
   "rfd.dup.many": "This screenshot was also credited on {n} other bookings",
+  "rfd.reason.player_request": "Player asked for a refund",
+  "rfd.playerNote": "Player says: {note}",
 };

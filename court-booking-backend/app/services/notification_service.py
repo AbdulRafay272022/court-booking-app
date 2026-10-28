@@ -563,6 +563,25 @@ class NotificationService:
             body = f"Aap ka CNIC approve nahi hua: {reason}. Sahi CNIC ki dono taraf ki photo dobara upload karein."
         await self._audit_tier(owner, "owner_cnic_result", title, body, reference_id=None)
 
+    async def notify_owner_refund_requested(
+        self, *, owner: User, player_name: str | None, booking_id: uuid.UUID, code: str, amount: float, note: str | None
+    ) -> None:
+        """audit 2026-10-28 Phase 2 item 3: a player pressed "Refund maangein"; it is on the owner's Refunds list now."""
+        who = player_name or "Player"
+        extra = f" Wajah: {note}" if note else ""
+        await self._audit_tier(
+            owner, "owner_refund_requested", "Player ne refund maanga",
+            f"{who} ne booking {code} ka refund maanga: {format_pkr(amount)}. Refunds mein dekhein.{extra}",
+            reference_id=booking_id,
+        )
+
+    async def notify_player_refund_requested(self, *, player: User, booking_id: uuid.UUID, code: str, amount: float) -> None:
+        await self._audit_tier(
+            player, "player_refund_requested", "Refund ki darkhwast bhej di",
+            f"Booking {code}: {format_pkr(amount)} refund ki darkhwast venue ko chali gayi. Venue khud paisa wapas bhejega.",
+            reference_id=booking_id,
+        )
+
     async def notify_owner_staff_action(
         self,
         *,

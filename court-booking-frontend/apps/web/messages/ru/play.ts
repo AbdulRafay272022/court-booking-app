@@ -110,4 +110,7 @@ export const ruPlay = {
   "play.pay.amountNow": "Abhi bhejna hai",
   "play.pay.reference": "Transfer note mein likho",
   "play.pay.qrHint": "Apni bank ya wallet app se ye QR scan karo: account aur raqam khud bhar jayegi. Phir screenshot bhejna na bhoolo.",
+  "play.done.refundAsk": "Refund maango ({amount})",
+  "play.done.refundNote": "Wajah (agar chaho)",
+  "play.done.refundSend": "Refund ki darkhwast bhejo",
 } as const;

@@ -27,6 +27,8 @@ from app.schemas.booking import (
     BookingSelfCheckinIn,
     PaymentInstructionsOut,
     PlayerBookingDetailOut,
+    PlayerRefundOut,
+    RefundRequestIn,
     WalkInBookingIn,
 )
 from app.services.booking_service import BookingService
@@ -123,6 +125,7 @@ async def create_walkin_booking(
         method=payload.method,
         slot_count=slot_compat.to_new_slot_count(court, payload.slot_count) if legacy else payload.slot_count,
         legacy_units=legacy,
+        whatsapp_opt_in=payload.whatsapp_opt_in,
     )
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
@@ -206,6 +209,7 @@ async def cancel_booking(
         if (
             cancelled_by == CancelledBy.PLAYER
             and refund is not None
+            and refund.payment_id is not None  # money that came in online; a cash refund is settled at the counter
             and float(refund.refund_amount or 0) > 0
             and booking.status == BookingStatus.CANCELLED
         ):
@@ -341,3 +345,33 @@ async def get_payment_instructions(
         qr_payload=qr,
         qr_unavailable_reason=reason,
     )
+
+
+@router.post("/{booking_id}/refund-request", response_model=PlayerRefundOut, status_code=status.HTTP_201_CREATED)
+async def request_booking_refund(
+    booking_id: uuid.UUID, payload: RefundRequestIn, db: DbSession, settings: AppSettings, user: CurrentUser
+) -> PlayerRefundOut:
+    """Audit 2026-10-28 Phase 2 item 3: "Refund maangein" on a CANCELLED booking (whoever cancelled it) when the venue's
+    policy allows a refund and the booking was cancelled inside the window. Puts it on the owner's Refunds list and tells both."""
+    from app.services.owner_overview_service import short_code
+
+    service = BookingService(db, settings)
+    booking = await service.require_accessible_booking(booking_id, user)
+    if booking.player_id != user.id:
+        raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
+    dispute = await service.request_refund(booking, user, payload.note)
+    try:
+        court = await db.get(Court, booking.court_id)
+        venue = await db.get(Venue, court.venue_id) if court is not None else None
+        owner = await db.get(User, venue.owner_id) if venue is not None else None
+        notifications = NotificationService(db, settings)
+        code = short_code(booking.id)
+        if owner is not None:
+            await notifications.notify_owner_refund_requested(
+                owner=owner, player_name=booking.player_name or user.name, booking_id=booking.id, code=code,
+                amount=float(dispute.refund_amount or 0), note=dispute.player_note,
+            )
+        await notifications.notify_player_refund_requested(player=user, booking_id=booking.id, code=code, amount=float(dispute.refund_amount or 0))
+    except Exception as exc:  # noqa: BLE001 -- best effort, the request is already saved
+        logger.warning("refund_request.notify_failed", error=type(exc).__name__)
+    return PlayerRefundOut(amount=float(dispute.refund_amount or 0), status="owed", paid_at=None)

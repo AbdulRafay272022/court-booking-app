@@ -120,7 +120,7 @@ class PassiveOwnerVenueOut(BaseModel):
 class RefundQueueEntryOut(BaseModel):
     id: uuid.UUID
     booking_id: uuid.UUID
-    payment_id: uuid.UUID
+    payment_id: uuid.UUID | None = None  # audit 2026-10-28 Phase 2: none for cash refunds / refund requests
     player_id: uuid.UUID | None
     player_name: str | None
     player_phone: str | None
@@ -178,6 +178,8 @@ class OwnerRefundOut(BaseModel):
     # Round 2 Stage 2 (findings 1): this refund's screenshot was also credited on N OTHER bookings (same image, any
     # player) -- the Refunds screen warns before paying the same money back twice. Null = not reused.
     duplicate_proof: dict | None = None
+    player_note: str | None = None  # audit 2026-10-28 Phase 2: the player's reason ("Refund maangein")
+
 
 
 class SuspendUserIn(BaseModel):

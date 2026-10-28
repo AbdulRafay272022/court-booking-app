@@ -51,4 +51,6 @@ export const ruRfd = {
   "rfd.reason.generic": "Refund ki wajah: {reason}",
   "rfd.dup.one": "Ye screenshot 1 aur booking par bhi credit hua",
   "rfd.dup.many": "Ye screenshot {n} aur bookings par bhi credit hua",
+  "rfd.reason.player_request": "Player ne refund maanga",
+  "rfd.playerNote": "Player ki wajah: {note}",
 } as const;

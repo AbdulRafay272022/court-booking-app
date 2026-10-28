@@ -110,4 +110,7 @@ export const enPlay = {
   "play.pay.amountNow": "Send now",
   "play.pay.reference": "Write in the transfer note",
   "play.pay.qrHint": "Scan this QR in your bank or wallet app: the account and amount fill in by themselves. Then send the screenshot.",
+  "play.done.refundAsk": "Ask for a refund ({amount})",
+  "play.done.refundNote": "Reason (optional)",
+  "play.done.refundSend": "Send the refund request",
 } as const;

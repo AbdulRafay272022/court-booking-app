@@ -72,6 +72,8 @@ class WalkInBookingIn(BaseModel):
     player_name: str = Field(min_length=1, max_length=100)
     player_phone: str | None = None
     amount_paid: float = Field(ge=0)
+    # audit 2026-10-28 Phase 2 item 3: the owner ticked "Player ko bata diya ke WhatsApp par rasid aayegi" (both apps require it)
+    whatsapp_opt_in: bool | None = None
 
     @field_validator("player_name", mode="before")
     @classmethod
@@ -193,6 +195,7 @@ class PlayerBookingDetailOut(BaseModel):
     payments: list[PlayerPaymentLineOut]
     timeline: list[PlayerTimelineEventOut]
     refund: PlayerRefundOut | None = None
+    refund_request: "PlayerRefundRequestOut | None" = None
 
 
 class BookingPaymentInstructionsOut(BaseModel):
@@ -209,3 +212,18 @@ class BookingPaymentInstructionsOut(BaseModel):
     reference: str
     qr_payload: str | None = None
     qr_unavailable_reason: str | None = None
+
+
+class RefundRequestIn(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
+class PlayerRefundRequestOut(BaseModel):
+    """audit 2026-10-28 Phase 2 item 3: whether "Refund maangein" is offered on this booking, and for how much.
+    state: eligible | not_cancelled | policy_no_refund | window_closed | already_owed | nothing_paid."""
+
+    state: str
+    amount: float = 0
+
+
+PlayerBookingDetailOut.model_rebuild()

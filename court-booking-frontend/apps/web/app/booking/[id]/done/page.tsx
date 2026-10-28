@@ -3,7 +3,7 @@
 import { courtLabel } from "@/components/court-label";
 import { PaymentInstructionsCard } from "@/components/booking/payment-instructions-card";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -155,6 +155,9 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
         <section className="flex flex-col gap-2 rounded-fl-card bg-fl-white p-5" data-testid="detail-policy">
           <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.policyTitle")}</h2>
           <p className="text-[14px] text-fl-night">{fmt.cancellationPolicy(d.venue)}</p>
+          {d.refund_request?.state === "eligible" ? (
+            <RefundRequest bookingId={id} amount={d.refund_request.amount} onDone={() => detailQuery.refetch()} />
+          ) : null}
         </section>
 
         <section className="flex flex-col gap-3 rounded-fl-card bg-fl-white p-5" data-testid="detail-contact">
@@ -199,6 +202,40 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
         )}
       </div>
     </main>
+  );
+}
+
+/** audit 2026-10-28 Phase 2 item 3: "Refund maangein" (optional reason) on a cancelled booking the policy refunds. */
+function RefundRequest({ bookingId, amount, onDone }: { bookingId: string; amount: number; onDone: () => void }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.bookings.requestRefund(bookingId, note.trim());
+      onDone();
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!open) {
+    return <Button label={t("play.done.refundAsk", { amount: `PKR ${formatPKR(amount)}` })} block variant="secondary" onClick={() => setOpen(true)} />;
+  }
+  return (
+    <div className="flex flex-col gap-2" data-testid="refund-request-form">
+      <label className="text-[13px] font-bold text-fl-night" htmlFor="refund-note">
+        {t("play.done.refundNote")}
+      </label>
+      <textarea id="refund-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={500} className="rounded-fl-input border border-fl-line-strong px-3 py-2 text-[14px]" />
+      {error ? <p className="text-[13px] font-bold text-fl-danger">{error}</p> : null}
+      <Button label={t("play.done.refundSend")} block onClick={send} disabled={busy} />
+    </div>
   );
 }
 

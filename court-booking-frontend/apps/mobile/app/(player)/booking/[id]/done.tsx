@@ -65,6 +65,7 @@ export default function BookingStatusScreen() {
     enabled: !!booking,
     subscribed: focused,
   });
+  const [refundBusy, setRefundBusy] = useState(false);
   const balancePay = useQuery({
     queryKey: ["payment-instructions", id, booking?.status],
     queryFn: () => api.bookings.paymentInstructions(id),
@@ -332,6 +333,36 @@ export default function BookingStatusScreen() {
                 <Text variant="meta" tone="muted">{formatWhen(e.at, new Date(), lang)}</Text>
               </View>
             ))}
+          </Card>
+        ) : null}
+
+        {detail?.refund_request?.state === "eligible" ? (
+          // audit 2026-10-28 Phase 2 item 3: "Refund maangein" on a cancelled booking the venue's policy refunds
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-refund-request">
+            <Text variant="title">{copy("Refund maangein", "Ask for a refund")}</Text>
+            <Text variant="body" tone="muted">
+              {copy(
+                `Venue ki policy ke mutabiq aap ${formatPkr(detail.refund_request.amount)} wapas maang sakte hain. Venue khud paisa bhejega.`,
+                `Under the venue's policy you can ask for ${formatPkr(detail.refund_request.amount)} back. The venue sends it itself.`,
+              )}
+            </Text>
+            <Button
+              label={copy(`${formatPkr(detail.refund_request.amount)} ka refund maangein`, `Ask for ${formatPkr(detail.refund_request.amount)} back`)}
+              block
+              loading={refundBusy}
+              onPress={async () => {
+                setRefundBusy(true);
+                try {
+                  await api.bookings.requestRefund(id);
+                  await detailQuery.refetch();
+                } catch (e) {
+                  setCancelError(friendlyErrorMessage(e));
+                } finally {
+                  setRefundBusy(false);
+                }
+              }}
+              testID="refund-request"
+            />
           </Card>
         ) : null}
 

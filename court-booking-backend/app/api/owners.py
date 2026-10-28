@@ -429,7 +429,7 @@ async def owner_mark_refund_paid(
             )
 
     await db.refresh(dispute)
-    payment = await db.get(Payment, dispute.payment_id)
+    payment = await db.get(Payment, dispute.payment_id) if dispute.payment_id else None
     positives = await positive_entries_by_booking(db, {booking.id})
     out = refund_out(
         dispute, booking, venue, None, payment, positives.get(booking.id, 0),

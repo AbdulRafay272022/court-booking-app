@@ -204,6 +204,8 @@ export interface OwnerRefund {
   reason_label_key?: string;
   /** Round 2: the payment this refund came from (a screenshot thumb is shown when present). */
   payment_id?: string | null;
+  /** audit 2026-10-28 Phase 2: the player's reason ("Refund maangein"). */
+  player_note?: string | null;
   refund_reference: string | null;
   refunded_at: string | null;
   created_at: string;

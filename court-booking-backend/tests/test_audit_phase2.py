@@ -127,3 +127,103 @@ async def test_cnic_gate_hides_unapproved_owners_venues_everywhere_only_when_on(
         await s.commit()
     assert (await client.get(f"/api/v1/venues/by-slug/{venue.slug}")).status_code == 200
     assert [v["name"] for v in (await client.get("/api/v1/venues")).json()["venues"]] == ["Gate Arena"]
+
+
+# ---------------------------------------------------------------- item 3: opt-in stored, cash refund row, "Refund maangein"
+
+from datetime import date, datetime, time, timedelta, timezone  # noqa: E402
+
+
+async def _venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone="+923002030001", **venue_kwargs):
+    owner = await make_user(phone, role=UserRole.OWNER)
+    venue = await make_venue(owner, **venue_kwargs)
+    court = await make_court(venue)
+    for d in range(7):
+        await make_schedule(court, day_of_week=d, open_time=time(6, 0), close_time=time(23, 0))
+    await make_pricing_rule(court)
+    return owner, venue, court
+
+
+async def test_walkin_stores_the_whatsapp_tick(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers):
+    from app.models.booking import Booking
+
+    owner, _v, court = await _venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    day = (date.today() + timedelta(days=3)).isoformat()
+    resp = await client.post("/api/v1/bookings/walkin", headers=await make_auth_headers(owner), json={
+        "court_id": str(court.id), "starts_at": f"{day}T10:00:00Z", "player_name": "Ali", "player_phone": "0333 1112223",
+        "amount_paid": 0, "whatsapp_opt_in": True})
+    assert resp.status_code == 201, resp.text
+    async with db_session_factory() as s:
+        b = await s.get(Booking, resp.json()["booking"]["id"])
+        assert b.whatsapp_opt_in is True
+
+
+async def test_cancelling_a_cash_paid_booking_writes_a_refund_row_without_a_push(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from app.models.dispute import PaymentDispute
+
+    owner, _v, court = await _venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923002030002")
+    day = (date.today() + timedelta(days=3)).isoformat()
+    bid = (await client.post("/api/v1/bookings/walkin", headers=await make_auth_headers(owner), json={
+        "court_id": str(court.id), "starts_at": f"{day}T10:00:00Z", "player_name": "Ali", "player_phone": "+923002030002",
+        "amount_paid": 600, "whatsapp_opt_in": True})).json()["booking"]["id"]
+    assert (await client.post(f"/api/v1/bookings/{bid}/cancel", headers=await make_auth_headers(player), json={})).status_code == 200
+    async with db_session_factory() as s:
+        rows = (await s.execute(select(PaymentDispute).where(PaymentDispute.booking_id == bid))).scalars().all()
+    assert [(r.reason, float(r.refund_amount), r.payment_id) for r in rows] == [("player_cancelled_paid_booking", 600.0, None)]
+    assert await _log_rows(db_session_factory, owner.id, "refund_owed") == []
+    # it is on the owner's Refunds list
+    refunds = (await client.get("/api/v1/owners/refunds", headers=await make_auth_headers(owner))).json()
+    assert [r["refund_amount"] for r in refunds] == [600.0]
+
+
+async def test_refund_request_inside_the_policy_window_goes_to_the_owner(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from app.models.booking import Booking, BookingStatus, CancelledBy
+    from app.models.payment import Payment
+
+    owner, venue, court = await _venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, cancellation_allowed=True, cancellation_cutoff_hours=6)
+    player = await make_user("+923002030011", name="Sana")
+    starts = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) + timedelta(days=3)
+    async with db_session_factory() as s:
+        b = Booking(court_id=court.id, player_id=player.id, starts_at=starts, ends_at=starts + timedelta(hours=1),
+                    status=BookingStatus.CANCELLED, cancelled_by=CancelledBy.OWNER, price=1000, advance_amount=1000)
+        s.add(b)
+        await s.flush()
+        s.add(Payment(booking_id=b.id, proof_key="p.jpg", amount_claimed=1000, ocr_amount=1000))
+        await s.commit()
+        bid = b.id
+    ph = await make_auth_headers(player)
+    detail = (await client.get(f"/api/v1/bookings/{bid}/detail", headers=ph)).json()
+    assert detail["refund_request"] == {"state": "eligible", "amount": 1000.0}
+    resp = await client.post(f"/api/v1/bookings/{bid}/refund-request", headers=ph, json={"note": "Venue ne cancel kiya"})
+    assert resp.status_code == 201, resp.text
+    refunds = (await client.get("/api/v1/owners/refunds", headers=await make_auth_headers(owner))).json()
+    assert [(r["reason"], r["refund_amount"]) for r in refunds] == [("player_refund_request", 1000.0)]
+    assert await _log_rows(db_session_factory, owner.id, "owner_refund_requested")
+    assert await _log_rows(db_session_factory, player.id, "player_refund_requested")
+    # once is enough
+    again = await client.post(f"/api/v1/bookings/{bid}/refund-request", headers=ph, json={})
+    assert again.status_code == 409 and again.json()["error"]["details"]["state"] == "already_owed"
+
+
+async def test_no_refund_request_when_the_venue_policy_says_no_refund(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from app.models.booking import Booking, BookingStatus, CancelledBy
+
+    _o, _v, court = await _venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, cancellation_allowed=False)
+    player = await make_user("+923002030021")
+    starts = datetime.now(timezone.utc) + timedelta(days=3)
+    async with db_session_factory() as s:
+        b = Booking(court_id=court.id, player_id=player.id, starts_at=starts, ends_at=starts + timedelta(hours=1),
+                    status=BookingStatus.CANCELLED, cancelled_by=CancelledBy.PLAYER, price=1000, advance_amount=1000, amount_paid=0)
+        s.add(b)
+        await s.commit()
+        bid = b.id
+    ph = await make_auth_headers(player)
+    assert (await client.get(f"/api/v1/bookings/{bid}/detail", headers=ph)).json()["refund_request"]["state"] == "policy_no_refund"
+    assert (await client.post(f"/api/v1/bookings/{bid}/refund-request", headers=ph, json={})).status_code == 409

@@ -25,6 +25,7 @@ from app.schemas.booking import (
     PlayerBookingVenueOut,
     PlayerPaymentLineOut,
     PlayerRefundOut,
+    PlayerRefundRequestOut,
     PlayerTimelineEventOut,
 )
 from app.services.booking_service import BookingService
@@ -50,6 +51,7 @@ async def player_booking_detail(db: AsyncSession, settings: Settings, user: User
     events = overview._timeline(
         booking, payments, audit_rows, dispute, cancellation, completion_logs, names, datetime.now(timezone.utc)
     )
+    state, amount = await BookingService(db, settings).refund_request_state(booking)
     entries = (
         await db.execute(select(PaymentEntry).where(PaymentEntry.booking_id == booking.id).order_by(PaymentEntry.created_at))
     ).scalars().all()
@@ -74,6 +76,7 @@ async def player_booking_detail(db: AsyncSession, settings: Settings, user: User
             for e in entries
         ],
         timeline=[PlayerTimelineEventOut(at=e.at, kind=e.kind, amount=e.amount, note=e.note) for e in events],
+        refund_request=PlayerRefundRequestOut(state=state, amount=amount),
         refund=(
             PlayerRefundOut(
                 amount=float(dispute.refund_amount or 0),

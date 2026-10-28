@@ -55,6 +55,7 @@ REFUND_REASON_KEYS = {
     "cancelled_payment_received": "rfd.reason.cancelled_payment_received",
     "payment_review_expired": "rfd.reason.review_expired",
     "payment_rejected": "rfd.reason.payment_rejected",
+    "player_refund_request": "rfd.reason.player_request",  # audit 2026-10-28 Phase 2: "Refund maangein"
 }
 
 
@@ -116,6 +117,7 @@ def refund_out(
         remaining_amount=round(max(refund_due - already, 0.0), 2),
         player_sent=player_sent,
         payment_id=dispute.payment_id,
+        player_note=dispute.player_note,
         refund_due=refund_due,
         already_refunded=already,
         reason_label_key=REFUND_REASON_KEYS.get(dispute.reason, "rfd.reason.other"),
