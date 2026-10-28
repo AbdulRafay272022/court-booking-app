@@ -35,23 +35,23 @@ Status legend: TODO / DONE / PARTIAL / BLOCKED
 | 1 | CNIC review columns + reject | DONE | 27184b8, 7e456ef | migration f7c3a9d2b415 |
 | 2 | cnic_visibility_gate | DONE | 38d2ad9 | flag OFF; affected-venue query in deploy-steps |
 | 3 | walk-in opt-in column, refund request fields | DONE | da563e7 | also finishes P1.10 and P1.14 |
-| 4 | super admin in app | DONE | (this commit) | needs EAS build + device |
+| 4 | super admin in app | DONE | a2b32a9 | needs EAS build + device |
 
 ## Phase 3 (flags OFF)
 | # | Item | Status | Commit | Notes |
 |---|---|---|---|---|
-| 1 | reject proof must not cancel booked | TODO | | |
-| 2 | balance proof + bank reconcile list | TODO | | |
-| 3 | points | TODO | | |
-| 4 | short payment reply | TODO | | |
-| 5 | dues | TODO | | |
-| 6 | no-show reply + GPS | TODO | | |
-| 7 | AI chat all venues | TODO | | |
-| 8 | WhatsApp templates + buttons | TODO | | |
-| 9 | dashboards: points, dues, disputes | TODO | | |
+| 1 | reject proof must not cancel booked | DONE | 2070d30 | |
+| 2 | balance proof + bank reconcile list | DONE | 2070d30, 357df79, dd55026 | flag balance_proof; decisions #12 #13 |
+| 3 | points | DONE | 93ddff1, d3d9e35 | flag player_points; migration a9d4e7b2c813; decision #14 |
+| 4 | short payment reply | DONE | 93ddff1, d3d9e35 | flag short_payment_reply; cron short-payments; decision #15 |
+| 5 | dues | DONE | 93ddff1, d3d9e35 | flag player_dues; decision #16 |
+| 6 | no-show reply + GPS | DONE | 93ddff1, d3d9e35 | flag noshow_reply; needs device D10/D11 |
+| 7 | AI chat all venues | DONE | cb89da5 | not tried on a live model |
+| 8 | WhatsApp templates + buttons | DONE (code) / BLOCKED (Meta) | 93ddff1, 7ba290d | templates need Meta approval |
+| 9 | dashboards: points, dues, disputes | DONE | 0f148aa | |
 
 ## Phase 4
 | Item | Status |
 |---|---|
-| Firebase revert + preview build steps | TODO |
-| Device test checklist | TODO |
+| Firebase revert + preview build steps | DONE (steps) / BLOCKED (Firebase file) | docs/deploy-steps.md section 7
+| Device test checklist | DONE | docs/device-test-checklist.md D1-D16
