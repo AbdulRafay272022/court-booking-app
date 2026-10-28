@@ -80,4 +80,5 @@ export const enBookings = {
   "bookings.empty.pastTitle": "No past bookings",
   "bookings.empty.pastBody": "Games you've played will show up here.",
   "bookings.empty.showAll": "Show all",
+  "bookings.card.openDetail": "Open the booking at {venue}",
 } as const;

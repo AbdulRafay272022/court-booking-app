@@ -751,42 +751,7 @@ class OwnerOverviewService:
         )
         row = await self._main_row(booking.id, now)
 
-        payments = list(
-            (await self.db.execute(select(Payment).where(Payment.booking_id == booking.id).order_by(Payment.created_at)))
-            .scalars()
-            .all()
-        )
-        audit_rows = list(
-            (
-                await self.db.execute(
-                    select(AuditLog)
-                    .where(AuditLog.entity_type == "booking", AuditLog.entity_id == booking.id)
-                    .order_by(AuditLog.created_at, AuditLog.id)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        dispute = (
-            await self.db.execute(
-                select(PaymentDispute)
-                .where(PaymentDispute.booking_id == booking.id, func.coalesce(PaymentDispute.refund_amount, 0) > 0)
-                .order_by(PaymentDispute.created_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-
-        user_ids = {a.actor_id for a in audit_rows if a.actor_id}
-        user_ids |= {p.reviewed_by for p in payments if p.reviewed_by}
-        if dispute is not None and dispute.refunded_by_user_id:
-            user_ids.add(dispute.refunded_by_user_id)
-        names: dict[uuid.UUID, str] = {}
-        if user_ids:
-            names = {
-                uid: name
-                for uid, name in (await self.db.execute(select(User.id, User.name).where(User.id.in_(user_ids)))).all()
-                if name
-            }
+        payments, audit_rows, dispute, names = await self._detail_parts(booking)
 
         proof_payment = next((p for p in reversed(payments) if p.proof_key), None)
         shown_payment = next((p for p in reversed(payments) if p.review_verdict), None) or (payments[-1] if payments else None)
@@ -825,7 +790,71 @@ class OwnerOverviewService:
             else None
         )
 
-        # Timeline: data only (kinds + amounts + names + reasons), the UI writes the words.
+        events = self._timeline(booking, payments, audit_rows, dispute, cancellation, completion_logs, names, now)
+
+        hold_expires = booking.held_until if booking.status == BookingStatus.HELD else (
+            booking.payment_deadline if booking.status == BookingStatus.PAYMENT_SUBMITTED else None
+        )
+        return OwnerBookingDetailOut(
+            row=row,
+            booked_at=booking.created_at,
+            hold_expires_at=hold_expires,
+            advance_required=float(booking.advance_amount),
+            payment_id=proof_payment.id if proof_payment else None,
+            ocr_verdict=(proof_payment.ocr_verdict if proof_payment else None),
+            ocr_amount=(float(proof_payment.ocr_amount) if proof_payment and proof_payment.ocr_amount is not None else None),
+            approval=approval,
+            cancellation=cancellation,
+            refund=refund,
+            completion=completion,
+            timeline=events,
+            channel_detail=await self._channel_detail(booking, audit_rows),
+        )
+
+    async def _detail_parts(self, booking: Booking):
+        """Payments, the booking's audit rows, its refund dispute (amount > 0) and actor names: shared by the owner detail and the
+        player's own booking detail (audit 2026-10-28 item 4)."""
+        payments = list(
+            (await self.db.execute(select(Payment).where(Payment.booking_id == booking.id).order_by(Payment.created_at)))
+            .scalars()
+            .all()
+        )
+        audit_rows = list(
+            (
+                await self.db.execute(
+                    select(AuditLog)
+                    .where(AuditLog.entity_type == "booking", AuditLog.entity_id == booking.id)
+                    .order_by(AuditLog.created_at, AuditLog.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        dispute = (
+            await self.db.execute(
+                select(PaymentDispute)
+                .where(PaymentDispute.booking_id == booking.id, func.coalesce(PaymentDispute.refund_amount, 0) > 0)
+                .order_by(PaymentDispute.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        user_ids = {a.actor_id for a in audit_rows if a.actor_id}
+        user_ids |= {p.reviewed_by for p in payments if p.reviewed_by}
+        if dispute is not None and dispute.refunded_by_user_id:
+            user_ids.add(dispute.refunded_by_user_id)
+        names: dict[uuid.UUID, str] = {}
+        if user_ids:
+            names = {
+                uid: name
+                for uid, name in (await self.db.execute(select(User.id, User.name).where(User.id.in_(user_ids)))).all()
+                if name
+            }
+
+        return payments, audit_rows, dispute, names
+
+    def _timeline(self, booking, payments, audit_rows, dispute, cancellation, completion_logs, names, now) -> list[BookingTimelineEventOut]:
+        """Timeline: data only (kinds + amounts + names + reasons), the UI writes the words."""
         events: list[BookingTimelineEventOut] = []
         events.append(
             BookingTimelineEventOut(
@@ -893,25 +922,7 @@ class OwnerOverviewService:
                 )
             )
         events.sort(key=lambda e: e.at)
-
-        hold_expires = booking.held_until if booking.status == BookingStatus.HELD else (
-            booking.payment_deadline if booking.status == BookingStatus.PAYMENT_SUBMITTED else None
-        )
-        return OwnerBookingDetailOut(
-            row=row,
-            booked_at=booking.created_at,
-            hold_expires_at=hold_expires,
-            advance_required=float(booking.advance_amount),
-            payment_id=proof_payment.id if proof_payment else None,
-            ocr_verdict=(proof_payment.ocr_verdict if proof_payment else None),
-            ocr_amount=(float(proof_payment.ocr_amount) if proof_payment and proof_payment.ocr_amount is not None else None),
-            approval=approval,
-            cancellation=cancellation,
-            refund=refund,
-            completion=completion,
-            timeline=events,
-            channel_detail=await self._channel_detail(booking, audit_rows),
-        )
+        return events
 
     async def _channel_detail(self, booking: Booking, audit_rows: list[AuditLog]) -> str | None:
         """Owner Round 2 (A4): a walk-in has source "walkin" whoever added it; the `booking.walkin` audit row's actor

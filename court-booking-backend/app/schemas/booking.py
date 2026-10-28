@@ -138,3 +138,58 @@ class BookingResponse(BaseModel):
 class BookingHoldResponse(BaseModel):
     booking: BookingOut
     payment_instructions: PaymentInstructionsOut | None = None
+
+
+# ---- audit 2026-10-28 item 4: the player's own booking detail (web /booking/{id}, app booking/[id]/detail) ----
+
+
+class PlayerBookingVenueOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    area: str | None = None
+    city: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    whatsapp: str | None = None
+    cancellation_allowed: bool = True
+    cancellation_cutoff_hours: int | None = None
+
+
+class PlayerBookingCourtOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    sport: str
+    is_indoor: bool = False
+
+
+class PlayerPaymentLineOut(BaseModel):
+    """One real money line on the booking (payment_entries): positive = paid in, negative = refund or correction."""
+
+    at: datetime
+    amount: int
+    method: PaymentMethod
+    is_reversal: bool = False
+
+
+class PlayerTimelineEventOut(BaseModel):
+    at: datetime
+    kind: str
+    amount: float | None = None
+    note: str | None = None
+
+
+class PlayerRefundOut(BaseModel):
+    amount: float
+    status: str  # "owed" | "paid"
+    paid_at: datetime | None = None
+
+
+class PlayerBookingDetailOut(BaseModel):
+    booking: BookingOut
+    venue: PlayerBookingVenueOut
+    court: PlayerBookingCourtOut
+    duration_minutes: int
+    payments: list[PlayerPaymentLineOut]
+    timeline: list[PlayerTimelineEventOut]
+    refund: PlayerRefundOut | None = None

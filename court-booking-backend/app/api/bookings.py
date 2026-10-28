@@ -25,6 +25,7 @@ from app.schemas.booking import (
     BookingResponse,
     BookingSelfCheckinIn,
     PaymentInstructionsOut,
+    PlayerBookingDetailOut,
     WalkInBookingIn,
 )
 from app.services.booking_service import BookingService
@@ -258,3 +259,14 @@ async def check_in_booking_self(
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
     booking = await service.check_in_self(booking, payload.venue_qr_token)
     return BookingResponse(booking=BookingOut.model_validate(booking))
+
+
+@router.get("/{booking_id}/detail", response_model=PlayerBookingDetailOut)
+async def get_booking_detail(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, user: CurrentUser
+) -> PlayerBookingDetailOut:
+    """Audit 2026-10-28 item 4: one booking's full detail for its player (venue, court, money lines, timeline, policy,
+    contact). Same access rule as GET /bookings/{id}."""
+    from app.services.player_booking_detail import player_booking_detail
+
+    return await player_booking_detail(db, settings, user, booking_id)

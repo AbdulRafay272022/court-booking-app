@@ -80,4 +80,5 @@ export const ruBookings = {
   "bookings.empty.pastTitle": "Koi purani booking nahi",
   "bookings.empty.pastBody": "Jo games aap khel chuke hain woh yahan nazar aayengi.",
   "bookings.empty.showAll": "Sab dikhao",
+  "bookings.card.openDetail": "{venue} ki booking ki detail kholo",
 } as const;

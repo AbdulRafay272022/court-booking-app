@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -244,6 +244,7 @@ function useBookingView(booking: Booking, onChanged: () => void) {
     policyNote,
     handleCancel,
     goPay: () => router.push(`/booking/${booking.id}/pay`),
+    goDetail: () => router.push(`/booking/${booking.id}/done`),
     goCheckin: () => router.push(`/booking/${booking.id}/checkin`),
   };
 }
@@ -280,7 +281,7 @@ export function BookingTags({
 }) {
   const t = useT();
   if (!court && !venue) return null;
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const stop = (e: MouseEvent) => e.stopPropagation();
   const area = venue?.area ?? venue?.city;
   const cls = dark ? TAG_LINK.replace("bg-fl-booked-bg", "bg-white/15").replace("text-fl-night", "text-white").replace("hover:bg-fl-line", "hover:bg-white/25") : TAG_LINK;
   return (
@@ -325,10 +326,10 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
     <article
       data-testid="booking-card"
       data-status={booking.status}
-      onClick={() => v.canResumePay && v.goPay()}
-      className={`relative flex overflow-hidden rounded-3xl bg-fl-white shadow-fl-card-soft ${
-        v.canResumePay ? "khelo-card cursor-pointer" : ""
-      } ${group === "cancelled" ? "opacity-90" : ""}`}
+      {...cardOpenProps(v.goDetail, t("bookings.card.openDetail", { venue: v.venueName ?? "" }))}
+      className={`khelo-card relative flex cursor-pointer overflow-hidden rounded-3xl bg-fl-white shadow-fl-card-soft outline-none focus-visible:ring-2 focus-visible:ring-fl-teal ${
+        group === "cancelled" ? "opacity-90" : ""
+      }`}
     >
       <span className={`w-1.5 shrink-0 ${style.strip}`} aria-hidden="true" />
       <div className="flex min-w-0 flex-1 flex-col gap-4 p-5">
@@ -410,6 +411,26 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
   );
 }
 
+/** Audit 2026-10-28 item 4: the whole card opens the booking's detail page, for EVERY status. A click on a button or link
+ * inside the card does its own thing instead (cancel, pay, review...). Keyboard: Enter / Space on the focused card. */
+function cardOpenProps(open: () => void, label: string) {
+  const fromControl = (target: EventTarget | null) => target instanceof Element && !!target.closest("button, a, input, textarea, select, [role=dialog]");
+  return {
+    role: "link" as const,
+    tabIndex: 0,
+    "aria-label": label,
+    onClick: (e: MouseEvent) => {
+      if (!fromControl(e.target)) open();
+    },
+    onKeyDown: (e: KeyboardEvent) => {
+      if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) {
+        e.preventDefault();
+        open();
+      }
+    },
+  };
+}
+
 /** The featured card at the top of the dashboard: the player's next active booking. */
 export function NextBookingCard({ booking, onChanged, showPaid = false }: { booking: Booking; onChanged: () => void; showPaid?: boolean }) {
   const t = useT();
@@ -420,8 +441,8 @@ export function NextBookingCard({ booking, onChanged, showPaid = false }: { book
   return (
     <section
       data-testid="next-booking"
-      aria-label={t("bookings.next.aria")}
-      className="relative overflow-hidden rounded-[28px] bg-fl-night p-6 text-white sm:p-8"
+      {...cardOpenProps(v.goDetail, t("bookings.next.aria"))}
+      className="relative cursor-pointer overflow-hidden rounded-[28px] bg-fl-night p-6 text-white outline-none focus-visible:ring-2 focus-visible:ring-fl-orange sm:p-8"
     >
       <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-fl-teal/40 blur-3xl" aria-hidden="true" />
       <div className="relative flex flex-col gap-5">

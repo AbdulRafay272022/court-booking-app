@@ -200,3 +200,45 @@ def test_validator_flags_mixed_script_drafts():
     from app.services.chat_validator import Issue  # noqa: F401
 
     assert chat_validator._INSTRUCTIONS["non_latin_script"]
+
+
+# ---------------------------------------------------------------- item 4: the player's booking detail
+
+
+async def test_player_booking_detail_has_everything_for_a_held_booking(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    _o, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923001140001")
+    headers = await make_auth_headers(player)
+    held = (await client.post("/api/v1/bookings/hold", headers=headers, json={"court_id": str(court.id), "starts_at": _starts_at()})).json()
+    bid = held["booking"]["id"]
+    resp = await client.get(f"/api/v1/bookings/{bid}/detail", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["venue"]["name"] == venue.name and body["venue"]["slug"] == venue.slug
+    assert body["court"]["sport"] == "padel"
+    assert body["duration_minutes"] == 60
+    assert body["booking"]["status"] == "held"
+    assert [e["kind"] for e in body["timeline"]] == ["held"]
+    assert body["payments"] == []
+    assert body["venue"]["cancellation_allowed"] is True
+
+
+async def test_player_booking_detail_lists_cash_paid_at_a_walkin_and_hides_from_others(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, _venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923001140002", name="Ali")
+    resp = await client.post(
+        "/api/v1/bookings/walkin",
+        headers=await make_auth_headers(owner),
+        json={"court_id": str(court.id), "starts_at": _starts_at(), "player_name": "Ali", "player_phone": "+923001140002", "amount_paid": 400},
+    )
+    assert resp.status_code == 201, resp.text
+    bid = resp.json()["booking"]["id"]
+    detail = (await client.get(f"/api/v1/bookings/{bid}/detail", headers=await make_auth_headers(player))).json()
+    assert [(p["amount"], p["method"]) for p in detail["payments"]] == [(400, "cash_at_venue")]
+    assert detail["booking"]["balance_due"] == 600
+    stranger = await make_user("+923001140003")
+    assert (await client.get(f"/api/v1/bookings/{bid}/detail", headers=await make_auth_headers(stranger))).status_code in (403, 404)

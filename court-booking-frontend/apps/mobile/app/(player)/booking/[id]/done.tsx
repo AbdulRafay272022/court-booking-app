@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Clock3, MessageCircle, Navigation, QrCode, Share2, X } from "lucide-react-native";
+import { ArrowLeft, Check, Clock3, MessageCircle, Navigation, Phone, QrCode, Share2, X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { formatDate, formatTime, formatTimeRange } from "@court-booking/types";
+import { formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink } from "@court-booking/types";
 import { formatPkr, isConfirmed, journeySteps, palette, radius, space } from "@court-booking/ui-tokens";
 
 import {
@@ -57,6 +57,13 @@ export default function BookingStatusScreen() {
   });
   const booking = bookingQuery.data;
   const place = useBookingPlace(booking);
+  // Audit 2026-10-28 item 4: the money lines, the event history and the venue's contact (one call, same rule as the web page).
+  const detailQuery = useQuery({
+    queryKey: ["booking-detail", id, booking?.status],
+    queryFn: () => api.bookings.detail(id),
+    enabled: !!booking,
+    subscribed: focused,
+  });
   const paymentsQuery = useQuery({
     queryKey: ["booking-payments", id, booking?.status],
     queryFn: () => api.payments.listForBooking(id),
@@ -127,6 +134,9 @@ export default function BookingStatusScreen() {
   const cancel = cancelState(booking, place.venue, now);
   const paid = donePaidAmount(booking);
   const isOver = Date.parse(booking.ends_at) <= now;
+  const detail = detailQuery.data;
+  const wa = detail ? whatsappLink(detail.venue.whatsapp ?? detail.venue.phone, copy(`Salam, meri booking ${booking.id.slice(0, 8)} ke baare mein baat karni hai.`, `Hi, I'd like to talk about my booking ${booking.id.slice(0, 8)}.`)) : null;
+  const tel = detail?.venue.phone ? `tel:${detail.venue.phone.replace(/[^\d+]/g, "")}` : null;
 
   // Why it stopped, in the venue's own words where there are some.
   const stopReason =
@@ -238,6 +248,8 @@ export default function BookingStatusScreen() {
           ) : null}
           {place.venue ? <QuickButton label={copy("Raasta", "Directions")} icon={<Navigation size={16} color={palette.night} />} onPress={() => openDirections(place.venue!)} /> : null}
           <QuickButton label={copy("Venue se baat", "Talk to venue")} icon={<MessageCircle size={16} color={palette.night} />} onPress={() => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id } })} />
+          {wa ? <QuickButton label={copy("WhatsApp karo", "WhatsApp")} icon={<MessageCircle size={16} color={palette.night} />} onPress={() => void Linking.openURL(wa)} /> : null}
+          {tel ? <QuickButton label={copy("Call karo", "Call")} icon={<Phone size={16} color={palette.night} />} onPress={() => void Linking.openURL(tel)} /> : null}
           {booked ? (
             <QuickButton
               label={copy("Team ko batao", "Tell the team")}
@@ -260,6 +272,47 @@ export default function BookingStatusScreen() {
             ]}
           />
         </Card>
+
+        {detail ? (
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-payment-lines">
+            <Text variant="title" accessibilityRole="header">
+              {copy("Payments", "Payments")}
+            </Text>
+            {detail.payments.length === 0 ? (
+              <Text variant="body" tone="muted">
+                {copy("Abhi koi payment record nahi hui.", "No payment recorded yet.")}
+              </Text>
+            ) : (
+              detail.payments.map((p, i) => (
+                <View key={`${p.at}-${i}`} style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[2] }}>
+                  <Text variant="body">{`${paymentLineLabel(p, lang)} · ${formatWhen(p.at, new Date(), lang)}`}</Text>
+                  <Text variant="bodyStrong" tone={p.amount < 0 ? "danger" : "open"}>{`${p.amount < 0 ? "−" : ""}${formatPkr(Math.abs(p.amount))}`}</Text>
+                </View>
+              ))
+            )}
+            {detail.refund ? (
+              <Text variant="bodyStrong" tone={detail.refund.status === "owed" ? "waiting" : "open"} testID="status-refund">
+                {detail.refund.status === "owed" ? copy(`Refund baqi: ${formatPkr(detail.refund.amount)}`, `Refund owed: ${formatPkr(detail.refund.amount)}`) : copy(`Refund bhej diya gaya: ${formatPkr(detail.refund.amount)}`, `Refund sent: ${formatPkr(detail.refund.amount)}`)}
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
+
+        {detail && detail.timeline.length > 0 ? (
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-history">
+            <Text variant="title" accessibilityRole="header">
+              {copy("Booking ki kahani", "What happened")}
+            </Text>
+            {detail.timeline.map((e, i) => (
+              <View key={`${e.at}-${e.kind}-${i}`} style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[2] }}>
+                <Text variant="bodyStrong" style={{ flexShrink: 1 }}>
+                  {`${timelineLabel(e.kind, lang)}${e.amount ? ` · ${formatPkr(e.amount)}` : ""}`}
+                </Text>
+                <Text variant="meta" tone="muted">{formatWhen(e.at, new Date(), lang)}</Text>
+              </View>
+            ))}
+          </Card>
+        ) : null}
 
         {policy ? (
           <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-policy">

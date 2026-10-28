@@ -7,6 +7,7 @@ import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { isConfirmed, journeySteps } from "@court-booking/ui-tokens";
+import { paymentLineLabel, timelineLabel, whatsappLink } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
@@ -25,25 +26,18 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   const fmt = useFmt();
   const lang = useFlLang();
   const router = useRouter();
-  const bookingQuery = useQuery({
-    queryKey: ["booking", id],
-    queryFn: () => api.bookings.get(id),
+  // Audit 2026-10-28 item 4: ONE call returns the booking with its venue, court, money lines, timeline, policy and contact.
+  const detailQuery = useQuery({
+    queryKey: ["booking-detail", id],
+    queryFn: () => api.bookings.detail(id),
     refetchInterval: (query) => {
-      const s = query.state.data?.status;
+      const s = query.state.data?.booking.status;
       return s === "held" || s === "payment_submitted" ? 4000 : false;
     },
   });
-  const courtQuery = useQuery({
-    queryKey: ["court", bookingQuery.data?.court_id],
-    queryFn: () => api.courts.get(bookingQuery.data!.court_id),
-    enabled: !!bookingQuery.data?.court_id,
-  });
-  const venueQuery = useQuery({
-    queryKey: ["venue", courtQuery.data?.venue_id],
-    queryFn: () => api.venues.get(courtQuery.data!.venue_id),
-    enabled: !!courtQuery.data?.venue_id,
-  });
-  const booking = bookingQuery.data;
+  const bookingQuery = detailQuery;
+  const detail = detailQuery.data;
+  const booking = detail?.booking;
 
   if (!booking && bookingQuery.isError) {
     return (
@@ -62,15 +56,19 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   }
 
   const confirmed = isConfirmed(booking.status);
-  const venueName = venueQuery.data?.name ?? t("play.done.venue");
-  const court = courtQuery.data ? courtLabel(courtQuery.data.name, courtQuery.data.sport) : t("play.done.court");
-  const place = venueQuery.data ? venueQuery.data.area ?? venueQuery.data.city : "";
+  const d = detail!;
+  const venueName = d.venue.name;
+  const court = courtLabel(d.court.name, d.court.sport);
+  const place = d.venue.area ?? d.venue.city ?? "";
   const fields = [
     { label: t("play.done.date"), value: fmt.date(booking.starts_at) },
     { label: t("play.done.time"), value: fmt.timeRange(booking.starts_at, booking.ends_at) },
-    { label: t("play.done.court"), value: court },
+    { label: t("play.done.court"), value: `${court} · ${d.court.is_indoor ? t("play.done.indoor") : t("play.done.outdoor")}` },
+    { label: t("play.done.duration"), value: fmt.duration(d.duration_minutes) },
     ...(place ? [{ label: t("play.done.venue"), value: place }] : []),
   ];
+  const wa = whatsappLink(d.venue.whatsapp ?? d.venue.phone, t("play.done.waText", { id: booking.id.slice(0, 8) }));
+  const tel = d.venue.phone ? `tel:${d.venue.phone.replace(/[^\d+]/g, "")}` : null;
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 bg-fl-night px-4 pb-10 pt-12 font-fl-body sm:px-6" data-testid={confirmed ? "status-booked-page" : "status-pending-page"}>
@@ -96,6 +94,7 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
 
         <MoneyRows
           rows={[
+            { label: t("play.done.total"), value: `PKR ${formatPKR(booking.price)}` },
             { label: t("play.done.paid"), value: `PKR ${formatPKR(booking.amount_paid)}`, tone: "open" },
             {
               label: t("play.done.dueAtVenue"),
@@ -105,6 +104,80 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
             },
           ]}
         />
+
+        <section className="flex flex-col gap-2 rounded-fl-card bg-fl-white p-5" data-testid="detail-payments">
+          <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.paymentsTitle")}</h2>
+          {d.payments.length === 0 ? (
+            <p className="text-[14px] text-fl-muted">{t("play.done.noPayments")}</p>
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              {d.payments.map((p, i) => (
+                <li key={`${p.at}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2 text-[14px]">
+                  <span className="text-fl-night">
+                    {paymentLineLabel(p, lang)} <span className="text-fl-muted">· {fmt.when(p.at)}</span>
+                  </span>
+                  <span className={`font-extrabold tabular-nums ${p.amount < 0 ? "text-fl-danger" : "text-fl-open"}`}>
+                    {p.amount < 0 ? "−" : ""}PKR {formatPKR(Math.abs(p.amount))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {d.refund ? (
+            <p className={`text-[14px] font-bold ${d.refund.status === "owed" ? "text-fl-waiting" : "text-fl-open"}`} data-testid="detail-refund">
+              {t(d.refund.status === "owed" ? "play.done.refundOwed" : "play.done.refundPaid", { amount: `PKR ${formatPKR(d.refund.amount)}` })}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-fl-card bg-fl-white p-5" data-testid="detail-timeline">
+          <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.timelineTitle")}</h2>
+          <ol className="m-0 flex list-none flex-col gap-2 p-0">
+            {d.timeline.map((e, i) => (
+              <li key={`${e.at}-${e.kind}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2 text-[14px]">
+                <span className="font-bold text-fl-night">
+                  {timelineLabel(e.kind, lang)}
+                  {e.amount ? <span className="font-normal text-fl-muted"> · PKR {formatPKR(e.amount)}</span> : null}
+                  {e.note && e.kind === "rejected" ? <span className="block font-normal text-fl-muted">{e.note}</span> : null}
+                </span>
+                <span className="text-fl-muted">{fmt.when(e.at)}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="flex flex-col gap-2 rounded-fl-card bg-fl-white p-5" data-testid="detail-policy">
+          <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.policyTitle")}</h2>
+          <p className="text-[14px] text-fl-night">{fmt.cancellationPolicy(d.venue)}</p>
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-fl-card bg-fl-white p-5" data-testid="detail-contact">
+          <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.contactTitle")}</h2>
+          {d.venue.address ? <p className="text-[14px] text-fl-muted">{d.venue.address}</p> : null}
+          {wa || tel ? (
+            <div className="flex flex-wrap gap-2">
+              {wa ? (
+                <a href={wa} target="_blank" rel="noopener noreferrer" className="rounded-full bg-fl-teal px-4 py-2 text-[14px] font-extrabold text-fl-white">
+                  {t("play.done.whatsapp")}
+                </a>
+              ) : null}
+              {tel ? (
+                <a href={tel} className="rounded-full border border-fl-line-strong px-4 py-2 text-[14px] font-extrabold text-fl-night">
+                  {t("play.done.call")}
+                </a>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[14px] text-fl-muted">{t("play.done.noContact")}</p>
+          )}
+          <p className="text-[12px] text-fl-muted2">
+            {t("play.done.bookingId")}: <span className="font-mono">{booking.id}</span>
+          </p>
+        </section>
+
+        {confirmed ? (
+          <Button label={t("play.done.checkin")} block variant="secondary" onClick={() => router.push(`/booking/${id}/checkin`)} />
+        ) : null}
 
         {!confirmed ? (
           <div className="flex flex-col gap-4 rounded-fl-card bg-fl-white p-5" data-testid="status-journey">
