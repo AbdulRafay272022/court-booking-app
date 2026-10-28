@@ -17,11 +17,11 @@ Status legend: TODO / DONE / PARTIAL / BLOCKED
 | 7 | approvals badge | DONE | 220c6ed |  |
 | 8 | audit real actor + bank edits | DONE | 573fcd1 |  |
 | 9 | admin approve completeness | DONE | eeba958 |  |
-| 10 | refund entry bugs | PARTIAL | 9e86ad6 | cash refund row -> Phase 2 item 3 |
+| 10 | refund entry bugs | DONE | 9e86ad6, da563e7 | |
 | 11 | web staff permissions | DONE | 2574091 |  |
 | 12 | web English -> Roman Urdu | DONE | 44d888b | loanwords/admin/legal kept, decisions #7 |
 | 13 | cards: no indoor/outdoor chips; amenities hover/tap | DONE | 9bce471 |  |
-| 14 | refund policy everywhere + "Refund maangein" | PARTIAL | 7094919 | 'Refund maangein' -> Phase 2 item 3 |
+| 14 | refund policy everywhere + "Refund maangein" | DONE | 7094919, da563e7 | |
 | 15 | settings required, no default controls | DONE | 69544bd | decisions #8 #9 |
 | 16 | staff dashboard | DONE | d7dc3df | app needs EAS build |
 | 17 | owner instant notice on staff no-show/short | DONE | a0bd16e | WA behind whatsapp_templates |
@@ -32,10 +32,10 @@ Status legend: TODO / DONE / PARTIAL / BLOCKED
 ## Phase 2 (small migrations)
 | # | Item | Status | Commit | Notes |
 |---|---|---|---|---|
-| 1 | CNIC review columns + reject | TODO | | |
-| 2 | cnic_visibility_gate | TODO | | |
-| 3 | walk-in opt-in column, refund request fields | TODO | | |
-| 4 | super admin in app | TODO | | |
+| 1 | CNIC review columns + reject | DONE | 27184b8, 7e456ef | migration f7c3a9d2b415 |
+| 2 | cnic_visibility_gate | DONE | 38d2ad9 | flag OFF; affected-venue query in deploy-steps |
+| 3 | walk-in opt-in column, refund request fields | DONE | da563e7 | also finishes P1.10 and P1.14 |
+| 4 | super admin in app | DONE | (this commit) | needs EAS build + device |
 
 ## Phase 3 (flags OFF)
 | # | Item | Status | Commit | Notes |
