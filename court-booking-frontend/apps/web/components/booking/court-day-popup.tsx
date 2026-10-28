@@ -19,6 +19,7 @@ import { slotChipA11y, slotChipCue, type SlotChipState } from "@court-booking/ui
 import { Hourglass, Lock, UserCheck, useFlLang } from "@/components/fl";
 import { slotRowSpec } from "@/lib/slot-row";
 import { CourtMonthCalendar } from "./court-month-calendar";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 /** Row look per slot state (Floodlight System board): never colour-only, the cue (icon / strike / dashed / outline) comes from slotChipCue. */
 const ROW: Record<SlotChipState, string> = {
@@ -80,7 +81,11 @@ export function CourtDayPopup({
   const status = useAuthStore((s) => s.status);
   const [view, setView] = useState<"day" | "month">("day");
   const [date, setDate] = useState(initialDate);
-  const [pickingIndex, setPickingIndex] = useState<number | null>(null);
+  // The picked START (an instant), not a list position: the 30 s clock removes started slots from the top of the list, and a
+  // stored index would then point at the NEXT slot while the duration sheet is open (audit 2026-10-28 item 5).
+  const [pickingStart, setPickingStart] = useState<string | null>(null);
+  // The venue page behind this popup must not scroll while it is open (audit 2026-10-28 item 5).
+  useScrollLock(true);
   const [joiningKey, setJoiningKey] = useState<string | null>(null);
 
   const today = pktDateString();
@@ -114,6 +119,11 @@ export function CourtDayPopup({
   });
   const slots = useMemo(() => upcomingSlots(dayQuery.data?.slots ?? [], now), [dayQuery.data, now]);
   const minSlots = minSlotsFor(slotMinutes);
+  const pickingIndex = pickingStart === null ? null : slots.findIndex((x) => x.starts_at === pickingStart);
+  // the picked slot started (or got taken) while the sheet was open: close the sheet rather than offer another slot
+  useEffect(() => {
+    if (pickingStart !== null && pickingIndex === -1) setPickingStart(null);
+  }, [pickingStart, pickingIndex]);
 
   // Drives the small availability dot on each week-strip pill. Shares the calendar's query key, so it's already
   // cached from the month view and adds no extra fetch in the common case.
@@ -158,13 +168,13 @@ export function CourtDayPopup({
       router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
-    setPickingIndex(index);
+    setPickingStart(slot.starts_at);
   }
 
   function handleContinue(choice: { slotCount: number; minutes: number; price: number }) {
-    if (pickingIndex === null) return;
+    if (pickingIndex === null || pickingIndex < 0) return;
     const startsAt = slots[pickingIndex].starts_at;
-    setPickingIndex(null);
+    setPickingStart(null);
     onClose();
     const params = new URLSearchParams({
       venueId,
@@ -182,12 +192,12 @@ export function CourtDayPopup({
 
   return (
     <>
-      <div className="khelo fixed inset-0 z-50 flex items-end md:items-center justify-center bg-fl-night/50 font-[family-name:var(--font-khelo-body-x)] text-fl-night" onClick={onClose}>
+      <div className="khelo fixed inset-0 z-50 flex items-end md:items-center justify-center overscroll-contain bg-fl-night/50 font-[family-name:var(--font-khelo-body-x)] text-fl-night" onClick={onClose}>
         <div
           role="dialog"
           aria-modal="true"
           aria-label={t("venue.pop.availability", { court: courtName })}
-          className="bg-fl-white w-full md:w-[440px] rounded-t-3xl md:rounded-3xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4"
+          className="bg-fl-white w-full md:w-[440px] rounded-t-3xl md:rounded-3xl px-5 pt-5 pb-8 md:pb-6 flex flex-col gap-4 overscroll-contain"
           style={{ maxHeight: "86vh" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -216,7 +226,7 @@ export function CourtDayPopup({
           </div>
 
           {view === "month" ? (
-            <div className="overflow-y-auto">
+            <div className="overflow-y-auto overscroll-contain">
               <CourtMonthCalendar
                 courtId={courtId}
                 onSelectDate={(d) => {
@@ -255,7 +265,7 @@ export function CourtDayPopup({
                 })}
               </div>
 
-              <div className="overflow-y-auto flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-fl-line-strong [&::-webkit-scrollbar-track]:bg-transparent">
+              <div className="overflow-y-auto overscroll-contain min-h-[220px] flex flex-col gap-2 pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-fl-line-strong [&::-webkit-scrollbar-track]:bg-transparent">
                 {dayQuery.isLoading ? (
                   <p className="text-center py-10 text-fl-muted2">{t("venue.cal.loading")}</p>
                 ) : slots.length === 0 ? (
@@ -325,7 +335,7 @@ export function CourtDayPopup({
         </div>
       </div>
 
-      {pickingIndex !== null ? (
+      {pickingIndex !== null && pickingIndex >= 0 ? (
         <DurationSheet
           courtId={courtId}
           courtName={courtName}
@@ -333,7 +343,7 @@ export function CourtDayPopup({
           slotMinutes={slotMinutes}
           slots={slots}
           index={pickingIndex}
-          onClose={() => setPickingIndex(null)}
+          onClose={() => setPickingStart(null)}
           onContinue={handleContinue}
           cancellation={cancellation}
         />

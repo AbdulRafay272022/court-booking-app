@@ -24,6 +24,9 @@ export interface ScreenProps {
   overlay?: ReactNode;
   contentStyle?: StyleProp<ViewStyle>;
   testID?: string;
+  /** Keep the visible content where it is when content ABOVE it changes height (a list that refreshes every 30 s).
+   * Audit 2026-10-28 item 5: the venue page jumped up when started slots dropped off. Opt-in: needs device to judge feel. */
+  keepPosition?: boolean;
 }
 
 /** Page shell: safe areas, role gutter, ground background, scroll, keyboard avoidance, pull-to-refresh, floating bar room. */
@@ -40,6 +43,7 @@ export function Screen({
   overlay,
   contentStyle,
   testID,
+  keepPosition,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const t = useRoleTheme();
@@ -57,6 +61,7 @@ export function Screen({
       style={{ flex: 1, backgroundColor: bg }}
       contentContainerStyle={[pad, contentStyle]}
       keyboardShouldPersistTaps="handled"
+      maintainVisibleContentPosition={keepPosition ? { minIndexForVisible: 0 } : undefined}
       refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={t.ring} colors={[t.ring]} /> : undefined}
     >
       {children}

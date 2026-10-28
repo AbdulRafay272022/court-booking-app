@@ -2,20 +2,7 @@
 
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 
-/** Body scroll lock shared by every open modal (a counter, so a dialog opened from a dialog does not unlock the page early). */
-let lockCount = 0;
-let savedOverflow = "";
-function lockScroll() {
-  if (lockCount === 0) {
-    savedOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-  }
-  lockCount += 1;
-}
-function unlockScroll() {
-  lockCount = Math.max(0, lockCount - 1);
-  if (lockCount === 0) document.body.style.overflow = savedOverflow;
-}
+import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
