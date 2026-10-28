@@ -111,3 +111,20 @@ export function venueMissingLabel(item: { code: string; court: string | null }, 
   const text = MISSING[lang][item.code] ?? item.code;
   return text.replace("{court}", item.court ?? (lang === "ru" ? "court" : "the court"));
 }
+
+/**
+ * audit 2026-10-28 item 14: the ONE short refund line shown on every venue/court panel and inside every booking (web + app):
+ * "Refund nahi", "{h} ghante pehle tak refund", or "Shuru hone se pehle tak refund". Built from the venue's existing
+ * cancellation fields (venues.cancellation_allowed / cancellation_cutoff_hours; a court carries the same values as a mirror).
+ */
+export function refundPolicyShort(
+  policy: { cancellation_allowed: boolean; cancellation_cutoff_hours: number | null } | null | undefined,
+  lang: TextLang = "en",
+): string {
+  if (!policy) return "";
+  const ru = lang === "ru";
+  if (!policy.cancellation_allowed) return ru ? "Refund nahi" : "No refund";
+  const h = policy.cancellation_cutoff_hours;
+  if (h != null && h > 0) return ru ? `${h} ghante pehle tak refund` : `Refund up to ${h} ${h === 1 ? "hour" : "hours"} before`;
+  return ru ? "Shuru hone se pehle tak refund" : "Refund any time before the start";
+}

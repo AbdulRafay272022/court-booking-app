@@ -4,7 +4,7 @@ import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Heart, Info, MapPin, MessageCircle, Navigation, Share2, Star } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { amenityLabel, formatDate, formatDuration, formatTime, formatTimeRange, minSlotsFor, monthOf, pktDateString, type Court, type Review, type Venue } from "@court-booking/types";
+import { amenityLabel, formatDate, refundPolicyShort, formatDuration, formatTime, formatTimeRange, minSlotsFor, monthOf, pktDateString, type Court, type Review, type Venue } from "@court-booking/types";
 import { formatPkr, palette, radius, slot as slotLook, space } from "@court-booking/ui-tokens";
 
 import {
@@ -374,7 +374,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
                         shape="tile"
                         block
                         label={c.name}
-                        meta={[sportLabel(c.sport), c.is_indoor ? copy("Indoor", "Indoor") : copy("Outdoor", "Outdoor")].join(" · ")}
+                        meta={[sportLabel(c.sport), c.is_indoor ? copy("Indoor", "Indoor") : copy("Outdoor", "Outdoor"), refundPolicyShort(venue, lang)].join(" · ")}
                         selected={c.id === court?.id}
                         onPress={() => chooseCourt(c.id)}
                         testID={`court-${c.id}`}

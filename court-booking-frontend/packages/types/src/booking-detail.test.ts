@@ -29,3 +29,12 @@ test("venue gaps are worded per court in both languages", async () => {
   assert.equal(venueMissingLabel({ code: "pricing", court: "Court A" }, "en"), "A price for Court A");
   assert.equal(venueMissingLabel({ code: "bank_details", court: null }, "en"), "Bank details (bank, account title, account number)");
 });
+
+test("the short refund line uses the founder's wording", async () => {
+  const { refundPolicyShort } = await import("./booking-detail");
+  assert.equal(refundPolicyShort({ cancellation_allowed: false, cancellation_cutoff_hours: null }, "ru"), "Refund nahi");
+  assert.equal(refundPolicyShort({ cancellation_allowed: true, cancellation_cutoff_hours: 6 }, "ru"), "6 ghante pehle tak refund");
+  assert.equal(refundPolicyShort({ cancellation_allowed: true, cancellation_cutoff_hours: null }, "ru"), "Shuru hone se pehle tak refund");
+  assert.equal(refundPolicyShort({ cancellation_allowed: true, cancellation_cutoff_hours: 1 }, "en"), "Refund up to 1 hour before");
+  assert.equal(refundPolicyShort(null, "ru"), "");
+});

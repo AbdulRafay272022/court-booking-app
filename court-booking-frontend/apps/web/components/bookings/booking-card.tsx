@@ -4,7 +4,7 @@ import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { statusGroup, type Booking, type BookingStatus, type Review, type StatusGroup } from "@court-booking/types";
+import { refundPolicyShort, statusGroup, type Booking, type BookingStatus, type Review, type StatusGroup } from "@court-booking/types";
 import { courtLabel } from "@/components/court-label";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -215,6 +215,9 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   const canCancel = canResumePay || canCancelBooked;
   const bookedNotCancellable = booking.status === "booked" && !canCancelBooked && !!court;
   const policyNote = bookedNotCancellable ? (withinCutoff ? t("bookings.policy.closed") : fmt.cancellationPolicy(court)) : null;
+  // audit 2026-10-28 item 14: every booking says its refund rule in one line (the venue's policy; the court mirrors it)
+  const flLang = useFlLang();
+  const refundLine = court ? refundPolicyShort(venueQuery.data ?? court, flLang) : null;
 
   async function handleCancel() {
     const isPaid = booking.status === "booked";
@@ -242,6 +245,7 @@ function useBookingView(booking: Booking, onChanged: () => void) {
     canResumePay,
     canCancel,
     policyNote,
+    refundLine,
     handleCancel,
     goPay: () => router.push(`/booking/${booking.id}/pay`),
     goDetail: () => router.push(`/booking/${booking.id}/done`),
@@ -404,7 +408,11 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
             </button>
           ) : null}
         </div>
-        {v.policyNote ? <p className="text-[13px] leading-snug text-fl-muted">{v.policyNote}</p> : null}
+        {v.policyNote ? (
+          <p className="text-[13px] leading-snug text-fl-muted">{v.policyNote}</p>
+        ) : v.refundLine ? (
+          <p className="text-[13px] leading-snug text-fl-muted" data-testid="booking-refund-line">{v.refundLine}</p>
+        ) : null}
         {booking.status === "completed" ? <RateGame booking={booking} review={review} onChanged={onChanged} /> : null}
       </div>
     </article>

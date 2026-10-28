@@ -142,4 +142,5 @@ export const ruVenue = {
   "venue.pop.closed": "Band hai",
   "venue.pop.waitlistJoined": "Aap list mein hain \u2014 slot khali hua to hum bata denge. Aap line mein #{position} hain.",
   "venue.pop.waitlistFailed": "Waitlist mein shamil nahi ho sake: {error}",
+  "venue.aside.refund": "Refund",
 } as const;

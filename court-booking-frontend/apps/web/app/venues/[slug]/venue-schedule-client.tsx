@@ -7,7 +7,8 @@ import { CourtLabel } from "@/components/court-label";
 import { PhotoGallery } from "@/components/photo-gallery";
 import type { Court } from "@court-booking/types";
 import { useFmt } from "@/lib/use-fmt";
-import { useT } from "@/components/i18n/lang-provider";
+import { useLang, useT } from "@/components/i18n/lang-provider";
+import { refundPolicyShort } from "@court-booking/types";
 import { CourtMonthCalendar } from "@/components/booking/court-month-calendar";
 import { CourtDayPopup } from "@/components/booking/court-day-popup";
 import { CourtHoursPanel } from "@/components/booking/court-hours-panel";
@@ -34,6 +35,7 @@ export function VenueScheduleClient({
   cancellation?: { cancellation_allowed: boolean; cancellation_cutoff_hours: number | null } | null;
 }) {
   const t = useT();
+  const lang = useLang();
   const fmt = useFmt();
   const searchParams = useSearchParams();
   const sportParam = searchParams.get("sport");
@@ -92,6 +94,9 @@ export function VenueScheduleClient({
                     <span>{court.is_indoor ? t("venue.card.indoor") : t("venue.card.outdoor")}</span>
                     <span aria-hidden="true">·</span>
                     <span>{t("venue.avail.minimum", { duration: fmt.duration(court.slot_minutes) })}</span>
+                    <span aria-hidden="true">·</span>
+                    {/* audit 2026-10-28 item 14: the refund line on every court card (the venue's policy) */}
+                    <span data-testid="court-refund-line">{refundPolicyShort(cancellation ?? court, lang)}</span>
                     {price != null ? (
                       <>
                         <span aria-hidden="true">·</span>

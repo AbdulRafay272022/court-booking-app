@@ -13,7 +13,8 @@ import { PhotoGallery } from "@/components/photo-gallery";
 import { VenueReviews } from "@/components/venue-reviews";
 import { BackToResults } from "@/components/venue/back-to-results";
 import { VenueLocation } from "@/components/venue/venue-location";
-import { getT } from "@/lib/i18n-server";
+import { getLang, getT } from "@/lib/i18n-server";
+import { refundPolicyShort } from "@court-booking/types";
 import { searchHref } from "@/lib/search-links";
 import { coordsOf, pointUrl } from "@/lib/venue-location";
 
@@ -34,6 +35,7 @@ export async function generateMetadata({ params }: PageProps<"/venues/[slug]">):
 
 export default async function VenuePage({ params }: PageProps<"/venues/[slug]">) {
   const { slug } = await params;
+  const lang = await getLang();
   const t = await getT();
   let venue;
   try {
@@ -204,6 +206,10 @@ export default async function VenuePage({ params }: PageProps<"/venues/[slug]">)
                 </div>
               ) : null}
               <dl className="flex flex-col gap-3 text-[14px]">
+                <div className="flex flex-col gap-0.5" data-testid="aside-refund">
+                  <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.refund")}</dt>
+                  <dd className="font-bold">{refundPolicyShort(venue, lang)}</dd>
+                </div>
                 <div className="flex flex-col gap-0.5">
                   <dt className="text-[11px] font-extrabold uppercase tracking-[1.2px] text-fl-muted2">{t("venue.aside.sports")}</dt>
                   <dd className="font-bold">{sportsText}</dd>
