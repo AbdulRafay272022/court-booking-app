@@ -67,4 +67,6 @@ export const ruOdashShell = {
   "odash.meta.staff": "Staff",
   "odash.meta.premium": "Premium",
   "odash.meta.checkin": "Check-in ke tools",
+  "odash.noAccess.title": "Is page ki ijazat nahi",
+  "odash.noAccess.body": "Venue owner se kahein ke Staff settings mein aap ko is kaam ki ijazat de.",
 } as const;

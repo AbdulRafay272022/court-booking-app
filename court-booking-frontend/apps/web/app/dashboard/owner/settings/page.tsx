@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   accountNumberError,
@@ -64,12 +65,22 @@ type SettingsTab = "venue" | "courts";
 export default function VenueSettingsPage() {
   const t = useT();
   const { activeVenue } = useOwnerVenues();
-  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
+  const role = useAuthStore((s) => s.user?.role);
+  const isOwner = role === "owner";
   const [tab, setTab] = useState<SettingsTab>("venue");
+  // audit 2026-10-28 item 11: venue basics and bank details are owner-only (PATCH /venues is RequireOwner); courts need
+  // edit_court_settings and photos manage_photos. Say up front what a staff member can and cannot change here.
+  const perms = useMyPermissions();
+  const staffReadOnly = role === "staff" && !perms.loading && !perms.can("edit_court_settings");
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6 min-w-0">
       <h1 className="text-2xl font-bold">{t("setup.set.title")}</h1>
+      {role === "staff" ? (
+        <p className="rounded-xl border border-owner-border bg-owner-surface p-3 text-sm text-owner-ink-muted" data-testid="staff-settings-note">
+          {staffReadOnly ? t("setup.set.staffReadOnly") : t("setup.set.staffCourtsOnly")}
+        </p>
+      ) : null}
 
       {/* Venue-level and court-level settings live on separate tabs so it is always clear what an edit applies to. */}
       <div role="tablist" aria-label={t("setup.set.sectionsAria")} className="flex gap-1 border-b border-owner-border">

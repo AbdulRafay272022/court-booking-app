@@ -42,3 +42,16 @@ test("action map matches the backend permission of each endpoint", () => {
   assert.equal(ACTION_PERMISSION.completion, "record_payments");
   assert.equal(ACTION_PERMISSION.noShow, "check_in");
 });
+
+test("audit item 11: staff only open the owner pages their permissions allow", async () => {
+  const { routeAllowed } = await import("./my-permissions");
+  const can = (granted: string[]) => (k: string) => granted.includes(k);
+  assert.equal(routeAllowed("/dashboard/owner/walkin", true, can(["view_ledger"])), false);
+  assert.equal(routeAllowed("/dashboard/owner/walkin", true, can(["walkin"])), true);
+  assert.equal(routeAllowed("/dashboard/owner/checkin/manual", true, can(["view_ledger"])), false);
+  assert.equal(routeAllowed("/dashboard/owner/checkin/manual", true, can(["check_in"])), true);
+  assert.equal(routeAllowed("/dashboard/owner/staff", true, can(["view_ledger", "walkin", "check_in"])), false);
+  assert.equal(routeAllowed("/dashboard/owner/settings", true, can(["manage_photos"])), true);
+  assert.equal(routeAllowed("/dashboard/owner/ledger", false, can([])), true); // owners: always
+  assert.equal(routeAllowed("/account", true, can([])), true);
+});

@@ -69,4 +69,6 @@ export const enOdashShell: Record<keyof typeof ruOdashShell, string> = {
   "odash.meta.staff": "Staff",
   "odash.meta.premium": "Premium",
   "odash.meta.checkin": "Check-in tools",
+  "odash.noAccess.title": "You don't have access to this page",
+  "odash.noAccess.body": "Ask the venue owner to give you this permission in Staff settings.",
 };
