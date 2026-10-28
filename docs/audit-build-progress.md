@@ -24,10 +24,10 @@ Status legend: TODO / DONE / PARTIAL / BLOCKED
 | 14 | refund policy everywhere + "Refund maangein" | PARTIAL | 7094919 | 'Refund maangein' -> Phase 2 item 3 |
 | 15 | settings required, no default controls | DONE | 69544bd | decisions #8 #9 |
 | 16 | staff dashboard | DONE | d7dc3df | app needs EAS build |
-| 17 | owner instant notice on staff no-show/short | TODO | | |
-| 18 | player notice on no-show/short | TODO | | |
-| 19 | walk-in phone + opt-in tick | TODO | | |
-| 20 | payment instructions + Raast QR (flag iban_qr) | TODO | | |
+| 17 | owner instant notice on staff no-show/short | DONE | a0bd16e | WA behind whatsapp_templates |
+| 18 | player notice on no-show/short | DONE | a0bd16e | WA behind whatsapp_templates |
+| 19 | walk-in phone + opt-in tick | DONE | a5422ef | opt-in stored in Phase 2 |
+| 20 | payment instructions + Raast QR (flag iban_qr) | DONE | 05d08da | QR format assumption, device D7 |
 
 ## Phase 2 (small migrations)
 | # | Item | Status | Commit | Notes |
