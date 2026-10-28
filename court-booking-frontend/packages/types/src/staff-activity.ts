@@ -28,6 +28,15 @@ export interface StaffNoShow {
   marked_by_name: string | null;
   marked_by_role: string | null;
   marked_at: string;
+  /** audit Phase 3 item 6 (flag noshow_reply): the player's "Main aaya tha" and the "Pohanch gaya" GPS check. */
+  reply_id?: string | null;
+  player_replied?: boolean;
+  player_note?: string | null;
+  owner_decision?: "keep" | "reverse" | null;
+  arrival_verdict?: "near" | "far" | "pin_unreliable" | null;
+  arrival_distance_m?: number | null;
+  /** GPS says the player WAS there: show this no-show in red. */
+  highlight?: boolean;
 }
 
 export interface StaffActivity {

@@ -35,3 +35,4 @@ export * from "./notification-text";
 export * from "./reminder-schedule";
 export * from "./settings-defaults";
 export * from "./bank-check";
+export * from "./phase3";

@@ -16,6 +16,7 @@ import { createFavoritesApi } from "./favorites";
 import { createPublicApi } from "./public";
 import { createVenuesApi } from "./venues";
 import { createWaitlistApi } from "./waitlist";
+import { createPhase3Api } from "./phase3";
 
 export * from "./client";
 export * from "./auth";
@@ -37,6 +38,7 @@ export * from "./premium";
 export * from "./users";
 export * from "./session";
 export * from "./venue-draft";
+export * from "./phase3";
 
 export function createCourtBookingApi(config: ApiClientConfig) {
   const client = createApiClient(config);
@@ -59,6 +61,7 @@ export function createCourtBookingApi(config: ApiClientConfig) {
     staff: createStaffApi(client),
     premium: createPremiumApi(client),
     users: createUsersApi(client),
+    phase3: createPhase3Api(client),
   };
 }
 

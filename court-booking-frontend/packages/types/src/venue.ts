@@ -69,6 +69,9 @@ export interface Venue {
   /** Section 32 Part 4b: how many days ahead a player may book at this venue (1-365, default 90). An owner's
    * walk-in is not limited by it. */
   booking_horizon_days: number;
+  /** audit Phase 3 item 3: the owner-funded points discount (500 points -> this many rupees off). */
+  points_discount_enabled?: boolean;
+  points_discount_pkr?: number;
   created_at: string;
   courts: Court[];
   average_rating: number | null;

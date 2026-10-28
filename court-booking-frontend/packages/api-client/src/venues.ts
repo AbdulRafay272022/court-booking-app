@@ -42,7 +42,7 @@ export function createVenuesApi(client: ApiClient) {
         body: JSON.stringify(input),
       }),
 
-    update: (venueId: string, input: Partial<CreateVenueInput>) =>
+    update: (venueId: string, input: Partial<CreateVenueInput> & { points_discount_enabled?: boolean; points_discount_pkr?: number }) =>
       client.request<Venue>(`/venues/${venueId}`, {
         method: "PATCH",
         body: JSON.stringify(input),

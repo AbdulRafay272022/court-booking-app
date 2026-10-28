@@ -121,6 +121,8 @@ export interface PendingApproval {
   checks: PaymentChecks;
   /** audit Phase 3 item 2: a screenshot for the BALANCE of an already-booked booking (approving never re-confirms it). */
   is_balance?: boolean;
+  /** audit Phase 3 item 5 (flag player_dues): open dues at this venue + "No-show X / kul bookings Y"; null when off. */
+  player_context?: import("./phase3").ApprovalPlayerContext | null;
 }
 
 /** Section 32 Part 5: one row per PAYMENT (payment_entries), not per booking -- a booking with an advance
