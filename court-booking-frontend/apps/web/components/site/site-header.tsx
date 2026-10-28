@@ -144,6 +144,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
                 role={user!.role}
                 displayName={displayName}
                 initial={initial}
+                avatarUrl={user?.avatar_url ?? null}
                 onLogout={() => logout(router)}
                 className="max-[1024px]:hidden"
               />

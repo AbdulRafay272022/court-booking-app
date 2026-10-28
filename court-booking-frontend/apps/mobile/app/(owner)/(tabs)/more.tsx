@@ -152,7 +152,7 @@ export default function OwnerMoreScreen() {
             Aur
           </Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], boxShadow: shadow.card }}>
-            <Avatar name={user?.name ?? "Owner"} size={48} tone="teal" />
+            <Avatar name={user?.name ?? "Owner"} size={48} tone="teal" uri={user?.avatar_url} />
             <View style={{ flex: 1, gap: 2 }}>
               <Text variant="bodyStrong">{user?.name ?? "Owner"}</Text>
               <Text variant="meta" tone="muted">{`${activeVenue?.name ?? "Venue"} · ${isOwner ? "Owner" : staff ? "Staff" : "Admin"}`}</Text>

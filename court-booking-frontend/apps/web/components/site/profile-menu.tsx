@@ -57,12 +57,15 @@ export function ProfileMenu({
   role, // i18n-ignore
   displayName, // i18n-ignore
   initial, // i18n-ignore
+  avatarUrl, // i18n-ignore
   onLogout, // i18n-ignore
   className = "",
 }: {
   role: UserRole;
   displayName: string;
   initial: string;
+  /** audit 2026-10-28 item 6: the signed-in user's photo; the initial is only the fallback. */
+  avatarUrl?: string | null;
   onLogout: () => void;
   className?: string;
 }) {
@@ -133,9 +136,14 @@ export function ProfileMenu({
             setOpen(true);
           }
         }}
-        className="khelo-btn flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-white/10 text-[15px] font-extrabold text-white"
+        className="khelo-btn flex h-11 w-11 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-white/10 text-[15px] font-extrabold text-white"
       >
-        {initial}
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" width={44} height={44} className="h-11 w-11 rounded-full object-cover" data-testid="header-avatar-photo" />
+        ) : (
+          initial
+        )}
       </button>
       {open ? (
         <div

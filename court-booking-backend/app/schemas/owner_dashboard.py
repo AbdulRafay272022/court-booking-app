@@ -12,6 +12,8 @@ class TodaySlotOut(BaseModel):
     status: str
     booking_id: uuid.UUID | None = None
     player_name: str | None = None
+    # audit 2026-10-28 item 6: the booking account's profile photo (None for a walk-in without an account / no photo)
+    player_avatar_url: str | None = None
     amount_paid: float | None = None
     # Section 32 Part 2: the owner's Today row shows what is still owed at the venue, not just what was paid.
     price: float | None = None
@@ -65,6 +67,7 @@ class PendingApprovalOut(BaseModel):
     ends_at: datetime
     player_name: str | None
     player_phone: str | None
+    player_avatar_url: str | None = None  # audit 2026-10-28 item 6
     ocr_verdict: str | None
     ocr_amount: float | None
     expected_amount: float

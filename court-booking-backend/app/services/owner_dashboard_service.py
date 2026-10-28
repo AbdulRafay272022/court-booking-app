@@ -153,6 +153,13 @@ class OwnerDashboardService:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def _account_avatars(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """Profile photo URLs by user id (one query), audit 2026-10-28 item 6."""
+        if not user_ids:
+            return {}
+        result = await self.db.execute(select(User.id, User.avatar_url).where(User.id.in_(user_ids)))
+        return {uid: url for uid, url in result.all() if url}
+
     async def _account_names(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
         """Registered account names by user id (one query), for owner screens that show the account behind a booking
         as a fallback / secondary label. The booking's own `player_name` is what the customer was booked under and
@@ -228,6 +235,7 @@ class OwnerDashboardService:
                     bookings_today.append(b)
         bookings_by_id = {b.id: b for b in bookings_today}
         account_names = await self._account_names({b.player_id for b in bookings_today if b.player_id is not None})
+        account_avatars = await self._account_avatars({b.player_id for b in bookings_today if b.player_id is not None})
 
         # `get_day_slots` only considers LIVE_BOOKING_STATUSES (Section 32 Part 9 finding), so once a booking is
         # checked in or marked no-show its grid cell reverts to "available" -- correct for booking purposes (that
@@ -260,6 +268,7 @@ class OwnerDashboardService:
                         booking_id=booking.id if booking is not None else slot.booking_id,
                         # The name the booking was made under first (walk-in / booked for a friend), then the account.
                         player_name=(booking.player_name or account_names.get(booking.player_id)) if booking else None,
+                        player_avatar_url=account_avatars.get(booking.player_id) if booking and booking.player_id else None,
                         amount_paid=float(booking.amount_paid) if booking else None,
                         price=float(booking.price) if booking else None,
                         balance_due=float(booking.balance_due) if booking else None,
@@ -359,9 +368,12 @@ class OwnerDashboardService:
         # query per approval card.
         player_ids = {booking.player_id for _, booking in rows if booking.player_id is not None}
         account_names: dict[uuid.UUID, str] = {}
+        account_avatars: dict[uuid.UUID, str] = {}
         if player_ids:
-            users_result = await self.db.execute(select(User.id, User.name).where(User.id.in_(player_ids)))
-            account_names = {uid: name for uid, name in users_result.all() if name}
+            users_result = await self.db.execute(select(User.id, User.name, User.avatar_url).where(User.id.in_(player_ids)))
+            user_rows = users_result.all()
+            account_names = {uid: name for uid, name, _a in user_rows if name}
+            account_avatars = {uid: url for uid, _n, url in user_rows if url}
 
         court_venues: dict[uuid.UUID, Venue] = {}
         venue_ids = {c.venue_id for c in courts}
@@ -402,6 +414,7 @@ class OwnerDashboardService:
                     ends_at=booking.ends_at,
                     # The name the booking was made under first; the account name only if it has none.
                     player_name=booking.player_name or account_names.get(booking.player_id),
+                    player_avatar_url=account_avatars.get(booking.player_id) if booking.player_id else None,
                     player_phone=booking.player_phone,
                     ocr_verdict=payment.ocr_verdict,
                     ocr_amount=float(payment.ocr_amount) if payment.ocr_amount is not None else None,

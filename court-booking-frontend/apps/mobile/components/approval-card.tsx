@@ -101,7 +101,7 @@ export function ApprovalCard({
       {grey ? <Pill tone="neutral" icon={<Ban size={13} color={palette.body} />} label={STATE_CHIP[item.state as Exclude<typeof item.state, "awaiting">]} /> : null}
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
-        <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} />
+        <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} uri={item.player_avatar_url} />
         <View style={{ flex: 1, gap: 1 }}>
           <Text variant="bodyStrong">{item.player_name ?? "Player"}</Text>
           <Text variant="meta" tone="muted">

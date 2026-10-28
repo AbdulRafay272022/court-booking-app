@@ -122,7 +122,7 @@ export function BookingCard({
     >
       <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${row.player_name ?? "Booking"}, ${row.short_code}`} style={{ padding: space[4], gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[3] }}>
-          <Avatar name={row.player_name ?? "?"} size={44} tone={row.kind === "refund" ? "waiting" : "info"} />
+          <Avatar name={row.player_name ?? "?"} size={44} tone={row.kind === "refund" ? "waiting" : "info"} uri={row.player_avatar_url} />
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="bodyStrong">
               {row.player_name ?? "Player"}

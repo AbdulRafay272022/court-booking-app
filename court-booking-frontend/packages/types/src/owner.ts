@@ -7,6 +7,8 @@ export interface TodaySlot {
   status: string;
   booking_id: string | null;
   player_name: string | null;
+  /** audit 2026-10-28 item 6: the booking account's profile photo (null: no account / no photo). */
+  player_avatar_url?: string | null;
   amount_paid: number | null;
   price: number | null;
   balance_due: number | null;
@@ -106,6 +108,8 @@ export interface PendingApproval {
   starts_at: string;
   ends_at: string;
   player_name: string | null;
+  /** audit 2026-10-28 item 6: the booking account's profile photo (null: no account / no photo). */
+  player_avatar_url?: string | null;
   player_phone: string | null;
   ocr_verdict: string | null;
   ocr_amount: number | null;

@@ -7,7 +7,7 @@ import { Bell, CircleDot, Feather, Goal, LayoutGrid, MapPin, QrCode, Search, Tro
 import { CITY_OPTIONS, SPORT_OPTIONS, formatDateString, formatDuration, formatTime, formatTime24As12, formatTimeRange, nextBooking, pktDateString, startsInText, type Booking, type VenueSummary } from "@court-booking/types";
 import { alpha, initials, palette, radius, shadow, size, space, statusPill, venueCardData } from "@court-booking/ui-tokens";
 
-import { Banner, Button, Card, EmptyState, Hero, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability, type IconComponent } from "@/components/ui";
+import { Avatar, Banner, Button, Card, EmptyState, Hero, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability, type IconComponent } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
@@ -123,9 +123,13 @@ export default function PlayerHomeScreen() {
               accessibilityLabel={copy("Profile", "Profile")}
               style={{ width: size.tap, height: size.tap, borderRadius: radius.pill, backgroundColor: t.primary.bg, alignItems: "center", justifyContent: "center" }}
             >
-              <Text variant="bodyBold" weight="black" color={t.primary.fg}>
-                {initials(user?.name)}
-              </Text>
+              {user?.avatar_url ? (
+                <Avatar name={user.name ?? "?"} size={size.tap} uri={user.avatar_url} />
+              ) : (
+                <Text variant="bodyBold" weight="black" color={t.primary.fg}>
+                  {initials(user?.name)}
+                </Text>
+              )}
             </Pressable>
           </View>
         </View>

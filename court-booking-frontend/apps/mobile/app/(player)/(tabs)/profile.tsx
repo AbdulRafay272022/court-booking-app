@@ -60,7 +60,7 @@ export default function PlayerProfileScreen() {
           {user?.avatar_url ? (
             <Image source={{ uri: user.avatar_url }} style={{ width: 60, height: 60, borderRadius: 30 }} accessibilityLabel={copy("Aap ki tasveer", "Your photo")} />
           ) : (
-            <Avatar name={user?.name ?? user?.phone ?? "?"} size={60} tone="orange" />
+            <Avatar name={user?.name ?? user?.phone ?? "?"} size={60} tone="orange" uri={user?.avatar_url} />
           )}
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="title" tone="onDark">

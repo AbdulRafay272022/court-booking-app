@@ -6,7 +6,7 @@ import { Check, CircleAlert, Copy } from "lucide-react-native";
 import { CHANNEL_HEADING, bookingChannelLabel, type BookingTimelineEvent, type OwnerBookingDetail } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, size, space } from "@court-booking/ui-tokens";
-import { Button, Skeleton, Text, haptic } from "@/components/ui";
+import { Avatar, Button, Skeleton, Text, haptic } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -276,6 +276,12 @@ function DetailBody({
 
       {r.kind !== "booked" && r.original_booking_id ? <SmallChip label="Original booking dekhein" tone="info" onPress={() => onOpenBooking(r.original_booking_id as string)} /> : null}
 
+      {r.player_avatar_url ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Avatar name={r.player_name ?? "?"} size={40} uri={r.player_avatar_url} />
+          <Text variant="bodyStrong">{r.player_name ?? "Player"}</Text>
+        </View>
+      ) : null}
       <KeyValueBlock>
         <KeyValue label="Player" value={r.player_name ?? "-"} />
         {r.player_phone ? <KeyValue label="Phone" value={r.player_phone} /> : null}

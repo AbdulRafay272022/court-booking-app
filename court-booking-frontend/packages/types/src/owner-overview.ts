@@ -41,6 +41,8 @@ export interface OwnerBookingRow {
   kind: OverviewRowKind;
   status_key: BookingStatusKey;
   player_name: string | null;
+  /** audit 2026-10-28 item 6: the booking account's profile photo. */
+  player_avatar_url?: string | null;
   /** Null when the viewer lacks permission. */
   player_phone: string | null;
   court_id: string;

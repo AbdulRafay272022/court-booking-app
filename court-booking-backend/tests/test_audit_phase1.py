@@ -242,3 +242,26 @@ async def test_player_booking_detail_lists_cash_paid_at_a_walkin_and_hides_from_
     assert detail["booking"]["balance_due"] == 600
     stranger = await make_user("+923001140003")
     assert (await client.get(f"/api/v1/bookings/{bid}/detail", headers=await make_auth_headers(stranger))).status_code in (403, 404)
+
+
+# ---------------------------------------------------------------- item 6: player photo on owner screens
+
+
+async def test_owner_rows_carry_the_players_photo(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    await make_user("+923001160001", name="Hina", avatar_url="https://cdn.example/avatars/hina.jpg")
+    day = date.today() + timedelta(days=3)
+    resp = await client.post(
+        "/api/v1/bookings/walkin",
+        headers=await make_auth_headers(owner),
+        json={"court_id": str(court.id), "starts_at": _starts_at(), "player_name": "Hina", "player_phone": "+923001160001", "amount_paid": 0},
+    )
+    assert resp.status_code == 201, resp.text
+    headers = await make_auth_headers(owner)
+    ov = (await client.get(f"/api/v1/owners/overview?date={day.isoformat()}&venue_id={venue.id}", headers=headers)).json()
+    assert [r["player_avatar_url"] for r in ov["rows"]] == ["https://cdn.example/avatars/hina.jpg"]
+    today = (await client.get(f"/api/v1/owners/today?date_={day.isoformat()}&venue_id={venue.id}", headers=headers)).json()
+    booked = [s for c in today["courts"] for s in c["slots"] if s.get("booking_id")]
+    assert booked and all(s["player_avatar_url"] == "https://cdn.example/avatars/hina.jpg" for s in booked)

@@ -313,7 +313,12 @@ export default function OwnerApprovalsPage() {
   );
 }
 
-function Avatar({ name }: { name: string }) {
+function Avatar({ name, url }: { name: string; url?: string | null }) {
+  if (url) {
+    // audit 2026-10-28 item 6: the player's photo, initials only as the fallback
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 rounded-full object-cover" />;
+  }
   return (
     <div aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-owner-accent font-semibold text-white">
       {name.slice(0, 2).toUpperCase()}
@@ -460,7 +465,7 @@ function AwaitingCard({
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex items-start gap-3">
-            <Avatar name={who} />
+            <Avatar name={who} url={item.player_avatar_url} />
             <div className="min-w-0 flex-1">
               <h2 id={nameId} className="break-words text-[16.5px] font-bold text-owner-ink">
                 {who}
