@@ -341,7 +341,7 @@ async def test_walkin_for_held_slot_conflicts(
         json={
             "court_id": str(court.id),
             "starts_at": starts_at,
-            "player_name": "Walk-in",
+            "player_phone": "+923009990001", "player_name": "Walk-in",
             "amount_paid": 3000,
         },
     )
@@ -371,7 +371,7 @@ async def test_source_tracking(client, make_user, make_venue, make_court, make_s
         json={
             "court_id": str(court.id),
             "starts_at": _future_starts_at(days_ahead=2),
-            "player_name": "Walk-in",
+            "player_phone": "+923009990001", "player_name": "Walk-in",
             "amount_paid": 1000,
         },
     )
@@ -394,7 +394,7 @@ async def test_checkin_completes_booked_slot(
         json={
             "court_id": str(court.id),
             "starts_at": _future_starts_at(),
-            "player_name": "Walk-in",
+            "player_phone": "+923009990001", "player_name": "Walk-in",
             "amount_paid": 1000,
         },
     )

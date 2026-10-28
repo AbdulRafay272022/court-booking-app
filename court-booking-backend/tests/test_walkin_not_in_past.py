@@ -38,7 +38,7 @@ def _freeze(monkeypatch, instant: datetime):
 async def _walkin(client, headers, court, starts, count=2):
     return await client.post(
         "/api/v1/bookings/walkin", headers=headers,
-        json={"court_id": str(court.id), "starts_at": _iso(starts), "slot_count": count, "player_name": "Walk In", "amount_paid": 0},
+        json={"court_id": str(court.id), "starts_at": _iso(starts), "slot_count": count, "player_phone": "+923009990001", "player_name": "Walk In", "amount_paid": 0},
     )
 
 

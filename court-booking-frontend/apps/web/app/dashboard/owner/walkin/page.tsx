@@ -44,6 +44,8 @@ export default function OwnerWalkinPage() {
   const [playerName, setPlayerName] = useState("");
   const [playerPhone, setPlayerPhone] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
+  // audit 2026-10-28 item 19: the owner confirms they told the player the receipt comes on WhatsApp (required)
+  const [optIn, setOptIn] = useState(false);
   const [typedAmount, setAmount] = useState("");
   const [amountTouched, setAmountTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -137,9 +139,10 @@ export default function OwnerWalkinPage() {
   // "Amount collected" shows the quoted total until the owner types their own figure.
   const amount = amountTouched ? typedAmount : quote ? String(Math.round(quote.price)) : "";
 
-  const phoneOk = playerPhone.trim() === "" || isValidPkMobile(playerPhone);
+  // audit 2026-10-28 item 19: the player's mobile is required (the receipt goes there)
+  const phoneOk = isValidPkMobile(playerPhone);
   const nameOk = playerName.trim().length > 0;
-  const isValid = !!courtId && !!startsAt && !!selectedChoice && !!quote && nameOk && phoneOk && amount !== "" && Number(amount) >= 0;
+  const isValid = !!courtId && !!startsAt && !!selectedChoice && !!quote && nameOk && phoneOk && optIn && amount !== "" && Number(amount) >= 0;
 
   async function handleSubmit() {
     if (!isValid || !courtId || !startsAt) return;
@@ -151,7 +154,8 @@ export default function OwnerWalkinPage() {
         starts_at: startsAt,
         slot_count: slotCount,
         player_name: playerName.trim(),
-        player_phone: playerPhone.trim() || undefined,
+        player_phone: playerPhone.trim(),
+        whatsapp_opt_in: optIn,
         amount_paid: Number(amount),
       });
       await queryClient.invalidateQueries({ queryKey: ["owner-today"] });
@@ -159,6 +163,7 @@ export default function OwnerWalkinPage() {
       setPlayerName("");
       setPlayerPhone("");
       setPhoneTouched(false);
+      setOptIn(false);
       reset();
       setMessage(t("notif.walkin.saved"));
     } catch (e) {
@@ -268,6 +273,13 @@ export default function OwnerWalkinPage() {
           error={phoneTouched && !phoneOk ? t("notif.walkin.phoneErr") : undefined}
         />
       </div>
+      <label className="flex min-h-11 items-start gap-3 text-sm font-semibold text-owner-ink" data-testid="walkin-optin">
+        <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} className="mt-1 h-5 w-5 accent-[var(--color-owner-accent)]" />
+        <span>
+          {t("notif.walkin.optIn")}
+          {!optIn ? <span className="block text-[12px] font-normal text-owner-danger">{t("notif.walkin.optInRequired")}</span> : null}
+        </span>
+      </label>
       <Field
         label={t("notif.walkin.amount")}
         value={amount}

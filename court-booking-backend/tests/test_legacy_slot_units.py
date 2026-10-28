@@ -322,7 +322,7 @@ async def test_legacy_walkin_is_one_court_slot_by_default_and_counts_court_slots
     """OLD behaviour: a walk-in (no slot_count field) was exactly ONE court slot (60 minutes on this court) priced by the rule."""
     owner, _v, court = await _court(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923190000021")
     oh = await make_auth_headers(owner)
-    base = {"court_id": str(court.id), "player_name": "Walk Guest", "amount_paid": 300}
+    base = {"court_id": str(court.id), "player_phone": "+923009990001", "player_name": "Walk Guest", "amount_paid": 300}
     plain = await legacy_client.post("/api/v1/bookings/walkin", headers=oh, json={**base, "starts_at": _iso(_at(2, 10))})
     assert plain.status_code == 201, plain.text
     b = plain.json()["booking"]
@@ -337,7 +337,7 @@ async def test_legacy_walkin_is_one_court_slot_by_default_and_counts_court_slots
                                         slot_minutes=90, price=4000)
     oh2 = await make_auth_headers(owner2)
     r90 = await legacy_client.post("/api/v1/bookings/walkin", headers=oh2,
-                                   json={"court_id": str(court90.id), "starts_at": _iso(_at(2, 9)), "player_name": "Walk Guest", "amount_paid": 0})
+                                   json={"court_id": str(court90.id), "starts_at": _iso(_at(2, 9)), "player_phone": "+923009990001", "player_name": "Walk Guest", "amount_paid": 0})
     assert r90.status_code == 201 and r90.json()["booking"]["ends_at"] == _iso(_at(2, 10, 30)) and r90.json()["booking"]["price"] == 4000.0
 
 

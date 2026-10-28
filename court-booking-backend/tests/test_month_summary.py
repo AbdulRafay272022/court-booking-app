@@ -236,7 +236,7 @@ async def test_the_calendar_stops_at_the_venues_horizon_and_a_hold_beyond_it_is_
 
     # an owner's walk-in is not limited by it
     walk = await client.post("/api/v1/bookings/walkin", headers=owner_headers,
-                             json={"court_id": str(court.id), "starts_at": _iso(_at(today + timedelta(days=45), 12)), "player_name": "Far", "amount_paid": 0})
+                             json={"court_id": str(court.id), "starts_at": _iso(_at(today + timedelta(days=45), 12)), "player_phone": "+923009990001", "player_name": "Far", "amount_paid": 0})
     assert walk.status_code == 201, walk.text
 
 

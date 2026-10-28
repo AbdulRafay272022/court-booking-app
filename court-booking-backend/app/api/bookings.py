@@ -101,6 +101,15 @@ async def create_walkin_booking(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Court not found")
     venue_service = VenueService(db, settings)
     await venue_service.require_owned_venue(court.venue_id, owner, permission="walkin")
+    # audit 2026-10-28 item 19: the player's mobile number is required (the receipt goes there). TRANSITION: an app build from
+    # before this change (no X-Slot-Grid header) has an optional phone box, so it is not refused until that build is gone.
+    if not legacy and payload.player_phone is None:
+        raise AppError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            ErrorCode.VALIDATION_ERROR,
+            "The player's mobile number is required for a walk-in.",
+            details={"field": "player_phone"},
+        )
 
     service = BookingService(db, settings)
     booking = await service.create_walkin(

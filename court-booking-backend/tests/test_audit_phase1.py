@@ -656,3 +656,20 @@ async def test_owner_doing_it_themselves_does_not_notify_the_owner(
     assert (await client.post(f"/api/v1/bookings/{ns.id}/no-show", headers=await make_auth_headers(owner))).status_code == 200
     assert await _log_rows(db_session_factory, owner.id, "owner_staff_action") == []
     assert await _log_rows(db_session_factory, player.id, "player_no_show")
+
+
+# ---------------------------------------------------------------- item 19: walk-in phone required
+
+
+async def test_walkin_needs_the_players_phone_but_an_old_app_build_is_not_refused(
+    client, legacy_client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, _venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    headers = await make_auth_headers(owner)
+    day = (date.today() + timedelta(days=3)).isoformat()
+    body = {"court_id": str(court.id), "starts_at": f"{day}T10:00:00Z", "player_name": "Walk In", "amount_paid": 0}
+    resp = await client.post("/api/v1/bookings/walkin", headers=headers, json=body)
+    assert resp.status_code == 422 and resp.json()["error"]["details"]["field"] == "player_phone"
+    assert (await client.post("/api/v1/bookings/walkin", headers=headers, json={**body, "player_phone": "0333 1234567"})).status_code == 201
+    old = await legacy_client.post("/api/v1/bookings/walkin", headers=headers, json={**body, "starts_at": f"{day}T12:00:00Z"})
+    assert old.status_code == 201, old.text

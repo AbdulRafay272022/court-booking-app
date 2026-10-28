@@ -90,7 +90,7 @@ export const ruNotif = {
   "notif.walkin.summary.one": "{duration} · 1 slot",
   "notif.walkin.summary.many": "{duration} · {count} slots",
   "notif.walkin.name": "Customer ka naam",
-  "notif.walkin.phone": "Customer ka phone (optional)",
+  "notif.walkin.phone": "Player ka mobile number (zaroori)",
   "notif.walkin.phoneErr": "Sahi mobile number likhein, jaise 0333 5119042",
   "notif.walkin.amount": "Wasool kiya hua amount (PKR)",
   "notif.walkin.total": "{duration} ki court price: PKR {price}",
@@ -99,4 +99,6 @@ export const ruNotif = {
   "notif.walkin.saved": "Booking save ho gayi.",
   "notif.walkin.taken": "Is waqt ka kuch hissa abhi book ho gaya — doosra chunein.",
   "notif.walkin.noFit": "Is start se court ki minimum booking ({duration}) lagatar fit nahi hoti.",
+  "notif.walkin.optIn": "Player ko bata diya ke WhatsApp par rasid aayegi",
+  "notif.walkin.optInRequired": "Ye tick zaroori hai.",
 } as const;

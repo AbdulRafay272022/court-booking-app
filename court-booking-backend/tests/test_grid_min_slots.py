@@ -209,7 +209,7 @@ async def test_below_the_minimum_is_refused_by_quote_hold_and_walkin(
 
     walk = await client.post("/api/v1/bookings/walkin", headers=oh,
                              json={"court_id": str(court.id), "starts_at": _iso(_at(2, 18)), "slot_count": 1,
-                                   "player_name": "Short", "amount_paid": 0})
+                                   "player_phone": "+923009990001", "player_name": "Short", "amount_paid": 0})
     assert walk.status_code == 400 and walk.json()["error"]["code"] == "BELOW_MINIMUM_BOOKING_TIME"
 
     # nothing was created by any of the refused attempts
@@ -365,7 +365,7 @@ async def test_walkin_books_several_contiguous_slots_as_one_booking_priced_by_qu
 
     resp = await client.post("/api/v1/bookings/walkin", headers=oh,
                              json={"court_id": str(court.id), "starts_at": _iso(start), "slot_count": 3,
-                                   "player_name": "Usman Tariq", "amount_paid": 500})
+                                   "player_phone": "+923009990001", "player_name": "Usman Tariq", "amount_paid": 500})
     assert resp.status_code == 201, resp.text
     b = resp.json()["booking"]
     assert b["starts_at"] == _iso(start) and b["ends_at"] == _iso(start + timedelta(minutes=90))
@@ -377,12 +377,12 @@ async def test_walkin_books_several_contiguous_slots_as_one_booking_priced_by_qu
     # the three cells are booked on the grid; a second walk-in over any of them is refused
     clash = await client.post("/api/v1/bookings/walkin", headers=oh,
                               json={"court_id": str(court.id), "starts_at": _iso(start + timedelta(minutes=60)), "slot_count": 2,
-                                    "player_name": "Late", "amount_paid": 0})
+                                    "player_phone": "+923009990001", "player_name": "Late", "amount_paid": 0})
     assert clash.status_code == 409 and clash.json()["error"]["code"] == "SLOT_ALREADY_TAKEN"
     # omitted slot_count = the court's minimum (2 slots = 60 minutes); right after the first booking
     nxt = await client.post("/api/v1/bookings/walkin", headers=oh,
                             json={"court_id": str(court.id), "starts_at": _iso(start + timedelta(minutes=90)),
-                                  "player_name": "Default Length", "amount_paid": 0})
+                                  "player_phone": "+923009990001", "player_name": "Default Length", "amount_paid": 0})
     assert nxt.status_code == 201 and nxt.json()["booking"]["ends_at"] == _iso(start + timedelta(minutes=150))
     assert nxt.json()["booking"]["price"] == 1500.0  # 19:00-20:00 all peak
 
@@ -398,7 +398,7 @@ async def test_walkin_is_validated_like_a_hold_grid_closing_blackout_and_not_lim
         await s.commit()
 
     def body(starts, count, name="Walk Guest"):
-        return {"court_id": str(court.id), "starts_at": _iso(starts), "slot_count": count, "player_name": name, "amount_paid": 0}
+        return {"court_id": str(court.id), "starts_at": _iso(starts), "slot_count": count, "player_phone": "+923009990001", "player_name": name, "amount_paid": 0}
 
     off = await client.post("/api/v1/bookings/walkin", headers=oh, json=body(_at(2, 18, 10), 2))
     assert off.status_code == 400 and off.json()["error"]["code"] == "INVALID_SLOT_TIME"
@@ -439,10 +439,10 @@ async def test_walkin_customer_name_is_required_and_phone_is_validated_and_norma
     for hour, typed in ((13, "12345"), (14, "0233 5119042"), (15, "+923335119"), (16, "033511904211"), (17, "abc")):
         r = await client.post("/api/v1/bookings/walkin", headers=oh, json=body(hour, player_name="Bad", player_phone=typed))
         assert r.status_code == 422, (typed, r.text)
-    # phone is optional: empty/blank means "no phone"
+    # audit 2026-10-28 item 19: the phone is REQUIRED for a current client (empty/blank = missing = 422)
     for hour, blank in ((18, None), (19, ""), (20, "  ")):
         r = await client.post("/api/v1/bookings/walkin", headers=oh, json=body(hour, player_name="No Phone", player_phone=blank))
-        assert r.status_code == 201 and r.json()["booking"]["player_phone"] is None, (blank, r.text)
+        assert r.status_code == 422, (blank, r.text)
 
 
 async def test_walkin_links_to_an_existing_account_by_phone_otherwise_stores_the_name_without_creating_a_login(
@@ -468,7 +468,8 @@ async def test_walkin_links_to_an_existing_account_by_phone_otherwise_stores_the
         "court_id": str(court.id), "starts_at": _iso(_at(2, 12)), "slot_count": 2, "amount_paid": 0,
         "player_name": "Nobody Yet", "player_phone": "0300 1112223"})
     nameonly = await client.post("/api/v1/bookings/walkin", headers=oh, json={
-        "court_id": str(court.id), "starts_at": _iso(_at(2, 14)), "slot_count": 2, "amount_paid": 0, "player_name": "Walk-up Customer"})
+        "court_id": str(court.id), "starts_at": _iso(_at(2, 14)), "slot_count": 2, "amount_paid": 0, "player_name": "Walk-up Customer",
+        "player_phone": "0300 4445556"})  # audit item 19: a phone is required now; still no login is created
     assert stranger.json()["booking"]["player_id"] is None and nameonly.json()["booking"]["player_id"] is None
     assert stranger.json()["booking"]["player_phone"] == "+923001112223"
     assert await users() == before  # no login account was created for either

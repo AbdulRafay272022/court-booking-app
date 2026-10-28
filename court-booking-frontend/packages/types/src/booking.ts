@@ -68,6 +68,8 @@ export interface WalkinBookingInput {
   player_name: string;
   /** Optional Pakistani mobile (any common form; the server stores +923XXXXXXXXX and links an existing account). */
   player_phone?: string;
+  /** audit 2026-10-28 item 19: the owner told the player the receipt comes on WhatsApp (stored from Phase 2). */
+  whatsapp_opt_in?: boolean;
   amount_paid: number;
 }
 

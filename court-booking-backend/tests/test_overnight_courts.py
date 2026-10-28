@@ -306,7 +306,7 @@ async def test_owner_today_shows_after_midnight_players_and_does_not_double_coun
     thu = _next_weekday(THURSDAY)
     walkin = await client.post(
         "/api/v1/bookings/walkin", headers=headers,
-        json={"court_id": str(court.id), "starts_at": _iso(_at(thu, 25)), "player_name": "Night Owl", "amount_paid": 400},
+        json={"court_id": str(court.id), "starts_at": _iso(_at(thu, 25)), "player_phone": "+923009990001", "player_name": "Night Owl", "amount_paid": 400},
     )
     assert walkin.status_code == 201, walkin.text
 
