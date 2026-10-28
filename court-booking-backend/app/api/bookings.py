@@ -189,9 +189,14 @@ async def cancel_booking(
                 logger.warning("booking.cancel.owner_player_cancelled_notification_failed", error=type(exc).__name__)
         # Owner Overview (spec 5.3): a PLAYER cancelling a booking that was paid for means a refund is now owed, so
         # tell the venue owner too. Strictly best effort: a notification problem must never fail the cancel.
+        # audit 2026-10-28 item 10: only when this cancel really put a refund on the owner's Refunds list (money that
+        # came in online, via an approved screenshot). A booking paid only in cash at the venue used to send "refund owed"
+        # with nothing on the Refunds screen.
+        refund = service.created_refund
         if (
             cancelled_by == CancelledBy.PLAYER
-            and float(booking.amount_paid or 0) > 0
+            and refund is not None
+            and float(refund.refund_amount or 0) > 0
             and booking.status == BookingStatus.CANCELLED
         ):
             try:
@@ -204,7 +209,7 @@ async def cancel_booking(
                         court_name=court.name,
                         starts_at=booking.starts_at,
                         ends_at=booking.ends_at,
-                        amount=float(booking.amount_paid),
+                        amount=float(refund.refund_amount),
                         player_name=booking.player_name or user.name,
                     )
             except Exception as exc:  # noqa: BLE001 -- see comment above

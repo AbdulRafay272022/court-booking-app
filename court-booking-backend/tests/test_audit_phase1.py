@@ -454,3 +454,60 @@ async def test_a_complete_venue_is_approved(
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "approved"
     assert resp.json()["missing_for_approval"] == []
+
+
+# ---------------------------------------------------------------- item 10: refund rows and the "refund owed" notice
+
+
+async def _log_rows(db_session_factory, user_id, event):
+    from sqlalchemy import select
+
+    from app.models.notification import NotificationLog
+
+    async with db_session_factory() as s:
+        return list(
+            (await s.execute(select(NotificationLog).where(NotificationLog.user_id == user_id, NotificationLog.event_type == event))).scalars().all()
+        )
+
+
+async def test_cancelling_a_cash_paid_booking_sends_no_refund_owed_notice(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923001200001")
+    bid = await _booked_walkin(client, await make_auth_headers(owner), court, "+923001200001", paid=500)
+    resp = await client.post(f"/api/v1/bookings/{bid}/cancel", headers=await make_auth_headers(player), json={})
+    assert resp.status_code == 200, resp.text
+    assert await _log_rows(db_session_factory, owner.id, "refund_owed") == []
+
+
+async def test_cancelling_an_online_paid_booking_puts_it_on_refunds_and_tells_the_owner(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from app.models.booking import Booking, BookingStatus
+    from app.models.dispute import PaymentDispute
+    from app.models.payment import Payment
+    from app.models.payment_entry import PaymentEntry, PaymentMethod
+
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    player = await make_user("+923001200011")
+    starts = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) + timedelta(days=4)
+    async with db_session_factory() as s:
+        b = Booking(court_id=court.id, player_id=player.id, starts_at=starts, ends_at=starts + timedelta(hours=1),
+                    status=BookingStatus.BOOKED, price=1000, advance_amount=1000, amount_paid=1000, balance_due=0)
+        s.add(b)
+        await s.flush()
+        s.add(Payment(booking_id=b.id, proof_key="p.jpg", amount_claimed=1000, review_verdict="approved", reviewed_at=starts))
+        s.add(PaymentEntry(booking_id=b.id, amount_pkr=1000, method=PaymentMethod.BANK_TRANSFER_PROOF))
+        await s.commit()
+        bid = b.id
+    resp = await client.post(f"/api/v1/bookings/{bid}/cancel", headers=await make_auth_headers(player), json={})
+    assert resp.status_code == 200, resp.text
+    async with db_session_factory() as s:
+        disputes = (await s.execute(select(PaymentDispute).where(PaymentDispute.booking_id == bid))).scalars().all()
+    assert [(d.reason, float(d.refund_amount)) for d in disputes] == [("player_cancelled_paid_booking", 1000.0)]
+    assert len(await _log_rows(db_session_factory, owner.id, "refund_owed")) >= 1

@@ -46,6 +46,8 @@ class BookingService:
         self.db = db
         self.settings = settings
         self.audit = AuditService(db)
+        # audit 2026-10-28 item 10: the refund row the last cancel_booking() created (None = no refund owed)
+        self.created_refund = None
         self.availability = AvailabilityService(db)
 
     async def _load_active_court(self, court_id: uuid.UUID) -> Court:
@@ -475,10 +477,11 @@ class BookingService:
             raise AppError(
                 status.HTTP_409_CONFLICT, ErrorCode.INVALID_BOOKING_STATE, "Booking cannot be cancelled"
             )
+        self.created_refund = None
         if old_status == BookingStatus.BOOKED:
             # Money-correctness fix: an OWNER cancelling a paid (booked) booking owes the player a refund
             # exactly like a player cancel does (previously only PLAYER cancels were flagged).
-            await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
+            self.created_refund = await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
         # audit 2026-10-28 item 8: the REAL person (owner / staff / admin / the player), not always the booking's player
         await self.audit.log(
             actor_user_id=actor.id if actor is not None else booking.player_id,
@@ -544,9 +547,8 @@ class BookingService:
             .limit(1)
         )
         if payment is None:
-            return
-        self.db.add(
-            PaymentDispute(
+            return None
+        dispute = PaymentDispute(
                 booking_id=booking.id,
                 payment_id=payment.id,
                 player_id=booking.player_id,
@@ -560,7 +562,8 @@ class BookingService:
                 # fix is the REAL amount the player paid (capped at the price), cash entries included.
                 refund_amount=booking.amount_paid,
             )
-        )
+        self.db.add(dispute)
+        return dispute
 
     async def confirm_booking(
         self,
