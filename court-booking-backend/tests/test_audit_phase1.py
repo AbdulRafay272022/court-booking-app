@@ -138,3 +138,65 @@ async def test_ai_tools_do_not_describe_hidden_venues(db_session, make_user, mak
     assert "error" in await svc._tool_get_venue_courts({"venue_id": str(venue.id)})
     out = await svc._tool_check_availability({"court_id": str(court.id), "date": (date.today() + timedelta(days=3)).isoformat()})
     assert "error" in out
+
+
+# ---------------------------------------------------------------- item 3: replies are Latin letters only
+
+from app.services import chat_validator  # noqa: E402
+from app.services.chat_language import detect_language, has_non_latin, transliterate_common  # noqa: E402
+
+
+def test_script_detection_sees_devanagari_and_urdu():
+    assert has_non_latin("शुक्रिया! आपकी बुकिंग हो गई।")
+    assert has_non_latin("شکریہ")
+    assert not has_non_latin("Shukriya, aap ka slot book ho gaya. PKR 3,000")
+
+
+def test_a_player_writing_hindi_or_urdu_script_gets_roman_urdu():
+    assert detect_language("मुझे कल का स्लॉट चाहिए") == "ru"
+    assert detect_language("مجھے کل کا سلاٹ چاہیے") == "ru"
+
+
+def test_common_words_are_transliterated_and_unknown_script_is_left_for_the_validator():
+    assert transliterate_common("शुक्रिया!") == "Shukriya!"
+    assert transliterate_common("شکریہ، جی") == "Shukriya, Ji"
+    assert has_non_latin(transliterate_common("शुक्रिया! आपकी बुकिंग हो गई।"))  # whole Hindi sentence: still rejected
+
+
+def test_prompt_never_invites_urdu_script():
+    from app.services.ai_chat_service import SYSTEM_PROMPT
+
+    assert "English, Urdu," not in SYSTEM_PROMPT
+    assert "Latin letters" in SYSTEM_PROMPT
+
+
+async def test_a_devanagari_draft_is_regenerated_and_the_player_never_sees_it(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    from tests.test_chat_replay import ScriptedModel, arena, player_headers, say, text
+
+    await arena(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    _u, headers = await player_headers(make_user, make_auth_headers)
+    model = ScriptedModel(monkeypatch, [text("बुकिंग कैंसल करने के लिए My Bookings खोलें।"), text("Booking cancel karne ke liye My Bookings kholein.")])
+    reply = (await say(client, headers, "booking cancel kaise hoti hai?"))["reply"]
+    assert not has_non_latin(reply), reply
+    assert reply == "Booking cancel karne ke liye My Bookings kholein."
+    assert len(model.bodies) == 2, "the Devanagari draft must have been rejected and regenerated"
+
+
+async def test_a_model_stuck_in_devanagari_gets_the_latin_fallback(
+    client, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch
+):
+    from tests.test_chat_replay import ScriptedModel, arena, player_headers, say, text
+
+    await arena(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    _u, headers = await player_headers(make_user, make_auth_headers)
+    ScriptedModel(monkeypatch, [text("बुकिंग कैंसल करने के लिए My Bookings खोलें।")])
+    reply = (await say(client, headers, "booking cancel kaise hoti hai?"))["reply"]
+    assert reply and not has_non_latin(reply), reply
+
+
+def test_validator_flags_mixed_script_drafts():
+    from app.services.chat_validator import Issue  # noqa: F401
+
+    assert chat_validator._INSTRUCTIONS["non_latin_script"]

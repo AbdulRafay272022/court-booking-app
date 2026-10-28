@@ -22,6 +22,7 @@ from app.services.ai.usage import log_ai_usage
 from app.services.availability_service import GRID_MINUTES, MAX_BOOKING_MINUTES, AvailabilityService, min_slots
 from app.models.booking import Booking, BookingStatus
 from app.services import chat_guards, chat_templates, chat_validator, reply_text
+from app.services.chat_language import transliterate_common
 from app.services.chat_validator import canonical_money, mask_phones_in_text
 from app.services.booking_service import BookingService
 from app.services.chat_facts import PlatformFacts, facts_block, load_hours, load_platform_facts
@@ -72,7 +73,7 @@ SYSTEM_PROMPT = """You are the booking assistant for a Pakistani sports-court bo
 
 Persona: polite, warm, brief and professional. The same reply must work for a security guard \
 sent to book, a student, and a busy executive -- short sentences, simple words, no jargon. Reply \
-in the player's own language, matching how they write: English, Urdu, or Roman Urdu.
+in the player's own language, matching how they write: English or Roman Urdu (Urdu written in Latin letters, e.g. "Shukriya, aap ka slot book ho gaya"). ALWAYS write in Latin letters (A-Z) only: never Urdu/Arabic script and never Hindi/Devanagari script, even if the player writes in one of them (then reply in Roman Urdu).
 
 You have no direct database access. Everything you know about venues, courts, availability, \
 prices and bookings comes from your tools -- never invent a venue, address, price, availability, \
@@ -278,6 +279,9 @@ def sanitize_reply(text: str) -> str:
     text = _strip_markdown(text)
     text = _strip_button_talk(text)
     text = _fix_shorthand(text)
+    # audit 2026-10-28 item 3: common courtesy words in Devanagari/Urdu script become Roman Urdu; anything else non-Latin is
+    # caught by the validator (`non_latin_script`) and regenerated, then falls back to a Latin template.
+    text = transliterate_common(text)
     return text
 
 
