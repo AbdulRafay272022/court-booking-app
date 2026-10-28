@@ -27,7 +27,9 @@ export function CnicBanner() {
   const isOwner = role === "owner";
   const query = useOwnerIdentity(isOwner);
   const [dismissed, setDismissed] = useState(dismissedThisSession);
-  if (!isOwner || dismissed || query.data?.status !== "missing") return null;
+  const rejected = query.data?.status === "rejected";
+  // audit 2026-10-28 Phase 2 item 1: a NOT approved CNIC shows the banner too, with the admin's reason (never dismissed for good)
+  if (!isOwner || (dismissed && !rejected) || (query.data?.status !== "missing" && !rejected)) return null;
   return (
     <div className="px-4 sm:px-8 pt-4 sm:pt-6">
       <div
@@ -38,7 +40,7 @@ export function CnicBanner() {
       >
         <p className="flex-1 basis-60 text-[13.5px] font-semibold text-owner-warn-dark">
           <span aria-hidden="true">! </span>
-          {t("cnic.banner.text")}
+          {rejected ? t("cnic.banner.rejected", { reason: query.data?.rejection_reason ?? "" }) : t("cnic.banner.text")}
         </p>
         <div className="flex flex-wrap gap-2">
           <Link

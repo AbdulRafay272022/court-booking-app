@@ -86,9 +86,14 @@ def cnic_hash(digits: str, settings: Settings) -> str:
 
 
 def status_of(row: OwnerIdentity | None) -> str:
+    """missing | submitted (waiting for the admin) | verified | rejected (audit 2026-10-28 Phase 2: stored cnic_status)."""
     if row is None:
         return "missing"
-    return "verified" if row.verified_at is not None else "submitted"
+    if row.cnic_status == "rejected":
+        return "rejected"
+    if row.cnic_status == "approved" or row.verified_at is not None:
+        return "verified"
+    return "submitted"
 
 
 def owner_view(row: OwnerIdentity | None) -> dict:
@@ -96,7 +101,32 @@ def owner_view(row: OwnerIdentity | None) -> dict:
         "status": status_of(row),
         "masked": mask(row.cnic_last4) if row is not None else None,
         "flags": list(row.flags or []) if row is not None else [],
+        # audit 2026-10-28 Phase 2 item 1: why it was not approved, so the owner can fix it and upload again
+        "rejection_reason": row.rejection_reason if row is not None and row.cnic_status == "rejected" else None,
     }
+
+
+# audit 2026-10-28 Phase 2 item 1: a cheap sanity check that the upload LOOKS like a card (a CNIC is an ID-1 card, 85.6 x 54 mm,
+# ratio ~1.59). A phone screenshot (a test owner uploaded payment screenshots) is tall and narrow. It never blocks the upload; it
+# only adds a flag the admin sees as a warning next to "Tasdeeq karein".
+CARD_RATIO = (1.3, 1.95)
+NOT_CARD_FLAG = "not_cnic_like"
+
+
+def looks_like_card(data: bytes) -> bool:
+    from io import BytesIO
+
+    from PIL import Image
+
+    try:
+        with Image.open(BytesIO(data)) as img:
+            w, h = img.size
+    except Exception:  # noqa: BLE001 -- validate_image already accepted it; an unreadable size is just "not sure"
+        return True
+    if w < 300 or h < 180:
+        return False
+    ratio = max(w, h) / max(min(w, h), 1)
+    return CARD_RATIO[0] <= ratio <= CARD_RATIO[1]
 
 
 async def _read_photo(upload: UploadFile, field: str) -> tuple[bytes, str]:
@@ -162,6 +192,12 @@ class OwnerIdentityService:
         # A replacement must be checked again by an admin.
         row.verified_at = None
         row.verified_by = None
+        row.cnic_status = "pending"
+        row.rejection_reason = None
+        row.reviewed_by = None
+        row.reviewed_at = None
+        card_like = looks_like_card(front_bytes) and looks_like_card(back_bytes)
+        row.flags = [f for f in (row.flags or []) if f != NOT_CARD_FLAG] + ([] if card_like else [NOT_CARD_FLAG])
         await self.db.flush()
         await self._refresh_duplicate_flags({digest} | ({old_hash} if old_hash else set()))
         await self.audit.log(
@@ -188,6 +224,8 @@ class OwnerIdentityService:
             "masked": mask(row.cnic_last4) if row is not None else None,
             "flags": list(row.flags or []) if row is not None else [],
             "submitted_at": row.updated_at if row is not None else None,
+            "rejection_reason": row.rejection_reason if row is not None else None,
+            "reviewed_at": row.reviewed_at if row is not None else None,
         }
 
     async def admin_list(self, filter_: str, page: int) -> dict:
@@ -198,7 +236,9 @@ class OwnerIdentityService:
         elif filter_ == "duplicates":
             q = q.where(OwnerIdentity.flags.contains([DUPLICATE_FLAG]))
         elif filter_ == "unverified":
-            q = q.where(OwnerIdentity.id.is_not(None), OwnerIdentity.verified_at.is_(None))
+            q = q.where(OwnerIdentity.id.is_not(None), OwnerIdentity.cnic_status == "pending")
+        elif filter_ == "rejected":
+            q = q.where(OwnerIdentity.cnic_status == "rejected")
         else:
             q = q.where((User.role == UserRole.OWNER) | OwnerIdentity.id.is_not(None))
         total = int(await self.db.scalar(select(func.count()).select_from(q.subquery())) or 0)
@@ -246,10 +286,15 @@ class OwnerIdentityService:
         return out
 
     async def verify(self, admin: User, user_id: uuid.UUID) -> dict:
-        _user, row = await self._require_row(user_id)
-        if row.verified_at is None:
-            row.verified_at = datetime.now(timezone.utc)
+        owner, row = await self._require_row(user_id)
+        if row.cnic_status != "approved" or row.verified_at is None:
+            now = datetime.now(timezone.utc)
+            row.verified_at = now
             row.verified_by = admin.id
+            row.cnic_status = "approved"
+            row.rejection_reason = None
+            row.reviewed_by = admin.id
+            row.reviewed_at = now
             await self.audit.log(
                 actor_user_id=admin.id,
                 actor_type="admin",
@@ -259,5 +304,43 @@ class OwnerIdentityService:
                 new_value={"owner_user_id": str(user_id)},
             )
             await self.db.commit()
+            await self._notify(owner, approved=True, reason=None)
         # The response carries the full number too, so it is audited as a view as well.
         return await self.admin_full(admin, user_id)
+
+    async def reject(self, admin: User, user_id: uuid.UUID, reason: str) -> dict:
+        """audit 2026-10-28 Phase 2 item 1: "Not approve" with a REQUIRED reason; the owner is told why and can upload again
+        (a new upload puts it back to pending)."""
+        reason = (reason or "").strip()
+        if len(reason) < 3:
+            raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR, "Please write the reason.")
+        owner, row = await self._require_row(user_id)
+        now = datetime.now(timezone.utc)
+        old = row.cnic_status
+        row.cnic_status = "rejected"
+        row.rejection_reason = reason[:500]
+        row.reviewed_by = admin.id
+        row.reviewed_at = now
+        row.verified_at = None
+        row.verified_by = None
+        await self.audit.log(
+            actor_user_id=admin.id,
+            actor_type="admin",
+            action="owner_identity.rejected",
+            entity_type="owner_identity",
+            entity_id=row.id,
+            old_value={"cnic_status": old},
+            new_value={"owner_user_id": str(user_id), "reason": row.rejection_reason},
+        )
+        await self.db.commit()
+        await self._notify(owner, approved=False, reason=row.rejection_reason)
+        return await self.admin_full(admin, user_id)
+
+    async def _notify(self, owner: User, *, approved: bool, reason: str | None) -> None:
+        """Push + web push + bell (WhatsApp only behind the whatsapp_templates flag). Best effort, never fails the review."""
+        try:
+            from app.services.notification_service import NotificationService
+
+            await NotificationService(self.db, self.settings).notify_owner_cnic_result(owner=owner, approved=approved, reason=reason)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("owner_identity.notify_failed", error=type(exc).__name__)

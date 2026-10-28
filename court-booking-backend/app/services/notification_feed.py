@@ -69,6 +69,7 @@ EVENT_KINDS: dict[str, tuple[str, str, str, str]] = {
     "owner_staff_action": ("other", "owner_staff_action", "booking", "booking"),
     "player_no_show": ("other", "player_no_show", "booking", "booking"),
     "player_short": ("other", "player_short", "booking", "booking"),
+    "owner_cnic_result": ("other", "owner_cnic_result", "none", "venue_status"),
     # admin / premium billing / marketing: kind only (reference is an invoice / venue we don't resolve)
     "venue_pending_review": ("other", "venue_pending_review", "venue", "none"),
     "premium_renewal_reminder": ("other", "premium_renewal_reminder", "none", "none"),

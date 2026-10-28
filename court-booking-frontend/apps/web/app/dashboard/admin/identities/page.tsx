@@ -182,6 +182,9 @@ function FullView({ row, onClose }: { row: AdminIdentityRow; onClose: () => void
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [verified, setVerified] = useState<AdminIdentityFull | null>(null);
+  // audit 2026-10-28 Phase 2 item 1: "Not approve" with a required reason
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
   const data = verified ?? full.data;
 
   async function verify() {
@@ -191,6 +194,24 @@ function FullView({ row, onClose }: { row: AdminIdentityRow; onClose: () => void
       const res = await api.admin.verifyOwnerIdentity(row.user_id);
       setVerified(res);
       setMessage({ kind: "ok", text: t("cnic.admin.verified") });
+      await queryClient.invalidateQueries({ queryKey: ["admin-identities"] });
+    } catch (e) {
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function reject() {
+    if (reason.trim().length < 3) return;
+    setVerifying(true);
+    setMessage(null);
+    try {
+      const res = await api.admin.rejectOwnerIdentity(row.user_id, reason.trim());
+      setVerified(res);
+      setRejecting(false);
+      setReason("");
+      setMessage({ kind: "ok", text: t("cnic.admin.rejected") });
       await queryClient.invalidateQueries({ queryKey: ["admin-identities"] });
     } catch (e) {
       setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
@@ -227,6 +248,17 @@ function FullView({ row, onClose }: { row: AdminIdentityRow; onClose: () => void
                   <IdentityStatusChip status={data.status} />
                   {data.flags.includes(DUPLICATE_FLAG) ? <DuplicateChip /> : null}
                 </div>
+                {data.flags.includes("not_cnic_like") ? (
+                  <p className="rounded-lg border border-owner-danger/30 bg-owner-danger/5 px-3 py-2 text-[13px] font-semibold text-owner-danger" data-testid="identity-not-card">
+                    <span aria-hidden="true">! </span>
+                    {t("cnic.admin.notCardLike")}
+                  </p>
+                ) : null}
+                {data.status === "rejected" && data.rejection_reason ? (
+                  <p className="text-[13px] text-owner-ink-muted" data-testid="identity-rejection">
+                    {t("cnic.rejectedReason", { reason: data.rejection_reason })}
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-3">
                   {(["front", "back"] as const).map((s) => (
                     <button
@@ -244,15 +276,52 @@ function FullView({ row, onClose }: { row: AdminIdentityRow; onClose: () => void
                   ))}
                 </div>
                 {data.status !== "verified" ? (
-                  <button
-                    type="button"
-                    data-testid="identity-verify"
-                    disabled={verifying}
-                    onClick={verify}
-                    className={`min-h-11 self-start rounded-lg bg-owner-accent px-5 text-[14px] font-semibold text-white disabled:opacity-60 ${focusRing}`}
-                  >
-                    {t("cnic.admin.verify")}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      data-testid="identity-verify"
+                      disabled={verifying}
+                      onClick={verify}
+                      className={`min-h-11 rounded-lg bg-owner-accent px-5 text-[14px] font-semibold text-white disabled:opacity-60 ${focusRing}`}
+                    >
+                      {t("cnic.admin.verify")}
+                    </button>
+                    {data.status !== "rejected" ? (
+                      <button
+                        type="button"
+                        data-testid="identity-reject"
+                        disabled={verifying}
+                        onClick={() => setRejecting((v) => !v)}
+                        className={`min-h-11 rounded-lg border border-owner-danger/40 px-5 text-[14px] font-semibold text-owner-danger disabled:opacity-60 ${focusRing}`}
+                      >
+                        {t("cnic.admin.reject")}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {rejecting ? (
+                  <div className="flex flex-col gap-2" data-testid="identity-reject-form">
+                    <label className="text-[13px] font-semibold text-owner-ink" htmlFor={`${titleId}-reason`}>
+                      {t("cnic.admin.rejectReason")}
+                    </label>
+                    <textarea
+                      id={`${titleId}-reason`}
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      rows={3}
+                      maxLength={500}
+                      className={`rounded-lg border px-3 py-2 text-[14px] ${reason.trim().length < 3 ? "border-owner-danger" : "border-owner-border"}`}
+                    />
+                    <button
+                      type="button"
+                      data-testid="identity-reject-confirm"
+                      disabled={verifying || reason.trim().length < 3}
+                      onClick={reject}
+                      className={`min-h-11 self-start rounded-lg bg-owner-danger px-5 text-[14px] font-semibold text-white disabled:opacity-60 ${focusRing}`}
+                    >
+                      {t("cnic.admin.rejectConfirm")}
+                    </button>
+                  </div>
                 ) : null}
                 {message ? (
                   <p className={`text-[13.5px] font-semibold ${message.kind === "ok" ? "text-owner-accent" : "text-owner-danger"}`} data-testid="identity-verify-message">

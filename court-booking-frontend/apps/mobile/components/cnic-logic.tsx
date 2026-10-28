@@ -51,8 +51,9 @@ export function cnicDraftComplete(d: CnicDraft): boolean {
   return isValidCnic(d.number) && !!d.front && !!d.back;
 }
 
-export const IDENTITY_STATUS_TEXT: Record<"missing" | "submitted" | "verified", string> = {
+export const IDENTITY_STATUS_TEXT: Record<"missing" | "submitted" | "verified" | "rejected", string> = {
   missing: "Abhi nahi diya",
   submitted: "Jama ho gaya, team check kar rahi hai",
   verified: "Verified",
+  rejected: "Approve nahi hua, dobara upload karein",
 };

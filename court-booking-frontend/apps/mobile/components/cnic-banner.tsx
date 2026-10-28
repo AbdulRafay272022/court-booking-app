@@ -21,7 +21,9 @@ const useBannerDismissed = create<{ dismissed: boolean; dismiss: () => void }>()
 export function CnicBanner() {
   const q = useOwnerIdentity();
   const { dismissed, dismiss } = useBannerDismissed();
-  if (dismissed || q.data?.status !== "missing") return null;
+  // audit 2026-10-28 Phase 2 item 1: a NOT approved CNIC shows the row too (with the admin's reason), and is not dismissable
+  const rejected = q.data?.status === "rejected";
+  if ((dismissed && !rejected) || (q.data?.status !== "missing" && !rejected)) return null;
   return (
     <View testID="cnic-banner" style={{ flexDirection: "row", alignItems: "center", gap: space[2], backgroundColor: palette.white, borderRadius: 18, paddingLeft: space[3], paddingRight: space[1], minHeight: 50 }}>
       <Pressable
@@ -32,9 +34,9 @@ export function CnicBanner() {
       >
         <IdCard size={18} color={palette.teal} />
         <Text variant="body" style={{ flex: 1 }}>
-          <Text variant="bodyBold">CNIC verify karein</Text>
+          <Text variant="bodyBold">{rejected ? "CNIC approve nahi hua" : "CNIC verify karein"}</Text>
           <Text variant="body" tone="muted">
-            {" · payout ke liye, 1 minute"}
+            {rejected ? ` · ${q.data?.rejection_reason ?? ""} · dobara upload karein` : " · payout ke liye, 1 minute"}
           </Text>
         </Text>
         <ChevronRight size={16} color={palette.muted} />

@@ -13,6 +13,7 @@ from app.models.user import UserRole
 from app.models.venue import Venue
 from app.schemas.stage2 import (
     AdminIdentityFullOut,
+    IdentityRejectIn,
     AdminIdentityPageOut,
     MyPermissionsOut,
     OwnerIdentityOut,
@@ -141,7 +142,7 @@ async def admin_owner_identities(
     db: DbSession,
     settings: AppSettings,
     admin: RequireAdmin,
-    filter: Literal["missing", "duplicates", "unverified", "all"] = "all",
+    filter: Literal["missing", "duplicates", "unverified", "rejected", "all"] = "all",
     page: int = Query(1, ge=1),
 ) -> dict:
     """Masked only (never the number)."""
@@ -159,3 +160,11 @@ async def admin_verify_owner_identity(
     user_id: uuid.UUID, db: DbSession, settings: AppSettings, admin: RequireAdmin
 ) -> dict:
     return await OwnerIdentityService(db, settings).verify(admin, user_id)
+
+
+@admin_router.post("/owner-identities/{user_id}/reject", response_model=AdminIdentityFullOut)
+async def admin_reject_owner_identity(
+    user_id: uuid.UUID, payload: IdentityRejectIn, db: DbSession, settings: AppSettings, admin: RequireAdmin
+) -> dict:
+    """audit 2026-10-28 Phase 2 item 1: "Not approve" with a required reason; the owner is notified and can upload again."""
+    return await OwnerIdentityService(db, settings).reject(admin, user_id, payload.reason)

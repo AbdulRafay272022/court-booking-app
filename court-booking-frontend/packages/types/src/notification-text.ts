@@ -79,6 +79,7 @@ const EVENT_TITLES: Record<string, Record<Lang, string>> = {
   owner_staff_action: { ru: "Staff ne booking mark ki", en: "Staff marked a booking" },
   player_no_show: { ru: "Booking no-show mark hui", en: "Booking marked as no-show" },
   player_short: { ru: "Booking par paisa baqi hai", en: "Money still due on a booking" },
+  owner_cnic_result: { ru: "CNIC ka faisla", en: "CNIC review result" },
 };
 
 /** "payment_review_expired" -> "Payment review expired" (both languages; used only for an event we have no copy for). */

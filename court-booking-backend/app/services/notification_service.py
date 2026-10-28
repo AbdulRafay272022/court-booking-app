@@ -554,6 +554,15 @@ class NotificationService:
         else:
             await self._send_push_tier(user, event_type, title, body, reference_id=reference_id, bell=True)
 
+    async def notify_owner_cnic_result(self, *, owner: User, approved: bool, reason: str | None) -> None:
+        """audit 2026-10-28 Phase 2 item 1: the admin approved / did not approve the owner's CNIC."""
+        if approved:
+            title, body = "CNIC approve ho gaya", "Aap ka CNIC tasdeeq ho gaya. Shukriya!"
+        else:
+            title = "CNIC approve nahi hua"
+            body = f"Aap ka CNIC approve nahi hua: {reason}. Sahi CNIC ki dono taraf ki photo dobara upload karein."
+        await self._audit_tier(owner, "owner_cnic_result", title, body, reference_id=None)
+
     async def notify_owner_staff_action(
         self,
         *,

@@ -31,6 +31,10 @@ export function createAdminApi(client: ApiClient) {
     verifyOwnerIdentity: (userId: string) =>
       client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}/verify`, { method: "POST" }),
 
+    /** audit 2026-10-28 Phase 2 item 1: "Not approve" with a required reason (the owner is told and can upload again). */
+    rejectOwnerIdentity: (userId: string, reason: string) =>
+      client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+
     stats: () => client.request<PlatformStats>("/admin/stats"),
 
     overview: () => client.request<AdminOverview>("/admin/overview"),
