@@ -16,7 +16,7 @@ import uuid
 
 from fastapi import APIRouter
 
-from app.dependencies import AppSettings, CurrentUser, DbSession, RequireStaffCapable
+from app.dependencies import AppSettings, CurrentUser, DbSession, RequireAdmin, RequireStaffCapable
 from app.errors import AppError, ErrorCode
 from app.schemas.phase3 import (
     ArrivalIn,
@@ -24,6 +24,7 @@ from app.schemas.phase3 import (
     BookingExtrasOut,
     DecideIn,
     DueOut,
+    MoneyHealthOut,
     NoShowDecideIn,
     NoShowReplyIn,
     NoShowReplyOut,
@@ -108,3 +109,18 @@ async def owner_noshow_decide(reply_id: uuid.UUID, payload: NoShowDecideIn, db: 
         raise AppError(403, ErrorCode.FORBIDDEN, "Only the venue decides this.")
     reply = await p3.decide_noshow(db, settings, owner, reply_id, payload.decision)
     return NoShowReplyOut(id=reply.id, booking_id=reply.booking_id, note=reply.note, owner_decision=reply.owner_decision, at=reply.created_at)
+
+
+@router.get("/owners/money-health", response_model=MoneyHealthOut)
+async def owner_money_health(venue_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable) -> MoneyHealthOut:
+    """Item 9: the venue's points / dues / disputes block (owner, or staff with view_ledger)."""
+    from app.services.venue_service import VenueService
+
+    await VenueService(db, settings).require_owned_venue(venue_id, owner, permission="view_ledger")
+    return MoneyHealthOut(**await p3.money_health(db, [venue_id]))
+
+
+@router.get("/admin/money-health", response_model=MoneyHealthOut)
+async def admin_money_health(db: DbSession, admin: RequireAdmin) -> MoneyHealthOut:
+    """Item 9: the same block across every venue, worst first (open disputes, then rupees due)."""
+    return MoneyHealthOut(**await p3.money_health(db, None))

@@ -371,3 +371,20 @@ async def test_khelo_whatsapp_templates_go_out_only_with_the_flag(client, db_ses
     assert await log_rows(db_session_factory, user_id=player.id, event_type="payment_receipt_wa")
     assert any(p.get("template", {}).get("name") == "khelo_payment_receipt" for p in sent)
     assert bid
+
+
+# ---------------------------------------------------------------- item 9: staff + admin dashboards
+
+
+async def test_money_health_counts_dues_disputes_and_points_for_staff_and_admin(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers):
+    await set_flag(db_session_factory, "short_payment_reply")
+    owner, venue, _c, player, b, oh, ph = await _short_booking(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, "+923003110151")
+    claim = await _claim(db_session_factory, b.id)
+    await client.post(f"/api/v1/short-payments/{claim.id}/reply", json={"answer": "no", "reason": "x"}, headers=ph)
+    v = (await client.get("/api/v1/owners/money-health", params={"venue_id": str(venue.id)}, headers=oh)).json()
+    assert v["totals"]["dues_open"] == 1 and v["totals"]["dues_open_pkr"] == 1000
+    assert v["totals"]["short_disputes_waiting"] == 1 and v["totals"]["points_awarded"] == 5
+    admin = await make_auth_headers(await make_user("+923003110158", role=UserRole.ADMIN))
+    a = (await client.get("/api/v1/admin/money-health", headers=admin)).json()
+    assert any(r["venue_id"] == str(venue.id) and r["short_disputes_waiting"] == 1 for r in a["venues"])
+    assert (await client.get("/api/v1/admin/money-health", headers=oh)).status_code == 403

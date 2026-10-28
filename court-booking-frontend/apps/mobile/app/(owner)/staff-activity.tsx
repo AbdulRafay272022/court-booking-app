@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { OwnerHeader } from "./_fl";
+import { VenueMoneyHealth } from "@/components/money-health-card";
 
 const PRESETS = [7, 30, 90] as const;
 
@@ -32,6 +33,7 @@ export default function StaffActivityScreen() {
   return (
     <Screen testID="staff-activity-screen" refreshing={query.isRefetching} onRefresh={() => query.refetch()}>
       <OwnerHeader title="Staff ka kaam" subtitle={activeVenue?.name} />
+      <VenueMoneyHealth venueId={activeVenueId} />
       <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }} accessibilityRole="radiogroup" accessibilityLabel="Kitne din">
         {PRESETS.map((d) => (
           <Chip key={d} label={`Pichle ${d} din`} selected={days === d} onPress={() => setDays(d)} testID={`sact-days-${d}`} />

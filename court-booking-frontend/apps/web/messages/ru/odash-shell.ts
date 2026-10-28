@@ -136,4 +136,10 @@ export const ruOdashShell = {
   "odash.p3.collect": "Raqam lein",
   "odash.p3.waive": "Maaf karein",
   "odash.p3.doneReceived": "Done (paisa mil gaya)",
+  "odash.p3.mh.title": "Points, baqi aur jhagre",
+  "odash.p3.mh.open": "Baqi raqam kholein",
+  "odash.p3.mh.dues": "Baqi (bookings · raqam)",
+  "odash.p3.mh.disputes": "Hisaab par faisla baqi",
+  "odash.p3.mh.noshowReplies": "\"Main aaya tha\" par faisla baqi",
+  "odash.p3.mh.points": "Points diye / istemal",
 } as const;

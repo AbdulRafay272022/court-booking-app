@@ -684,3 +684,62 @@ async def approval_context(db: AsyncSession, venue_ids_by_player: dict[uuid.UUID
     return out
 
 
+
+
+# ------------------------------------------------------------------ item 9: dashboards
+
+
+async def money_health(db: AsyncSession, venue_ids: list[uuid.UUID] | None = None) -> dict:
+    """Points, dues and disputes in one block: for one venue's staff dashboard (venue_ids=[id]) or the whole platform (None).
+    Read-only; counts whatever exists whether or not the flags are on (so nothing is hidden from the admin)."""
+    claim_q = select(ShortPaymentClaim, Booking).join(Booking, Booking.id == ShortPaymentClaim.booking_id).where(
+        ShortPaymentClaim.resolved_at.is_(None)
+    )
+    reply_q = (
+        select(NoShowReply.id, Court.venue_id)
+        .join(Booking, Booking.id == NoShowReply.booking_id)
+        .join(Court, Court.id == Booking.court_id)
+        .where(NoShowReply.owner_decision.is_(None))
+    )
+    points_q = (
+        select(Court.venue_id, PointEntry.reason, func.sum(PointEntry.delta))
+        .join(Booking, Booking.id == PointEntry.booking_id)
+        .join(Court, Court.id == Booking.court_id)
+        .group_by(Court.venue_id, PointEntry.reason)
+    )
+    if venue_ids is not None:
+        claim_q = claim_q.where(ShortPaymentClaim.venue_id.in_(venue_ids))
+        reply_q = reply_q.where(Court.venue_id.in_(venue_ids))
+        points_q = points_q.where(Court.venue_id.in_(venue_ids))
+    claims = (await db.execute(claim_q)).all()
+    replies = (await db.execute(reply_q)).all()
+    points = (await db.execute(points_q)).all()
+    per: dict[uuid.UUID, dict] = {}
+
+    def row(vid: uuid.UUID) -> dict:
+        return per.setdefault(vid, {"venue_id": vid, "dues_open": 0, "dues_open_pkr": 0, "short_disputes_waiting": 0,
+                                    "noshow_replies_waiting": 0, "points_awarded": 0, "points_used": 0})
+
+    for c, b in claims:
+        r = row(c.venue_id)
+        r["dues_open"] += 1
+        r["dues_open_pkr"] += int(round(float(b.balance_due or 0)))
+        if c.status == "disputed" and c.owner_decision is None:
+            r["short_disputes_waiting"] += 1
+    for _rid, vid in replies:
+        row(vid)["noshow_replies_waiting"] += 1
+    for vid, reason, total in points:
+        r = row(vid)
+        if reason in ("transfer_booking", "short_reply"):
+            r["points_awarded"] += int(total or 0)
+        elif reason == "redeem":
+            r["points_used"] += -int(total or 0)
+    names = {}
+    if per:
+        names = {v.id: v.name for v in (await db.execute(select(Venue).where(Venue.id.in_(list(per))))).scalars()}
+    venues = sorted(
+        ({**r, "venue_name": names.get(r["venue_id"], "")} for r in per.values()),
+        key=lambda r: (-r["short_disputes_waiting"] - r["noshow_replies_waiting"], -r["dues_open_pkr"]),
+    )
+    keys = ("dues_open", "dues_open_pkr", "short_disputes_waiting", "noshow_replies_waiting", "points_awarded", "points_used")
+    return {"totals": {k: sum(r[k] for r in venues) for k in keys}, "venues": venues}

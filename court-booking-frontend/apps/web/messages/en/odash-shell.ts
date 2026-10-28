@@ -138,4 +138,10 @@ export const enOdashShell: Record<keyof typeof ruOdashShell, string> = {
   "odash.p3.collect": "Collect",
   "odash.p3.waive": "Waive",
   "odash.p3.doneReceived": "Done (money received)",
+  "odash.p3.mh.title": "Points, dues and disputes",
+  "odash.p3.mh.open": "Open dues",
+  "odash.p3.mh.dues": "Due (bookings · amount)",
+  "odash.p3.mh.disputes": "Balance disputes to decide",
+  "odash.p3.mh.noshowReplies": "\"I was there\" replies to decide",
+  "odash.p3.mh.points": "Points given / used",
 };

@@ -93,3 +93,20 @@ export function pointsReasonLabel(reason: string, lang: "ru" | "en" = "ru"): str
   };
   return (lang === "ru" ? ru : en)[reason] ?? reason;
 }
+
+/** audit Phase 3 item 9: points, dues and disputes per venue and in total (GET /owners/money-health, /admin/money-health). */
+export interface MoneyHealthRow {
+  venue_id: string;
+  venue_name: string;
+  dues_open: number;
+  dues_open_pkr: number;
+  short_disputes_waiting: number;
+  noshow_replies_waiting: number;
+  points_awarded: number;
+  points_used: number;
+}
+
+export interface MoneyHealth {
+  totals: Omit<MoneyHealthRow, "venue_id" | "venue_name">;
+  venues: MoneyHealthRow[];
+}

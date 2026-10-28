@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, Building2, IdCard, LogOut, RotateCcw } from "lucide-react-native";
+import { Bell, Building2, Coins, IdCard, LogOut, RotateCcw } from "lucide-react-native";
 import { Badge, Card, Header, ListRow, Screen, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
@@ -34,6 +34,7 @@ export default function AdminHomeScreen() {
           divider
           testID="admin-refunds"
         />
+        <ListRow icon={Coins} title="Dues & points" subtitle="Disputes, no-show replies, points" onPress={() => router.push("/(admin)/money-health" as never)} divider testID="admin-money-health" />
         <ListRow icon={Bell} title="Alerts" subtitle="New venues, payments, refunds" onPress={() => router.push("/(admin)/alerts" as never)} testID="admin-alerts" />
       </Card>
       <Text variant="meta" tone="muted">

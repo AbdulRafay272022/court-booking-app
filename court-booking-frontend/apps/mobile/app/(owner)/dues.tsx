@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { OwnerHeader } from "./_fl";
+import { VenueMoneyHealth } from "@/components/money-health-card";
 
 const STATUS: Record<ShortPaymentDue["status"], string> = {
   awaiting_reply: "Player ke jawab ka intezar",
@@ -46,6 +47,7 @@ export default function DuesScreen() {
   return (
     <Screen testID="dues-screen" refreshing={query.isRefetching} onRefresh={() => query.refetch()}>
       <OwnerHeader title="Baqi raqam (dues)" subtitle={activeVenue?.name} />
+      <VenueMoneyHealth venueId={activeVenueId} />
       {message ? <Banner tone={message.ok ? "open" : "danger"} body={message.text} /> : null}
       {query.isError ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} />

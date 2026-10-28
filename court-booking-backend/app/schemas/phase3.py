@@ -119,3 +119,30 @@ class ApprovalPlayerContextOut(BaseModel):
     dues: list[DueOut]
     no_shows: int
     total_bookings: int
+
+
+class MoneyHealthRowOut(BaseModel):
+    venue_id: uuid.UUID
+    venue_name: str = ""
+    dues_open: int = 0
+    dues_open_pkr: int = 0
+    short_disputes_waiting: int = 0
+    noshow_replies_waiting: int = 0
+    points_awarded: int = 0
+    points_used: int = 0
+
+
+class MoneyHealthTotalsOut(BaseModel):
+    dues_open: int = 0
+    dues_open_pkr: int = 0
+    short_disputes_waiting: int = 0
+    noshow_replies_waiting: int = 0
+    points_awarded: int = 0
+    points_used: int = 0
+
+
+class MoneyHealthOut(BaseModel):
+    """audit Phase 3 item 9: points, dues and disputes, per venue and in total (staff dashboard: one venue; admin: all)."""
+
+    totals: MoneyHealthTotalsOut
+    venues: list[MoneyHealthRowOut]

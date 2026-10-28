@@ -9,6 +9,7 @@ import { useFmt } from "@/lib/use-fmt";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
+import { MoneyHealthCard } from "@/components/owner/money-health-card";
 
 /** audit 2026-10-28 Phase 3 items 4 + 5: money still due on finished bookings ("kam mila"), carried per venue. A disputed one
  * ("Ghalat hai") is decided here (collect / waive); any open one is settled with "Done" once the rest is received. */
@@ -52,6 +53,7 @@ export default function OwnerDuesPage() {
         <h1 className="text-2xl font-bold">{t("odash.p3.duesTitle")}</h1>
         <p className="text-sm text-owner-ink-muted">{t("odash.p3.duesSubtitle")}</p>
       </div>
+      {activeVenueId ? <MoneyHealthCard venueId={activeVenueId} /> : null}
       {error ? (
         <p className="text-owner-danger" role="alert">
           {error}

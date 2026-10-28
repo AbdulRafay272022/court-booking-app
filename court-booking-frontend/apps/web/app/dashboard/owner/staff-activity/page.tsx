@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
 import { StaffActivityView } from "@/components/owner/staff-activity-view";
+import { MoneyHealthCard } from "@/components/owner/money-health-card";
 
 /** Audit 2026-10-28 item 16: the owner's staff dashboard (owner only; the shell hides it from staff). */
 export default function OwnerStaffActivityPage() {
@@ -15,6 +16,7 @@ export default function OwnerStaffActivityPage() {
         <h1 className="text-2xl font-bold">{t("odash.sact.title")}</h1>
         <p className="text-sm text-owner-ink-muted">{t("odash.sact.subtitle")}</p>
       </div>
+      {activeVenueId ? <MoneyHealthCard venueId={activeVenueId} /> : null}
       {activeVenueId ? (
         <StaffActivityView queryKey={["staff-activity", activeVenueId]} load={(from, to) => api.owners.staffActivity(activeVenueId, from, to)} canDecide />
       ) : null}

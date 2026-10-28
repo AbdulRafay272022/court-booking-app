@@ -1,4 +1,4 @@
-import type { ArrivalState, BookingExtras, PlayerPoints, ShortPaymentDue } from "@court-booking/types";
+import type { ArrivalState, BookingExtras, MoneyHealth, PlayerPoints, ShortPaymentDue } from "@court-booking/types";
 import type { ApiClient } from "./client";
 
 /** audit 2026-10-28 Phase 3 items 3-6: points, short payments / dues, no-show replies, "Pohanch gaya" (backend app/api/phase3.py). */
@@ -17,6 +17,8 @@ export function createPhase3Api(client: ApiClient) {
     noshowReply: (bookingId: string, note?: string) =>
       client.request<{ id: string }>(`/bookings/${bookingId}/noshow-reply`, { method: "POST", body: JSON.stringify({ note: note || null }) }),
     // owner / staff
+    moneyHealth: (venueId: string) => client.request<MoneyHealth>(`/owners/money-health?venue_id=${encodeURIComponent(venueId)}`),
+    adminMoneyHealth: () => client.request<MoneyHealth>("/admin/money-health"),
     dues: (venueId: string) => client.request<ShortPaymentDue[]>(`/owners/dues?venue_id=${encodeURIComponent(venueId)}`),
     dueDone: (claimId: string) => client.request<ShortPaymentDue>(`/owners/dues/${claimId}/done`, { method: "POST" }),
     decideShort: (claimId: string, decision: "collect" | "waive") =>

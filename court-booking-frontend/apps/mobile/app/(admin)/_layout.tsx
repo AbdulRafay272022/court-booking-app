@@ -9,6 +9,7 @@ export default function AdminLayout() {
       <Stack.Screen name="identities" />
       <Stack.Screen name="refunds" />
       <Stack.Screen name="alerts" />
+      <Stack.Screen name="money-health" />
     </Stack>
   );
 }
