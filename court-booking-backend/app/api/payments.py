@@ -72,6 +72,8 @@ async def submit_payment_proof(
         booking, proof_bytes=proof_bytes, filename=image.filename or "proof.jpg", content_type=image.content_type
     )
     await db.refresh(booking)
+    if booking.status.value == "booked":
+        await _after_money(db, settings, booking)
 
     if booking.status.value == "payment_submitted":
         venue = await _venue_for_court(db, booking.court_id)
@@ -104,6 +106,21 @@ async def submit_payment_proof(
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
 
 
+async def _after_money(db, settings, booking) -> None:
+    """audit 2026-10-28 Phase 3: money landed on a booking -- 50 points if it is now fully paid by transfer (flag
+    player_points), and a carried due is settled once the balance reaches 0. Best effort, never fails the approval."""
+    from app.services.phase3_service import maybe_award_transfer_points, sync_claim_after_payment
+
+    try:
+        await maybe_award_transfer_points(db, settings, booking)
+        await sync_claim_after_payment(db, settings, booking)
+        await db.refresh(booking)
+    except Exception:  # noqa: BLE001
+        import structlog
+
+        structlog.get_logger().warning("phase3.after_money_failed", exc_info=True)
+
+
 @router.post("/payments/{payment_id}/approve", response_model=PaymentSubmitResponse)
 async def approve_payment(
     payment_id: uuid.UUID,
@@ -129,6 +146,7 @@ async def approve_payment(
         accept_mode=payload.accept_mode if payload else None,
     )
     await db.refresh(booking)
+    await _after_money(db, settings, booking)
 
     court = await db.get(Court, booking.court_id)
     player = await db.get(User, booking.player_id) if booking.player_id else None

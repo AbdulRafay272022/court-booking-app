@@ -143,8 +143,10 @@ TEMPLATES: dict[str, WhatsAppTemplate] = {
 }
 
 
-def build_components(params: list[str]) -> list[dict]:
-    """WhatsApp Cloud API component format for a template's body params."""
-    if not params:
-        return []
-    return [{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}]
+def build_components(params: list[str], button_payloads: list[str] | None = None) -> list[dict]:
+    """WhatsApp Cloud API component format for a template's body params, plus (audit Phase 3 item 8) the payload of each
+    quick-reply button, in button order: a tap comes back to the webhook as `button.payload`."""
+    out = [{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}] if params else []
+    for i, payload in enumerate(button_payloads or []):
+        out.append({"type": "button", "sub_type": "quick_reply", "index": str(i), "parameters": [{"type": "payload", "payload": payload[:256]}]})
+    return out

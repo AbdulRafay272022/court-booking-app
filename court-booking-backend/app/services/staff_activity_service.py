@@ -196,6 +196,10 @@ async def staff_activity(
         if player_ids
         else {}
     )
+    # audit Phase 3 item 6: the player's "Main aaya tha" and the GPS verdict ("near" = shown in red)
+    from app.services.phase3_service import noshow_details
+
+    details = await noshow_details(db, [n["booking_id"] for n in no_shows])
     no_show_out = []
     for n in sorted(no_shows, key=lambda x: x["marked_at"], reverse=True):
         b = n["booking"]
@@ -209,6 +213,7 @@ async def staff_activity(
                 "marked_by_name": (by.name or by.phone) if by else None,
                 "marked_by_role": by.role.value if by else None,
                 "marked_at": n["marked_at"],
+                **details.get(n["booking_id"], {}),
             }
         )
     ordered = sorted(rows.values(), key=lambda r: (r["role"] != "owner", (r["name"] or "").lower()))

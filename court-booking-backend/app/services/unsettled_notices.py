@@ -22,7 +22,8 @@ logger = structlog.get_logger()
 
 
 async def notify_unsettled(
-    db: AsyncSession, settings: Settings, booking: Booking, actor: User, kind: str, short_pkr: int = 0
+    db: AsyncSession, settings: Settings, booking: Booking, actor: User, kind: str, short_pkr: int = 0,
+    player_notice: bool = True,
 ) -> None:
     """`kind` is "no_show" or "short"."""
     try:
@@ -52,7 +53,10 @@ async def notify_unsettled(
                     short_pkr=short_pkr,
                     due_pkr=due,
                 )
-        if player is not None and (kind == "no_show" or due > 0):
+        if player_notice and player is not None and (kind == "no_show" or due > 0):
+            from app.services.feature_flag_service import flag_on
+
+            buttons = [(f"noshow:{booking.id}", "Main aaya tha")] if kind == "no_show" and await flag_on(db, "noshow_reply") else None
             await notifications.notify_player_unsettled(
                 player=player,
                 kind=kind,
@@ -64,6 +68,7 @@ async def notify_unsettled(
                 paid_pkr=paid,
                 due_pkr=due,
                 venue_whatsapp=venue.whatsapp or venue.phone,
+                buttons=buttons,
             )
     except Exception as exc:  # noqa: BLE001 -- best effort by design (see module docstring)
         logger.warning("unsettled_notice.failed", kind=kind, error=type(exc).__name__)

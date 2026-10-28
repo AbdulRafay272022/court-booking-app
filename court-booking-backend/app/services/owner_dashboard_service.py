@@ -388,6 +388,13 @@ class OwnerDashboardService:
         if queue:
             dup_used = await used_on_bookings_map(self.db, [p for p, _b in rows if p.is_duplicate])
         now = datetime.now(timezone.utc)
+        # audit Phase 3 item 5: open dues + record at this venue per player (empty unless the player_dues flag is on)
+        from app.services.phase3_service import approval_context
+
+        ctx = await approval_context(
+            self.db,
+            {b.player_id: court_venues[b.court_id].id for _p, b in rows if b.player_id is not None and b.court_id in court_venues},
+        )
         out = []
         for payment, booking in rows:
             account_name = account_names.get(booking.player_id) or booking.player_name
@@ -426,6 +433,11 @@ class OwnerDashboardService:
                         else float(booking.advance_amount)
                     ),
                     is_balance=is_balance_proof(payment),
+                    player_context=(
+                        ctx.get((court_venues[booking.court_id].id, booking.player_id))
+                        if booking.player_id is not None and booking.court_id in court_venues
+                        else None
+                    ),
                     proof_url=PaymentService.proof_url(payment),
                     submitted_at=payment.created_at,
                     minutes_since_submission=round((now - payment.created_at).total_seconds() / 60, 1),

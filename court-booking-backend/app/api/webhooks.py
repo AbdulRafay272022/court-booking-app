@@ -416,6 +416,36 @@ async def _handle_image(db: DbSession, settings: AppSettings, user: User, image_
     await _reply_text(db, whatsapp, user, phone, reply, meta={"payment_id": str(payment.id), "ocr_verdict": payment.ocr_verdict})
 
 
+async def _handle_phase3_button(db: DbSession, settings: AppSettings, user: User, button_id: str, lang: str) -> None:
+    """audit 2026-10-28 Phase 3 item 8: quick-reply buttons on the khelo_* templates / in-window messages.
+    `short:<claim_id>:yes|no` answers "Total X, diye Y, baqi Z"; `noshow:<booking_id>` is "Main aaya tha"."""
+    from app.services import phase3_service as p3
+
+    whatsapp = WhatsAppService(settings)
+    ru = lang == "ru"
+    try:
+        if button_id.startswith("short:"):
+            _p, claim_id, answer = button_id.split(":", 2)
+            await p3.reply_short(db, settings, user, uuid.UUID(claim_id), "yes" if answer == "yes" else "no", None)
+            text = (
+                ("Shukriya! Jawab mil gaya, 5 points mile." if answer == "yes" else
+                 "Shukriya! Aap ka jawab venue ko bhej diya. Wajah likhni ho to app mein booking kholein. 5 points mile.")
+                if ru else
+                ("Thanks! Got it, 5 points added." if answer == "yes" else
+                 "Thanks! We sent your answer to the venue. To add a reason, open the booking in the app. 5 points added.")
+            )
+        else:
+            _p, booking_id = button_id.split(":", 1)
+            await p3.reply_noshow(db, settings, user, uuid.UUID(booking_id), None)
+            text = "Shukriya! Venue ko bata diya ke aap aaye the." if ru else "Thanks! We told the venue you were there."
+    except AppError as exc:
+        await db.rollback()
+        text = str(exc.detail)
+    except ValueError:
+        text = generic_failure(lang)
+    await _reply_text(db, whatsapp, user, user.phone, text)
+
+
 async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User, button_id: str | None) -> None:
     """Handles a tap on a `propose_booking_confirmation` action surfaced in a
     prior AI reply. Button IDs are `confirm:<court_id>:<starts_at>` or
@@ -427,6 +457,10 @@ async def _handle_button_reply(db: DbSession, settings: AppSettings, user: User,
 
     if not button_id or button_id == "decline":
         await _reply_text(db, whatsapp, user, phone, declined_message(lang))
+        return
+
+    if button_id.startswith(("short:", "noshow:")):
+        await _handle_phase3_button(db, settings, user, button_id, lang)
         return
 
     if not button_id.startswith("confirm:"):

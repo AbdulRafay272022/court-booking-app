@@ -120,6 +120,9 @@ class VenueUpdateIn(BaseModel):
     cancellation_allowed: bool | None = None
     cancellation_cutoff_hours: int | None = Field(default=None, ge=0, le=720)
     booking_horizon_days: int | None = Field(default=None, ge=1, le=365)
+    # audit Phase 3 item 3: the owner-funded points discount (500 points -> this many rupees off)
+    points_discount_enabled: bool | None = None
+    points_discount_pkr: int | None = Field(default=None, ge=0, le=100000)
 
 
 class VenueOut(BaseModel):
@@ -147,6 +150,8 @@ class VenueOut(BaseModel):
     cancellation_allowed: bool = True
     cancellation_cutoff_hours: int | None = None
     booking_horizon_days: int = 90
+    points_discount_enabled: bool = False
+    points_discount_pkr: int = 500
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None
@@ -209,6 +214,8 @@ class VenuePublicOut(BaseModel):
     cancellation_allowed: bool = True
     cancellation_cutoff_hours: int | None = None
     booking_horizon_days: int = 90
+    points_discount_enabled: bool = False
+    points_discount_pkr: int = 500
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None

@@ -201,11 +201,12 @@ class WhatsAppService:
         return await self._send(payload)
 
     async def send_registered_template(
-        self, to_phone_number: str, template_name: str, params: list[str], language_code: str = "en"
+        self, to_phone_number: str, template_name: str, params: list[str], language_code: str = "en",
+        button_payloads: list[str] | None = None,
     ) -> dict:
         """Send by name from the app's own template catalog (whatsapp_templates.py)."""
         return await self.send_template(
-            to_phone_number, template_name, language_code, build_components(params)
+            to_phone_number, template_name, language_code, build_components(params, button_payloads)
         )
 
     def verify_webhook_challenge(self, mode: str, token: str, challenge: str) -> str | None:
@@ -311,12 +312,16 @@ class WhatsAppService:
         last_inbound_at: datetime | None,
         template_name: str,
         template_params: list[str],
+        buttons: list[tuple[str, str]] | None = None,
     ) -> tuple[dict, str | None]:
         """Send free-form text if we're still inside the 24h window, else the
         named (or generic fallback) template. Returns (api_result,
         template_name_used) -- the second element is None for a plain-text
         send, so callers can drop it straight into notification_log.template_name."""
         if await self.is_within_free_window(last_inbound_at):
+            if buttons:
+                # audit Phase 3 item 8: reply buttons (e.g. "Sahi hai" / "Ghalat hai") inside the window
+                return await self.send_buttons(to_phone_number, body, buttons), None
             return await self.send_text(to_phone_number, body), None
 
         template = TEMPLATES.get(template_name)
@@ -325,5 +330,7 @@ class WhatsAppService:
             params = [body]
         else:
             params = template_params
-        result = await self.send_registered_template(to_phone_number, template.name, params)
+        payloads = [b[0] for b in buttons] if buttons and template.name == template_name else None
+        extra = {"button_payloads": payloads} if payloads else {}
+        result = await self.send_registered_template(to_phone_number, template.name, params, **extra)
         return result, template.name

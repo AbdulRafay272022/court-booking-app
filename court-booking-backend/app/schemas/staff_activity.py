@@ -47,6 +47,14 @@ class StaffNoShowOut(BaseModel):
     marked_by_name: str | None
     marked_by_role: str | None
     marked_at: datetime
+    # audit Phase 3 item 6 (flag noshow_reply): the player's reply and the "Pohanch gaya" GPS check
+    reply_id: uuid.UUID | None = None
+    player_replied: bool = False
+    player_note: str | None = None
+    owner_decision: str | None = None
+    arrival_verdict: str | None = None  # near | far | pin_unreliable
+    arrival_distance_m: float | None = None
+    highlight: bool = False  # GPS says the player WAS there: show this no-show in red
 
 
 class StaffActivityOut(BaseModel):

@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel
 
 from app.schemas.payment import PaymentChecksOut
+from app.schemas.phase3 import ApprovalPlayerContextOut
 
 
 class TodaySlotOut(BaseModel):
@@ -76,6 +77,8 @@ class PendingApprovalOut(BaseModel):
     minutes_since_submission: float
     checks: PaymentChecksOut  # Section 32 Part 7 -- the five plain-language checks
     is_balance: bool = False  # audit Phase 3 item 2: a screenshot for the BALANCE of an already-booked booking
+    # audit Phase 3 item 5 (flag player_dues): this player's open dues at this venue + "No-show X / kul bookings Y"
+    player_context: "ApprovalPlayerContextOut | None" = None
 
 
 class OverpaymentOut(BaseModel):

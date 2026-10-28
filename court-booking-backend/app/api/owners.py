@@ -351,14 +351,21 @@ async def owner_booking_completion(
     )
     # audit 2026-10-28 items 17 + 18: "kam mila" (money still due after completing) tells the owner (when staff did it)
     # and the player
-    if row.due > 0:
-        from app.models.booking import Booking
-        from app.services.unsettled_notices import notify_unsettled
+    from app.models.booking import Booking
+    from app.services.phase3_service import maybe_award_transfer_points, open_short_claim, sync_claim_after_payment
 
-        booking = await db.get(Booking, booking_id)
-        if booking is not None:
-            await db.refresh(booking)
-            await notify_unsettled(db, settings, booking, owner, "short", short_pkr=int(round(row.due)))
+    booking = await db.get(Booking, booking_id)
+    if booking is not None:
+        await db.refresh(booking)
+        if row.due > 0:
+            from app.services.unsettled_notices import notify_unsettled
+
+            # audit Phase 3 items 4 + 5: the "Sahi hai / Ghalat hai" question replaces the plain notice when it is on
+            asked = await open_short_claim(db, settings, booking)
+            await notify_unsettled(db, settings, booking, owner, "short", short_pkr=int(round(row.due)), player_notice=not asked)
+        else:
+            await sync_claim_after_payment(db, settings, booking)
+            await maybe_award_transfer_points(db, settings, booking)
     return row
 
 

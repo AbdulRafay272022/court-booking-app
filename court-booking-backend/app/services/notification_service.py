@@ -252,7 +252,8 @@ class NotificationService:
         )
 
     async def _whatsapp_smart_best_effort(
-        self, user: User, body: str, *, template_name: str, template_params: list[str]
+        self, user: User, body: str, *, template_name: str, template_params: list[str],
+        buttons: list[tuple[str, str]] | None = None,
     ) -> tuple[str | None, str | None]:
         """WhatsApp leg of a notification, which must NEVER fail the action that triggered it.
 
@@ -277,6 +278,7 @@ class NotificationService:
                 last_inbound_at=last_inbound,
                 template_name=template_name,
                 template_params=template_params,
+                **({"buttons": buttons} if buttons else {}),
             )
             return template_used, None
         except Exception as exc:  # noqa: BLE001 -- see docstring: any failure must be contained
@@ -298,13 +300,14 @@ class NotificationService:
         template_name: str | None = None,
         bell: bool = False,
         payload: dict | None = None,
+        buttons: list[tuple[str, str]] | None = None,
     ) -> None:
         """Tier 2: push + WhatsApp. `event_type` doubles as the template name
         to fall back to outside the 24h window (see whatsapp_templates.py);
         if there's no dedicated template for it, the generic one-param
         fallback is used automatically."""
         template_used, whatsapp_error = await self._whatsapp_smart_best_effort(
-            user, body, template_name=template_name or event_type, template_params=template_params or [body]
+            user, body, template_name=template_name or event_type, template_params=template_params or [body], buttons=buttons
         )
         # cost_category describes what *kind* of message this is (per Meta's
         # own template categorization), independent of whether this
@@ -543,13 +546,14 @@ class NotificationService:
         reference_id: uuid.UUID | None,
         template_name: str | None = None,
         template_params: list[str] | None = None,
+        buttons: list[tuple[str, str]] | None = None,
     ) -> None:
         """audit 2026-10-28: push (app) + web push + bell ALWAYS; WhatsApp only while the `whatsapp_templates` flag is on
         (the founder turns it on once Meta approved the khelo_* templates), never the unapproved generic fallback."""
         if await flag_on(self.db, "whatsapp_templates") and template_name:
             await self._send_push_and_whatsapp(
                 user, event_type, title, body, reference_id=reference_id,
-                template_name=template_name, template_params=template_params, bell=True,
+                template_name=template_name, template_params=template_params, bell=True, buttons=buttons,
             )
         else:
             await self._send_push_tier(user, event_type, title, body, reference_id=reference_id, bell=True)
@@ -623,6 +627,7 @@ class NotificationService:
         paid_pkr: int,
         due_pkr: int,
         venue_whatsapp: str | None,
+        buttons: list[tuple[str, str]] | None = None,
     ) -> None:
         """audit 2026-10-28 item 18: the player is told when their booking was marked no-show, or completed with money still
         due ("kam mila"): booking ID, total, paid, due, and the venue's WhatsApp to sort it out."""
@@ -641,7 +646,8 @@ class NotificationService:
             template = "khelo_short_payment"
             params = [code, format_pkr(total_pkr), format_pkr(paid_pkr), format_pkr(due_pkr)]
         await self._audit_tier(
-            player, f"player_{kind}", title, body, reference_id=booking_id, template_name=template, template_params=params
+            player, f"player_{kind}", title, body, reference_id=booking_id, template_name=template, template_params=params,
+            buttons=buttons,
         )
 
     async def notify_owner_refund_owed(

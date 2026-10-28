@@ -79,6 +79,14 @@ const EVENT_TITLES: Record<string, Record<Lang, string>> = {
   owner_staff_action: { ru: "Staff ne booking mark ki", en: "Staff marked a booking" },
   player_no_show: { ru: "Booking no-show mark hui", en: "Booking marked as no-show" },
   player_short: { ru: "Booking par paisa baqi hai", en: "Money still due on a booking" },
+  player_points_reward: { ru: "Points mile", en: "Points added" },
+  player_points_deducted: { ru: "Points kat gaye", en: "Points taken off" },
+  player_short_ask: { ru: "Booking ka hisaab check karein", en: "Check your booking's money" },
+  player_short_decision: { ru: "Venue ne baqi raqam rakhi", en: "The venue kept the balance due" },
+  player_due_resolved: { ru: "Baqi raqam clear", en: "Balance cleared" },
+  player_noshow_decision: { ru: "No-show par faisla", en: "No-show decision" },
+  owner_short_dispute: { ru: "Player ne hisaab ghalat kaha", en: "A player disputed the balance" },
+  owner_noshow_reply: { ru: "Player ne kaha: main aaya tha", en: "A player says they came" },
   owner_cnic_result: { ru: "CNIC ka faisla", en: "CNIC review result" },
 };
 
