@@ -82,6 +82,14 @@ The push deploys automatically through GitHub Actions:
 - If the app is broken, revert the merge commit and push. The migrations stay; they are additive and harmless to the old code.
 - If the data itself is wrong, restore the snapshot from step 1.3.
 
+## 3b. Live on push WITHOUT a flag (fixes of 2026-10-31)
+
+- **"Haan" / "Nahi" on a no-show booking is refused** (`NOSHOW_REVERSAL_REQUIRED`). It used to record the whole price as cash. Owners now see
+  "No-show hatayein": final price, amount received now, Cash / Transfer. A transfer needs its screenshot, which waits in Approvals and is
+  credited only when approved. Web is live at once; the app sheet needs the new EAS build. The OLD app build shows the server's message
+  when Haan is pressed on a no-show (nothing is recorded).
+- Dues "Done" asks Cash / Transfer (behind the dues flags, so nobody sees it until they are on). The old app build's "Done" is cash, as before.
+
 ## 4. Feature flags (all OFF; switch on one at a time in Admin > Feature flags)
 
 | Flag | What it switches on | Before switching it on |
@@ -91,9 +99,9 @@ The push deploys automatically through GitHub Actions:
 | `whatsapp_templates` | WhatsApp copies of the notices (khelo_* templates) | Section 6: every template approved by Meta. Turning it on before then just produces failed sends |
 | `balance_proof` | Player can send a screenshot for the balance; owner approves it | none (web + app). App part needs the new EAS build |
 | `player_points` | Points: 50 per booking paid fully by transfer, venue-funded discount | Tell owners about the discount switch in Venue Settings (it stays off per venue until the owner turns it on) |
-| `short_payment_reply` | "Total X, diye Y, baqi Z: Sahi hai / Ghalat hai", +5 / -20 | The cron line from 3.6 must be on the box, or the 24 h penalty never runs |
+| `short_payment_reply` | "Total X, diye Y, baqi Z: Sahi hai / Ghalat hai". -20 at 24 h without a reply; a reply is still taken later, +5 only within 4 days of the notice | The cron line from 3.6 must be on the box, or the 24 h penalty never runs |
 | `player_dues` | Dues on the next approval card, "No-show X / kul bookings Y" | none |
-| `noshow_reply` | "Main aaya tha" and "Pohanch gaya" (GPS) | Device tests D10 and D11 |
+| `noshow_reply` | "Main aaya tha" and "Pohanch gaya" (GPS); taking back the no-show goes through the price / received / method dialog | Device tests D10 and D11 |
 
 The safest order: `balance_proof`, then `player_dues`, then `short_payment_reply`, then `player_points`, then `noshow_reply`. After that `iban_qr` (after D7), `whatsapp_templates` (after Meta) and last `cnic_visibility_gate`.
 
@@ -115,6 +123,24 @@ WHERE v.status = 'approved' AND v.is_active
   ```sql
   ... COALESCE(CASE WHEN o.verified_at IS NOT NULL THEN 'approved' END, 'missing') ...
   ```
+
+## 5b. The two live venues and the new 404 rule (read-only)
+
+The Phase 1 rule (`app/services/venue_visibility.py`): a venue is public only when `status = 'approved'` AND `is_active`. Anything else is a
+404 for players. On 2026-10-28 the public `GET /api/v1/venues` (which already used exactly that filter on `main`) listed KHA Legends Arena and
+Court Site, so both were approved and active that day. They are not in the local dev DB, and production was not queried from here. Run this
+read-only check on production before pushing:
+
+```sql
+SELECT v.name, v.slug, v.status, v.is_active,
+       (SELECT count(*) FROM courts c WHERE c.venue_id = v.id AND c.is_active) AS active_courts,
+       v.updated_at
+FROM venues v
+WHERE v.name ILIKE '%KHA Legends%' OR v.name ILIKE '%Court Site%';
+```
+
+Expected: both rows `status = approved`, `is_active = t`, at least one active court. If either is not, its public page becomes a 404 after the
+push (the owner still sees it in the dashboard).
 
 ## 6. Meta WhatsApp templates (BLOCKED on Meta business verification)
 
