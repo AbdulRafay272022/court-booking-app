@@ -71,6 +71,15 @@ def compute_balance_time_check(ocr_timestamp: datetime | None, booking: Booking)
     return "within_timer"
 
 
+def compute_late_balance_time_check(ocr_timestamp: datetime | None, booking: Booking) -> str:
+    """An owner-reported transfer (due "Done", no-show reversal) can come any time after the booking was made."""
+    if ocr_timestamp is None:
+        return "not_visible"
+    if ocr_timestamp < booking.created_at - timedelta(minutes=2):
+        return "before_hold"
+    return "within_timer"
+
+
 def compute_time_check(ocr_timestamp: datetime | None, booking: Booking) -> str:
     """"within_timer" / "before_hold" / "after_timer" / "not_visible" --
     the payment time must be after the hold was created and before
@@ -115,6 +124,9 @@ def default_credit_amount(payment: Payment, booking: Booking) -> int:
 
 # The approvals-queue state of an unreviewed payment, from its booking (docs/round2-contract.md A1/A5).
 AWAITING_STATES = (BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED)
+# a balance screenshot waits for the owner on a booked booking (player) and also on a completed one (owner-reported due /
+# no-show reversal; NO_SHOW only for the moment between the screenshot and the reversal itself)
+BALANCE_PROOF_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW)
 
 
 def approval_state(booking: Booking, payment: "Payment | None" = None) -> str:
@@ -124,7 +136,7 @@ def approval_state(booking: Booking, payment: "Payment | None" = None) -> str:
     audit 2026-10-28 Phase 3 item 2: a BALANCE screenshot on a booked booking is awaiting too."""
     if booking.status in AWAITING_STATES:
         return "awaiting"
-    if booking.status == BookingStatus.BOOKED and is_balance_proof(payment):
+    if booking.status in BALANCE_PROOF_STATUSES and is_balance_proof(payment):
         return "awaiting"
     if booking.status == BookingStatus.CANCELLED:
         if booking.cancelled_by == CancelledBy.PLAYER:
@@ -502,8 +514,11 @@ class PaymentService:
         return None
 
     async def submit_payment(
-        self, booking: Booking, *, proof_bytes: bytes, filename: str, content_type: str
+        self, booking: Booking, *, proof_bytes: bytes, filename: str, content_type: str, owner_balance: dict | None = None
     ) -> Payment:
+        """`owner_balance` = {"amount", "origin", "actor"}: a transfer the OWNER reports (no-show reversal, dues "Done").
+        It goes in as a balance screenshot for exactly `amount` on a booked / completed / no-show booking, with the same
+        checks, never auto-approved, and is credited only when approved (audit fixes 2026-10-31)."""
         # Owner Round 2 (B1): the hold time is enforced the moment it runs out, not when the expiry job next runs.
         if (
             booking.status == BookingStatus.HELD
@@ -518,18 +533,29 @@ class PaymentService:
             await self._record_late_proof(booking, proof_bytes=proof_bytes, filename=filename, content_type=content_type)
         # audit 2026-10-28 Phase 3 item 2 (flag balance_proof, default OFF): a booked booking with money still due accepts
         # a screenshot for the BALANCE, with the same checks as the advance.
-        balance = (
-            booking.status == BookingStatus.BOOKED
-            and float(booking.balance_due or 0) > 0
-            and await flag_on(self.db, "balance_proof")
-        )
+        if owner_balance is not None:
+            if booking.status not in BALANCE_PROOF_STATUSES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Booking is not awaiting a payment proof",
+                )
+            balance = True
+        else:
+            balance = (
+                booking.status == BookingStatus.BOOKED
+                and float(booking.balance_due or 0) > 0
+                and await flag_on(self.db, "balance_proof")
+            )
         if booking.status != BookingStatus.HELD and not balance:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Booking is not awaiting a payment proof",
             )
 
-        expected_amount = float(booking.balance_due) if balance else float(booking.advance_amount)
+        if owner_balance is not None:
+            expected_amount = float(owner_balance["amount"])
+        else:
+            expected_amount = float(booking.balance_due) if balance else float(booking.advance_amount)
         proof_key = await upload_private_proof(proof_bytes, filename, content_type)
         proof_hash = perceptual_hash(proof_bytes)
 
@@ -558,7 +584,11 @@ class PaymentService:
         account_name = await self._resolve_player_account_name(booking)
         # the balance check does NOT compare the sender's name (a friend often pays the balance); everything else is the same
         name_match_verdict = "not_checked" if balance else compute_name_match(extraction.payer_name, account_name)
-        time_check_verdict = compute_balance_time_check(ocr_timestamp, booking) if balance else compute_time_check(ocr_timestamp, booking)
+        if owner_balance is not None:
+            # a due / reversal may be paid days after the slot: only "before the booking existed" is a warning
+            time_check_verdict = compute_late_balance_time_check(ocr_timestamp, booking)
+        else:
+            time_check_verdict = compute_balance_time_check(ocr_timestamp, booking) if balance else compute_time_check(ocr_timestamp, booking)
         receiver_match_verdict = compute_receiver_match(extraction.receiver_name, venue, self.settings)
 
         payment = Payment(
@@ -571,7 +601,11 @@ class PaymentService:
             ocr_timestamp=ocr_timestamp,
             ocr_verdict=ocr_verdict,
             ocr_confidence=extraction.confidence,
-            ocr_raw=({**(extraction.raw_response or {}), "purpose": BALANCE_PURPOSE} if balance else extraction.raw_response),
+            ocr_raw=(
+                {**(extraction.raw_response or {}), "purpose": BALANCE_PURPOSE, **((owner_balance or {}).get("origin") or {})}
+                if balance
+                else extraction.raw_response
+            ),
             ocr_payer_name=extraction.payer_name,
             ocr_bank=extraction.bank_name,
             ocr_receiver=extraction.receiver_name,
@@ -607,13 +641,17 @@ class PaymentService:
             if not auto_approved:
                 await self.booking_service.mark_payment_submitted(booking)
 
+        owner_actor = (owner_balance or {}).get("actor")
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type="player",
+            actor_user_id=owner_actor.id if owner_actor is not None else booking.player_id,
+            actor_type=owner_actor.role.value if owner_actor is not None else "player",
             action="payment.submitted",
             entity_type="payment",
             entity_id=payment.id,
-            new_value={"ocr_verdict": ocr_verdict, "is_duplicate": payment.is_duplicate, "purpose": "balance" if balance else "advance"},
+            new_value={
+                "ocr_verdict": ocr_verdict, "is_duplicate": payment.is_duplicate, "purpose": "balance" if balance else "advance",
+                **({"origin": (owner_balance.get("origin") or {}).get("origin"), "amount": expected_amount} if owner_balance else {}),
+            },
         )
         await self.db.commit()
         await self.db.refresh(payment)
@@ -964,12 +1002,18 @@ class PaymentService:
             entity_type="payment",
             entity_id=payment.id,
         )
-        if is_balance_proof(payment) and booking.status == BookingStatus.BOOKED:
+        if is_balance_proof(payment) and booking.status in BALANCE_PROOF_STATUSES:
             # audit 2026-10-28 Phase 3 item 2: a balance transfer is a ledger entry on the booked booking (never past what is
             # still due); the booking itself is already confirmed.
             from app.services.payment_ledger_service import PaymentLedgerService
 
-            amount = amount_pkr if amount_pkr is not None else int(round(float(payment.ocr_amount or payment.amount_claimed or 0)))
+            if amount_pkr is not None:
+                amount = amount_pkr
+            elif payment.ocr_raw.get("origin"):
+                # owner-reported transfer: the owner already said how much (the screenshot may show a bigger total)
+                amount = int(round(float(payment.amount_claimed or 0)))
+            else:
+                amount = int(round(float(payment.ocr_amount or payment.amount_claimed or 0)))
             amount = max(0, min(amount, int(round(float(booking.balance_due or 0)))))
             if amount > 0:
                 await PaymentLedgerService(self.db).record_entry(

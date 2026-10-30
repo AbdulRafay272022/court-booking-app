@@ -183,6 +183,15 @@ async def approve_payment(
     await db.refresh(booking)
     await _after_money(db, settings, booking)
     await _receipt_whatsapp(db, settings, booking, int(round(float(booking.amount_paid or 0))) - paid_before)
+    try:
+        # audit fixes 2026-10-31: the transfer sent with a no-show reversal, approved as correct -> +10 (once, flag player_points)
+        from app.services.phase3_service import award_noshow_transfer_points
+
+        await award_noshow_transfer_points(db, settings, owner, booking, payment)
+    except Exception:  # noqa: BLE001 -- the approval already committed
+        import structlog
+
+        structlog.get_logger().warning("phase3.noshow_points_failed", exc_info=True)
 
     court = await db.get(Court, booking.court_id)
     player = await db.get(User, booking.player_id) if booking.player_id else None

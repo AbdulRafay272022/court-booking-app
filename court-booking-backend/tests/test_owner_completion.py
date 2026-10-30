@@ -200,10 +200,15 @@ async def test_no_show_and_checked_in_bookings_can_be_completed(seed, make_auth_
     headers = await make_auth_headers(owner)
     ns = await add_booking(db_session_factory, court, at(past_day(), 11), 1, status=BookingStatus.NO_SHOW, price=1000, paid=0)
     ci = await add_booking(db_session_factory, court, at(past_day(), 13), 1, status=BookingStatus.COMPLETED, price=1000, paid=400, checked_in=True)
-    for b in (ns, ci):
-        r = await client.post(completion_url(b.id), json={"result": "yes"}, headers=headers)
-        assert r.status_code == 200 and r.json()["due"] == 0
-    # Round 2 Stage 2 (spec C.3): Haan/Nahi now settles the status too -- a no_show becomes completed
+    r = await client.post(completion_url(ci.id), json={"result": "yes"}, headers=headers)
+    assert r.status_code == 200 and r.json()["due"] == 0
+    # audit fixes 2026-10-31: Haan on a no-show is refused (it used to record the whole price as cash); the no-show is taken
+    # back with the final price / received / method instead
+    r = await client.post(completion_url(ns.id), json={"result": "yes"}, headers=headers)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "NOSHOW_REVERSAL_REQUIRED"
+    r = await client.post(f"/api/v1/owners/bookings/{ns.id}/noshow-reverse", headers=headers,
+                          data={"final_price_pkr": 1000, "received_pkr": 1000, "method": "cash"})
+    assert r.status_code == 200, r.text
     assert (await _booking(db_session_factory, ns.id)).status == BookingStatus.COMPLETED
     assert (await _booking(db_session_factory, ci.id)).status == BookingStatus.COMPLETED
 

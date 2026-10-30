@@ -90,11 +90,10 @@ async def test_no_reply_in_24h_takes_20_and_paying_later_gives_it_back(client, d
     assert await log_rows(db_session_factory, user_id=player.id, event_type="player_points_deducted")
     owner_rows = await log_rows(db_session_factory, user_id=owner.id, event_type="owner_short_dispute")
     assert owner_rows == []  # a no-reply never goes to the owner
-    # too late to answer now
-    assert (await client.post(f"/api/v1/short-payments/{claim.id}/reply", json={"answer": "yes"}, headers=ph)).status_code == 409
+    # (a late reply is still taken: tests/test_audit_fixes_2026_10_31.py)
 
     # the owner presses "done" on the carried due: the rest is recorded, the due is settled, the 20 come back
-    r = await client.post(f"/api/v1/owners/dues/{claim.id}/done", headers=oh)
+    r = await client.post(f"/api/v1/owners/dues/{claim.id}/done", data={"method": "cash"}, headers=oh)
     assert r.status_code == 200, r.text
     assert r.json()["resolution"] == "paid" and r.json()["penalty_returned"] is True
     assert await _balance(db_session_factory, player) == 50
@@ -290,8 +289,10 @@ async def test_main_aaya_tha_goes_to_the_owner_and_gps_highlights_the_no_show(cl
     act = (await client.get("/api/v1/owners/staff-activity", params={"venue_id": str(venue.id)}, headers=oh)).json()
     row = next(n for n in act["no_shows"] if n["booking_id"] == str(b.id))
     assert row["player_replied"] is True and row["arrival_verdict"] == "near" and row["highlight"] is True
-    d = await client.post(f"/api/v1/owners/noshow-replies/{row['reply_id']}/decide", json={"decision": "reverse"}, headers=oh)
-    assert d.status_code == 200 and d.json()["owner_decision"] == "reverse"
+    # taking it back goes through the price / received / method dialog (audit fixes 2026-10-31)
+    d = await client.post(f"/api/v1/owners/bookings/{b.id}/noshow-reverse", headers=oh,
+                          data={"final_price_pkr": 2000, "received_pkr": 0, "method": "cash", "reply_id": row["reply_id"]})
+    assert d.status_code == 200, d.text
     async with db_session_factory() as s:
         assert (await s.get(Booking, b.id)).status == BookingStatus.COMPLETED
 

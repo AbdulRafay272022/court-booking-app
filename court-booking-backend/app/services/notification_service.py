@@ -588,6 +588,25 @@ class NotificationService:
         except Exception as exc:  # noqa: BLE001
             logger.warning("notification.khelo_whatsapp_failed", event_type=event_type, error=type(exc).__name__)
 
+    async def send_khelo_whatsapp_to_phone(
+        self, phone: str, body: str, *, template_name: str, template_params: list[str]
+    ) -> str | None:
+        """Same as send_khelo_whatsapp for a number with NO account (a walk-in who never signed up). notification_log needs
+        a user, so the caller keeps the trail (audit row on the booking). Returns None when sent, else why not. Never raises."""
+        try:
+            if not await flag_on(self.db, "whatsapp_templates"):
+                return "flag_off"
+            if not await flag_on(self.db, "push_notifications"):
+                return "notifications_off"
+            await self.whatsapp.send_smart(
+                phone, body, last_inbound_at=None, template_name=template_name, template_params=template_params
+            )
+            return None
+        except Exception as exc:  # noqa: BLE001
+            outcome, code = describe_send_failure(exc)
+            logger.warning("notification.khelo_whatsapp_failed", event_type=template_name, outcome=outcome, meta_error_code=code)
+            return f"{outcome}; meta_error_code={code}"
+
     async def notify_owner_cnic_result(self, *, owner: User, approved: bool, reason: str | None) -> None:
         """audit 2026-10-28 Phase 2 item 1: the admin approved / did not approve the owner's CNIC."""
         if approved:

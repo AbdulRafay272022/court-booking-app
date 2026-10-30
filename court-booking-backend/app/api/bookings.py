@@ -140,15 +140,32 @@ async def create_walkin_booking(
         legacy_units=legacy,
         whatsapp_opt_in=payload.whatsapp_opt_in,
     )
-    if booking.whatsapp_opt_in and booking.player_id:
+    # audit fixes 2026-10-31: every walk-in whose box was ticked gets the welcome, with or without an account (flag
+    # whatsapp_templates)
+    if booking.whatsapp_opt_in and (booking.player_id or booking.player_phone):
         venue = await db.get(Venue, court.venue_id)
-        player = await db.get(User, booking.player_id)
-        if venue is not None and player is not None:
-            await NotificationService(db, settings).send_khelo_whatsapp(
-                player, "walkin_welcome_wa",
-                f"{venue.name} mein khelne ka shukriya! Agli booking Khelo app se karein aur rasid WhatsApp par payein.",
-                template_name="khelo_walkin_welcome", template_params=[venue.name], reference_id=booking.id,
-            )
+        player = await db.get(User, booking.player_id) if booking.player_id else None
+        if venue is not None:
+            welcome = f"{venue.name} mein khelne ka shukriya! Agli booking Khelo app se karein aur rasid WhatsApp par payein."
+            notifications = NotificationService(db, settings)
+            if player is not None:
+                await notifications.send_khelo_whatsapp(
+                    player, "walkin_welcome_wa", welcome,
+                    template_name="khelo_walkin_welcome", template_params=[venue.name], reference_id=booking.id,
+                )
+            elif booking.player_phone:
+                why_not = await notifications.send_khelo_whatsapp_to_phone(
+                    booking.player_phone, welcome, template_name="khelo_walkin_welcome", template_params=[venue.name]
+                )
+                if why_not != "flag_off":
+                    from app.services.audit_service import AuditService
+
+                    await AuditService(db).log(
+                        actor_user_id=owner.id, actor_type=owner.role.value, action="walkin.welcome_whatsapp",
+                        entity_type="booking", entity_id=booking.id,
+                        new_value={"sent": why_not is None, "error": why_not, "account": False},
+                    )
+                    await db.commit()
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 

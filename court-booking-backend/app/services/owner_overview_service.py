@@ -93,7 +93,7 @@ from app.schemas.owner_overview import (
     SlotCourtCountsOut,
 )
 from app.services.booking_service import BookingService
-from app.services.payment_service import AWAITING_STATES
+from app.services.payment_service import AWAITING_STATES, BALANCE_PROOF_STATUSES
 from app.services.overview_slots import (
     CONFIRMED_STATUSES,
     count_slots,
@@ -970,6 +970,14 @@ class OwnerOverviewService:
                 ErrorCode.INVALID_BOOKING_STATE,
                 "Only a confirmed booking can be marked completed",
             )
+        if booking.status == BookingStatus.NO_SHOW:
+            # audit fixes 2026-10-31: taking back a no-show asks the final price, the amount received and the method
+            # (POST /owners/bookings/{id}/noshow-reverse); "Haan" here used to record the whole price as cash.
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                ErrorCode.NOSHOW_REVERSAL_REQUIRED,
+                "Say the final price, the amount received and how it was paid to take back this no-show.",
+            )
         now = datetime.now(timezone.utc)
         if now < booking.ends_at:
             raise AppError(
@@ -1090,7 +1098,7 @@ class OwnerOverviewService:
                         or_(
                             Booking.status.in_(AWAITING_STATES),
                             # audit 2026-10-28 Phase 3 item 2: a balance screenshot on a booked booking is work too
-                            and_(Booking.status == BookingStatus.BOOKED, Payment.ocr_raw["purpose"].astext == "balance"),
+                            and_(Booking.status.in_(BALANCE_PROOF_STATUSES), Payment.ocr_raw["purpose"].astext == "balance"),
                         ),
                     )
                 )

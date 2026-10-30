@@ -426,14 +426,15 @@ async def _handle_phase3_button(db: DbSession, settings: AppSettings, user: User
     try:
         if button_id.startswith("short:"):
             _p, claim_id, answer = button_id.split(":", 2)
-            await p3.reply_short(db, settings, user, uuid.UUID(claim_id), "yes" if answer == "yes" else "no", None)
-            text = (
-                ("Shukriya! Jawab mil gaya, 5 points mile." if answer == "yes" else
-                 "Shukriya! Aap ka jawab venue ko bhej diya. Wajah likhni ho to app mein booking kholein. 5 points mile.")
-                if ru else
-                ("Thanks! Got it, 5 points added." if answer == "yes" else
-                 "Thanks! We sent your answer to the venue. To add a reason, open the booking in the app. 5 points added.")
-            )
+            _claim, bonus = await p3.reply_short(db, settings, user, uuid.UUID(claim_id), "yes" if answer == "yes" else "no", None)
+            if ru:
+                text = ("Shukriya! Jawab mil gaya." if answer == "yes" else
+                        "Shukriya! Aap ka jawab venue ko bhej diya. Wajah likhni ho to app mein booking kholein.")
+                text += f" {bonus} points mile." if bonus else ""
+            else:
+                text = ("Thanks! Got it." if answer == "yes" else
+                        "Thanks! We sent your answer to the venue. To add a reason, open the booking in the app.")
+                text += f" {bonus} points added." if bonus else ""
         else:
             _p, booking_id = button_id.split(":", 1)
             await p3.reply_noshow(db, settings, user, uuid.UUID(booking_id), None)

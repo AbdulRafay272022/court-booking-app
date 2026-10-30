@@ -117,6 +117,8 @@ class ErrorCode:
     POINTS_NOT_AVAILABLE = "POINTS_NOT_AVAILABLE"  # not enough points / venue discount off / already used
     REPLY_WINDOW_CLOSED = "REPLY_WINDOW_CLOSED"  # the 24 h to answer a short-payment message have passed
     ARRIVAL_WINDOW_CLOSED = "ARRIVAL_WINDOW_CLOSED"  # "Pohanch gaya" only from 1 h before the start to the end
+    PROOF_REQUIRED = "PROOF_REQUIRED"  # a transfer reported by the owner needs its screenshot
+    NOSHOW_REVERSAL_REQUIRED = "NOSHOW_REVERSAL_REQUIRED"  # 409: a no-show is taken back only with price/received/method
 
     # General
     RATE_LIMITED = "RATE_LIMITED"

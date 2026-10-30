@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class PointEntryOut(BaseModel):
     id: uuid.UUID
     delta: int
-    # transfer_booking | short_reply | short_no_reply | short_no_reply_returned | redeem | redeem_returned
+    # transfer_booking | short_reply | short_no_reply | short_no_reply_returned | redeem | redeem_returned | noshow_transfer_ok
     reason: str
     booking_id: uuid.UUID | None
     code: str | None
@@ -60,6 +60,10 @@ class DueOut(BaseModel):
     starts_at: datetime | None = None
     created_at: datetime
     can_reply: bool | None = None
+    # a reply until this time gets +5 (4 days after the notice); after it the reply is still taken, without points
+    bonus_until: datetime | None = None
+    # only on the reply response: the points that reply gave (0 or 5)
+    bonus_points: int | None = None
 
 
 class ArrivalStateOut(BaseModel):

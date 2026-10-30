@@ -7,14 +7,16 @@ Player:  GET  /users/me/points                       points balance, history, ru
          POST /bookings/{id}/arrived                 "Pohanch gaya": ONE GPS reading
          POST /bookings/{id}/noshow-reply            "Main aaya tha"
 Owner:   GET  /owners/dues?venue_id=                 open dues at a venue (short payments not settled)
-         POST /owners/dues/{claim_id}/done           the rest was received (cash) -> settled
+         POST /owners/dues/{claim_id}/done           the rest was received: cash (settled now) | transfer (screenshot)
          POST /owners/short-payments/{id}/decide     collect | waive a "Ghalat hai"
-         POST /owners/noshow-replies/{id}/decide     keep | reverse
+         POST /owners/noshow-replies/{id}/decide     keep (reverse goes through noshow-reverse)
+         POST /owners/bookings/{id}/noshow-reverse   take back a no-show: final price, received, cash | transfer
 """
 
 import uuid
+from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, Form, UploadFile
 
 from app.dependencies import AppSettings, CurrentUser, DbSession, RequireAdmin, RequireStaffCapable
 from app.errors import AppError, ErrorCode
@@ -31,6 +33,7 @@ from app.schemas.phase3 import (
     PointsOut,
     ShortReplyIn,
 )
+from app.schemas.booking import BookingOut
 from app.services import phase3_service as p3
 from app.services.booking_service import BookingService
 
@@ -64,10 +67,10 @@ async def use_points(booking_id: uuid.UUID, db: DbSession, settings: AppSettings
 
 @router.post("/short-payments/{claim_id}/reply", response_model=DueOut)
 async def short_reply(claim_id: uuid.UUID, payload: ShortReplyIn, db: DbSession, settings: AppSettings, user: CurrentUser) -> DueOut:
-    claim = await p3.reply_short(db, settings, user, claim_id, payload.answer, payload.reason)
+    claim, bonus = await p3.reply_short(db, settings, user, claim_id, payload.answer, payload.reason)
     from app.models.booking import Booking
 
-    return DueOut(**p3.claim_out(claim, await db.get(Booking, claim.booking_id)))
+    return DueOut(**p3.claim_out(claim, await db.get(Booking, claim.booking_id)), bonus_points=bonus)
 
 
 @router.post("/bookings/{booking_id}/arrived", response_model=ArrivalOut, status_code=201)
@@ -87,12 +90,63 @@ async def owner_dues(venue_id: uuid.UUID, db: DbSession, settings: AppSettings, 
     return [DueOut(**d) for d in await p3.list_dues(db, settings, owner, venue_id)]
 
 
+async def _read_proof(screenshot: UploadFile | None) -> p3.ProofUpload | None:
+    """Same rules as the player's payment screenshot (type, size, a real image)."""
+    from app.api.payments import ALLOWED_PROOF_TYPES, MAX_PROOF_BYTES
+    from app.utils.image import InvalidImageError, validate_image
+
+    if screenshot is None:
+        return None
+    if screenshot.content_type not in ALLOWED_PROOF_TYPES:
+        raise AppError(400, ErrorCode.INVALID_IMAGE_FORMAT, "Unsupported proof type")
+    data = await screenshot.read()
+    if len(data) > MAX_PROOF_BYTES:
+        raise AppError(400, ErrorCode.PROOF_TOO_LARGE, "Proof image too large")
+    try:
+        validate_image(data)
+    except InvalidImageError as exc:
+        raise AppError(400, ErrorCode.INVALID_IMAGE_FORMAT, str(exc)) from exc
+    return data, screenshot.filename or "proof.jpg", screenshot.content_type
+
+
 @router.post("/owners/dues/{claim_id}/done", response_model=DueOut)
-async def owner_due_done(claim_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable) -> DueOut:
-    claim = await p3.mark_due_done(db, settings, owner, claim_id)
+async def owner_due_done(
+    claim_id: uuid.UUID,
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    method: Literal["cash", "transfer"] = Form("cash"),
+    screenshot: UploadFile | None = File(None),
+) -> DueOut:
+    """cash: the rest is recorded today and the due is 0. transfer: the screenshot goes to Approvals (balance proof); the
+    due is 0 once it is approved. A call with no body (older app builds) is cash, as before."""
+    claim = await p3.mark_due_done(db, settings, owner, claim_id, method, await _read_proof(screenshot))
     from app.models.booking import Booking
 
     return DueOut(**p3.claim_out(claim, await db.get(Booking, claim.booking_id)))
+
+
+@router.post("/owners/bookings/{booking_id}/noshow-reverse", response_model=BookingOut)
+async def owner_noshow_reverse(
+    booking_id: uuid.UUID,
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    final_price_pkr: int = Form(..., ge=0),
+    received_pkr: int = Form(..., ge=0),
+    method: Literal["cash", "transfer"] = Form(...),
+    reply_id: uuid.UUID | None = Form(None),
+    screenshot: UploadFile | None = File(None),
+) -> BookingOut:
+    """Take back a no-show (after "Main aaya tha" or by hand): final price, amount received now, cash / transfer. A transfer
+    needs the screenshot, which goes through the balance-proof flow (credited only once approved)."""
+    if owner.role.value == "admin":
+        raise AppError(403, ErrorCode.FORBIDDEN, "Only the venue decides this.")
+    booking = await p3.reverse_noshow(
+        db, settings, owner, booking_id, final_price=final_price_pkr, received=received_pkr, method=method,
+        proof=await _read_proof(screenshot), reply_id=reply_id,
+    )
+    return BookingOut.model_validate(booking)
 
 
 @router.post("/owners/short-payments/{claim_id}/decide", response_model=DueOut)
