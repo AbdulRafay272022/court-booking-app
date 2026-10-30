@@ -9,6 +9,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
 import { useT } from "@/components/i18n/lang-provider";
+import { NoShowReverseDialog, type ReverseTarget } from "@/components/owner/money-dialogs";
 
 /** Date presets (no native date input anywhere in this app: scripts/check-no-native-time-inputs.mjs). */
 const PRESETS = [7, 30, 90] as const;
@@ -29,14 +30,28 @@ export function StaffActivityView({
   canDecide?: boolean;
 }) {
   const decideClient = useQueryClient();
-  const onDecideNoShow = canDecide
-    ? async (replyId: string, decision: "keep" | "reverse") => {
-        await api.phase3.decideNoShow(replyId, decision);
-        await decideClient.invalidateQueries({ queryKey: queryKey.slice(0, 1) });
-      }
-    : null;
   const t = useT();
   const fmt = useFmt();
+  const [reverse, setReverse] = useState<ReverseTarget | null>(null);
+  const [decideError, setDecideError] = useState<string | null>(null);
+  const refresh = () => decideClient.invalidateQueries({ queryKey: queryKey.slice(0, 1) });
+  // "keep" is one tap; "reverse" asks the final price / received / cash or transfer first (audit fixes 2026-10-31)
+  const onDecideNoShow = canDecide
+    ? async (replyId: string, decision: "keep" | "reverse", bookingId: string, label: string) => {
+        setDecideError(null);
+        try {
+          if (decision === "keep") {
+            await api.phase3.decideNoShow(replyId, "keep");
+            await refresh();
+            return;
+          }
+          const detail = await api.owners.bookingDetail(bookingId);
+          setReverse({ bookingId, label, total: detail.row.total, paid: detail.row.total_paid, replyId });
+        } catch (e) {
+          setDecideError(friendlyErrorMessage(e, t));
+        }
+      }
+    : null;
   const [days, setDays] = useState<(typeof PRESETS)[number]>(30);
   const to = pktDateString();
   const from = addDays(to, -(days - 1));
@@ -45,6 +60,21 @@ export function StaffActivityView({
 
   return (
     <div className="flex flex-col gap-5" data-testid="staff-activity">
+      {reverse ? (
+        <NoShowReverseDialog
+          target={reverse}
+          onClose={() => setReverse(null)}
+          onDone={() => {
+            setReverse(null);
+            void refresh();
+          }}
+        />
+      ) : null}
+      {decideError ? (
+        <p role="alert" className="text-owner-danger">
+          {decideError}
+        </p>
+      ) : null}
       <div role="group" aria-label={t("odash.sact.range")} className="flex flex-wrap gap-2">
         {PRESETS.map((d) => (
           <button
@@ -153,10 +183,17 @@ export function StaffActivityView({
                     ) : null}
                     {n.reply_id && !n.owner_decision && onDecideNoShow ? (
                       <span className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => onDecideNoShow(n.reply_id!, "keep")} className="cursor-pointer rounded-full border border-owner-border px-3 py-1 text-[12.5px] font-bold">
+                        <button type="button" onClick={() => onDecideNoShow(n.reply_id!, "keep", n.booking_id, "")} className="cursor-pointer rounded-full border border-owner-border px-3 py-1 text-[12.5px] font-bold">
                           {t("odash.p3.keepNoShow")}
                         </button>
-                        <button type="button" onClick={() => onDecideNoShow(n.reply_id!, "reverse")} className="cursor-pointer rounded-full border border-owner-ink px-3 py-1 text-[12.5px] font-bold">
+                        <button type="button" onClick={() =>
+                            onDecideNoShow(
+                              n.reply_id!,
+                              "reverse",
+                              n.booking_id,
+                              [n.player_name ?? t("odash.sact.player"), n.court_name ?? "", n.starts_at ? fmt.when(n.starts_at) : ""].join(" · "),
+                            )
+                          } className="cursor-pointer rounded-full border border-owner-ink px-3 py-1 text-[12.5px] font-bold">
                           {t("odash.p3.reverseNoShow")}
                         </button>
                       </span>

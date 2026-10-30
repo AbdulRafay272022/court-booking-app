@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import * as Location from "expo-location";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BookingExtras } from "@court-booking/types";
+import { replyEarnsBonus, type BookingExtras, type ShortPaymentDue } from "@court-booking/types";
 import { formatPkr, space } from "@court-booking/ui-tokens";
 import { Banner, Button, Card, Input, Text } from "@/components/ui";
 
@@ -29,7 +29,7 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
   const showPoints = points.state !== "off";
   if (!showPoints && !due && !arrival.enabled) return null;
 
-  async function run(key: string, fn: () => Promise<unknown>, ok: string) {
+  async function run(key: string, fn: () => Promise<unknown>, ok: string | ((out: unknown) => string)) {
     setBusy(key);
     setMessage(null);
     try {
@@ -37,7 +37,7 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
       if (out && typeof out === "object" && "points" in (out as BookingExtras)) {
         queryClient.setQueryData(["booking-extras", bookingId], out);
       }
-      setMessage({ ok: true, text: ok });
+      setMessage({ ok: true, text: typeof ok === "function" ? ok(out) : ok });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["booking-extras", bookingId] }),
         queryClient.invalidateQueries({ queryKey: ["booking", bookingId] }),
@@ -79,14 +79,18 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
             reasonOpen ? (
               <View style={{ gap: space[2] }}>
                 <Input label="Kya ghalat hai? (venue ko jayega)" value={reason} onChangeText={setReason} multiline testID="extras-short-reason" />
-                <Button label="Bhejo" variant="dangerSolid" block loading={busy === "no"} onPress={() => run("no", () => api.phase3.replyShort(due.id, "no", reason.trim()), "Aap ka jawab venue ko chala gaya. 5 points mile.")} />
+                <Button label="Bhejo" variant="dangerSolid" block loading={busy === "no"} onPress={() => run("no", () => api.phase3.replyShort(due.id, "no", reason.trim()), (out) => ((out as ShortPaymentDue).bonus_points ? "Aap ka jawab venue ko chala gaya. 5 points mile." : "Aap ka jawab venue ko chala gaya. (4 din guzar gaye, is liye points nahi.)"))} />
                 <Button label="Wapas" variant="soft" size="md" block onPress={() => setReasonOpen(false)} />
               </View>
             ) : (
               <>
-                <Text variant="meta" tone="muted">24 ghante mein jawab do: jawab par 5 points, jawab na diya to 20 points katenge.</Text>
+                <Text variant="meta" tone="muted">
+                  {due.status === "no_reply"
+                    ? "Ab bhi jawab de sakte ho." + (replyEarnsBonus(due) ? " 4 din ke andar jawab par 5 points." : "")
+                    : "24 ghante mein jawab na diya to 20 points katenge. 4 din ke andar jawab par 5 points."}
+                </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-                  <Button label="Sahi hai" size="md" loading={busy === "yes"} onPress={() => run("yes", () => api.phase3.replyShort(due.id, "yes"), "Shukriya! 5 points mile.")} testID="extras-short-yes" />
+                  <Button label="Sahi hai" size="md" loading={busy === "yes"} onPress={() => run("yes", () => api.phase3.replyShort(due.id, "yes"), (out) => ((out as ShortPaymentDue).bonus_points ? "Shukriya! 5 points mile." : "Shukriya! Jawab mil gaya. (4 din guzar gaye, is liye points nahi.)"))} testID="extras-short-yes" />
                   <Button label="Ghalat hai" variant="danger" size="md" onPress={() => setReasonOpen(true)} testID="extras-short-no" />
                 </View>
               </>
@@ -104,7 +108,7 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
                       ? "Venue ne baqi raqam sahi kaha. Agli dafa venue par de do."
                       : "Aap ka jawab venue ke paas hai."
                     : due.status === "no_reply"
-                      ? `24 ghante mein jawab nahi aaya, ${due.penalty_applied} points kate. Baqi de do to points wapas mil jayenge.`
+                      ? `24 ghante mein jawab nahi aaya, ${due.penalty_applied} points kate. Baqi de do to points wapas mil jayenge.${due.can_reply ? " Ab bhi jawab de sakte ho." : ""}`
                       : ""}
             </Text>
           )}

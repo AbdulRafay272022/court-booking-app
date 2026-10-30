@@ -10,9 +10,11 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
 import { MoneyHealthCard } from "@/components/owner/money-health-card";
+import { DueDoneDialog } from "@/components/owner/money-dialogs";
 
 /** audit 2026-10-28 Phase 3 items 4 + 5: money still due on finished bookings ("kam mila"), carried per venue. A disputed one
- * ("Ghalat hai") is decided here (collect / waive); any open one is settled with "Done" once the rest is received. */
+ * ("Ghalat hai") is decided here (collect / waive); any open one is settled with "Done" once the rest is received: cash (now)
+ * or transfer (screenshot to Approvals, settled when approved). "Done" never changes the price; only "waive" does. */
 export default function OwnerDuesPage() {
   const t = useT();
   const fmt = useFmt();
@@ -21,6 +23,8 @@ export default function OwnerDuesPage() {
   const q = useQuery({ queryKey: ["owner-dues", activeVenueId], queryFn: () => api.phase3.dues(activeVenueId!), enabled: !!activeVenueId });
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [doneFor, setDoneFor] = useState<ShortPaymentDue | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function act(key: string, fn: () => Promise<unknown>) {
     setBusy(key);
@@ -54,6 +58,25 @@ export default function OwnerDuesPage() {
         <p className="text-sm text-owner-ink-muted">{t("odash.p3.duesSubtitle")}</p>
       </div>
       {activeVenueId ? <MoneyHealthCard venueId={activeVenueId} /> : null}
+      {doneFor ? (
+        <DueDoneDialog
+          claimId={doneFor.id}
+          due={doneFor.due_pkr}
+          label={`${doneFor.player_name ?? t("appr.player")} · ${doneFor.code}`}
+          onClose={() => setDoneFor(null)}
+          onDone={async (transfer) => {
+            setDoneFor(null);
+            setNotice(transfer ? t("odash.p3.done.pending") : null);
+            await queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+            await queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+          }}
+        />
+      ) : null}
+      {notice ? (
+        <p className="rounded-xl bg-owner-bg px-4 py-3 text-[14px] text-owner-ink" role="status">
+          {notice}
+        </p>
+      ) : null}
       {error ? (
         <p className="text-owner-danger" role="alert">
           {error}
@@ -99,7 +122,7 @@ export default function OwnerDuesPage() {
                 <button
                   type="button"
                   disabled={!!busy}
-                  onClick={() => act(`d${d.id}`, () => api.phase3.dueDone(d.id))}
+                  onClick={() => setDoneFor(d)}
                   className="cursor-pointer whitespace-nowrap rounded-full bg-owner-ink px-4 py-1.5 text-[13px] font-bold text-white disabled:opacity-60"
                 >
                   {t("odash.p3.doneReceived")}

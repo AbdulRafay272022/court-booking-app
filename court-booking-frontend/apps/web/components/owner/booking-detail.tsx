@@ -337,7 +337,7 @@ function DetailContent({
               {showNoShow ? <NoShowButton name={row.player_name?.trim() || row.short_code} onClick={() => noShow.ask(row)} /> : null}
               {!row.slot_ended ? <span className="text-[13px] text-owner-ink-muted">{t("hist.completed.early")}</span> : null}
             </div>
-            {row.status_key === "no_show" && allowed.complete ? <p className="mt-2 text-[13px] text-owner-ink-muted">{t("nsw.fixHint")}</p> : null}
+            {row.status_key === "no_show" && allowed.complete ? <p className="mt-2 text-[13px] text-owner-ink-muted">{t("nsw.fixHint2")}</p> : null}
             <p role="status" aria-live="polite" className={flow.message ? `mt-2 text-[13.5px] font-semibold ${flow.message.kind === "ok" ? "text-owner-success-dark" : "text-owner-danger"}` : "sr-only"}>
               {flow.message?.text}
             </p>

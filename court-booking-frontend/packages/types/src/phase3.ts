@@ -51,6 +51,10 @@ export interface ShortPaymentDue {
   starts_at: string | null;
   created_at: string;
   can_reply?: boolean | null;
+  /** a reply until this time gets +5 (4 days after the notice); later replies are still taken, without points */
+  bonus_until?: string | null;
+  /** only on the reply response: the points that reply gave (0 or 5) */
+  bonus_points?: number | null;
 }
 
 export interface ArrivalState {
@@ -82,6 +86,7 @@ export function pointsReasonLabel(reason: string, lang: "ru" | "en" = "ru"): str
     short_no_reply_returned: "Kate hue points wapas",
     redeem: "Chhoot ke liye istemal",
     redeem_returned: "Booking cancel: points wapas",
+    noshow_transfer_ok: "No-show hata, transfer sahi nikla",
   };
   const en: Record<string, string> = {
     transfer_booking: "Paid fully by transfer",
@@ -90,6 +95,7 @@ export function pointsReasonLabel(reason: string, lang: "ru" | "en" = "ru"): str
     short_no_reply_returned: "Points given back",
     redeem: "Used for a discount",
     redeem_returned: "Booking cancelled: points back",
+    noshow_transfer_ok: "No-show taken back, transfer confirmed",
   };
   return (lang === "ru" ? ru : en)[reason] ?? reason;
 }
@@ -109,4 +115,40 @@ export interface MoneyHealthRow {
 export interface MoneyHealth {
   totals: Omit<MoneyHealthRow, "venue_id" | "venue_name">;
   venues: MoneyHealthRow[];
+}
+
+/** audit fixes 2026-10-31: taking back a no-show (POST /owners/bookings/{id}/noshow-reverse). */
+export type MoneyMethod = "cash" | "transfer";
+
+export interface NoShowReverseInput {
+  final_price_pkr: number;
+  /** money received NOW, on top of what is already recorded */
+  received_pkr: number;
+  method: MoneyMethod;
+  reply_id?: string | null;
+}
+
+/** Why the reversal form can't be sent yet (null = ok). Mirrors the server: final price >= already paid,
+ * 0 <= received <= final - paid, a transfer with money needs its screenshot. */
+export function noshowReverseProblem(
+  v: { finalPrice: number | null; received: number | null; method: MoneyMethod | null; hasScreenshot: boolean },
+  alreadyPaid: number,
+): "price" | "received" | "method" | "screenshot" | null {
+  if (v.finalPrice == null || !Number.isFinite(v.finalPrice) || v.finalPrice < alreadyPaid) return "price";
+  if (v.received == null || !Number.isFinite(v.received) || v.received < 0 || v.received > v.finalPrice - alreadyPaid) return "received";
+  if (v.method == null) return "method";
+  if (v.method === "transfer" && v.received > 0 && !v.hasScreenshot) return "screenshot";
+  return null;
+}
+
+/** Dues "Done": cash settles now; a transfer needs its screenshot (it is settled once approved). */
+export function dueDoneProblem(method: MoneyMethod | null, hasScreenshot: boolean): "method" | "screenshot" | null {
+  if (method == null) return "method";
+  if (method === "transfer" && !hasScreenshot) return "screenshot";
+  return null;
+}
+
+/** Will a short-payment reply sent now still earn the +5? */
+export function replyEarnsBonus(due: Pick<ShortPaymentDue, "bonus_until">, now: Date = new Date()): boolean {
+  return !!due.bonus_until && now.getTime() <= new Date(due.bonus_until).getTime();
 }

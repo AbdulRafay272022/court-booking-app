@@ -20,6 +20,7 @@ import { openInHistory } from "@/components/booking-links";
 import { ScreenshotThumb } from "@/components/screenshot-viewer";
 import { RecordPaymentSheet } from "@/components/record-payment-sheet";
 import { CompletionSheet, NoShowSheet } from "@/components/completion-sheet";
+import { NoShowReverseSheet } from "@/components/money-sheets";
 import { StatusPendingChip } from "@/components/overview/booking-card";
 import { BottomSheet, OutlineButton, SmallChip } from "@/components/overview/ui";
 import { KeyValue, KeyValueBlock } from "@/app/(owner)/_fl";
@@ -103,7 +104,7 @@ export function BookingDetailSheet({
   const qc = useQueryClient();
   // The follow-up sheets (No-show, Kam mila, Payment record) are SIBLINGS of this sheet, never inside its content:
   // @gorhom minimizes this modal while one of them is up, and a sheet nested in a minimized modal's content re-mounts.
-  const [follow, setFollowState] = useState<null | "noShow" | "short" | "record">(null);
+  const [follow, setFollowState] = useState<null | "noShow" | "short" | "record" | "reverse">(null);
   // read by the sheet's onClose through a ref: @gorhom may call onDismiss through the closure from when it was presented
   const followRef = useRef<typeof follow>(null);
   const setFollow = (f: typeof follow) => {
@@ -163,6 +164,13 @@ export function BookingDetailSheet({
     )}
     {d && followShown && follow === "noShow" ? <NoShowSheet row={d.row} onClose={endFollow} onSaved={onSaved} /> : null}
     {d && followShown && follow === "short" ? <CompletionSheet row={d.row} onClose={endFollow} onSaved={onSaved} /> : null}
+    {d && followShown && follow === "reverse" ? (
+      <NoShowReverseSheet
+        target={{ bookingId: d.row.booking_id, subtitle: `${d.row.player_name ?? "Player"} · ${d.row.short_code}`, total: d.row.total, paid: d.row.total_paid }}
+        onClose={endFollow}
+        onSaved={onSaved}
+      />
+    ) : null}
     {d && followShown && follow === "record" ? (
       <RecordPaymentSheet
         bookingId={d.row.booking_id}
@@ -192,7 +200,7 @@ function DetailBody({
   onOpenBooking: (id: string) => void;
   hideHistoryLink?: boolean;
   onClose: () => void;
-  onFollow: (f: "noShow" | "short" | "record") => void;
+  onFollow: (f: "noShow" | "short" | "record" | "reverse") => void;
 }) {
   const r = d.row;
   const qc = useQueryClient();
@@ -378,7 +386,10 @@ function DetailBody({
 
       {(live || r.status_key === "no_show") && (mayCheckIn || mayNoShow || action !== "none" || actionError) ? (
         <View testID="detail-actions" style={{ gap: space[2], backgroundColor: palette.ground, borderRadius: radius.tile, padding: space[3] }}>
-          {action === "completion" ? (
+          {action === "completion" && r.status_key === "no_show" ? (
+            // audit fixes 2026-10-31: a no-show is taken back with the final price / received / method, never "Haan" (full cash)
+            <Button label="No-show hatayein" block size="md" onPress={() => onFollow("reverse")} testID="detail-reverse" />
+          ) : action === "completion" ? (
             <Button
               label={r.due > 0 ? `Baqi PKR ${formatPKR(r.due)} mil gaye` : "Mukammal mark karein"}
               block
@@ -394,7 +405,7 @@ function DetailBody({
           ) : null}
           {action === "completion" || mayNoShow || mayCheckIn ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-              {action === "completion" && r.due > 0 ? <Button label="Kam mila" variant="soft" size="md" onPress={() => onFollow("short")} style={{ flexGrow: 1 }} /> : null}
+              {action === "completion" && r.due > 0 && r.status_key !== "no_show" ? <Button label="Kam mila" variant="soft" size="md" onPress={() => onFollow("short")} style={{ flexGrow: 1 }} /> : null}
               {mayCheckIn && live ? <Button label={busy ? "Ho raha hai" : "Check in"} variant="soft" size="md" disabled={busy} onPress={() => run(() => api.bookings.checkin(r.booking_id))} style={{ flexGrow: 1 }} /> : null}
               {mayNoShow ? <Button label="Nahi aaye (No-show)" variant="danger" size="md" onPress={() => onFollow("noShow")} style={{ flexGrow: 1 }} /> : null}
             </View>

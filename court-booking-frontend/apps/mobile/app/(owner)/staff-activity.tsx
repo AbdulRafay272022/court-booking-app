@@ -6,6 +6,7 @@ import { formatPkr, palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Button, Chip, EmptyState, ErrorState, Screen, SkeletonCard, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
+import { NoShowReverseSheet, type ReverseTarget } from "@/components/money-sheets";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { OwnerHeader } from "./_fl";
@@ -86,7 +87,13 @@ export default function StaffActivityScreen() {
                 {n.highlight ? <Text variant="meta" weight="bold" tone="danger">GPS: player venue par tha</Text> : null}
                 {n.player_replied ? <Text variant="body">{`Player ne kaha: main aaya tha${n.player_note ? ` ("${n.player_note}")` : ""}`}</Text> : null}
                 {n.owner_decision ? <Text variant="meta" tone="muted">{n.owner_decision === "reverse" ? "Aap ne no-show hata diya." : "Aap ne no-show rakha."}</Text> : null}
-                {n.reply_id && !n.owner_decision ? <NoShowDecision replyId={n.reply_id} /> : null}
+                {n.reply_id && !n.owner_decision ? (
+                  <NoShowDecision
+                    replyId={n.reply_id}
+                    bookingId={n.booking_id}
+                    subtitle={[n.player_name ?? "Player", n.court_name, n.starts_at ? formatWhen(n.starts_at, new Date(), "ru") : null].filter(Boolean).join(" · ")}
+                  />
+                ) : null}
               </View>
             ))
           )}
@@ -121,17 +128,31 @@ function PersonCard({ p }: { p: StaffActivityRow }) {
   );
 }
 
-/** audit 2026-10-28 Phase 3 item 6: the owner's answer to "Main aaya tha" (keep the no-show, or take it off). */
-function NoShowDecision({ replyId }: { replyId: string }) {
+/** audit 2026-10-28 Phase 3 item 6: the owner's answer to "Main aaya tha". Keep is one tap; taking the no-show back asks the
+ * final price, the money received and cash / transfer first (audit fixes 2026-10-31). */
+function NoShowDecision({ replyId, bookingId, subtitle }: { replyId: string; bookingId: string; subtitle: string }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  async function decide(decision: "keep" | "reverse") {
-    setBusy(decision);
+  const [reverse, setReverse] = useState<ReverseTarget | null>(null);
+  async function keep() {
+    setBusy("keep");
     setError(null);
     try {
-      await api.phase3.decideNoShow(replyId, decision);
+      await api.phase3.decideNoShow(replyId, "keep");
       await queryClient.invalidateQueries({ queryKey: ["staff-activity"] });
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function openReverse() {
+    setBusy("reverse");
+    setError(null);
+    try {
+      const detail = await api.owners.bookingDetail(bookingId);
+      setReverse({ bookingId, subtitle, total: detail.row.total, paid: detail.row.total_paid, replyId });
     } catch (e) {
       setError(friendlyErrorMessage(e));
     } finally {
@@ -141,10 +162,17 @@ function NoShowDecision({ replyId }: { replyId: string }) {
   return (
     <View style={{ gap: space[2], paddingTop: space[1] }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-        <Button label="No-show rakhein" size="sm" variant="soft" loading={busy === "keep"} onPress={() => decide("keep")} testID="sact-noshow-keep" />
-        <Button label="No-show hatayein" size="sm" loading={busy === "reverse"} onPress={() => decide("reverse")} testID="sact-noshow-reverse" />
+        <Button label="No-show rakhein" size="sm" variant="soft" loading={busy === "keep"} onPress={keep} testID="sact-noshow-keep" />
+        <Button label="No-show hatayein" size="sm" loading={busy === "reverse"} onPress={openReverse} testID="sact-noshow-reverse" />
       </View>
       {error ? <Banner tone="danger" body={error} /> : null}
+      {reverse ? (
+        <NoShowReverseSheet
+          target={reverse}
+          onClose={() => setReverse(null)}
+          onSaved={() => void queryClient.invalidateQueries({ queryKey: ["staff-activity"] })}
+        />
+      ) : null}
     </View>
   );
 }

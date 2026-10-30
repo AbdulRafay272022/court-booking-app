@@ -10,6 +10,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { OwnerHeader } from "./_fl";
 import { VenueMoneyHealth } from "@/components/money-health-card";
+import { DueDoneSheet } from "@/components/money-sheets";
 
 const STATUS: Record<ShortPaymentDue["status"], string> = {
   awaiting_reply: "Player ke jawab ka intezar",
@@ -20,7 +21,7 @@ const STATUS: Record<ShortPaymentDue["status"], string> = {
 
 /**
  * audit 2026-10-28 Phase 3 items 4 + 5: the venue's open dues (short payments not settled yet). "Ghalat hai" ones wait for the
- * owner's decision (collect / waive); any due can be marked done when the rest was received. Owner, or staff with view_ledger.
+ * owner's decision (collect / waive); any due can be marked done when the rest was received: cash (now) or transfer (screenshot to Approvals). Owner, or staff with view_ledger.
  */
 export default function DuesScreen() {
   const { activeVenue, activeVenueId } = useOwnerVenues();
@@ -28,6 +29,7 @@ export default function DuesScreen() {
   const query = useQuery({ queryKey: ["owner-dues", activeVenueId], queryFn: () => api.phase3.dues(activeVenueId!), enabled: !!activeVenueId });
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [doneFor, setDoneFor] = useState<ShortPaymentDue | null>(null);
 
   async function act(key: string, fn: () => Promise<unknown>, ok: string) {
     setBusy(key);
@@ -74,11 +76,24 @@ export default function DuesScreen() {
                   <Button label="Maaf karein" size="md" variant="danger" loading={busy === `w${d.id}`} onPress={() => act(`w${d.id}`, () => api.phase3.decideShort(d.id, "waive"), "Baqi maaf kar diya; player ko bata diya.")} testID="due-waive" />
                 </>
               ) : null}
-              <Button label="Done (paisa mil gaya)" size="md" loading={busy === `d${d.id}`} onPress={() => act(`d${d.id}`, () => api.phase3.dueDone(d.id), "Darj ho gaya: baqi clear.")} testID="due-done" />
+              <Button label="Done (paisa mil gaya)" size="md" onPress={() => setDoneFor(d)} testID="due-done" />
             </View>
           </View>
         ))
       )}
+      {doneFor ? (
+        <DueDoneSheet
+          claimId={doneFor.id}
+          due={doneFor.due_pkr}
+          subtitle={`${doneFor.player_name ?? "Player"} · ${doneFor.code}`}
+          onClose={() => setDoneFor(null)}
+          onSaved={(transfer) => {
+            setMessage({ ok: true, text: transfer ? "Screenshot Approvals mein hai. Approve karne par baqi clear ho jayega." : "Darj ho gaya: baqi clear." });
+            void queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+            void queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+          }}
+        />
+      ) : null}
     </Screen>
   );
 }

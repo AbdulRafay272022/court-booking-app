@@ -142,4 +142,9 @@ export const ruOdashShell = {
   "odash.p3.mh.disputes": "Hisaab par faisla baqi",
   "odash.p3.mh.noshowReplies": "\"Main aaya tha\" par faisla baqi",
   "odash.p3.mh.points": "Points diye / istemal",
+  "odash.p3.done.title": "Baqi {due} mil gaye?",
+  "odash.p3.done.cashNote": "Cash: aaj ki tareekh mein likha jayega aur baqi 0 ho jayega. Qeemat wahi rahegi.",
+  "odash.p3.done.transferNote": "Transfer: screenshot Approvals mein jayega. Approve karne par baqi 0 ho jayega.",
+  "odash.p3.done.save": "Done",
+  "odash.p3.done.pending": "Screenshot Approvals mein hai. Approve karne par baqi clear ho jayega.",
 } as const;

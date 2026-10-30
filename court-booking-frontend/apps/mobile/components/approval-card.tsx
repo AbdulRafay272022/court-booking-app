@@ -5,6 +5,7 @@ import { Ban, TriangleAlert } from "lucide-react-native";
 import { approvalSummary, type ApprovalPlayerContext, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
 import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
 import { Avatar, Banner, Button, Input, MoneyRows, Pill, RadioGroup, Text } from "@/components/ui";
+import { DueDoneSheet } from "@/components/money-sheets";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -449,31 +450,29 @@ export function BulkApproveSheet({
  * never blocked; "Done" records the old balance as received. */
 function PlayerContext({ ctx }: { ctx: ApprovalPlayerContext }) {
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  async function done(id: string) {
-    setBusy(id);
-    setError(null);
-    try {
-      await api.phase3.dueDone(id);
-      await queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
-      await queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
-    } catch (e) {
-      setError(friendlyErrorMessage(e));
-    } finally {
-      setBusy(null);
-    }
-  }
+  // "Done" asks cash or transfer first (audit fixes 2026-10-31)
+  const [doneFor, setDoneFor] = useState<ApprovalPlayerContext["dues"][number] | null>(null);
   return (
     <View style={{ gap: space[2] }} testID="approval-player-context">
       <Text variant="meta" weight="bold" tone={ctx.no_shows > 0 ? "danger" : "muted"}>{`No-show ${ctx.no_shows} / kul bookings ${ctx.total_bookings}`}</Text>
       {ctx.dues.map((d) => (
         <View key={d.id} style={{ flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" }} testID="approval-due">
           <Text variant="body" style={{ flex: 1 }}>{`Purana baqi ${d.code}: PKR ${formatPKR(d.due_pkr)}`}</Text>
-          <Button label="Done" size="sm" variant="soft" loading={busy === d.id} onPress={() => done(d.id)} testID="approval-due-done" />
+          <Button label="Done" size="sm" variant="soft" onPress={() => setDoneFor(d)} testID="approval-due-done" />
         </View>
       ))}
-      {error ? <Banner tone="danger" body={error} /> : null}
+      {doneFor ? (
+        <DueDoneSheet
+          claimId={doneFor.id}
+          due={doneFor.due_pkr}
+          subtitle={doneFor.code}
+          onClose={() => setDoneFor(null)}
+          onSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+            void queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+          }}
+        />
+      ) : null}
     </View>
   );
 }

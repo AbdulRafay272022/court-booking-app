@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BookingExtras } from "@court-booking/types";
+import type { BookingExtras, ShortPaymentDue } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { formatPKR } from "@/lib/format";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -30,12 +30,12 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
   const arrival = d.arrival;
   if (!showPoints && !short && !arrival.enabled) return null;
 
-  async function run(key: string, fn: () => Promise<unknown>, ok: string) {
+  async function run(key: string, fn: () => Promise<unknown>, ok: string | ((result: unknown) => string)) {
     setBusy(key);
     setMessage(null);
     try {
-      await fn();
-      setMessage({ ok: true, text: ok });
+      const result = await fn();
+      setMessage({ ok: true, text: typeof ok === "function" ? ok(result) : ok });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["booking-extras", bookingId] }),
         queryClient.invalidateQueries({ queryKey: ["booking", bookingId] }),
@@ -75,13 +75,13 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
             <label className="text-[13px] font-bold text-fl-night" htmlFor="short-reason">{t("play.p3.reasonLabel")}</label>
             <textarea id="short-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={2} className="rounded-xl border border-fl-line p-3 text-[14px]" />
             <div className="flex flex-wrap gap-2">
-              <Btn tone="danger" busy={busy === "no"} onClick={() => run("no", () => api.phase3.replyShort(short.id, "no", reason.trim()), t("play.p3.sentToVenue"))}>{t("play.p3.sendNo")}</Btn>
+              <Btn tone="danger" busy={busy === "no"} onClick={() => run("no", () => api.phase3.replyShort(short.id, "no", reason.trim()), (r) => ((r as ShortPaymentDue).bonus_points ? t("play.p3.sentToVenue") : t("play.p3.sentToVenueNoPts")))}>{t("play.p3.sendNo")}</Btn>
               <Btn tone="soft" onClick={() => setAskReason(false)}>{t("play.p3.back")}</Btn>
             </div>
           </div>
         ) : (
           <div className="flex flex-wrap gap-2" data-testid="short-reply">
-            <Btn busy={busy === "yes"} onClick={() => run("yes", () => api.phase3.replyShort(short.id, "yes"), t("play.p3.thanks5"))}>{t("play.p3.sahiHai")}</Btn>
+            <Btn busy={busy === "yes"} onClick={() => run("yes", () => api.phase3.replyShort(short.id, "yes"), (r) => ((r as ShortPaymentDue).bonus_points ? t("play.p3.thanks5") : t("play.p3.thanksNoPts")))}>{t("play.p3.sahiHai")}</Btn>
             <Btn tone="danger" onClick={() => setAskReason(true)}>{t("play.p3.ghalatHai")}</Btn>
           </div>
         )

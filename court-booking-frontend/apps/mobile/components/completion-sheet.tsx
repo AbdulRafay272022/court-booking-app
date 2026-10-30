@@ -53,7 +53,7 @@ export function NoShowSheet({ row, onClose, onSaved }: { row: OwnerBookingRow; o
         <Banner tone="danger" body="Player khelne nahi aaya? Booking No-show mark ho jayegi." />
       </View>
       <Text variant="meta" tone="muted">
-        Ye record ke saath save hoga (kis ne, kab). Ghalti ho to baad mein Haan/Nahi se booking Completed kar sakte hain.
+        {'Ye record ke saath save hoga (kis ne, kab). Ghalti ho to baad mein "No-show hatayein" se theek kar sakte hain.'}
       </Text>
       {error ? (
         <Text variant="meta" weight="bold" tone="danger">

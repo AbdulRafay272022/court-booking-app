@@ -144,4 +144,9 @@ export const enOdashShell: Record<keyof typeof ruOdashShell, string> = {
   "odash.p3.mh.disputes": "Balance disputes to decide",
   "odash.p3.mh.noshowReplies": "\"I was there\" replies to decide",
   "odash.p3.mh.points": "Points given / used",
+  "odash.p3.done.title": "Received the {due} due?",
+  "odash.p3.done.cashNote": "Cash: recorded today and the due becomes 0. The price stays the same.",
+  "odash.p3.done.transferNote": "Transfer: the screenshot goes to Approvals. The due becomes 0 once you approve it.",
+  "odash.p3.done.save": "Done",
+  "odash.p3.done.pending": "The screenshot is in Approvals. The due clears once you approve it.",
 };

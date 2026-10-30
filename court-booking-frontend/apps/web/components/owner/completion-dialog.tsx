@@ -12,6 +12,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { ModalShell } from "@/components/owner/modal-shell";
 import { VoiceTextarea } from "@/components/voice/voice-textarea";
 import { canSaveCompletion, completionBody, planCompletion, validateReceivedNow } from "@/lib/overview-completion";
+import { NoShowReverseDialog } from "@/components/owner/money-dialogs";
 
 type T = ReturnType<typeof useT>;
 
@@ -211,15 +212,23 @@ export interface CompletionFlow {
   message: { kind: "ok" | "error"; text: string } | null;
 }
 
-/** Haan saves at once; Nahi opens the popup. `onDone` gets the updated row so the caller can patch or refetch. */
+/** Haan saves at once; Nahi opens the popup. `onDone` gets the updated row so the caller can patch or refetch.
+ * A NO-SHOW row opens the "No-show hatayein" dialog instead (final price / received / cash or transfer): the server refuses
+ * Haan / Nahi on a no-show so the full price is never assumed as cash (audit fixes 2026-10-31). */
 export function useCompletionFlow(onDone: (row: OwnerBookingRow) => void): CompletionFlow {
   const t = useT();
+  const fmt = useFmt();
   const [target, setTarget] = useState<OwnerBookingRow | null>(null);
+  const [reverseRow, setReverseRow] = useState<OwnerBookingRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<CompletionFlow["message"]>(null);
 
   function pick(row: OwnerBookingRow, result: CompletionResult) {
     setMessage(null);
+    if (row.status_key === "no_show") {
+      setReverseRow(row);
+      return;
+    }
     if (result === "no") {
       setTarget(row);
       return;
@@ -245,6 +254,23 @@ export function useCompletionFlow(onDone: (row: OwnerBookingRow) => void): Compl
         setTarget(null);
         setMessage({ kind: "ok", text: updated.completion?.result === "yes" ? t("ovw.cmp.savedFull") : t("ovw.cmp.savedNo") });
         onDone(updated);
+      }}
+    />
+  ) : reverseRow ? (
+    <NoShowReverseDialog
+      key={reverseRow.booking_id}
+      target={{
+        bookingId: reverseRow.booking_id,
+        label: [reverseRow.player_name ?? t("ovw.table.noName"), reverseRow.court_name, fmt.timeRange(reverseRow.starts_at, reverseRow.ends_at), reverseRow.short_code].join(" · "),
+        total: reverseRow.total,
+        paid: reverseRow.total_paid,
+      }}
+      onClose={() => setReverseRow(null)}
+      onDone={(transfer) => {
+        const row = reverseRow;
+        setReverseRow(null);
+        setMessage({ kind: "ok", text: transfer ? t("nsw.rev.savedTransfer") : t("nsw.rev.saved") });
+        api.owners.bookingDetail(row.booking_id).then((d) => onDone(d.row)).catch(() => onDone(row));
       }}
     />
   ) : null;

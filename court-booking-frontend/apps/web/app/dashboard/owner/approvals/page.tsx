@@ -28,6 +28,7 @@ import { parseQueueFilter } from "@/lib/queue-filter";
 import { isNaya } from "@/lib/owner-seen";
 import { useSeenSince } from "@/lib/use-owner-seen";
 import { useMyPermissions } from "@/lib/use-my-permissions";
+import { DueDoneDialog } from "@/components/owner/money-dialogs";
 import {
   PAGE_SIZE,
   amountChip,
@@ -341,23 +342,23 @@ function useCardText(item: ApprovalQueueItem) {
 function PlayerContext({ ctx }: { ctx: NonNullable<ApprovalQueueItem["player_context"]> }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  async function done(id: string) {
-    setBusy(id);
-    setError(null);
-    try {
-      await api.phase3.dueDone(id);
-      await queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
-      await queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
-    } catch (e) {
-      setError(friendlyErrorMessage(e, t));
-    } finally {
-      setBusy(null);
-    }
-  }
+  // "Done" asks cash or transfer first (audit fixes 2026-10-31); a transfer screenshot lands back in this queue
+  const [doneFor, setDoneFor] = useState<(typeof ctx.dues)[number] | null>(null);
   return (
     <div className="flex flex-col gap-1.5 rounded-xl border border-owner-border bg-owner-bg px-3 py-2 text-[13px]" data-testid="player-context">
+      {doneFor ? (
+        <DueDoneDialog
+          claimId={doneFor.id}
+          due={doneFor.due_pkr}
+          label={doneFor.code}
+          onClose={() => setDoneFor(null)}
+          onDone={async () => {
+            setDoneFor(null);
+            await queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+            await queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+          }}
+        />
+      ) : null}
       <span className={ctx.no_shows > 0 ? "font-bold text-owner-danger" : "text-owner-ink-muted"}>
         {t("odash.p3.record", { noShows: String(ctx.no_shows), total: String(ctx.total_bookings) })}
       </span>
@@ -366,15 +367,13 @@ function PlayerContext({ ctx }: { ctx: NonNullable<ApprovalQueueItem["player_con
           <span className="font-bold text-owner-ink">{t("odash.p3.oldDue", { code: d.code, amount: formatPKR(d.due_pkr) })}</span>
           <button
             type="button"
-            disabled={busy === d.id}
-            onClick={() => done(d.id)}
+            onClick={() => setDoneFor(d)}
             className="cursor-pointer whitespace-nowrap rounded-full border border-owner-ink px-3 py-1 text-[12.5px] font-bold disabled:opacity-60"
           >
             {t("odash.p3.done")}
           </button>
         </div>
       ))}
-      {error ? <span className="text-owner-danger">{error}</span> : null}
     </div>
   );
 }
