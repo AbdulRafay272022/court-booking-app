@@ -80,7 +80,7 @@ export default function PlayerBookingsScreen() {
       {list.length > 0 ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel={copy("Status se chhanein", "Filter by status")}>
           {filters.map((f) => (
-            <Chip key={f.key} label={`${f.label} · ${counts[f.key]}`} selected={filter === f.key} onPress={() => setFilter(f.key)} testID={`bookings-filter-${f.key}`} />
+            <Chip key={f.key} solid label={`${f.label} · ${counts[f.key]}`} selected={filter === f.key} onPress={() => setFilter(f.key)} testID={`bookings-filter-${f.key}`} />
           ))}
         </View>
       ) : null}
