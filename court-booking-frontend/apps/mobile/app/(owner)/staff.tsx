@@ -102,14 +102,30 @@ function AddStaffSheet({ venues, catalog, onClose }: { venues: { id: string; nam
   );
 }
 
+/** OGrowthTeam "Staff + permissions" board copy, per permission key: short chip, switch label, hint. The server catalog's
+ * English label is only the fallback for a key added later. */
+const PERM_COPY: Record<string, { chip: string; label: string; hint?: string }> = {
+  approve_payments: { chip: "Approve", label: "Payments approve", hint: "Approvals tab dikhega" },
+  record_payments: { chip: "Payment record", label: "Payment record / theek karna", hint: "Cash aur transfer likhna" },
+  check_in: { chip: "Check-in", label: "Check-in", hint: "QR scan" },
+  walkin: { chip: "Walk-in", label: "Walk-in booking", hint: "+ button" },
+  view_ledger: { chip: "Paisa", label: "Paisa / ledger dekhna", hint: "Paisa tab" },
+  edit_court_settings: { chip: "Settings", label: "Venue settings", hint: "Qeemat, waqt" },
+  cancel_booking: { chip: "Cancel", label: "Booking cancel karna" },
+  manage_photos: { chip: "Photos", label: "Venue photos" },
+  respond_reviews: { chip: "Reviews", label: "Reviews ka jawab" },
+  mark_refunds: { chip: "Refunds", label: "Refund record karna" },
+  view_growth: { chip: "Growth", label: "Growth dekhna" },
+};
+
 function PermissionSwitches({ catalog, selected, onChange }: { catalog: StaffPermissionCatalogItem[]; selected: Set<string>; onChange: (s: Set<string>) => void }) {
   return (
     <View style={{ gap: space[1] }}>
       {catalog.map((item) => (
         <Switch
           key={item.key}
-          label={item.label}
-          hint={item.available ? undefined : "Ye feature abhi band hai"}
+          label={PERM_COPY[item.key]?.label ?? item.label}
+          hint={item.available ? PERM_COPY[item.key]?.hint : "Ye feature abhi band hai"}
           value={selected.has(item.key)}
           disabled={!item.available}
           onChange={(on) => {
@@ -178,7 +194,7 @@ function StaffCard({ member, catalog, open, onToggleOpen }: { member: StaffMembe
               Abhi koi permission nahi
             </Text>
           ) : (
-            member.permissions.map((p) => <Pill key={p} size="sm" tone="info" label={labelFor(p)} />)
+            member.permissions.map((p) => <Pill key={p} size="sm" tone="info" label={`✓ ${PERM_COPY[p]?.chip ?? labelFor(p)}`} />)
           )}
         </View>
       )}
