@@ -21,7 +21,7 @@ Not every app shot can show the same data as the design, because the app only sh
 
 Where data is missing, the app's empty state is compared with the design's empty state.
 
-**Capture note:** Metro's file watcher stopped noticing edits partway through the session, so some first after-shots showed old code. Metro was restarted with `--clear` and every after-image was taken again from commit d8ab487.
+**Capture note:** Metro's file watcher stopped noticing edits partway through the session, so some first after-shots showed old code. Metro was restarted with `--clear` and every after-image was taken again from commit d8ab487. Root cause found on 2026-11-01: Metro was started with `CI=1`, which turns file watching off. Start it without `CI` (stdin from `/dev/null`). The second round (2026-11-01, commits e42b6b6..e1accbc) re-took OPaisa-history, OPaisa-refunds, OSettings-hub, OStaffView-staff and PBookings-tab.
 
 **Severity:**
 
@@ -104,7 +104,7 @@ Where data is missing, the app's empty state is compared with the design's empty
 |---|---|---|
 | Day tiles wrapped "Tareekh" to its own row | walkin.tsx:251-265 | fixed (one row) |
 | Idle tiles white + border | S6 | fixed |
-| "Mon 2" English day | `pktDayTabs` without lang | open (needs Roman day names in walk-in, a later copy pass) |
+| "Mon 2" English day | — | same as board (the board also writes "Mon 26") |
 | Board: phone optional + "Kaise mila?" payment chips; app: phone required + "WhatsApp rasid" tick | product decision in a later round | kept |
 
 **OWalkin, check-in scan:** `app/(owner)/checkin-scan.tsx`. Match: **partial**.
@@ -129,7 +129,8 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Difference (before) | Cause | Status |
 |---|---|---|
 | "Bhej diya · record karein" invisible | S1 | fixed |
-| Board: plain header + red total card; app: teal hero + switch | design of Paisa tabs | open (P3) |
+| Board: plain header + red total card; app: teal hero + switch | Refunds is a Paisa tab with the Ledger/Refunds/History switch (kept, like Ledger) | kept |
+| Meta line had no booking code; reason was plain text | refunds.tsx:137,147 | fixed (5b562a1: "Court 1 · … · KH-…", reason in a grey box) |
 | No "Kahan bhejein" (player's JazzCash) line | the API has no refund destination | n/a |
 
 **OPaisa, history:** `app/(owner)/history.tsx`. Match: **partial**.
@@ -139,7 +140,8 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Header two rows | S8 | fixed |
 | Extra Courts + Status dropdowns; board: search + chips only | :232-237 | fixed (status dropdown removed; courts only with more than one court) |
 | Long status chip squeezed the player name to one letter per line | `components/overview/booking-card.tsx:129-138` | fixed |
-| Board cards are compact (date tile + one line); app cards show money stats | shared BookingCard | open (P3) |
+| Board cards are compact (date tile + one line); app cards show money stats | shared BookingCard | fixed (e42b6b6: `HistoryCard`, date tile, "Court 1 · 9–10 PM · KH-…", one status pill; money and Haan/Nahi are in the detail sheet) |
+| Search field had a "Search" label and the glass on the right | history.tsx | fixed (glass on the left, label only for screen readers) |
 
 **OwnerMore (Aur):** `app/(owner)/(tabs)/more.tsx`. Match: **partial**.
 
@@ -157,14 +159,16 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Header + 2 banners + switch were fixed and only ~20% scrolled | :103-150 | fixed (everything scrolls) |
 | White venue card; board: teal card | :106-112 | fixed |
 | Red "Venue live hone se pehle…" on a live venue | :116 | fixed (live venues read "Ye cheezein abhi baqi hain") |
-| Board is a list hub (Venue ki tafseel ›, Courts aur qeemat ›, …); app is one long form with a Venue/Courts switch | screen structure | open (P2, a structural rewrite) |
+| Board is a list hub (Venue ki tafseel ›, Courts aur qeemat ›, …); app is one long form with a Venue/Courts switch | screen structure | fixed (fa803b8: hub list with summaries and "Baqi" badges; each row opens its section; header arrow and Android Back return to the hub; `?section=cnic` opens CNIC) |
+| Board row "Khulne ke ghante" | hours are per court, inside each court's setup | merged into "Courts aur qeemat" (sub line says "ghante") |
+| Extra row "Points ki chhoot" | points feature | kept |
 
 **OSettings, courts / timers:** `components/court-setup-fields.tsx`. Match: **partial**.
 
 | Difference (before) | Cause | Status |
 |---|---|---|
 | All labels English (Minimum booking time, Opening hours, Prices for this court, Cancellations…) | court-setup-fields.tsx | fixed (Roman Urdu) |
-| Layout is the form, not the board's card list | as above | open |
+| Layout is the form, not the board's card list | per-court form | kept (opened from the hub row) |
 
 **OWizard step 1 / 2:** `app/(owner)/venue-setup/register.tsx`, `courts.tsx`. Match: **partial**.
 
@@ -182,7 +186,10 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Difference (before) | Cause | Status |
 |---|---|---|
 | Staff Aaj had no big "Check-in scan / Walk-in" tiles | today.tsx | fixed (2aaa774) |
-| Board: "Aane wale players" list + two tabs (Aaj / Profile); app: the owner Aaj board, filtered by permission | screen structure | open (P2) |
+| A check-in / walk-in staff member landed on Aur; the Aaj tab was hidden and Aaj itself said "No access" | `lib/owner-access.ts`, `lib/owner-floodlight.ts`, today.tsx | fixed (87db0e4: own Aaj with "Demo Arena · Staff: Bilal", "Aaj · Sun, 1 Nov", the two big actions and the owner-only line; they land there) |
+| Board: "Aane wale players" list | every booking list endpoint needs `view_ledger` (`/owners/overview`, `/today`, history) | **open, needs a backend decision**: a check-in-scoped arrivals endpoint (player names + times for today) |
+| Board second tab "Profile"; app "Aur" | tab naming | kept (Aur holds Profile) |
+| Staff WITH view_ledger (the seed staff) | gets the owner Aaj board + the two tiles | as before |
 
 **OStaffView, no access:** `components/no-access.tsx`. Match: **yes** (one style, Roman Urdu).
 
@@ -246,7 +253,8 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Difference (before) | Cause | Status |
 |---|---|---|
 | Selected filter peach + border; board: solid night "Sab · 3" | :83 | fixed |
-| Card actions: one "Ticket / QR"; board: "QR dikhao / Raasta / Tafseel" | `components/booking-card.tsx` | open (P3) |
+| Card actions: one "Ticket / QR"; board: "QR dikhao / Raasta / Tafseel" | bookings.tsx | fixed (b18244e: Pakki = QR dikhao / Raasta / Tafseel, check ho rahi = Chat / Tafseel, pay baqi = Abhi pay karein / Tafseel) |
+| Board "Cancel" on a pay-baqi card | cancel lives on the details screen | kept |
 
 **PBookings detail / cancel:** `done.tsx`. Match: **partial**.
 - The app reuses the Status "Court aap ka hai!" ticket for a booked booking. The board has a separate ticket screen with a "Booking KH-…" header.
@@ -260,7 +268,7 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Booking context grey; board: peach | [id]/chat.tsx:217 | fixed |
 | Composer grey rounded box; board: white pill | :318 | fixed |
 | Keyboard covered the composer | S3 | fixed |
-| No quick-reply chips or image button | not built | open (P3) |
+| No quick-reply chips or image button | both existed (chips after an assistant reply, paperclip while held); the scratch chat never reached that state | after a booking is sent/confirmed the chips are now the board's "Parking hai? / Raasta bhejein / Cancel policy" (3e1dac3) |
 
 **PAccount profile / notifications / edit:** `(tabs)/profile.tsx`, `notifications.tsx`, `edit-profile.tsx`. Match: **partial**.
 
@@ -276,23 +284,23 @@ Where data is missing, the app's empty state is compared with the design's empty
 |---|---|---|
 | "Login karein" not orange | disabled until both fields are valid (smart button, by design) | same as board when filled |
 | Status bar dark on the night hero | S4 | fixed |
-| Error "No account found…" English | `lib/error-messages.ts:22` | open (P2, error copy pass) |
-| OTP "6 hindson" spelling | `verify.tsx:89`, `reset-password.tsx:47` | open (P3) |
+| Error "No account found…" English | `lib/error-messages.ts` | fixed (e1accbc: every code in Roman Urdu by default, English with the toggle; "Is number ka koi account nahi. Pehle sign up karein.") |
+| OTP "6 hindson" | — | not a typo: "hindson" = digits (ہندسوں) |
 
 **PStates skeleton / error / offline / 404:** shared. Match: **partial**.
 
 | Difference (before) | Cause | Status |
 |---|---|---|
 | Error "Dobara koshish" invisible | S1 | fixed |
-| "Something went wrong" English body | `lib/error-messages.ts:64` | open (P2) |
+| "Something went wrong" English body | `lib/error-messages.ts` | fixed (e1accbc: "Kuch gadbad ho gayi. Dobara koshish karein.") |
 | 404 | — | matches |
 
 ## Still different (to do)
 
-1. **OSettings hub** is a long form, not the board's list hub (structure).
-2. **OStaffView** staff home is the owner board, not the board's "Aane wale players" list with two tabs.
-3. **PBookings** card actions (QR dikhao / Raasta / Tafseel) and the separate booking ticket screen.
-4. **PChat** quick replies and the image button.
-5. **English error messages** (`lib/error-messages.ts`), "6 hindson" spelling, and Roman Urdu weekday names in walk-in and history.
-6. **OPaisa** refunds and history: the board's compact layout.
-7. **Data-only gaps** (screenshot thumbs, two courts, reviews, growth) show the empty state. They are not code differences.
+Second round (2026-11-01) closed items 1-6 of the first list; see the screen tables above. What is left:
+
+1. **OStaffView "Aane wale players"** needs a backend endpoint a check-in-only account may read (today's arrivals). Every booking list needs `view_ledger` now. Owner decision.
+2. **PBookings** separate ticket screen with a "Booking KH-…" header (the app reuses the Status ticket on `done.tsx`).
+3. **OSettings** the venue card has no court-line art; the blackout / court forms inside the sections are still partly English.
+4. **Session-unreachable** screen ("Can't reach Khelo right now") is English; it sits outside the language provider.
+5. **Data-only gaps** (screenshot thumbs, two courts, reviews, growth) show the empty state. They are not code differences.
