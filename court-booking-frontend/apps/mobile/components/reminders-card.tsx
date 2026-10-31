@@ -262,7 +262,7 @@ function VenueRemindersForm({ venueId, initial }: { venueId: string; initial: Ve
               {message.text}
             </Text>
           ) : null}
-          <PrimaryButton label="Save reminder settings" onPress={save} disabled={hasErrors || saving} loading={saving} />
+          <PrimaryButton label="Reminders save karein" onPress={save} disabled={hasErrors || saving} loading={saving} />
         </>
       }
     />

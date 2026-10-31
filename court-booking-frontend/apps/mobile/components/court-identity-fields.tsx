@@ -25,8 +25,8 @@ export function CourtIdentityFields({
   const selected = findSport(options, sport);
   return (
     <SectionCard>
-      <SectionLabel>Court details</SectionLabel>
-      <TextField label="Court name" value={name} onChangeText={(v) => onChange({ name: v })} placeholder="Court 1" />
+      <SectionLabel>Court ki tafseel</SectionLabel>
+      <TextField label="Court ka naam" value={name} onChangeText={(v) => onChange({ name: v })} placeholder="Court 1" />
       <View className="gap-2">
         <FieldLabel>Sport</FieldLabel>
         <View className="flex-row flex-wrap gap-2">
@@ -36,7 +36,7 @@ export function CourtIdentityFields({
         </View>
       </View>
       <View className="gap-2">
-        <FieldLabel>Setting</FieldLabel>
+        <FieldLabel>Andar ya bahar</FieldLabel>
         <View className="flex-row gap-2">
           <Chip label="Outdoor" selected={!isIndoor} onPress={() => onChange({ isIndoor: false })} />
           <Chip label="Indoor" selected={isIndoor} onPress={() => onChange({ isIndoor: true })} />
@@ -58,7 +58,7 @@ export function AmenityPicker({
 }) {
   return (
     <View className="gap-2">
-      <FieldLabel>Amenities</FieldLabel>
+      <FieldLabel>Sahuliyat</FieldLabel>
       <View className="flex-row flex-wrap gap-2">
         {options.map((a) => (
           <Chip key={a.key} label={a.label} selected={value.includes(a.key)} onPress={() => onToggle(a.key)} />

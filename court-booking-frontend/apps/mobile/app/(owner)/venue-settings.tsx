@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { BackHandler, Pressable, ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import Svg, { Path } from "react-native-svg";
 import { Building2, CalendarX2, ChevronRight, Clock3, Grid2x2, IdCard, Landmark, RotateCcw, Star } from "lucide-react-native";
-import { palette, radius, space } from "@court-booking/ui-tokens";
+import { alpha, palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, ErrorState, Pill, Screen, SegmentedToggle, Skeleton, Text, useToast } from "@/components/ui";
 import * as Location from "expo-location";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -143,7 +144,12 @@ export default function VenueSettingsScreen() {
         {/* Everything under the header scrolls (it used to be fixed and left ~20% of a 360x800 phone to scroll). */}
         {!section && activeVenue ? (
           // OSettings hub board: the venue as a teal card (name, area · photos · status).
-          <View testID="settings-hub-card" style={{ backgroundColor: palette.teal, borderRadius: radius.card, padding: space[4], paddingTop: 72, gap: 2 }}>
+          <View testID="settings-hub-card" style={{ backgroundColor: palette.teal, borderRadius: radius.card, padding: space[4], paddingTop: 72, minHeight: 150, justifyContent: "flex-end", gap: 2, overflow: "hidden" }}>
+            {/* board: a court drawn in faint white lines behind the venue name */}
+            <Svg width="100%" height={150} viewBox="0 0 358 150" preserveAspectRatio="none" fill="none" stroke={alpha.courtLines} strokeOpacity={0.7} strokeWidth={2} style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no">
+              <Path d="M70 130 100 24h158l30 106z" />
+              <Path d="M179 24v106" />
+            </Svg>
             <Pressable
               onPress={() => setSection("photos")}
               accessibilityRole="button"
@@ -237,7 +243,7 @@ export default function VenueSettingsScreen() {
             <CourtTabs
               tabs={[
                 ...courts.map((c) => ({ key: c.id, label: courtLabel(c.name, c.sport) })),
-                ...(newCourtOpen && section === "courts" ? [{ key: NEW_COURT_KEY, label: "New court" }] : []),
+                ...(newCourtOpen && section === "courts" ? [{ key: NEW_COURT_KEY, label: "Naya court" }] : []),
               ]}
               selectedKey={onNewTab && section === "courts" ? NEW_COURT_KEY : activeCourtId}
               onSelect={(k) => setCourtId(k)}
@@ -429,7 +435,7 @@ function VenueBasicsCard({ venue, activeSports, part }: { venue: Venue; activeSp
       if (bankTouched) patch.bank_details = { bank: bankName, account_title: accountTitle, account_number: accountNumber };
       await api.venues.update(venue.id, patch);
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setMessage({ ok: true, text: "Saved." });
+      setMessage({ ok: true, text: "Save ho gaya." });
     } catch (e) {
       setMessage({ ok: false, text: friendlyErrorMessage(e) });
     } finally {
@@ -443,12 +449,12 @@ function VenueBasicsCard({ venue, activeSports, part }: { venue: Venue; activeSp
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setMessage({ ok: false, text: "Location permission denied. Allow it in your device settings to move the pin." });
+        setMessage({ ok: false, text: "Location ki ijazat nahi mili. Pin hilane ke liye phone ki settings mein ijazat dein." });
         return;
       }
       const pos = await Location.getCurrentPositionAsync({});
       await api.venues.update(venue.id, { latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-      setMessage({ ok: true, text: `Pin moved to ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}.` });
+      setMessage({ ok: true, text: `Pin yahan lag gaya: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}.` });
     } catch (e) {
       setMessage({ ok: false, text: friendlyErrorMessage(e) });
     } finally {
@@ -460,15 +466,15 @@ function VenueBasicsCard({ venue, activeSports, part }: { venue: Venue; activeSp
     <SectionCard>
       {part === "details" ? (
         <>
-      <SectionLabel>Venue basics</SectionLabel>
-      <TextField label="Venue name" value={name} onChangeText={setName} />
-      <TextField label="Description" value={description} onChangeText={setDescription} placeholder="A few lines players will see" multiline style={{ height: 96, paddingTop: 12, textAlignVertical: "top" }} />
-      <TextField label="Street address" value={address} onChangeText={setAddress} />
-      <TextField label="Area" value={area} onChangeText={setArea} placeholder="DHA Phase 6" />
-      <TextField label="WhatsApp for bookings" value={whatsapp} onChangeText={setWhatsapp} placeholder="+923001234567" keyboardType="phone-pad" mono />
+      <SectionLabel>Venue ki tafseel</SectionLabel>
+      <TextField label="Venue ka naam" value={name} onChangeText={setName} />
+      <TextField label="Tafseel" value={description} onChangeText={setDescription} placeholder="Do teen lines jo players dekhenge" multiline style={{ height: 96, paddingTop: 12, textAlignVertical: "top" }} />
+      <TextField label="Address" value={address} onChangeText={setAddress} />
+      <TextField label="Ilaqa" value={area} onChangeText={setArea} placeholder="DHA Phase 6" />
+      <TextField label="Bookings ke liye WhatsApp" value={whatsapp} onChangeText={setWhatsapp} placeholder="+923001234567" keyboardType="phone-pad" mono />
 
       <View className="gap-2">
-        <FieldLabel>Sports offered at this venue</FieldLabel>
+        <FieldLabel>Is venue par kaun se sports</FieldLabel>
         <View className="flex-row flex-wrap gap-2">
           {SPORT_OPTIONS.map((sp) => (
             <Chip key={sp} label={sp} selected={!!findSport(sports, sp)} onPress={() => toggleSport(sp)} />
@@ -476,7 +482,7 @@ function VenueBasicsCard({ venue, activeSports, part }: { venue: Venue; activeSp
         </View>
         {blockedSport ? (
           <Text variant="meta" weight="bold" tone="danger">
-            You still have a {blockedSport} court. Change or delete it in Courts before removing this sport.
+            Aap ka ek {blockedSport} court abhi bhi hai. Ye sport hatane se pehle Courts mein us court ko badlein ya delete karein.
           </Text>
         ) : null}
       </View>
@@ -490,22 +496,22 @@ function VenueBasicsCard({ venue, activeSports, part }: { venue: Venue; activeSp
       {readOnly ? null : (
         <View className="gap-2">
           <FieldLabel>Location pin</FieldLabel>
-          <SecondaryButton label={locating ? "Locating..." : "Move pin to my current location"} onPress={updatePin} />
+          <SecondaryButton label={locating ? "Location dhoond rahe hain..." : "Pin meri abhi ki location par lagayein"} onPress={updatePin} />
         </View>
       )}
 
         </>
       ) : (
         <>
-      <SectionLabel>Bank details (players see these on the pay screen)</SectionLabel>
-      <TextField label="Bank name" value={bankName} onChangeText={setBankName} placeholder="Meezan Bank" error={bankName ? bErrors.bank : null} />
-      <TextField label="Account title" value={accountTitle} onChangeText={setAccountTitle} placeholder="Padel Republic" error={accountTitle ? bErrors.title : null} />
-      <TextField label="Account number" value={accountNumber} onChangeText={setAccountNumber} placeholder="03445551234 or 12345678901234" keyboardType="number-pad" mono error={accountNumber ? bErrors.num : null} />
+      <SectionLabel>Bank details (players ye pay screen par dekhte hain)</SectionLabel>
+      <TextField label="Bank ka naam" value={bankName} onChangeText={setBankName} placeholder="Meezan Bank" error={bankName ? bErrors.bank : null} />
+      <TextField label="Account ka naam" value={accountTitle} onChangeText={setAccountTitle} placeholder="Padel Republic" error={accountTitle ? bErrors.title : null} />
+      <TextField label="Account number" value={accountNumber} onChangeText={setAccountNumber} placeholder="03445551234 ya 12345678901234" keyboardType="number-pad" mono error={accountNumber ? bErrors.num : null} />
       {/* Bank changes are the highest-risk edit on this screen. Inline nudge, no re-verification
           wall -- see the web mirror for the trade-off note. */}
       {readOnly ? null : (
         <Text variant="meta" tone="waiting">
-          These fields decide where players send their money. Update carefully.
+          Players ka paisa isi account mein jata hai. Dhyan se badlein.
         </Text>
       )}
         </>
@@ -535,9 +541,9 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
       });
       // players see this policy before they pay, and the owner lists read it too
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      notify("Save ho gaya", "Cancellation policy har court par lag gayi.", "success");
+      notify("Save ho gaya", "Cancel policy har court par lag gayi.", "success");
     } catch (e) {
-      notify("Couldn't save", friendlyErrorMessage(e));
+      notify("Save nahi hua", friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -546,7 +552,7 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
   return (
     <View className="gap-3">
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
-      <PrimaryButton label="Save cancellation policy" onPress={save} loading={saving} />
+      <PrimaryButton label="Cancel policy save karein" onPress={save} loading={saving} />
     </View>
   );
 }
@@ -568,7 +574,7 @@ function PointsDiscountCard({ venueId, initialEnabled, initialAmount }: { venueI
     try {
       await api.venues.update(venueId, { points_discount_enabled: enabled, ...(amount.trim() ? { points_discount_pkr: n } : {}) });
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setMessage({ ok: true, text: "Saved." });
+      setMessage({ ok: true, text: "Save ho gaya." });
     } catch (e) {
       setMessage({ ok: false, text: friendlyErrorMessage(e) });
     } finally {
@@ -614,7 +620,7 @@ function PointsDiscountCard({ venueId, initialEnabled, initialAmount }: { venueI
           {message.text}
         </Text>
       ) : null}
-      <PrimaryButton label="Save points chhoot" onPress={save} disabled={!!problem || saving} loading={saving} />
+      <PrimaryButton label="Points ki chhoot save karein" onPress={save} disabled={!!problem || saving} loading={saving} />
     </SectionCard>
   );
 }
@@ -637,7 +643,7 @@ function BookingHorizonCard({ venueId, initialDays }: { venueId: string; initial
       const patch = { booking_horizon_days: n } as Partial<CreateVenueInput>;
       await api.venues.update(venueId, patch);
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
-      setMessage({ ok: true, text: "Saved." });
+      setMessage({ ok: true, text: "Save ho gaya." });
     } catch (e) {
       setMessage({ ok: false, text: friendlyErrorMessage(e) });
     } finally {
@@ -673,7 +679,7 @@ function BookingHorizonCard({ venueId, initialDays }: { venueId: string; initial
           {message.text}
         </Text>
       ) : null}
-      <PrimaryButton label="Save booking window" onPress={save} disabled={!!problem || saving} loading={saving} />
+      <PrimaryButton label="Booking ke din save karein" onPress={save} disabled={!!problem || saving} loading={saving} />
     </SectionCard>
   );
 }
@@ -703,9 +709,9 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
     // Soft-delete: the backend deactivates the court (is_active=false). Existing bookings and
     // their payments are untouched and stay in the ledger (post-batch #2) -- say so in the confirm.
     confirmAction({
-      title: `Delete "${court.name}"?`,
-      message: "It will stop taking new bookings and disappear from the player app. Its past bookings and payments stay in your ledger.",
-      confirmLabel: "Delete",
+      title: `"${court.name}" delete karein?`,
+      message: "Is par nayi bookings band ho jayengi aur ye player app se hat jayega. Purani bookings aur payments aap ke hisaab mein rahengi.",
+      confirmLabel: "Delete karein",
       destructive: true,
       onConfirm: async () => {
         setDeleting(true);
@@ -714,7 +720,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
           await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
           onDeleted();
         } catch (e) {
-          notify("Couldn't delete", friendlyErrorMessage(e));
+          notify("Delete nahi hua", friendlyErrorMessage(e));
           setDeleting(false);
         }
       },
@@ -724,15 +730,15 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
 
   async function save() {
     if (!identity.name.trim()) {
-      notify("Name your court", "Give the court a name.");
+      notify("Court ka naam likhein", "Court ko ek naam dein.");
       return;
     }
     if (problem) {
-      notify("Check this court", problem);
+      notify("Court check karein", problem);
       return;
     }
     if (advanceProblem) {
-      notify("Check the advance rule", advanceProblem);
+      notify("Advance ka rule check karein", advanceProblem);
       return;
     }
     setSaving(true);
@@ -752,7 +758,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
       await queryClient.invalidateQueries({ queryKey: ["advance-explain", court.id] });
       notify("Save ho gaya", `${courtLabel(identity.name.trim(), identity.sport)}: tafseel, ghante, qeemat aur advance update ho gaye.`, "success");
     } catch (e) {
-      notify("Couldn't save", friendlyErrorMessage(e));
+      notify("Save nahi hua", friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -776,7 +782,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
         explain={explain}
         defaultPercentage={basePercentage}
       />
-      <PrimaryButton label="Save changes" onPress={save} loading={saving} />
+      <PrimaryButton label="Sab save karein" onPress={save} loading={saving} />
       {canDelete ? (
         <Pressable
           onPress={confirmDelete}
@@ -785,7 +791,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
           style={{ opacity: deleting || saving ? 0.5 : 1 }}
         >
           <Text variant="bodyBold" tone="danger">
-            {deleting ? "Deleting…" : "Delete this court"}
+            {deleting ? "Delete ho raha hai…" : "Ye court delete karein"}
           </Text>
         </Pressable>
       ) : null}
@@ -805,11 +811,11 @@ function NewCourtForm({ venue, onAdded, onDiscard }: { venue: Venue; onAdded: (c
 
   async function create() {
     if (!identity.name.trim()) {
-      notify("Name your court", "Give the court a name.");
+      notify("Court ka naam likhein", "Court ko ek naam dein.");
       return;
     }
     if (problem) {
-      notify("Check this court", problem);
+      notify("Court check karein", problem);
       return;
     }
     setSaving(true);
@@ -825,7 +831,7 @@ function NewCourtForm({ venue, onAdded, onDiscard }: { venue: Venue; onAdded: (c
       await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
       onAdded(court.id);
     } catch (e) {
-      notify("Couldn't add court", friendlyErrorMessage(e));
+      notify("Court nahi bana", friendlyErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -841,8 +847,8 @@ function NewCourtForm({ venue, onAdded, onDiscard }: { venue: Venue; onAdded: (c
         onChange={(patch) => setIdentity((cur) => ({ ...cur, ...patch }))}
       />
       <CourtSetupFields value={setup} onChange={(patch) => setSetup((cur) => ({ ...cur, ...patch }))} />
-      <PrimaryButton label="Create court" onPress={create} disabled={!valid} loading={saving} />
-      <SecondaryButton label="Discard" onPress={onDiscard} />
+      <PrimaryButton label="Court banayein" onPress={create} disabled={!valid} loading={saving} />
+      <SecondaryButton label="Rehne dein" onPress={onDiscard} />
     </View>
   );
 }
@@ -877,7 +883,7 @@ function CourtPhotosCard({ court, readOnly }: { court: Court; readOnly: boolean 
   };
   return (
     <PhotoManager
-      title={`${courtLabel(court.name, court.sport)} photos`}
+      title={`${courtLabel(court.name, court.sport)} ki photos`}
       readOnly={readOnly}
       photoUrls={court.photo_urls}
       photoKeys={court.photo_keys}
@@ -910,7 +916,7 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
 
   async function add() {
     if (!startDate || !endDate) {
-      notify("Missing dates", "Pick a start and end date/time for the blackout.");
+      notify("Tareekh baqi hai", "Band din ki shuru aur khatam hone ki tareekh aur waqt chunein.");
       return;
     }
     setAdding(true);
@@ -925,7 +931,7 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
       setEndDate("");
       await queryClient.invalidateQueries({ queryKey: ["court-blackouts", courtId] });
     } catch (e) {
-      notify("Couldn't add blackout", friendlyErrorMessage(e));
+      notify("Band din add nahi hua", friendlyErrorMessage(e));
     } finally {
       setAdding(false);
     }
@@ -933,7 +939,7 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
 
   return (
     <SectionCard>
-      <SectionLabel>Blackout dates</SectionLabel>
+      <SectionLabel>Band din</SectionLabel>
       {(blackoutsQuery.data ?? []).length === 0 ? (
         <Text variant="meta" tone="muted">Abhi koi band din nahi.</Text>
       ) : (
@@ -941,7 +947,7 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
           <View key={b.id} style={{ backgroundColor: palette.ground, borderRadius: radius.md, padding: space[3], gap: 2 }}>
             <Text variant="bodyBold">{b.title ?? "Band"}</Text>
             <Text variant="caption" tone="muted">
-              {formatWhen(b.starts_at)} to {formatWhen(b.ends_at)}
+              {formatWhen(b.starts_at, new Date(), "ru")} se {formatWhen(b.ends_at, new Date(), "ru")}
             </Text>
           </View>
         ))
@@ -950,13 +956,13 @@ function BlackoutsCard({ courtId, canEdit }: { courtId: string; canEdit: boolean
       {canEdit ? (
         <>
           <View style={{ height: 1, backgroundColor: palette.divider }} />
-          <FieldLabel>Add a blackout</FieldLabel>
-          <TextField label="Title (optional)" value={title} onChangeText={setTitle} placeholder="Maintenance" />
-          <DayPicker label="Starts on" value={startDate} onChange={setStartDate} />
-          <TimeField12 label="Starts at" value={startTime} onChange={setStartTime} />
-          <DayPicker label="Ends on" value={endDate} onChange={setEndDate} />
-          <TimeField12 label="Ends at" value={endTime} onChange={setEndTime} />
-          <PrimaryButton label="Add blackout" onPress={add} loading={adding} />
+          <FieldLabel>Naya band din</FieldLabel>
+          <TextField label="Wajah (optional)" value={title} onChangeText={setTitle} placeholder="Maintenance" />
+          <DayPicker label="Kis din se" value={startDate} onChange={setStartDate} />
+          <TimeField12 label="Kis waqt se" value={startTime} onChange={setStartTime} />
+          <DayPicker label="Kis din tak" value={endDate} onChange={setEndDate} />
+          <TimeField12 label="Kis waqt tak" value={endTime} onChange={setEndTime} />
+          <PrimaryButton label="Band din add karein" onPress={add} loading={adding} />
         </>
       ) : null}
     </SectionCard>

@@ -29,8 +29,8 @@ export * from "./advance-settings-logic";
 
 const HELP: Record<AdvanceTypeDraft, string> = {
   "": "Default: har price rate ka apna advance % lagta hai. Aam tor par 100%, yani player slot pakka karne ke liye poori raqam abhi deta hai.",
-  fixed: "Fixed amount: har booking par ek tay raqam (PKR) abhi, baqi venue par. Lambi booking par ye raqam usi hisaab se barhti hai.",
-  percent: "Percentage: booking ke total ka itna % abhi, baqi venue par.",
+  fixed: "Fixed PKR: har booking par ek tay raqam (PKR) abhi, baqi venue par. Lambi booking par ye raqam usi hisaab se barhti hai.",
+  percent: "Percent: booking ke total ka itna % abhi, baqi venue par.",
 };
 
 /** Stage 2: is the split_payments flag on? Off = every new booking is paid in full up front (backend kill switch), so the
@@ -62,12 +62,12 @@ export function AdvanceSettings({
   const splitOn = useSplitPaymentsOn();
   return (
     <SectionCard>
-      <SectionLabel>Advance payment</SectionLabel>
+      <SectionLabel>Advance</SectionLabel>
       <FieldLabel>Slot pakka karne ke liye player abhi kitna dega?</FieldLabel>
       <View className="flex-row flex-wrap gap-2">
-        <Chip label="Default (from pricing)" selected={value.advanceType === ""} onPress={() => onChange({ advanceType: "" })} />
-        <Chip label="Fixed amount" selected={value.advanceType === "fixed"} onPress={() => onChange({ advanceType: "fixed" })} />
-        <Chip label="Percentage" selected={value.advanceType === "percent"} onPress={() => onChange({ advanceType: "percent" })} />
+        <Chip label="Default (qeemat se)" selected={value.advanceType === ""} onPress={() => onChange({ advanceType: "" })} />
+        <Chip label="Fixed PKR" selected={value.advanceType === "fixed"} onPress={() => onChange({ advanceType: "fixed" })} />
+        <Chip label="Percent (%)" selected={value.advanceType === "percent"} onPress={() => onChange({ advanceType: "percent" })} />
       </View>
       <DefaultHint
         settingKey="advance"

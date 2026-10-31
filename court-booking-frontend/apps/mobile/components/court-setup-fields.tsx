@@ -50,7 +50,7 @@ export function CourtSetupFields({
   }
   function removeRule(id: string) {
     const rules = value.pricingRules.filter((r) => r.id !== id);
-    onChange({ pricingRules: rules.length > 0 ? rules : [makePricingRule("All day")] });
+    onChange({ pricingRules: rules.length > 0 ? rules : [makePricingRule("Aam")] });
   }
 
   return (
@@ -58,7 +58,7 @@ export function CourtSetupFields({
       <SectionCard>
         <SectionLabel>Kam se kam booking time</SectionLabel>
         <Text variant="caption" tone="subtle">
-          Time is offered in 30-minute slots. Players must book at least this long (in a row) and can add 30 minutes at a time.
+          Waqt 30 minute ke slots mein milta hai. Player kam se kam itna waqt (lagatar) book karega, aur 30 minute aur barha sakta hai.
         </Text>
         <View className="flex-row flex-wrap gap-2">
           {SLOT_MINUTES_OPTIONS.map((m) => (
@@ -74,7 +74,7 @@ export function CourtSetupFields({
         <SlotPreviewLine value={value} />
         {slotChangeNote ? (
           <Text variant="caption" tone="subtle">
-            Bookings already made keep their own times if you change this; the price entered below is for one minimum booking. Any new time that would overlap one of them stays unavailable.
+            Ye badalne par pehle se bani bookings apne waqt par rehti hain; neeche likhi qeemat ek kam se kam booking ki hai. Jo naya waqt un se takraye, wo band rahega.
           </Text>
         ) : null}
       </SectionCard>
@@ -127,8 +127,8 @@ export function CourtSetupFields({
       <SectionCard>
         <SectionLabel>Is court ki qeemat</SectionLabel>
         <Text variant="caption" tone="subtle">
-          The first rate is the everyday price. Add a rate for peak hours or weekends: pick the days and the times it applies
-          to, and it replaces the everyday price for those slots.
+          Pehla rate roz ki qeemat hai. Peak ya weekend ke liye naya rate add karein: din aur waqt chunein, aur un slots par
+          wo roz ki qeemat ki jagah lagega.
         </Text>
         {value.pricingRules.map((rule) => (
           <View key={rule.id} className="border border-owner-border rounded-[10px] p-3.5 gap-3">
@@ -143,7 +143,7 @@ export function CourtSetupFields({
               ) : null}
             </View>
             <TextField
-              label={`Per ${formatDuration(value.slotMinutes)} (PKR)`}
+              label={`Har ${formatDuration(value.slotMinutes, "ru")} (PKR)`}
               value={rule.pricePerSlot}
               onChangeText={(v) => updateRule(rule.id, { pricePerSlot: v.replace(/\D/g, "") })}
               keyboardType="number-pad"
@@ -174,7 +174,7 @@ export function CourtSetupFields({
           </View>
         ))}
         <Pressable
-          onPress={() => onChange({ pricingRules: [...value.pricingRules, makePricingRule("Peak hours")] })}
+          onPress={() => onChange({ pricingRules: [...value.pricingRules, makePricingRule("Peak raat")] })}
           className="min-h-10 px-3 rounded-lg border border-owner-border items-start justify-center self-start"
         >
           <Text variant="meta" tone="link" weight="bold">+ Peak ya weekend rate add karein</Text>
@@ -192,7 +192,7 @@ function HoursKindNote({ open, close }: { open: string; close: string }) {
     <Text variant="meta" tone="link" weight="bold">
       {kind === "24-hours"
         ? "24 ghante khula: har din apne khulne ke waqt se agli subah usi waqt tak."
-        : `Closes next day: the court stays open past midnight until ${formatTime24As12(close)} the next morning. That night belongs to the day it opens, so a Thursday 3 PM to 3 AM court covers Thursday 3 PM through Friday 3 AM.`}
+        : `Agle din band: court aadhi raat ke baad agli subah ${formatTime24As12(close)} tak khula rehta hai. Wo raat khulne wale din ki ginti hoti hai, yani Jumerat 3 PM se 3 AM ka court Jumerat 3 PM se Jumma 3 AM tak chalta hai.`}
     </Text>
   );
 }
@@ -203,14 +203,14 @@ function SlotPreviewLine({ value }: { value: CourtSetup }) {
     const p = slotPreview(value.openTime, value.closeTime, GRID_MINUTES);
     return (
       <View className="gap-1">
-        <Text variant="meta" weight="bold">{slotPreviewText(value.openTime, value.closeTime, GRID_MINUTES)}</Text>
+        <Text variant="meta" weight="bold">{slotPreviewText(value.openTime, value.closeTime, GRID_MINUTES, "ru")}</Text>
         <Text variant="caption" tone="subtle">
-          Minimum booking: {formatDuration(value.slotMinutes)} ({Math.ceil(value.slotMinutes / GRID_MINUTES)} {value.slotMinutes <= GRID_MINUTES ? "slot" : "slots in a row"}).
+          Kam se kam booking: {formatDuration(value.slotMinutes, "ru")} ({Math.ceil(value.slotMinutes / GRID_MINUTES)} {value.slotMinutes <= GRID_MINUTES ? "slot" : "slots lagatar"}).
         </Text>
         {p && p.lastEnd !== value.closeTime.slice(0, 5) ? (
           <Text variant="caption" tone="subtle">
-            The last slot ends at {formatTime24As12(p.lastEnd)}; the time left before {formatTime24As12(value.closeTime)} is shorter than one{" "}
-            {formatDuration(GRID_MINUTES)} slot, so it is not offered.
+            Aakhri slot {formatTime24As12(p.lastEnd)} par khatam hota hai; {formatTime24As12(value.closeTime)} se pehle bacha waqt ek{" "}
+            {formatDuration(GRID_MINUTES, "ru")} slot se kam hai, is liye wo nahi milta.
           </Text>
         ) : null}
       </View>
@@ -218,7 +218,7 @@ function SlotPreviewLine({ value }: { value: CourtSetup }) {
   }
   return (
     <Text variant="meta" weight="bold">
-      Slots a day:{" "}
+      Roz ke slots:{" "}
       {DAY_LABELS.map((label, day) => {
         const o = value.perDayOverrides[day] ?? { open: value.openTime, close: value.closeTime };
         return `${label} ${slotPreview(o.open, o.close, GRID_MINUTES)?.count ?? 0}`;
@@ -296,8 +296,8 @@ export function AdvanceRuleFields({
         />
       ) : (
         <Text variant="caption" tone="subtle">
-          Uses each price rule&apos;s own advance percentage (set when you add a price rate below). Most courts
-          default to 100% -- pay in full to hold the slot.
+          Har price rate ka apna advance % lagta hai (neeche rate add karte waqt). Aam tor par 100%: slot hold karne ke
+          liye poori raqam.
         </Text>
       )}
       {advanceType !== "" ? (

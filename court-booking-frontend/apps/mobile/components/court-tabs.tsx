@@ -17,7 +17,7 @@ export function CourtTabs({
   selectedKey,
   onSelect,
   onAdd,
-  addLabel = "+ Court",
+  addLabel = "+ Naya court",
   addDisabled,
 }: {
   tabs: CourtTabItem[];
@@ -60,7 +60,7 @@ export function CourtTabs({
         {onAdd ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add a court"
+            accessibilityLabel="Naya court add karein"
             disabled={addDisabled}
             onPress={onAdd}
             style={{ minHeight: size.tap, paddingHorizontal: space[4], borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderStyle: "dashed", borderColor: palette.muted2, opacity: addDisabled ? 0.5 : 1 }}
