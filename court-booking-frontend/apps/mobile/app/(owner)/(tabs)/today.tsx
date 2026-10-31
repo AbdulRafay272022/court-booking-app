@@ -6,7 +6,7 @@ import { Bell, ChevronDown, ChevronLeft, ChevronRight, Clock, Plus, ScanLine } f
 import type { OwnerBookingRow, OwnerOverview } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { alpha, initials, palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
-import { Badge, Banner, Button, Chip, ErrorState, IconButton, Skeleton, SkeletonCard, Text, useRoleTheme } from "@/components/ui";
+import { Badge, Banner, Button, Chip, ErrorState, IconButton, Skeleton, SkeletonCard, Text, useRoleTheme, useTabBarRoom } from "@/components/ui";
 
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { addDays, formatDayHeader, formatPKR, pktDateString } from "@/lib/format";
@@ -39,6 +39,7 @@ type Filter = "all" | "booked" | "cancelled" | "refund";
  * approvals card, the multi-court day timeline, then the day's bookings and the full day summary (slots, pending,
  * KPIs) the Overview had. */
 export default function OwnerTodayScreen() {
+  const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { venues, activeVenue, activeVenueId, setVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const isOwner = useAuthStore((s) => s.user?.role) === "owner";
@@ -230,7 +231,7 @@ export default function OwnerTodayScreen() {
       <ScrollView
         ref={scrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        contentContainerStyle={{ paddingBottom: tabRoom }}
         refreshControl={<RefreshControl refreshing={query.isRefetching && !query.isLoading} onRefresh={() => { void query.refetch(); void ledger.refetch(); }} tintColor={t.ring} colors={[t.ring]} />}
       >
         <HeroLayout hero={hero} testID="today-hero">
@@ -620,10 +621,11 @@ function StaffActions() {
  * check-in-only account may read; every such endpoint needs view_ledger today, so it is not shown.
  */
 function StaffAaj({ venueName }: { venueName?: string }) {
+  const tabRoom = useTabBarRoom();
   const name = useAuthStore((s) => s.user?.name);
   const eyebrow = [venueName, name ? `Staff: ${name.split(" ")[0]}` : "Staff"].filter(Boolean).join(" · ");
   return (
-    <ScrollView testID="staff-aaj" contentContainerStyle={{ paddingBottom: 140 }}>
+    <ScrollView testID="staff-aaj" contentContainerStyle={{ paddingBottom: tabRoom }}>
       <HeroLayout
         hero={
           <View style={{ gap: 8 }}>

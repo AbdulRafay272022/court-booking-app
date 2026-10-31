@@ -6,7 +6,7 @@ import { TriangleAlert } from "lucide-react-native";
 import { refundBreakdown, type OwnerRefund } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
-import { Banner, Button, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme } from "@/components/ui";
+import { Banner, Button, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme, useTabBarRoom } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -39,6 +39,7 @@ const REFUND_REASON_RU: Record<string, string> = {
 };
 
 export default function RefundsScreen() {
+  const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
@@ -96,7 +97,7 @@ export default function RefundsScreen() {
     <View style={{ flex: 1, backgroundColor: palette.ground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        contentContainerStyle={{ paddingBottom: tabRoom }}
         refreshControl={allowed ? <RefreshControl refreshing={query.isRefetching && !query.isLoading} onRefresh={() => query.refetch()} tintColor={t.ring} colors={[t.ring]} /> : undefined}
       >
         <HeroLayout hero={hero} testID="refunds-hero">

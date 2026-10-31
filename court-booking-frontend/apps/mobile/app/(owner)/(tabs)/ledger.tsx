@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Download } from "lucide-react-native";
 import type { LedgerEntry } from "@court-booking/types";
 import { alpha, palette, radius, shadow, size, space, type Tone } from "@court-booking/ui-tokens";
-import { Banner, Button, Chip, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme } from "@/components/ui";
+import { Banner, Button, Chip, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme, useTabBarRoom } from "@/components/ui";
 
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { api } from "@/lib/api";
@@ -47,6 +47,7 @@ const METHOD_LABEL: Record<string, string> = { bank_transfer_proof: "Bank", cash
 /** OPaisa frame 1 (Ledger): every payment entry (GET /owners/ledger). The "Aaj" tile is `collected_today`, the SAME number
  * the Aaj hero shows. "Theek karein" reverses one entry (POST /payment-entries/{id}/reverse, flag split_payments). */
 export default function LedgerScreen() {
+  const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
@@ -132,7 +133,7 @@ export default function LedgerScreen() {
     <View style={{ flex: 1, backgroundColor: palette.ground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        contentContainerStyle={{ paddingBottom: tabRoom }}
         refreshControl={<RefreshControl refreshing={query.isRefetching && !query.isLoading} onRefresh={() => query.refetch()} tintColor={t.ring} colors={[t.ring]} />}
       >
         <HeroLayout hero={hero} testID="paisa-hero">

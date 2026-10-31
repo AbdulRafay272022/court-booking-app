@@ -7,7 +7,7 @@ import { CircleCheck } from "lucide-react-native";
 import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
-import { Banner, Button, EmptyState, ErrorState, SegmentedToggle, SkeletonCard, Text } from "@/components/ui";
+import { Banner, Button, EmptyState, ErrorState, SegmentedToggle, SkeletonCard, Text, useTabBarRoom } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -31,6 +31,7 @@ type View3 = "all" | "awaiting" | "closed";
  * card; a card whose booking the player cancelled turns grey in place with "Theek hai". Teal hero, "Chahiye vs Screenshot"
  * cards, the duplicate warning and the separate duplicate confirm (Stage 2 B.a). Bulk approve is N single calls (B8). */
 export default function ApprovalsScreen() {
+  const tabRoom = useTabBarRoom();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
   const filterDate = routeParams.date || undefined;
@@ -295,7 +296,7 @@ export default function ApprovalsScreen() {
         data={loading || (query.isError && !query.data) ? [] : shown}
         keyExtractor={(it) => it.payment_id}
         ListHeaderComponent={top}
-        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        contentContainerStyle={{ paddingBottom: tabRoom }}
         renderItem={({ item: it }) => (
           <View style={{ paddingHorizontal: space[4], paddingTop: space[3] }}>
             <ApprovalCard

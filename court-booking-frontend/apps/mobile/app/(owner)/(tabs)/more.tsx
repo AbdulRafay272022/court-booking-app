@@ -24,7 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { alpha, palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
-import { Avatar, Badge, Hero, ListRow, Pill, SegmentedToggle, Text } from "@/components/ui";
+import { Avatar, Badge, Hero, ListRow, Pill, SegmentedToggle, Text, useTabBarRoom } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
@@ -59,6 +59,7 @@ interface Item {
 /** OwnerMore board ("Aur"): grouped menu, real badges, feature-flag + permission gating, Zabaan, Help WhatsApp, Log out.
  * A staff member without view_ledger sees the OStaffView limited view at the top (Check-in / Walk-in only). */
 export default function OwnerMoreScreen() {
+  const tabRoom = useTabBarRoom();
   const insets = useSafeAreaInsets();
   useLightStatusBar();
   const user = useAuthStore((s) => s.user);
@@ -153,7 +154,7 @@ export default function OwnerMoreScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.ground }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: tabRoom }}>
         <Hero topInset={insets.top} style={{ paddingBottom: space[8] + 28 }}>
           <Text variant="h1" tone="hero" accessibilityRole="header">
             Aur

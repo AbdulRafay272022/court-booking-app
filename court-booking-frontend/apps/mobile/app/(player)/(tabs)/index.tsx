@@ -8,7 +8,7 @@ import { Bell, CircleDot, Feather, Goal, LayoutGrid, MapPin, QrCode, Search, Tro
 import { CITY_OPTIONS, SPORT_OPTIONS, formatDateString, formatDuration, formatTime, formatTime24As12, formatTimeRange, nextBooking, pktDateString, startsInText, type Booking, type VenueSummary } from "@court-booking/types";
 import { alpha, initials, palette, radius, shadow, size, space, statusPill, venueCardData } from "@court-booking/ui-tokens";
 
-import { Avatar, Banner, Button, Card, EmptyState, Hero, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability, type IconComponent } from "@/components/ui";
+import { Avatar, Banner, Button, Card, EmptyState, Hero, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability, type IconComponent, useTabBarRoom } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
@@ -32,6 +32,7 @@ const TIMES_FOR = 3;
  * today with real open times, "Phir se khelo" from real past bookings, empty states otherwise. Pull to refresh.
  */
 export default function PlayerHomeScreen() {
+  const tabRoom = useTabBarRoom();
   const copy = useCopy();
   const lang = useLang();
   const t = useRoleTheme();
@@ -227,7 +228,7 @@ export default function PlayerHomeScreen() {
           void pastQ.refetch();
           void tonightQ.refetch();
         }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + size.tabBar + space[8], gap: space[4] }}
+        contentContainerStyle={{ paddingBottom: tabRoom, gap: space[4] }}
         ListHeaderComponent={header}
         ListFooterComponent={footer}
         ListEmptyComponent={
