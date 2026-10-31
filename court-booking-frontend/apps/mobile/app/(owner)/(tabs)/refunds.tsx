@@ -134,7 +134,7 @@ export default function RefundsScreen() {
                   >
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text variant="bodyStrong">{refund.player_name ?? refund.player_phone ?? "Player"}</Text>
-                      <Text variant="meta" tone="muted">{`${courtText(refund)} · ${formatWhen(refund.starts_at)}`}</Text>
+                      <Text variant="meta" tone="muted">{`${courtText(refund)} · ${formatWhen(refund.starts_at)} · KH-${refund.booking_id.replace(/-/g, "").slice(0, 8).toUpperCase()}`}</Text>
                     </View>
                     <View style={{ alignItems: "flex-end", gap: space[1] }}>
                       <Text variant="title">{`PKR ${formatPKR(b.remaining)}`}</Text>
@@ -144,10 +144,13 @@ export default function RefundsScreen() {
                       ) : null}
                     </View>
                   </Pressable>
+                  {/* OPaisa board: the reason sits in a grey box under the name line. */}
                   {refund.reason ? (
-                    <Text variant="meta" tone="body">
-                      {`Wajah: ${REFUND_REASON_RU[refund.reason] ?? refund.reason.replace(/_/g, " ")}`}
-                    </Text>
+                    <View style={{ backgroundColor: palette.ground, borderRadius: radius.md, paddingHorizontal: space[3], paddingVertical: 10 }}>
+                      <Text variant="meta" tone="body">
+                        {`Wajah: ${REFUND_REASON_RU[refund.reason] ?? refund.reason.replace(/_/g, " ")}`}
+                      </Text>
+                    </View>
                   ) : null}
                   {refund.player_note ? (
                     <Text variant="meta" tone="body" testID="refund-player-note">
