@@ -1,11 +1,13 @@
 import { Fragment } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLightStatusBar } from "@/components/ui/StatusBarStyle";
 import { router, useIsFocused } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Crown,
+  Globe,
   History,
   IdCard,
   LogOut,
@@ -21,7 +23,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react-native";
-import { palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
+import { alpha, palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
 import { Avatar, Badge, Hero, ListRow, Pill, SegmentedToggle, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
@@ -58,6 +60,7 @@ interface Item {
  * A staff member without view_ledger sees the OStaffView limited view at the top (Check-in / Walk-in only). */
 export default function OwnerMoreScreen() {
   const insets = useSafeAreaInsets();
+  useLightStatusBar();
   const user = useAuthStore((s) => s.user);
   const isOwner = user?.role === "owner";
   const staff = user?.role === "staff";
@@ -155,14 +158,15 @@ export default function OwnerMoreScreen() {
           <Text variant="h1" tone="hero" accessibilityRole="header">
             Aur
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], boxShadow: shadow.card }}>
-            <Avatar name={user?.name ?? "Owner"} size={48} tone="teal" uri={user?.avatar_url} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text variant="bodyStrong">{user?.name ?? "Owner"}</Text>
-              <Text variant="meta" tone="muted">{`${activeVenue?.name ?? "Venue"} · ${isOwner ? "Owner" : staff ? "Staff" : "Admin"}`}</Text>
+          {/* OwnerMore board: glass card on the teal hero, white avatar, white "Profile" button. */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: alpha.glassOnTeal, borderWidth: 1, borderColor: alpha.glassOnTealBorder, borderRadius: 22, padding: space[3] }}>
+            <Avatar name={user?.name ?? "Owner"} size={48} tone="neutral" uri={user?.avatar_url} />
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Text variant="bodyStrong" tone="hero">{user?.name ?? "Owner"}</Text>
+              <Text variant="meta" tone="heroMuted">{`${activeVenue?.name ?? "Venue"} · ${isOwner ? "Owner" : staff ? "Staff" : "Admin"}`}</Text>
             </View>
-            <Pressable onPress={go("/(owner)/account")} accessibilityRole="button" accessibilityLabel="Profile kholein" style={{ minHeight: size.tap, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: palette.tealTint, justifyContent: "center" }}>
-              <Text variant="bodyBold" tone="info">
+            <Pressable onPress={go("/(owner)/account")} accessibilityRole="button" accessibilityLabel="Profile kholein" style={{ minHeight: size.tap, paddingHorizontal: 16, borderRadius: radius.md, backgroundColor: palette.white, justifyContent: "center" }}>
+              <Text variant="bodyBold" color={palette.night}>
                 Profile
               </Text>
             </Pressable>
@@ -218,17 +222,36 @@ export default function OwnerMoreScreen() {
           })}
 
           <View style={{ gap: space[2] }}>
-            <GroupLabel>Zabaan</GroupLabel>
-            <SegmentedToggle
-              testID="owner-lang"
-              accessibilityLabel="Zabaan"
-              value={lang}
-              onChange={setLang}
-              options={[
-                { value: "ru", label: "Roman Urdu" },
-                { value: "en", label: "English" },
-              ]}
-            />
+            {/* OwnerMore board: one card row, globe tile + "Zabaan" + a two-option switch (chosen = solid teal). */}
+            <GroupCard>
+              <View testID="owner-lang" accessibilityRole="radiogroup" accessibilityLabel="Zabaan" style={{ flexDirection: "row", alignItems: "center", gap: space[3], padding: space[3], flexWrap: "wrap" }}>
+                <IconTile icon={Globe} tone="teal" />
+                <Text variant="bodyStrong" style={{ flex: 1, minWidth: 70 }}>
+                  Zabaan
+                </Text>
+                <View style={{ flexDirection: "row", backgroundColor: palette.ground, borderRadius: radius.md, padding: 4, gap: 4 }}>
+                  {(
+                    [
+                      ["ru", "Roman Urdu"],
+                      ["en", "English"],
+                    ] as const
+                  ).map(([v, label]) => (
+                    <Pressable
+                      key={v}
+                      onPress={() => setLang(v)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: lang === v }}
+                      accessibilityLabel={label}
+                      style={{ minHeight: size.tap, paddingHorizontal: 14, borderRadius: radius.sm, justifyContent: "center", backgroundColor: lang === v ? palette.teal : "transparent" }}
+                    >
+                      <Text variant="bodyBold" color={lang === v ? palette.white : palette.night}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </GroupCard>
             <Text variant="caption" tone="muted">
               {lang === "en" ? "English abhi buttons aur aam messages par lagta hai; baqi screens Roman Urdu mein hain." : "Roman Urdu chal raha hai."}
             </Text>
