@@ -57,7 +57,7 @@ export default function VenueCourtsScreen() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const tabIndex = Math.min(selected, store.courts.length - 1);
   const queryClient = useQueryClient();
-  // Stage 2: the owner's CNIC is required before "Send for review" unless one is already on file (e.g. a second venue).
+  // Stage 2: the owner's CNIC is required before "Review ke liye bhejein" unless one is already on file (e.g. a second venue).
   // Kept in memory only (useCnicDraft), never in the persisted wizard draft.
   const identityQuery = useOwnerIdentity();
   const cnicOnFile = identityQuery.data?.status === "submitted" || identityQuery.data?.status === "verified";
@@ -78,7 +78,7 @@ export default function VenueCourtsScreen() {
   // Each court is valid on its own: a name, usable hours (closing at/before opening, e.g. 06:00 -> 02:00, used to reach the
   // API, 500, and surface as a "network" error), and a price.
   const courtProblems = store.courts.map((c, i) => {
-    const p = c.name.trim() ? (courtSetupProblem(c) ?? advanceDraftProblem(advanceOf(c))) : "Give this court a name.";
+    const p = c.name.trim() ? (courtSetupProblem(c) ?? advanceDraftProblem(advanceOf(c))) : "Court ka naam likhein.";
     return p ? `Court ${i + 1}: ${p}` : null;
   });
   const firstCourtProblem = courtProblems.find((p) => p !== null) ?? null;
@@ -177,7 +177,7 @@ export default function VenueCourtsScreen() {
         await api.courts.setPricing(courtId, buildPricingRules(court));
       }
 
-      // Stage 2: the "Advanced" timers. Nothing set = nothing to send (a new venue is all-default already). The venue is
+      // Stage 2: the "Aur settings" timers. Nothing set = nothing to send (a new venue is all-default already). The venue is
       // already created at this point, so a failure here must not block the hand-off: say where to set them again.
       const timers = useVenueSetupStore.getState().timers;
       if (!timerDraftIsEmpty(timers)) {
@@ -211,10 +211,10 @@ export default function VenueCourtsScreen() {
       <WizardSteps current={1} />
         <View className="gap-1.5">
           <Text variant="h2">
-            Your courts and prices
+            Courts aur qeemat
           </Text>
           <Text variant="body" tone="muted">
-            Each court has its own minimum booking time, opening hours and prices. We build its schedule from them.
+            Har court ka apna kam se kam booking time, khulne ke ghante aur qeemat. Inhi se schedule banta hai.
           </Text>
         </View>
 
@@ -251,7 +251,7 @@ export default function VenueCourtsScreen() {
             ) : null}
             {store.courts.length > 1 ? (
               <Pressable
-                accessibilityLabel="Delete this court"
+                accessibilityLabel="Ye court hatayein"
                 onPress={() => {
                   const idx = tabIndex;
                   const court = store.courts[idx];
@@ -263,7 +263,7 @@ export default function VenueCourtsScreen() {
                   else
                     confirmAction({
                       title: `Delete "${court.name || `Court ${idx + 1}`}"?`,
-                      message: "Its name, hours and prices will be discarded.",
+                      message: "Is ka naam, ghante aur qeemat hat jayenge.",
                       confirmLabel: "Delete",
                       destructive: true,
                       onConfirm: doRemove,
@@ -271,22 +271,22 @@ export default function VenueCourtsScreen() {
                 }}
                 className="min-h-11 items-center justify-center"
               >
-                <Text variant="meta" tone="danger" weight="bold">Delete this court</Text>
+                <Text variant="meta" tone="danger" weight="bold">Ye court hatayein</Text>
               </Pressable>
             ) : null}
           </View>
         ) : null}
 
-        {/* B1 preview under "Advanced" (same card as Venue Settings, pre-filled with today's values, not saved yet). */}
+        {/* B1 preview under "Aur settings" (same card as Venue Settings, pre-filled with today's values, not saved yet). */}
         <View className="gap-3">
           <Pressable
             onPress={() => setAdvancedOpen((v) => !v)}
             accessibilityRole="button"
             accessibilityState={{ expanded: advancedOpen }}
-            accessibilityLabel="Advanced"
+            accessibilityLabel="Aur settings"
             style={{ minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: radius.md, backgroundColor: palette.white, paddingHorizontal: space[4] }}
           >
-            <Text variant="body" weight="bold">Advanced</Text>
+            <Text variant="body" weight="bold">Aur settings</Text>
             <Text variant="meta" tone="link" weight="bold">{advancedOpen ? "Chhupayein" : "Dikhayein"}</Text>
           </Pressable>
           {advancedOpen ? <RemindersCard value={store.timers} onChange={(patch) => store.setField("timers", { ...store.timers, ...patch })} /> : null}
@@ -324,7 +324,7 @@ export default function VenueCourtsScreen() {
               accessibilityRole="button"
               style={{ alignSelf: "flex-start", minHeight: 44, paddingHorizontal: space[4], borderRadius: radius.md, backgroundColor: palette.teal, alignItems: "center", justifyContent: "center" }}
             >
-              <Text variant="meta" tone="onDark" weight="bold">Start fresh</Text>
+              <Text variant="meta" tone="onDark" weight="bold">Naye sire se shuru karein</Text>
             </Pressable>
           </View>
         ) : null}
@@ -335,8 +335,8 @@ export default function VenueCourtsScreen() {
         {!isValid && firstProblem ? <Banner tone="waiting" testID="wizard-submit-reason" body={`Bhejne se pehle: ${firstProblem}`} /> : null}
         {submitError ? <Banner tone="danger" body={submitError} /> : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[3] }}>
-          <SecondaryButton label="Back" onPress={() => router.back()} />
-          <PrimaryButton label="Send for review" onPress={handleSubmit} loading={submitting} disabled={!isValid} />
+          <SecondaryButton label="Wapas" onPress={() => router.back()} />
+          <PrimaryButton label="Review ke liye bhejein" onPress={handleSubmit} loading={submitting} disabled={!isValid} />
         </View>
     </Screen>
   );

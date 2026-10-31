@@ -56,7 +56,7 @@ export function CourtSetupFields({
   return (
     <>
       <SectionCard>
-        <SectionLabel>Minimum booking time</SectionLabel>
+        <SectionLabel>Kam se kam booking time</SectionLabel>
         <Text variant="caption" tone="subtle">
           Time is offered in 30-minute slots. Players must book at least this long (in a row) and can add 30 minutes at a time.
         </Text>
@@ -81,19 +81,19 @@ export function CourtSetupFields({
 
       <SectionCard>
         <View className="flex-row flex-wrap items-center justify-between gap-2">
-          <SectionLabel>Opening hours</SectionLabel>
+          <SectionLabel>Khulne ke ghante</SectionLabel>
           <Pressable accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => onChange({ sameHoursEveryDay: !value.sameHoursEveryDay })}>
             <Text variant="meta" tone="link" weight="bold">
-              {value.sameHoursEveryDay ? "Set different hours per day" : "Use same hours every day"}
+              {value.sameHoursEveryDay ? "Har din ke alag ghante" : "Har din same ghante"}
             </Text>
           </Pressable>
         </View>
-        <Text variant="caption" tone="subtle">Times are Pakistan time (PKT).</Text>
+        <Text variant="caption" tone="subtle">Waqt Pakistan time (PKT) hai.</Text>
 
         {value.sameHoursEveryDay ? (
           <View className="flex-row gap-3">
-            <TimeField12 label="Opens" value={value.openTime} onChange={(v) => onChange({ openTime: v })} />
-            <TimeField12 label="Closes" value={value.closeTime} onChange={(v) => onChange({ closeTime: v })} />
+            <TimeField12 label="Khulta hai" value={value.openTime} onChange={(v) => onChange({ openTime: v })} />
+            <TimeField12 label="Band hota hai" value={value.closeTime} onChange={(v) => onChange({ closeTime: v })} />
           </View>
         ) : (
           <View className="gap-3">
@@ -105,7 +105,7 @@ export function CourtSetupFields({
                     <Text variant="body">{label}</Text>
                     {hoursKind(o.open, o.close) !== "same-day" ? (
                       <Text variant="caption" tone="link" weight="bold">
-                        {hoursKind(o.open, o.close) === "24-hours" ? "24 hours" : "Next day"}
+                        {hoursKind(o.open, o.close) === "24-hours" ? "24 ghante" : "Agla din"}
                       </Text>
                     ) : null}
                   </View>
@@ -125,7 +125,7 @@ export function CourtSetupFields({
       </SectionCard>
 
       <SectionCard>
-        <SectionLabel>Prices for this court</SectionLabel>
+        <SectionLabel>Is court ki qeemat</SectionLabel>
         <Text variant="caption" tone="subtle">
           The first rate is the everyday price. Add a rate for peak hours or weekends: pick the days and the times it applies
           to, and it replaces the everyday price for those slots.
@@ -134,11 +134,11 @@ export function CourtSetupFields({
           <View key={rule.id} className="border border-owner-border rounded-[10px] p-3.5 gap-3">
             <View className="flex-row items-center justify-between">
               <View className="flex-1 mr-3">
-                <TextField label="Name" value={rule.name} onChangeText={(v) => updateRule(rule.id, { name: v })} />
+                <TextField label="Naam" value={rule.name} onChangeText={(v) => updateRule(rule.id, { name: v })} />
               </View>
               {value.pricingRules.length > 1 ? (
                 <Pressable onPress={() => removeRule(rule.id)} className="mt-6">
-                  <Text variant="caption" tone="danger">Remove</Text>
+                  <Text variant="caption" tone="danger">Hatayein</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -151,8 +151,8 @@ export function CourtSetupFields({
               mono
             />
             <View className="flex-row gap-3">
-              <TimeField12 label="From (optional)" optional value={rule.startTime ?? ""} onChange={(v) => updateRule(rule.id, { startTime: v || null })} />
-              <TimeField12 label="To (optional)" optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
+              <TimeField12 label="Se (optional)" optional value={rule.startTime ?? ""} onChange={(v) => updateRule(rule.id, { startTime: v || null })} />
+              <TimeField12 label="Tak (optional)" optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
             </View>
             <RuleDays rule={rule} onChange={(dayOfWeek) => updateRule(rule.id, { dayOfWeek })} />
             {/* No input for these two (they are kept on save); the owner still sees what applies and can put the default back. */}
@@ -177,7 +177,7 @@ export function CourtSetupFields({
           onPress={() => onChange({ pricingRules: [...value.pricingRules, makePricingRule("Peak hours")] })}
           className="min-h-10 px-3 rounded-lg border border-owner-border items-start justify-center self-start"
         >
-          <Text variant="meta" tone="link" weight="bold">+ Add a peak or weekend rate</Text>
+          <Text variant="meta" tone="link" weight="bold">+ Peak ya weekend rate add karein</Text>
         </Pressable>
       </SectionCard>
     </>
@@ -191,7 +191,7 @@ function HoursKindNote({ open, close }: { open: string; close: string }) {
   return (
     <Text variant="meta" tone="link" weight="bold">
       {kind === "24-hours"
-        ? "Open 24 hours: each day runs from its opening time to the same time the next morning."
+        ? "24 ghante khula: har din apne khulne ke waqt se agli subah usi waqt tak."
         : `Closes next day: the court stays open past midnight until ${formatTime24As12(close)} the next morning. That night belongs to the day it opens, so a Thursday 3 PM to 3 AM court covers Thursday 3 PM through Friday 3 AM.`}
     </Text>
   );
@@ -238,11 +238,11 @@ function RuleDays({ rule, onChange }: { rule: PricingRuleDraft; onChange: (days:
   }
   return (
     <View className="gap-2">
-      <FieldLabel>Days this price applies to</FieldLabel>
+      <FieldLabel>Ye qeemat kin dinon par</FieldLabel>
       <View className="flex-row flex-wrap gap-2">
-        <Chip label="Every day" selected={days === null} onPress={() => onChange(null)} />
-        <Chip label="Weekdays" selected={same(days, WEEKDAY_NUMBERS)} onPress={() => onChange(WEEKDAY_NUMBERS)} />
-        <Chip label="Weekends" selected={same(days, WEEKEND_NUMBERS)} onPress={() => onChange(WEEKEND_NUMBERS)} />
+        <Chip label="Har din" selected={days === null} onPress={() => onChange(null)} />
+        <Chip label="Hafte ke din" selected={same(days, WEEKDAY_NUMBERS)} onPress={() => onChange(WEEKDAY_NUMBERS)} />
+        <Chip label="Weekend" selected={same(days, WEEKEND_NUMBERS)} onPress={() => onChange(WEEKEND_NUMBERS)} />
       </View>
       <View className="flex-row flex-wrap gap-2">
         {DAY_LABELS.map((label, day) => (
@@ -270,15 +270,15 @@ export function AdvanceRuleFields({
   return (
     <SectionCard>
       <SectionLabel>Advance payment</SectionLabel>
-      <FieldLabel>How much does a player pay now to hold a slot on this court?</FieldLabel>
+      <FieldLabel>Slot hold karne ke liye player abhi kitna de?</FieldLabel>
       <View className="flex-row flex-wrap gap-2">
-        <Chip label="Default (from pricing)" selected={advanceType === ""} onPress={() => onChange({ advanceType: "" })} />
-        <Chip label="Fixed amount" selected={advanceType === "fixed"} onPress={() => onChange({ advanceType: "fixed" })} />
+        <Chip label="Default (qeemat se)" selected={advanceType === ""} onPress={() => onChange({ advanceType: "" })} />
+        <Chip label="Fixed raqam" selected={advanceType === "fixed"} onPress={() => onChange({ advanceType: "fixed" })} />
         <Chip label="Percentage" selected={advanceType === "percent"} onPress={() => onChange({ advanceType: "percent" })} />
       </View>
       {advanceType === "fixed" ? (
         <TextField
-          label="Advance amount (PKR)"
+          label="Advance raqam (PKR)"
           value={advanceValue}
           onChangeText={(v) => onChange({ advanceValue: v.replace(/\D/g, "") })}
           keyboardType="number-pad"
@@ -287,7 +287,7 @@ export function AdvanceRuleFields({
         />
       ) : advanceType === "percent" ? (
         <TextField
-          label="Percentage of the total (%)"
+          label="Total ka percentage (%)"
           value={advanceValue}
           onChangeText={(v) => onChange({ advanceValue: v.replace(/\D/g, "") })}
           keyboardType="number-pad"
@@ -302,11 +302,11 @@ export function AdvanceRuleFields({
       )}
       {advanceType !== "" ? (
         <TextField
-          label="Minimum advance (PKR, optional)"
+          label="Kam se kam advance (PKR, optional)"
           value={advanceMinimum}
           onChangeText={(v) => onChange({ advanceMinimum: v.replace(/\D/g, "") })}
           keyboardType="number-pad"
-          placeholder="Leave blank for no floor"
+          placeholder="Khali chhorein to koi had nahi"
           mono
         />
       ) : null}
@@ -329,23 +329,23 @@ export function CancellationPolicyFields({
 }) {
   return (
     <SectionCard>
-      <SectionLabel>Cancellations</SectionLabel>
+      <SectionLabel>Cancel policy</SectionLabel>
       <View className="gap-2">
-        <FieldLabel>Can a player cancel a booking after they've already paid? This applies to every court at your venue.</FieldLabel>
+        <FieldLabel>Paisa dene ke baad player booking cancel kar sakta hai? Ye venue ke har court par lagta hai.</FieldLabel>
         <View className="flex-row gap-2">
-          <Chip label="Allowed" selected={allowed} onPress={() => onAllowedChange(true)} />
-          <Chip label="Not allowed" selected={!allowed} onPress={() => onAllowedChange(false)} />
+          <Chip label="Ijazat hai" selected={allowed} onPress={() => onAllowedChange(true)} />
+          <Chip label="Ijazat nahi" selected={!allowed} onPress={() => onAllowedChange(false)} />
         </View>
         <DefaultHint settingKey="cancellation_allowed" value={allowed} onReset={() => onAllowedChange(true)} testID="default-cancellation" />
       </View>
       {allowed ? (
         <View className="gap-1.5">
           <TextField
-            label="Require cancelling at least this many hours before (optional)"
+            label="Itne ghante pehle tak cancel ho (optional)"
             value={cutoffHours}
             onChangeText={(v) => onCutoffChange(v.replace(/\D/g, ""))}
             keyboardType="number-pad"
-            placeholder="Leave blank for no limit"
+            placeholder="Khali chhorein to koi had nahi"
             mono
           />
           <DefaultHint
