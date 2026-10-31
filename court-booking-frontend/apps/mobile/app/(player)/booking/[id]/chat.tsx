@@ -190,7 +190,11 @@ export default function BookingChatScreen() {
 
   const last = turns[turns.length - 1];
   const showQuickReplies = !sending && !holdingActionKey && !bootError && last?.sender === "ai" && !(last.actions && last.actions.length > 0);
-  const quickReplies = [copy("Aur kaun se waqt khaali hain?", "What other times are free?"), copy("Kal ka dikhayein", "Show me tomorrow"), copy("Cancel policy kya hai?", "What's the cancel policy?")];
+  // PChat board: once a booking is sent or confirmed the chips are about the visit; before that, about finding a slot.
+  const afterBooking = booking?.status === "payment_submitted" || booking?.status === "booked";
+  const quickReplies = afterBooking
+    ? [copy("Parking hai?", "Is there parking?"), copy("Raasta bhejein", "Send directions"), copy("Cancel policy", "Cancel policy")]
+    : [copy("Aur kaun se waqt khaali hain?", "What other times are free?"), copy("Kal ka dikhayein", "Show me tomorrow"), copy("Cancel policy kya hai?", "What's the cancel policy?")];
   const canSend = !sending && input.trim().length > 0;
 
   return (
