@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Pressable, View } from "react-native";
+import { palette, radius, space } from "@court-booking/ui-tokens";
 import { Text } from "@/components/ui";
 import {
   DAY_LABELS,
@@ -22,7 +24,8 @@ import {
 
 import { TimeField12 } from "./time-fields";
 import { DefaultHint } from "./default-hint";
-import { Chip, FieldLabel, SectionCard, SectionLabel, TextField } from "../app/(owner)/venue-setup/_components";
+import { Chip, FieldLabel, SectionCard, SectionLabel, TextField, useReadOnly } from "../app/(owner)/venue-setup/_components";
+import { hiddenRateText, ruleWhenText } from "@/lib/court-rule-text";
 
 /**
  * Everything an owner sets for ONE court -- slot length (with a live "you will get N slots" preview), opening hours
@@ -33,9 +36,13 @@ export function CourtSetupFields({
   value,
   onChange,
   slotChangeNote = false,
+  layout = "form",
 }: {
   value: CourtSetup;
   onChange: (patch: Partial<CourtSetup>) => void;
+  /** "board" (Venue Settings, OSettings board): no slot card (the slot sits in the court details grid), and the prices
+   * are a "Qeemat ke rules" list of cards that open to edit. "form" (wizard / new court): everything spelled out. */
+  layout?: "form" | "board";
   /** Venue Settings only: say what changing the slot length does to bookings that already exist. */
   slotChangeNote?: boolean;
 }) {
@@ -44,6 +51,9 @@ export function CourtSetupFields({
   const hidden = hiddenRates(value);
   // an EXISTING court (Venue Settings) runs on the backend default (60); a new court starts from the wizard prefill (90)
   const slotKey = slotChangeNote ? "court_slot_minutes" : "slot_minutes";
+  const board = layout === "board";
+  const readOnly = useReadOnly();
+  const [openRule, setOpenRule] = useState<string | null>(null);
 
   function updateRule(id: string, patch: Partial<PricingRuleDraft>) {
     onChange({ pricingRules: value.pricingRules.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
@@ -53,8 +63,53 @@ export function CourtSetupFields({
     onChange({ pricingRules: rules.length > 0 ? rules : [makePricingRule("Aam")] });
   }
 
+  // One rate's editable fields (name, price, times, days and the two kept defaults); both layouts use it.
+  const editor = (rule: PricingRuleDraft) => (
+    <>
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1 mr-3">
+                <TextField label="Naam" value={rule.name} onChangeText={(v) => updateRule(rule.id, { name: v })} />
+              </View>
+              {value.pricingRules.length > 1 ? (
+                <Pressable onPress={() => removeRule(rule.id)} className="mt-6">
+                  <Text variant="caption" tone="danger">Hatayein</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <TextField
+              label={`Har ${formatDuration(value.slotMinutes, "ru")} (PKR)`}
+              value={rule.pricePerSlot}
+              onChangeText={(v) => updateRule(rule.id, { pricePerSlot: v.replace(/\D/g, "") })}
+              keyboardType="number-pad"
+              placeholder="2500"
+              mono
+            />
+            <View className="flex-row gap-3">
+              <TimeField12 label="Se (optional)" optional value={rule.startTime ?? ""} onChange={(v) => updateRule(rule.id, { startTime: v || null })} />
+              <TimeField12 label="Tak (optional)" optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
+            </View>
+            <RuleDays rule={rule} onChange={(dayOfWeek) => updateRule(rule.id, { dayOfWeek })} />
+            {/* No input for these two (they are kept on save); the owner still sees what applies and can put the default back. */}
+            <DefaultHint
+              settingKey="advance_percentage"
+              text={`Is rate ka advance: ${rule.advancePercentage ?? SETTINGS_DEFAULTS.advance_percentage.value}% (Default: ${SETTINGS_DEFAULTS.advance_percentage.ru})`}
+              value={rule.advancePercentage ?? null}
+              onReset={() => updateRule(rule.id, { advancePercentage: undefined })}
+              testID={`default-rule-advance-${rule.id}`}
+            />
+            <DefaultHint
+              settingKey="floodlight_surcharge"
+              text={`Floodlight surcharge: ${formatPkrAmount(rule.floodlightSurcharge ?? (SETTINGS_DEFAULTS.floodlight_surcharge.value as number))} (Default: ${SETTINGS_DEFAULTS.floodlight_surcharge.ru})`}
+              value={rule.floodlightSurcharge ?? null}
+              onReset={() => updateRule(rule.id, { floodlightSurcharge: undefined })}
+              testID={`default-rule-floodlight-${rule.id}`}
+            />
+    </>
+  );
+
   return (
     <>
+      {board ? null : (
       <SectionCard>
         <SectionLabel>Kam se kam booking time</SectionLabel>
         <Text variant="caption" tone="subtle">
@@ -78,10 +133,11 @@ export function CourtSetupFields({
           </Text>
         ) : null}
       </SectionCard>
+      )}
 
-      <SectionCard>
+      <View style={board ? { backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: 12 } : { backgroundColor: palette.white, borderRadius: radius.card, padding: space[5], gap: space[5] }}>
         <View className="flex-row flex-wrap items-center justify-between gap-2">
-          <SectionLabel>Khulne ke ghante</SectionLabel>
+          {board ? <Text variant="bodyStrong" accessibilityRole="header">Khulne ke ghante</Text> : <SectionLabel>Khulne ke ghante</SectionLabel>}
           <Pressable accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => onChange({ sameHoursEveryDay: !value.sameHoursEveryDay })}>
             <Text variant="meta" tone="link" weight="bold">
               {value.sameHoursEveryDay ? "Har din ke alag ghante" : "Har din same ghante"}
@@ -121,9 +177,61 @@ export function CourtSetupFields({
           </View>
         )}
         {value.sameHoursEveryDay ? <HoursKindNote open={value.openTime} close={value.closeTime} /> : null}
+        {board ? <SlotPreviewLine value={value} /> : null}
         {hoursProblem ? <Text variant="meta" tone="danger" weight="bold">{hoursProblem}</Text> : null}
-      </SectionCard>
+      </View>
 
+      {board ? (
+        <View testID="price-rules" style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: 12 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <Text variant="bodyStrong" accessibilityRole="header">Qeemat ke rules</Text>
+            {readOnly ? null : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Naya qeemat ka rule add karein"
+                onPress={() => {
+                  const rule = makePricingRule("Peak raat");
+                  onChange({ pricingRules: [...value.pricingRules, rule] });
+                  setOpenRule(rule.id);
+                }}
+                style={{ minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: palette.tealTint, justifyContent: "center" }}
+              >
+                <Text variant="label" color={palette.tealDeep}>+ Rule</Text>
+              </Pressable>
+            )}
+          </View>
+          {value.pricingRules.map((rule, i) => {
+            const open = openRule === rule.id;
+            const price = Number(rule.pricePerSlot);
+            return (
+              <View key={rule.id} style={{ borderWidth: 1.5, borderColor: open ? palette.teal : palette.line, borderRadius: 16, overflow: "hidden" }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: open }}
+                  accessibilityLabel={`${rule.name || "Rate"}, ${rule.pricePerSlot ? formatPkrAmount(price) : "qeemat baqi"}. ${open ? "Band karein" : "Badlein"}`}
+                  onPress={() => setOpenRule(open ? null : rule.id)}
+                  style={{ padding: 12, gap: 6 }}
+                  testID={`rule-card-${i}`}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+                    <Text variant="bodyBold" style={{ fontSize: 15, flexShrink: 1 }}>{rule.name || "Rate"}</Text>
+                    <Text variant="bodyBold" tone={rule.pricePerSlot ? "primary" : "waiting"} style={{ fontSize: 15 }}>
+                      {rule.pricePerSlot ? formatPkrAmount(price) : "Qeemat likhein"}
+                    </Text>
+                  </View>
+                  <Text variant="meta" tone="muted">{ruleWhenText(rule, i === 0, value.pricingRules.length > 1)}</Text>
+                  {hidden[rule.id] ? (
+                    <View style={{ backgroundColor: palette.waitingTint, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10 }}>
+                      <Text variant="caption" weight="bold" tone="waiting">{hiddenRateText(hidden[rule.id])}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+                {open ? <View style={{ padding: 12, paddingTop: 0, gap: 12 }}>{editor(rule)}</View> : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : (
       <SectionCard>
         <SectionLabel>Is court ki qeemat</SectionLabel>
         <Text variant="caption" tone="subtle">
@@ -132,45 +240,8 @@ export function CourtSetupFields({
         </Text>
         {value.pricingRules.map((rule) => (
           <View key={rule.id} className="border border-owner-border rounded-[10px] p-3.5 gap-3">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 mr-3">
-                <TextField label="Naam" value={rule.name} onChangeText={(v) => updateRule(rule.id, { name: v })} />
-              </View>
-              {value.pricingRules.length > 1 ? (
-                <Pressable onPress={() => removeRule(rule.id)} className="mt-6">
-                  <Text variant="caption" tone="danger">Hatayein</Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <TextField
-              label={`Har ${formatDuration(value.slotMinutes, "ru")} (PKR)`}
-              value={rule.pricePerSlot}
-              onChangeText={(v) => updateRule(rule.id, { pricePerSlot: v.replace(/\D/g, "") })}
-              keyboardType="number-pad"
-              placeholder="2500"
-              mono
-            />
-            <View className="flex-row gap-3">
-              <TimeField12 label="Se (optional)" optional value={rule.startTime ?? ""} onChange={(v) => updateRule(rule.id, { startTime: v || null })} />
-              <TimeField12 label="Tak (optional)" optional value={rule.endTime ?? ""} onChange={(v) => updateRule(rule.id, { endTime: v || null })} />
-            </View>
-            <RuleDays rule={rule} onChange={(dayOfWeek) => updateRule(rule.id, { dayOfWeek })} />
-            {/* No input for these two (they are kept on save); the owner still sees what applies and can put the default back. */}
-            <DefaultHint
-              settingKey="advance_percentage"
-              text={`Is rate ka advance: ${rule.advancePercentage ?? SETTINGS_DEFAULTS.advance_percentage.value}% (Default: ${SETTINGS_DEFAULTS.advance_percentage.ru})`}
-              value={rule.advancePercentage ?? null}
-              onReset={() => updateRule(rule.id, { advancePercentage: undefined })}
-              testID={`default-rule-advance-${rule.id}`}
-            />
-            <DefaultHint
-              settingKey="floodlight_surcharge"
-              text={`Floodlight surcharge: ${formatPkrAmount(rule.floodlightSurcharge ?? (SETTINGS_DEFAULTS.floodlight_surcharge.value as number))} (Default: ${SETTINGS_DEFAULTS.floodlight_surcharge.ru})`}
-              value={rule.floodlightSurcharge ?? null}
-              onReset={() => updateRule(rule.id, { floodlightSurcharge: undefined })}
-              testID={`default-rule-floodlight-${rule.id}`}
-            />
-            {hidden[rule.id] ? <Text variant="caption" tone="danger" weight="bold">{hidden[rule.id].message}</Text> : null}
+            {editor(rule)}
+            {hidden[rule.id] ? <Text variant="caption" tone="danger" weight="bold">{hiddenRateText(hidden[rule.id])}</Text> : null}
           </View>
         ))}
         <Pressable
@@ -180,6 +251,7 @@ export function CourtSetupFields({
           <Text variant="meta" tone="link" weight="bold">+ Peak ya weekend rate add karein</Text>
         </Pressable>
       </SectionCard>
+      )}
     </>
   );
 }

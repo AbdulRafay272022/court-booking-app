@@ -1,15 +1,17 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackHandler, Pressable, ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { Building2, CalendarX2, ChevronRight, Clock3, Grid2x2, IdCard, Landmark, RotateCcw, Star } from "lucide-react-native";
 import { alpha, palette, radius, space } from "@court-booking/ui-tokens";
-import { Banner, ErrorState, Pill, Screen, SegmentedToggle, Skeleton, Text, useToast } from "@/components/ui";
+import { Banner, Button, ErrorState, Pill, Screen, SegmentedToggle, Skeleton, Text, useToast } from "@/components/ui";
 import * as Location from "expo-location";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AMENITY_OPTIONS,
   SPORT_OPTIONS,
+  SETTINGS_DEFAULTS,
   accountNumberError,
   accountTitleError,
   bankNameError,
@@ -49,7 +51,7 @@ import { VenueRemindersCard } from "@/components/reminders-card";
 import { IdentityCard, useOwnerIdentity } from "@/components/identity-card";
 import { DefaultHint } from "@/components/default-hint";
 import { PhotoManager } from "@/components/photo-manager";
-import { AmenityPicker, CourtIdentityFields } from "@/components/court-identity-fields";
+import { AmenityPicker, CourtDetailsGrid, CourtIdentityFields } from "@/components/court-identity-fields";
 import { CourtTabs } from "@/components/court-tabs";
 import { courtLabel } from "@/components/court-label";
 import { confirmAction } from "@/lib/confirm";
@@ -112,6 +114,10 @@ export default function VenueSettingsScreen() {
   const [courtId, setCourtId] = useState<string | undefined>(undefined);
   // A "+ Court" tab that has not been saved yet (local only until "Create court").
   const [newCourtOpen, setNewCourtOpen] = useState(false);
+  // OSettings board: the court form's "Sab save karein" is a footer pinned under the scroll; the form hands it its save.
+  const courtSave = useRef<(() => void) | null>(null);
+  const [courtSaving, setCourtSaving] = useState(false);
+  const insets = useSafeAreaInsets();
   // If the selected court is no longer in the active list (e.g. just deleted), fall back to the first.
   const activeCourtId = (courtId && courts.some((c) => c.id === courtId) ? courtId : undefined) ?? courts[0]?.id;
   const onNewTab = newCourtOpen && courtId === NEW_COURT_KEY;
@@ -286,6 +292,8 @@ export default function VenueSettingsScreen() {
                 <ReadOnlyFence readOnly={!access.courts}>
                   <CourtSettingsForm
                     key={court.id}
+                    saveRef={courtSave}
+                    onSavingChange={setCourtSaving}
                     court={court}
                     venueSports={activeVenue?.sports ?? []}
                     canDelete={courts.length > 1 && access.courts}
@@ -298,6 +306,22 @@ export default function VenueSettingsScreen() {
           </>
         )}
       </ScrollView>
+      {section === "courts" && !onNewTab && court && !loading && access.courts ? (
+        <View
+          testID="court-save-bar"
+          style={{
+            backgroundColor: palette.white,
+            borderTopWidth: 1,
+            borderTopColor: palette.line,
+            paddingHorizontal: space[4],
+            paddingTop: 12,
+            paddingBottom: Math.max(insets.bottom, space[4]) + 12,
+            marginBottom: -Math.max(insets.bottom, space[4]),
+          }}
+        >
+          <Button label="Sab save karein" block loading={courtSaving} onPress={() => courtSave.current?.()} testID="court-save" />
+        </View>
+      ) : null}
     </Screen>
   );
 }
@@ -686,7 +710,22 @@ function BookingHorizonCard({ venueId, initialDays }: { venueId: string; initial
 
 /** Slot length, hours and prices for ONE court. Seeded once from the court it is mounted for (the parent keys it by
  * court id), so it holds its own edits and never needs an effect to copy server data into state. */
-function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court: Court; venueSports: string[]; canDelete: boolean; onDeleted: () => void }) {
+function CourtSettingsForm({
+  court,
+  venueSports,
+  canDelete,
+  onDeleted,
+  saveRef,
+  onSavingChange,
+}: {
+  court: Court;
+  venueSports: string[];
+  canDelete: boolean;
+  onDeleted: () => void;
+  /** The pinned "Sab save karein" footer calls this form's save. */
+  saveRef: { current: (() => void) | null };
+  onSavingChange: (saving: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const [identity, setIdentity] = useState({ name: court.name, sport: court.sport, isIndoor: court.is_indoor });
   const [setup, setSetup] = useState<CourtSetup>(() => courtSetupFromCourt(court));
@@ -742,6 +781,7 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
       return;
     }
     setSaving(true);
+    onSavingChange(true);
     try {
       await api.courts.update(court.id, {
         name: identity.name.trim(),
@@ -761,28 +801,46 @@ function CourtSettingsForm({ court, venueSports, canDelete, onDeleted }: { court
       notify("Save nahi hua", friendlyErrorMessage(e));
     } finally {
       setSaving(false);
+      onSavingChange(false);
     }
   }
+  saveRef.current = save;
 
   return (
     <>
-      <Text variant="title">{courtLabel(court.name, court.sport)}</Text>
-      <CourtIdentityFields
+      <CourtDetailsGrid
         name={identity.name}
         sport={identity.sport}
         isIndoor={identity.isIndoor}
+        slotMinutes={setup.slotMinutes}
         sports={venueSports}
         onChange={(patch) => setIdentity((cur) => ({ ...cur, ...patch }))}
+        onSlotChange={(m) => setSetup((cur) => ({ ...cur, slotMinutes: m }))}
+        footer={
+          <>
+            <DefaultHint
+              settingKey="court_slot_minutes"
+              value={setup.slotMinutes}
+              onReset={() => setSetup((cur) => ({ ...cur, slotMinutes: SETTINGS_DEFAULTS.court_slot_minutes.value as number }))}
+              testID="default-slot-minutes"
+            />
+            {setup.slotMinutes !== court.slot_minutes ? (
+              <Text variant="caption" tone="muted">
+                Slot badalne par pehle se bani bookings apne waqt par rehti hain; qeemat ek kam se kam booking ki hai.
+              </Text>
+            ) : null}
+          </>
+        }
       />
-      <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote />
+      <CourtSetupFields value={setup} onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))} slotChangeNote layout="board" />
       <AdvanceSettings
         value={advance}
         onChange={(patch) => setAdvance((cur) => ({ ...cur, ...patch }))}
         price={advancePriceFromSetup(setup)}
         explain={explain}
         defaultPercentage={basePercentage}
+        layout="board"
       />
-      <PrimaryButton label="Sab save karein" onPress={save} loading={saving} />
       {canDelete ? (
         <Pressable
           onPress={confirmDelete}
