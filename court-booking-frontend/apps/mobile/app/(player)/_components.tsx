@@ -3,9 +3,7 @@
  * Everything here is built from @/components/ui + @court-booking/ui-tokens (no hex). Candidates to promote into
  * components/ui are listed in the M1 report: DateTile, DayChip, PhotoHero.
  */
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { useFocusEffect } from "expo-router";
-import { setStatusBarStyle } from "expo-status-bar";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { FlatList, Linking, Modal, Platform, Share, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Image } from "expo-image";
@@ -324,15 +322,8 @@ export function PlayerOfflineBanner() {
   return <OfflineBanner visible={!online} placement="inline" onRetry={() => void queryClient.refetchQueries({ type: "active" })} />;
 }
 
-/** Night-hero screens want light status-bar text while focused (the root sets "dark"). */
-export function useLightStatusBar() {
-  useFocusEffect(
-    useCallback(() => {
-      setStatusBarStyle("light");
-      return () => setStatusBarStyle("dark");
-    }, []),
-  );
-}
+/** Night-hero screens want light status-bar text while focused (shared with the owner side). */
+export { useLightStatusBar } from "@/components/ui/StatusBarStyle";
 
 /** Signed-in player's first name (for "Salam, Ali"). */
 export function useFirstName(): string | null {

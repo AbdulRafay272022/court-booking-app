@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { alpha, palette, radius, size, space } from "@court-booking/ui-tokens";
 import { Header, Hero, SegmentedToggle, Text, type IconComponent } from "@/components/ui";
+import { useLightStatusBar } from "@/components/ui/StatusBarStyle";
 
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { paisaSegments, type PaisaSegment } from "@/lib/owner-floodlight";
@@ -24,6 +25,7 @@ export function ownerBack() {
  * 30 radius. The caller puts it inside a scroll (Screen edgeToEdgeTop gutter={false}).
  */
 export function HeroLayout({ hero, children, testID }: { hero: ReactNode; children: ReactNode; testID?: string }) {
+  useLightStatusBar();
   const insets = useSafeAreaInsets();
   return (
     <View testID={testID}>

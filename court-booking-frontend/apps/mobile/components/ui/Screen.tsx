@@ -74,7 +74,7 @@ export function Screen({
   return (
     <View style={{ flex: 1, backgroundColor: bg }}>
       {keyboard ? (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           {body}
         </KeyboardAvoidingView>
       ) : (

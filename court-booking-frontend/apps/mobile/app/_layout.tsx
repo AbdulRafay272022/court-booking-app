@@ -6,7 +6,7 @@ import { Stack, router } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { StatusBar } from "expo-status-bar";
+import { setStatusBarStyle } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
@@ -151,6 +151,12 @@ function RootLayout() {
     void restore();
   }, []);
 
+  // App default: dark status-bar icons on light screens. Hero screens switch to light while focused
+  // (useLightStatusBar). Imperative, not a <StatusBar> element, so a root re-render never overrides a hero.
+  useEffect(() => {
+    setStatusBarStyle("dark");
+  }, []);
+
   // Proactive refresh (Section 26): sessions last 8h, so renew BEFORE expiry -- when the app returns
   // to the foreground and on a timer while it's open -- rather than waiting for a 401 (by then the
   // token is already dead and there is nothing left to refresh).
@@ -199,7 +205,6 @@ function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <BottomSheetModalProvider>
-        <StatusBar style="dark" />
         {/* Player + auth screens show the Floodlight OfflineBanner in their own layout (one /health poller there); owner/staff/admin keep this one until M2 switches. */}
         {status === "signedIn" && role !== "player" ? <OfflineBanner /> : null}
         {status === "unreachable" ? (

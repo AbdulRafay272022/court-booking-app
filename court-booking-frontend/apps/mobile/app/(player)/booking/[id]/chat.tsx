@@ -195,7 +195,7 @@ export default function BookingChatScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.ground }} testID="chat-screen">
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <View style={{ paddingTop: insets.top + space[2], paddingHorizontal: space[4], paddingBottom: space[3], backgroundColor: palette.white, borderBottomWidth: 1, borderBottomColor: palette.line, gap: space[3] }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
             <IconButton icon={ArrowLeft} variant="mist" accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack()} testID="chat-back" />
@@ -214,7 +214,7 @@ export default function BookingChatScreen() {
             {wa ? <IconButton icon={MessageCircle} variant="mist" accessibilityLabel={copy("Venue ko WhatsApp par likhein", "Message the venue on WhatsApp")} onPress={() => openVenueWhatsApp(wa)} /> : null}
           </View>
           {ctxStart ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.ground, borderRadius: radius.input, padding: space[2], flexWrap: "wrap" }} testID="chat-context">
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.orangeTint, borderRadius: radius.input, padding: space[2], flexWrap: "wrap" }} testID="chat-context">
               <DateTile iso={ctxStart} variant="orange" />
               <View style={{ flex: 1, minWidth: 140, gap: 2 }}>
                 {ctxCourt ? <Text variant="bodyBold">{ctxCourt}</Text> : null}
@@ -315,7 +315,7 @@ export default function BookingChatScreen() {
             returnKeyType="send"
             multiline
             testID="chat-input"
-            style={{ flex: 1, minHeight: size.tap, maxHeight: 120, borderRadius: radius.button, borderWidth: 1.5, borderColor: palette.lineStrong, backgroundColor: palette.ground, paddingHorizontal: space[4], paddingVertical: 10, fontFamily: fontFamily.mobile.body, fontSize: typeScale.bodyL.size * scale, color: palette.night, outlineStyle: "none" } as never}
+            style={{ flex: 1, minHeight: size.tap, maxHeight: 120, borderRadius: radius.pill, borderWidth: 1.5, borderColor: palette.lineStrong, backgroundColor: palette.white, paddingHorizontal: space[4], paddingVertical: 10, fontFamily: fontFamily.mobile.body, fontSize: typeScale.bodyL.size * scale, color: palette.night, outlineStyle: "none" } as never}
           />
           <IconButton icon={Send} variant={canSend ? "primary" : "mist"} disabled={!canSend} accessibilityLabel={copy("Bhejein", "Send")} onPress={() => sendMessage()} testID="chat-send" />
         </View>
