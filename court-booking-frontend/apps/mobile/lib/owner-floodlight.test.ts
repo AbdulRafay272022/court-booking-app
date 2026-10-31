@@ -15,6 +15,9 @@ import {
   settleAction,
   showWalkinFab,
   spanLabel,
+  hrLabel,
+  freeHoursLabel,
+  dayRangeLabel,
   timelineKind,
   timelineModel,
   waitLabel,
@@ -222,4 +225,19 @@ test("owner screens + owner components: no hex / rgba colour literal", () => {
     });
   }
   assert.deepEqual(bad, []);
+});
+
+test("Aaj board short durations: '1 hr' / '1.5 hr' gaps, free hours in the hero chip", () => {
+  assert.equal(hrLabel(30), "30 min");
+  assert.equal(hrLabel(60), "1 hr");
+  assert.equal(hrLabel(90), "1.5 hr");
+  assert.equal(freeHoursLabel(1), "30 min khaali");
+  assert.equal(freeHoursLabel(2), "1 ghanta khaali");
+  assert.equal(freeHoursLabel(10), "5 ghante khaali");
+  assert.equal(freeHoursLabel(13), "6.5 ghante khaali");
+});
+
+test("Aaj 'Courts ka din' range is the short opening window", () => {
+  assert.equal(dayRangeLabel("2026-10-24T12:00:00Z", "2026-10-24T18:00:00Z"), "5 PM – 11 PM");
+  assert.equal(dayRangeLabel("2026-10-24T03:30:00Z", "2026-10-24T20:00:00Z"), "8:30 AM – 1 AM");
 });

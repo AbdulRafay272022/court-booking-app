@@ -5,7 +5,7 @@ import type { OwnerBookingRow } from "@court-booking/types";
 import { Text, useRoleTheme } from "@/components/ui";
 
 import { formatPKR, formatTime, formatTimeRange } from "@/lib/format";
-import { spanLabel, timelineModel, type TimelineBlock, type TimelineGap, type TimelineKind } from "@/lib/owner-floodlight";
+import { hrLabel, timelineModel, type TimelineBlock, type TimelineGap, type TimelineKind } from "@/lib/owner-floodlight";
 
 /** px per hour: a 30-minute booking is 48 tall, so every block is a >= 44 pt target. */
 const PX_HOUR = 96;
@@ -169,7 +169,7 @@ export function CourtsTimeline({
         <Legend label="Booked" bg={palette.teal} />
         <Legend label="Check baqi" bg={palette.waitingTint} border={palette.amber} />
         <Legend label="Walk-in" bg={palette.tealTint} />
-        <Legend label="Koi booking nahi" bg={palette.white} border={palette.muted2} dashed />
+        <Legend label="Khaali" bg={palette.white} border={palette.muted2} dashed />
       </View>
     </View>
   );
@@ -188,16 +188,16 @@ function Legend({ label, bg, border, dashed }: { label: string; bg: string; bord
 
 function Gap({ gap, top, h, onAdd }: { gap: TimelineGap; top: number; h: number; onAdd?: () => void }) {
   const mins = gap.end - gap.start;
-  const style = { position: "absolute" as const, left: 0, right: 0, top, height: h, borderRadius: radius.sm, borderWidth: 1, borderStyle: "dashed" as const, borderColor: palette.muted2, alignItems: "center" as const, justifyContent: "center" as const, paddingHorizontal: 4 };
+  const style = { position: "absolute" as const, left: 0, right: 0, top, height: h, borderRadius: radius.sm, borderWidth: 1, borderStyle: "dashed" as const, borderColor: palette.muted2, alignItems: "center" as const, justifyContent: h > 240 ? ("flex-start" as const) : ("center" as const), paddingTop: h > 240 ? 20 : 0, paddingHorizontal: 4 };
   if (!onAdd) return gap.future ? <View style={[style, { opacity: 0.55 }]} accessibilityElementsHidden importantForAccessibility="no" /> : null;
   return (
-    <Pressable onPress={onAdd} accessibilityRole="button" accessibilityLabel={`Walk-in add karein, ${spanLabel(mins)} mein koi booking nahi`} style={style}>
+    <Pressable onPress={onAdd} accessibilityRole="button" accessibilityLabel={`Walk-in add karein, ${hrLabel(mins)} khaali`} style={style}>
       <Text variant="label" tone="body" align="center">
         + Add
       </Text>
       {h >= 70 ? (
         <Text variant="caption" tone="muted" align="center">
-          {`${spanLabel(mins)} koi booking nahi`}
+          {`${hrLabel(mins)} khaali`}
         </Text>
       ) : null}
     </Pressable>

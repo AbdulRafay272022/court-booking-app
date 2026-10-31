@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router, useIsFocused } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, ChevronDown, ChevronLeft, ChevronRight, Clock, History, Plus, ScanLine } from "lucide-react-native";
+import { Bell, ChevronDown, ChevronLeft, ChevronRight, Clock } from "lucide-react-native";
 import type { OwnerBookingRow, OwnerOverview } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { alpha, initials, palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
@@ -17,7 +17,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
 import { courtShort, dateTitle, historyParams, statusPendingLine } from "@/lib/overview";
 import { allDatesRange } from "@/lib/round2-format";
-import { heroCollected, oldestWaitMinutes, waitLabel } from "@/lib/owner-floodlight";
+import { dayRangeLabel, freeHoursLabel, heroCollected, oldestWaitMinutes, waitLabel } from "@/lib/owner-floodlight";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
 import { PremiumNotices } from "@/components/premium-notices";
 import { CnicBanner } from "@/components/cnic-banner";
@@ -212,7 +212,7 @@ export default function OwnerTodayScreen() {
         {data ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], justifyContent: "center" }}>
             <HeroChip label={`${data.bookings.count} ${data.bookings.count === 1 ? "booking" : "bookings"}`} onPress={() => goHistory("booked")} />
-            <HeroChip label={`${data.slots.free_upcoming} slots khaali aage`} onPress={() => setSheet("free")} />
+            <HeroChip label={freeHoursLabel(data.slots.free_upcoming)} onPress={() => setSheet("free")} />
             {data.money.due > 0 ? <HeroChip label={`PKR ${formatPKR(data.money.due)} baqi`} onPress={() => goHistory("booked")} /> : null}
           </View>
         ) : null}
@@ -235,14 +235,14 @@ export default function OwnerTodayScreen() {
               onPress={() => router.push({ pathname: "/(owner)/(tabs)/approvals", params: courtIds.length ? { courts: courtIds.join(",") } : {} })}
               accessibilityRole="button"
               accessibilityLabel={`${badges.approvals} payments check karni hain. Dekhein`}
-              style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: 14, boxShadow: shadow.card }}
+              style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: 14, boxShadow: shadow.card }}
             >
               <View style={{ width: 48, height: 48, borderRadius: radius.input, backgroundColor: palette.waitingTint, alignItems: "center", justifyContent: "center" }}>
                 <Text variant="title" color={palette.waiting}>
                   {String(badges.approvals)}
                 </Text>
               </View>
-              <View style={{ flex: 1, minWidth: 150, gap: 2 }}>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                 <Text variant="bodyStrong">Payments check karni hain</Text>
                 {oldest !== null ? <Text variant="meta" tone="waiting">{`Sab se purani ${waitLabel(oldest)} se wait`}</Text> : null}
               </View>
@@ -286,17 +286,17 @@ export default function OwnerTodayScreen() {
             </Pressable>
           ) : null}
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-            {perms.can("check_in") ? <Button label="Check-in" variant="soft" size="sm" icon={<ScanLine size={16} color={palette.night} />} onPress={() => router.push("/(owner)/checkin")} /> : null}
-            {perms.can("walkin") ? <Button label="Add booking" variant="soft" size="sm" icon={<Plus size={16} color={palette.night} />} onPress={() => router.push("/(owner)/walkin")} /> : null}
-            <Button label="History" variant="soft" size="sm" icon={<History size={16} color={palette.night} />} onPress={() => goHistory()} />
-          </View>
 
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: space[2], paddingTop: space[1] }}>
             <Text variant="title" accessibilityRole="header">
               Courts ka din
             </Text>
-            {allCourts.length > 1 ? <SelectButton compact value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} /> : null}
+            {data?.operating_day ? (
+              <Text variant="meta" tone="muted" testID="day-range">
+                {dayRangeLabel(data.operating_day.start_at, data.operating_day.end_at)}
+              </Text>
+            ) : null}
+            {allCourts.length > 2 ? <SelectButton compact value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} /> : null}
           </View>
 
           {venuesLoading || query.isLoading ? (

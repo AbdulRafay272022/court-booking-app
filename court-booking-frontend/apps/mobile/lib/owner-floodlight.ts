@@ -1,4 +1,4 @@
-import type { ApprovalQueueItem, LedgerSummary, OwnerBookingRow, StaffPermissionKey } from "@court-booking/types";
+import { formatTime, type ApprovalQueueItem, type LedgerSummary, type OwnerBookingRow, type StaffPermissionKey } from "@court-booking/types";
 
 /**
  * Pure rules for the Floodlight owner screens (boards OwnerToday, Approvals, OPaisa, OStaffView). No React / RN imports,
@@ -253,6 +253,27 @@ export function spanLabel(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
   const h = minutes / 60;
   return h === 1 ? "1 ghanta" : `${Number.isInteger(h) ? h : h.toFixed(1)} ghante`;
+}
+
+/** OwnerToday board: a free gap or free time as "1 hr" / "1.5 hr" / "30 min" (the board's short form). */
+export function hrLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = minutes / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} hr`;
+}
+
+/** "Courts ka din" header: the day's opening window, short ("5 PM – 11 PM", "8:30 AM – 1 AM"). */
+export function dayRangeLabel(startAt: string, endAt: string): string {
+  const short = (iso: string) => formatTime(iso).replace(":00", "");
+  return `${short(startAt)} – ${short(endAt)}`;
+}
+
+/** Hero chip: free time ahead today in hours ("5 ghante khaali"); the overview counts free 30-minute grid slots. */
+export function freeHoursLabel(freeSlots: number, slotMinutes = 30): string {
+  const minutes = freeSlots * slotMinutes;
+  if (minutes < 60) return `${minutes} min khaali`;
+  const h = minutes / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} ${h === 1 ? "ghanta" : "ghante"} khaali`;
 }
 
 /* ---------------- Feature flags ---------------- */
