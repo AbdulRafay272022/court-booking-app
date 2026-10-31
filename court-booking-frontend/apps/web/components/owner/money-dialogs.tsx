@@ -2,7 +2,8 @@
 
 import { useId, useState } from "react";
 import { ApiError } from "@court-booking/api-client";
-import { dueDoneProblem, noshowReverseProblem, type MoneyMethod } from "@court-booking/types";
+import { acceptReceivedInput, dueDoneProblem, noshowReverseProblem, type MoneyMethod } from "@court-booking/types";
+import { formatPKR } from "@/lib/format";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -101,6 +102,7 @@ export function NoShowReverseDialog({ target, onClose, onDone }: { target: Rever
   const titleId = useId();
   const [price, setPrice] = useState(String(target.total));
   const [received, setReceived] = useState("0");
+  const [blocked, setBlocked] = useState(false);
   const [method, setMethod] = useState<MoneyMethod | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [touched, setTouched] = useState(false);
@@ -150,7 +152,13 @@ export function NoShowReverseDialog({ target, onClose, onDone }: { target: Rever
             value={price}
             data-testid="reverse-price"
             inputMode="numeric"
-            onChange={(e) => setPrice(e.target.value.replace(/[^0-9,]/g, ""))}
+            onChange={(e) => {
+              const next = e.target.value.replace(/[^0-9,]/g, "");
+              setPrice(next);
+              // a lower price shrinks what is left: the received amount never stays above it
+              const p = toAmount(next);
+              if (p != null && got != null && got > Math.max(0, p - target.paid)) setReceived(String(Math.max(0, p - target.paid)));
+            }}
             aria-invalid={touched && problem === "price"}
             className={fieldClass(touched && problem === "price")}
           />
@@ -159,18 +167,23 @@ export function NoShowReverseDialog({ target, onClose, onDone }: { target: Rever
           ) : null}
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[14px] font-bold text-owner-ink">{t("nsw.rev.received")}</span>
+          <span className="text-[14px] font-bold text-owner-ink">{t("nsw.rev.prompt", { paid: formatPKR(target.paid), due: formatPKR(room) })}</span>
           <input
             value={received}
             data-testid="reverse-received"
             inputMode="numeric"
             onFocus={(e) => e.currentTarget.select()}
-            onChange={(e) => setReceived(e.target.value.replace(/[^0-9,]/g, ""))}
-            aria-invalid={touched && problem === "received"}
-            className={fieldClass(touched && problem === "received")}
+            onChange={(e) => {
+              // audit fixes 2026-10-31: more than what is left of the final price can't be typed
+              const next = acceptReceivedInput(e.target.value, room, received);
+              setBlocked(next.blocked);
+              setReceived(next.value);
+            }}
+            aria-invalid={(touched && problem === "received") || blocked}
+            className={fieldClass((touched && problem === "received") || blocked)}
           />
-          <span className={`text-[13px] ${touched && problem === "received" ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
-            {t("nsw.rev.receivedHint", { max: pkr(room) })}
+          <span className={`text-[13px] ${(touched && problem === "received") || blocked ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
+            {blocked ? t("nsw.rev.tooMuch", { due: formatPKR(room) }) : t("nsw.rev.receivedHint", { max: pkr(room) })}
           </span>
         </label>
         <MethodPicker

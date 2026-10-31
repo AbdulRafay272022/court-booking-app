@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useMutation } from "@tanstack/react-query";
-import { dueDoneProblem, noshowReverseProblem, type MoneyMethod } from "@court-booking/types";
+import { acceptReceivedInput, dueDoneProblem, noshowReverseProblem, receivedPrompt, type MoneyMethod } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Input, Text } from "@/components/ui";
@@ -85,6 +85,7 @@ export interface ReverseTarget {
 export function NoShowReverseSheet({ target, onClose, onSaved }: { target: ReverseTarget; onClose: () => void; onSaved: (transfer: boolean) => void }) {
   const [price, setPrice] = useState(String(Math.round(target.total)));
   const [received, setReceived] = useState("0");
+  const [blocked, setBlocked] = useState(false);
   const [method, setMethod] = useState<MoneyMethod | null>(null);
   const [shot, setShot] = useState<Shot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,20 +130,27 @@ export function NoShowReverseSheet({ target, onClose, onSaved }: { target: Rever
           onChangeText={(t) => {
             setPrice(t);
             setError(null);
+            // a lower price shrinks what is left: the received amount never stays above it
+            const p = parsePkr(t);
+            if (p != null && got != null && got > Math.max(0, p - target.paid)) setReceived(String(Math.max(0, p - target.paid)));
           }}
           keyboardType="number-pad"
           error={problem === "price" && price !== "" ? `Pehle mile hue paison (PKR ${formatPKR(target.paid)}) se kam nahi ho sakti.` : null}
         />
         <Input
-          label="Abhi kitna mila (PKR)"
+          label={receivedPrompt(target.paid, room)}
           value={received}
           onChangeText={(t) => {
-            setReceived(t);
+            // audit fixes 2026-10-31: more than what is left of the final price can't be typed
+            const next = acceptReceivedInput(t, room, received);
+            setBlocked(next.blocked);
+            setReceived(next.value);
             setError(null);
           }}
           keyboardType="number-pad"
+          accessibilityLabel={receivedPrompt(target.paid, room)}
           help={`0 se PKR ${formatPKR(room)} tak (pehle wale paison ke ilawa).`}
-          error={problem === "received" && received !== "" ? `Sirf 0 se PKR ${formatPKR(room)} tak likhein.` : null}
+          error={blocked ? `Baqi Rs ${formatPKR(room)} se zyada nahi likh sakte.` : problem === "received" && received !== "" ? `Sirf 0 se PKR ${formatPKR(room)} tak likhein.` : null}
         />
         <MethodPicker method={method} setMethod={setMethod} shot={shot} setShot={setShot} showShot={transfer} />
         {transfer ? (

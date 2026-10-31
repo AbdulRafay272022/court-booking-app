@@ -2,7 +2,8 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { ApiError } from "@court-booking/api-client";
-import type { CompletionInput, CompletionResult, OwnerBookingRow } from "@court-booking/types";
+import { acceptReceivedInput, type CompletionInput, type CompletionResult, type OwnerBookingRow } from "@court-booking/types";
+import { formatPKR } from "@/lib/format";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -60,6 +61,7 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
   const due = Math.max(0, row.due);
   const check = validateReceivedNow(received, due);
@@ -111,14 +113,19 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor={inputId} className="text-[14px] font-bold text-owner-ink">
-            {t("ovw.cmp.amount")}
+            {t("nsw.rev.prompt", { paid: formatPKR(row.total_paid), due: formatPKR(due) })}
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
               id={inputId}
               data-testid="ovw-received"
               value={received}
-              onChange={(e) => setReceived(e.target.value.replace(/[^0-9,]/g, ""))}
+              onChange={(e) => {
+                // audit fixes 2026-10-31: more than the remaining due can't be typed
+                const next = acceptReceivedInput(e.target.value, due, received);
+                setBlocked(next.blocked);
+                setReceived(next.value);
+              }}
               onFocus={(e) => e.currentTarget.select()}
               inputMode="numeric"
               autoComplete="off"
@@ -129,7 +136,10 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
             {due > 0 ? (
               <button
                 type="button"
-                onClick={() => setReceived(String(due))}
+                onClick={() => {
+                  setBlocked(false);
+                  setReceived(String(due));
+                }}
                 data-testid="ovw-received-full"
                 className="min-h-12 px-4 rounded-xl border-[1.5px] border-owner-border bg-owner-surface text-[14px] font-bold text-owner-ink whitespace-nowrap"
               >
@@ -137,8 +147,12 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
               </button>
             ) : null}
           </div>
-          <p id={`${inputId}-hint`} className={`text-[13px] ${amountInvalid ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
-            {amountInvalid ? t("ovw.cmp.amountErr", { due: pkr(due) }) : t("ovw.cmp.amountHint", { due: pkr(due) })}
+          <p id={`${inputId}-hint`} className={`text-[13px] ${amountInvalid || blocked ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
+            {blocked
+              ? t("nsw.rev.tooMuch", { due: formatPKR(due) })
+              : amountInvalid
+                ? t("ovw.cmp.amountErr", { due: pkr(due) })
+                : t("ovw.cmp.amountHint", { due: pkr(due) })}
           </p>
         </div>
 

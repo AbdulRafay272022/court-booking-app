@@ -176,6 +176,7 @@ export function BookingDetailSheet({
         bookingId={d.row.booking_id}
         playerLabel={d.row.player_name ?? "Player"}
         balanceDue={d.row.due}
+        alreadyPaid={d.row.total_paid}
         onClose={endFollow}
         onRecorded={() => {
           onSaved();

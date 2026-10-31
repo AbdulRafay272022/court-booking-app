@@ -57,6 +57,23 @@ export function StaffActivityView({
   const from = addDays(to, -(days - 1));
   const query = useQuery({ queryKey: [...queryKey, from, to], queryFn: () => load(from, to) });
   const pkr = (n: number) => `PKR ${formatPKR(n)}`;
+  // audit fixes 2026-10-31 (b): a balance transfer the bank never got -- the owner chooses who pays
+  const [bankBusy, setBankBusy] = useState<string | null>(null);
+  const decideBank = canDecide
+    ? async (entryId: string, decision: "staff" | "player") => {
+        setDecideError(null);
+        setBankBusy(entryId);
+        try {
+          await api.owners.bankMissingDecide(entryId, decision);
+          await refresh();
+        } catch (e) {
+          setDecideError(friendlyErrorMessage(e, t));
+        } finally {
+          setBankBusy(null);
+        }
+      }
+    : null;
+  const bankMissing = query.data?.bank_missing ?? [];
 
   return (
     <div className="flex flex-col gap-5" data-testid="staff-activity">
@@ -96,7 +113,7 @@ export function StaffActivityView({
       ) : (
         <>
           <div className="overflow-x-auto rounded-2xl border border-owner-border bg-owner-surface">
-            <table className="w-full min-w-[820px] text-sm tabular-nums">
+            <table className="w-full min-w-[900px] text-sm tabular-nums">
               <thead className="bg-owner-bg text-left text-[12px] uppercase tracking-wide text-owner-ink-faint">
                 <tr>
                   <th className="px-3 py-2">{t("odash.sact.col.person")}</th>
@@ -109,18 +126,23 @@ export function StaffActivityView({
                   <th className="px-3 py-2">{t("odash.sact.col.transfers")}</th>
                   <th className="px-3 py-2">{t("odash.sact.col.refunds")}</th>
                   <th className="px-3 py-2">{t("odash.sact.col.total")}</th>
+                  <th className="px-3 py-2">{t("odash.sact.col.bankMissing")}</th>
                 </tr>
               </thead>
               <tbody>
                 {query.data.people.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-3 py-6 text-center text-owner-ink-muted">
+                    <td colSpan={11} className="px-3 py-6 text-center text-owner-ink-muted">
                       {t("odash.sact.empty")}
                     </td>
                   </tr>
                 ) : (
                   query.data.people.map((p) => (
-                    <tr key={p.user_id ?? p.name ?? "?"} className="border-t border-owner-border-light" data-testid="staff-activity-row">
+                    <tr
+                      key={p.user_id ?? p.name ?? "?"}
+                      className={`border-t border-owner-border-light ${(p.bank_missing_open ?? 0) > 0 ? "bg-red-50" : ""}`}
+                      data-testid={(p.bank_missing_open ?? 0) > 0 ? "staff-activity-row-red" : "staff-activity-row"}
+                    >
                       <td className="px-3 py-2 font-semibold text-owner-ink">
                         {p.name ?? "?"} <span className="text-[12px] font-normal text-owner-ink-faint">{p.role === "owner" ? t("odash.sact.owner") : t("odash.sact.staff")}</span>
                       </td>
@@ -136,6 +158,9 @@ export function StaffActivityView({
                       <td className="px-3 py-2">{pkr(p.transfers_pkr)}</td>
                       <td className="px-3 py-2">{pkr(p.refunds_paid_pkr)}</td>
                       <td className="px-3 py-2 font-bold">{pkr(p.total_recorded_pkr)}</td>
+                      <td className={`px-3 py-2 ${(p.bank_missing_open ?? 0) > 0 ? "font-bold text-red-700" : ""}`}>
+                        {p.bank_missing ? pkr(p.bank_missing_pkr ?? 0) : "0"}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -152,10 +177,64 @@ export function StaffActivityView({
                   <td className="px-3 py-2">{pkr(query.data.totals.transfers_pkr)}</td>
                   <td className="px-3 py-2">{pkr(query.data.totals.refunds_paid_pkr)}</td>
                   <td className="px-3 py-2">{pkr(query.data.totals.total_recorded_pkr)}</td>
+                  <td className="px-3 py-2">{pkr(query.data.totals.bank_missing_pkr ?? 0)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
+
+          {bankMissing.length > 0 ? (
+            <section className="flex flex-col gap-2" data-testid="staff-bank-missing">
+              <h2 className="text-lg font-bold text-red-700">{t("odash.sact.bank.title")}</h2>
+              <p className="text-sm text-owner-ink-muted">{t("odash.sact.bank.sub")}</p>
+              <ul className="flex flex-col divide-y divide-owner-border-light rounded-2xl border border-owner-border bg-owner-surface">
+                {bankMissing.map((m) => (
+                  <li
+                    key={m.entry_id}
+                    data-testid={m.decision ? "bank-missing-done" : "bank-missing-open"}
+                    className={`flex flex-col gap-1.5 px-4 py-3 text-sm ${m.decision ? "" : "border-l-4 border-red-600 bg-red-50"}`}
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-semibold">
+                        {t("odash.sact.bank.line", { code: m.code, player: m.player_name ?? t("odash.sact.player"), amount: formatPKR(m.amount_pkr) })}
+                      </span>
+                      <span className={m.decision ? "text-owner-ink-muted" : "font-bold text-red-700"}>
+                        {t("odash.sact.bank.by", { name: m.approved_by_name ?? "?", when: fmt.when(m.credited_at) })}
+                      </span>
+                    </div>
+                    {m.decision ? (
+                      <span className="text-owner-ink-muted">{m.decision === "staff" ? t("odash.sact.bank.doneStaff") : t("odash.sact.bank.donePlayer")}</span>
+                    ) : decideBank ? (
+                      <span className="flex flex-wrap gap-2">
+                        {m.approved_by_role === "staff" ? (
+                          <button
+                            type="button"
+                            disabled={bankBusy === m.entry_id}
+                            onClick={() => decideBank(m.entry_id, "staff")}
+                            data-testid="bank-missing-staff"
+                            className="min-h-10 cursor-pointer whitespace-nowrap rounded-full border border-owner-ink px-4 text-[13px] font-bold disabled:opacity-60"
+                          >
+                            {t("odash.sact.bank.staff")}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={bankBusy === m.entry_id}
+                          onClick={() => decideBank(m.entry_id, "player")}
+                          data-testid="bank-missing-player"
+                          className="min-h-10 cursor-pointer whitespace-nowrap rounded-full border border-owner-border px-4 text-[13px] font-bold disabled:opacity-60"
+                        >
+                          {t("odash.sact.bank.player")}
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-red-700">{t("odash.sact.bank.waiting")}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <section className="flex flex-col gap-2" data-testid="staff-no-shows">
             <h2 className="text-lg font-bold">{t("odash.sact.noShowTitle")}</h2>

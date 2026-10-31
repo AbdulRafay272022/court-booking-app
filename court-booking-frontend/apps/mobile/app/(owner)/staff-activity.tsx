@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, formatWhen, pktDateString, type StaffActivityRow } from "@court-booking/types";
+import { addDays, formatWhen, pktDateString, type StaffActivityRow, type StaffBankMissing } from "@court-booking/types";
 import { formatPkr, palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Button, Chip, EmptyState, ErrorState, Screen, SkeletonCard, Text } from "@/components/ui";
 
@@ -59,6 +59,20 @@ export default function StaffActivityScreen() {
         </>
       )}
 
+      {data && (data.bank_missing ?? []).length > 0 ? (
+        <View style={{ gap: space[2] }} testID="sact-bank-missing">
+          <Text variant="title" tone="danger" accessibilityRole="header">
+            Bank mein nahi mila
+          </Text>
+          <Text variant="meta" tone="muted">
+            Baqi raqam ke transfer jo venue par approve hue lekin bank mein nahi aaye. Faisla karein: staff se wasool ya player se baqi.
+          </Text>
+          {(data.bank_missing ?? []).map((m) => (
+            <BankMissingCard key={m.entry_id} m={m} />
+          ))}
+        </View>
+      ) : null}
+
       {data ? (
         <View style={{ gap: space[2] }} testID="sact-no-shows">
           <Text variant="title" accessibilityRole="header">
@@ -112,8 +126,19 @@ function PersonCard({ p }: { p: StaffActivityRow }) {
       <Text variant="bodyStrong">{value}</Text>
     </View>
   );
+  const red = (p.bank_missing_open ?? 0) > 0;
   return (
-    <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[2] }} testID="sact-person">
+    <View
+      style={{
+        backgroundColor: red ? palette.dangerTint : palette.white,
+        borderColor: red ? palette.dangerBorder : "transparent",
+        borderWidth: red ? 1.5 : 0,
+        borderRadius: radius.card,
+        padding: space[4],
+        gap: space[2],
+      }}
+      testID={red ? "sact-person-red" : "sact-person"}
+    >
       <Text variant="title">{`${p.name ?? "?"} ${p.role === "owner" ? "(owner)" : "(staff)"}`}</Text>
       {line("Bookings mark", String(p.bookings_marked))}
       {line("Nahi aaye (no-show)", String(p.no_shows))}
@@ -124,6 +149,62 @@ function PersonCard({ p }: { p: StaffActivityRow }) {
       {line("Transfer", formatPkr(p.transfers_pkr))}
       {line("Refund diye", formatPkr(p.refunds_paid_pkr))}
       {line("Kul darj", formatPkr(p.total_recorded_pkr))}
+      {p.bank_missing ? (
+        <Text variant="bodyStrong" tone={red ? "danger" : "muted"}>
+          {`Bank mein nahi mila: ${p.bank_missing} (${formatPkr(p.bank_missing_pkr ?? 0)})${red ? " · faisla baqi" : ""}`}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** audit fixes 2026-10-31 (b): a balance transfer the bank never got. The owner chooses once: collect it from the staff member
+ * (no player message) or ask the player (the normal short-payment flow). */
+function BankMissingCard({ m }: { m: StaffBankMissing }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<"staff" | "player" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function decide(decision: "staff" | "player") {
+    setBusy(decision);
+    setError(null);
+    try {
+      await api.owners.bankMissingDecide(m.entry_id, decision);
+      await queryClient.invalidateQueries({ queryKey: ["staff-activity"] });
+      await queryClient.invalidateQueries({ queryKey: ["bank-check"] });
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  const open = m.decision == null;
+  return (
+    <View
+      testID={open ? "sact-bank-open" : "sact-bank-done"}
+      style={{
+        backgroundColor: open ? palette.dangerTint : palette.white,
+        borderColor: open ? palette.dangerBorder : "transparent",
+        borderWidth: open ? 1.5 : 0,
+        borderRadius: radius.tile,
+        padding: space[3],
+        gap: space[1],
+      }}
+    >
+      <Text variant="bodyStrong">{`${m.code} · ${m.player_name ?? "Player"} · ${formatPkr(m.amount_pkr)}`}</Text>
+      <Text variant="meta" weight={open ? "bold" : undefined} tone={open ? "danger" : "muted"}>
+        {`${m.approved_by_name ?? "?"} ne approve kiya, ${formatWhen(m.credited_at, new Date(), "ru")}`}
+      </Text>
+      {open ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], paddingTop: space[1] }}>
+          {m.approved_by_role === "staff" ? (
+            <Button label="Staff se wasool karein" size="sm" loading={busy === "staff"} onPress={() => decide("staff")} testID="sact-bank-staff" />
+          ) : null}
+          <Button label="Player se baqi maangein" size="sm" variant="soft" loading={busy === "player"} onPress={() => decide("player")} testID="sact-bank-player" />
+        </View>
+      ) : (
+        <Text variant="meta" tone="muted">{m.decision === "staff" ? "Staff se wasool hoga" : "Player se baqi maanga gaya"}</Text>
+      )}
+      {error ? <Banner tone="danger" body={error} /> : null}
     </View>
   );
 }

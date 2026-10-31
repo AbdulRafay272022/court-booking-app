@@ -11,6 +11,22 @@ export interface BankCheckItem {
   credited_at: string;
   approved_by: string;
   kind: "advance" | "balance";
+  /** audit fixes 2026-10-31 (b): a balance transfer the owner may mark "bank mein nahi mila" (owner only, once). */
+  can_mark?: boolean;
+  not_received?: boolean;
+  /** the owner's choice once marked: "staff" = Staff se wasool, "player" = Player se baqi maangein */
+  decision?: BankMissingDecision | null;
+  approved_by_role?: string | null;
+}
+
+export type BankMissingDecision = "staff" | "player";
+
+export interface BankMissingState {
+  entry_id: string;
+  not_received: boolean;
+  marked_at: string;
+  decision: BankMissingDecision | null;
+  decided_at: string | null;
 }
 
 export interface BankCheck {

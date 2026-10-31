@@ -12,6 +12,26 @@ export interface StaffActivityCounts {
   transfers_pkr: number;
   refunds_paid_pkr: number;
   total_recorded_pkr: number;
+  /** audit fixes 2026-10-31 (b): balance transfers this person approved that were not in the bank */
+  bank_missing?: number;
+  bank_missing_pkr?: number;
+  /** still waiting for the owner's choice: shown red */
+  bank_missing_open?: number;
+}
+
+export interface StaffBankMissing {
+  entry_id: string;
+  booking_id: string;
+  code: string;
+  player_name: string | null;
+  amount_pkr: number;
+  credited_at: string;
+  approved_by_id: string | null;
+  approved_by_name: string | null;
+  approved_by_role: string | null;
+  marked_at: string;
+  decision: "staff" | "player" | null;
+  decided_at: string | null;
 }
 
 export interface StaffActivityRow extends StaffActivityCounts {
@@ -46,4 +66,5 @@ export interface StaffActivity {
   people: StaffActivityRow[];
   totals: StaffActivityCounts;
   no_shows: StaffNoShow[];
+  bank_missing?: StaffBankMissing[];
 }

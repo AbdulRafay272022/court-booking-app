@@ -152,3 +152,22 @@ export function dueDoneProblem(method: MoneyMethod | null, hasScreenshot: boolea
 export function replyEarnsBonus(due: Pick<ShortPaymentDue, "bonus_until">, now: Date = new Date()): boolean {
   return !!due.bonus_until && now.getTime() <= new Date(due.bonus_until).getTime();
 }
+
+/** audit fixes 2026-10-31: every "kitna mila" box says what came before and what is left:
+ * "Pehle Rs X mil chuke. Abhi kitna mila? (baqi Rs Y)". */
+export function receivedPrompt(paid: number, due: number, lang: "ru" | "en" = "ru"): string {
+  const rs = (n: number) => `Rs ${Math.max(0, Math.round(n)).toLocaleString("en-US")}`;
+  return lang === "en"
+    ? `Already received ${rs(paid)}. How much now? (${rs(due)} left)`
+    : `Pehle ${rs(paid)} mil chuke. Abhi kitna mila? (baqi ${rs(due)})`;
+}
+
+/** Typing into a "kitna mila" box: digits only, and a number above `max` (the remaining due) is not taken -- the box keeps
+ * its previous value. `blocked` = the keystroke was refused (show the hint in red). */
+export function acceptReceivedInput(raw: string, max: number, previous: string): { value: string; blocked: boolean } {
+  const digits = raw.replace(/[^0-9]/g, "");
+  if (digits === "") return { value: "", blocked: false };
+  const n = Number(digits);
+  if (n > Math.max(0, Math.round(max))) return { value: previous, blocked: true };
+  return { value: String(n), blocked: false };
+}

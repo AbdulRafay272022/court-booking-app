@@ -39,4 +39,6 @@ export const ruNsw = {
   "nsw.rev.err.screenshot": "Transfer ka screenshot lagayein.",
   "nsw.rev.err.pending": "Is booking ka ek screenshot pehle se Approvals mein hai.",
   "nsw.fixHint2": "Ghalat tha? \"No-show hatayein\" se theek karein",
+  "nsw.rev.prompt": "Pehle Rs {paid} mil chuke. Abhi kitna mila? (baqi Rs {due})",
+  "nsw.rev.tooMuch": "Baqi Rs {due} se zyada nahi likh sakte.",
 } as const;

@@ -40,4 +40,6 @@ export const enNsw: Record<keyof typeof ruNsw, string> = {
   "nsw.rev.err.screenshot": "Add the transfer screenshot.",
   "nsw.rev.err.pending": "A screenshot for this booking is already waiting in Approvals.",
   "nsw.fixHint2": "Wrong? Fix it with \"Take back no-show\"",
+  "nsw.rev.prompt": "Already received Rs {paid}. How much now? (Rs {due} left)",
+  "nsw.rev.tooMuch": "You can't enter more than the Rs {due} left.",
 };
