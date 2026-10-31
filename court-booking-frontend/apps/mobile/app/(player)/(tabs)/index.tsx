@@ -161,7 +161,8 @@ export default function PlayerHomeScreen() {
           </Pressable>
         </View>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {/* Main board: the sport tiles and "Aur" share ONE row (5 equal tiles; a 60 basis wrapped "Aur" onto its own line). */}
+        <View style={{ flexDirection: "row", gap: 6 }}>
           {TILES.map((tile) => (
             <SportTile key={tile.sport} label={tile.sport} icon={tile.icon} onPress={() => search({ ...draft, sport: tile.sport })} />
           ))}
@@ -299,7 +300,7 @@ function SportTile({ label, icon: Icon, onPress }: { label: string; icon: IconCo
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => ({ flexGrow: 1, flexBasis: 60, minHeight: 74, borderRadius: radius.button, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 4, opacity: pressed ? 0.8 : 1 })}
+      style={({ pressed }) => ({ flex: 1, minWidth: 0, minHeight: 74, borderRadius: radius.button, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 4, opacity: pressed ? 0.8 : 1 })}
     >
       <Icon size={24} color={palette.white} strokeWidth={1.9} />
       <Text variant="caption" weight="black" tone="onDark" align="center">
