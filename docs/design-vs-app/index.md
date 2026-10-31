@@ -21,7 +21,7 @@ Not every app shot can show the same data as the design, because the app only sh
 
 Where data is missing, the app's empty state is compared with the design's empty state.
 
-**Capture note:** Metro's file watcher stopped noticing edits partway through the session, so some first after-shots showed old code. Metro was restarted with `--clear` and every after-image was taken again from commit d8ab487. Root cause found on 2026-11-01: Metro was started with `CI=1`, which turns file watching off. Start it without `CI` (stdin from `/dev/null`). The second round (2026-11-01, commits e42b6b6..e1accbc) re-took OPaisa-history, OPaisa-refunds, OSettings-hub, OStaffView-staff and PBookings-tab.
+**Capture note:** Metro's file watcher stopped noticing edits partway through the session, so some first after-shots showed old code. Metro was restarted with `--clear` and every after-image was taken again from commit d8ab487. Root cause found on 2026-11-01: Metro was started with `CI=1`, which turns file watching off. Start it without `CI` (stdin from `/dev/null`). The second round (2026-11-01, commits e42b6b6..e1accbc) re-took OPaisa-history, OPaisa-refunds, OSettings-hub, OStaffView-staff and PBookings-tab; the third round (adee39f, 248e3f2) re-took PBookings-detail, OSettings-hub and OSettings-courts.
 
 **Severity:**
 
@@ -162,6 +162,7 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Board is a list hub (Venue ki tafseel ›, Courts aur qeemat ›, …); app is one long form with a Venue/Courts switch | screen structure | fixed (fa803b8: hub list with summaries and "Baqi" badges; each row opens its section; header arrow and Android Back return to the hub; `?section=cnic` opens CNIC) |
 | Board row "Khulne ke ghante" | hours are per court, inside each court's setup | merged into "Courts aur qeemat" (sub line says "ghante") |
 | Extra row "Points ki chhoot" | points feature | kept |
+| No court-line art on the teal card | :146 | fixed (248e3f2: the board's court outline in `alpha.courtLines`) |
 
 **OSettings, courts / timers:** `components/court-setup-fields.tsx`. Match: **partial**.
 
@@ -169,6 +170,8 @@ Where data is missing, the app's empty state is compared with the design's empty
 |---|---|---|
 | All labels English (Minimum booking time, Opening hours, Prices for this court, Cancellations…) | court-setup-fields.tsx | fixed (Roman Urdu) |
 | Layout is the form, not the board's card list | per-court form | kept (opened from the hub row) |
+| Court details, advance chips, blackout form, photos, time picker and toasts still English ("Court name", "Fixed amount", "Starts on", "Add blackout", "Couldn't save"…) | venue-settings.tsx, court-identity-fields, advance-settings, time-fields, photo-manager | fixed (248e3f2: Roman Urdu, owner tone; the wizard uses the same fields so it changed too) |
+| Board: compact 2×2 "Court 1 ki tafseel", rule cards with "+ Rule" and a "chhup raha hai" warning, three advance chips, sticky "Sab save karein" footer | the editable per-court form | still different (labels match; layout is the long form) |
 
 **OWizard step 1 / 2:** `app/(owner)/venue-setup/register.tsx`, `courts.tsx`. Match: **partial**.
 
@@ -256,8 +259,10 @@ Where data is missing, the app's empty state is compared with the design's empty
 | Card actions: one "Ticket / QR"; board: "QR dikhao / Raasta / Tafseel" | bookings.tsx | fixed (b18244e: Pakki = QR dikhao / Raasta / Tafseel, check ho rahi = Chat / Tafseel, pay baqi = Abhi pay karein / Tafseel) |
 | Board "Cancel" on a pay-baqi card | cancel lives on the details screen | kept |
 
-**PBookings detail / cancel:** `done.tsx`. Match: **partial**.
-- The app reuses the Status "Court aap ka hai!" ticket for a booked booking. The board has a separate ticket screen with a "Booking KH-…" header.
+**PBookings detail / cancel:** `done.tsx`. Match: **yes** (adee39f).
+- A booking that is already pakki when it opens shows the board's ticket screen: "Booking KH-…" header, night ticket header (pill, venue, "Court 1 · Padel · Indoor"), Din / Waqt ("6:00 – 8:00 PM"), QR, Raasta / Calendar / Chat tiles, Paisa (Total / Aap ne diye / Venue par baqi), Cancel policy right under it. A booking that turns pakki on screen still gets the Status celebration.
+- Kept on top of the board: a share button in the header, "Venue ka QR khud scan karein" under the QR, WhatsApp / Call tiles when the venue has them, and the payments, history and extras cards below the policy.
+- Board's "Ya code batayein: 4821": not shown, because the owner's manual check-in takes the booking ID, not a short code.
 - The cancel sheet styles come from the shared fixes.
 
 **PChat inbox / thread:** `app/(player)/(tabs)/chat.tsx`, `booking/[id]/chat.tsx`. Match: **partial**.
@@ -300,7 +305,7 @@ Where data is missing, the app's empty state is compared with the design's empty
 Second round (2026-11-01) closed items 1-6 of the first list; see the screen tables above. What is left:
 
 1. **OStaffView "Aane wale players"** needs a backend endpoint a check-in-only account may read (today's arrivals). Every booking list needs `view_ledger` now. Owner decision.
-2. **PBookings** separate ticket screen with a "Booking KH-…" header (the app reuses the Status ticket on `done.tsx`).
-3. **OSettings** the venue card has no court-line art; the blackout / court forms inside the sections are still partly English.
+2. ~~PBookings separate ticket screen~~ done (adee39f).
+3. ~~OSettings court-line art and English forms~~ done (248e3f2). Left: the court form's layout (board: 2×2 details grid, rule cards, sticky save).
 4. **Session-unreachable** screen ("Can't reach Khelo right now") is English; it sits outside the language provider.
 5. **Data-only gaps** (screenshot thumbs, two courts, reviews, growth) show the empty state. They are not code differences.
