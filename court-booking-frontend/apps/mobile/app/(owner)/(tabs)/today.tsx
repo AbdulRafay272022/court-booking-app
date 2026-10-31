@@ -42,6 +42,7 @@ export default function OwnerTodayScreen() {
   const t = useRoleTheme();
   const { venues, activeVenue, activeVenueId, setVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const isOwner = useAuthStore((s) => s.user?.role) === "owner";
+  const isStaffUser = useAuthStore((s) => s.user?.role) === "staff";
   const today = pktDateString();
   const [date, setDate] = useState(today);
   const [courtIds, setCourtIds] = useState<string[]>([]);
@@ -254,7 +255,7 @@ export default function OwnerTodayScreen() {
             </Pressable>
           ) : null}
 
-          {perms.isStaff && (perms.can("check_in") || perms.can("walkin")) ? (
+          {isStaffUser && (perms.can("check_in") || perms.can("walkin")) ? (
             // OStaffView board: staff get the two big actions first (teal Check-in scan, white Walk-in).
             <View testID="staff-actions" style={{ flexDirection: "row", gap: space[3] }}>
               {perms.can("check_in") ? (
