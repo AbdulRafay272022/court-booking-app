@@ -106,15 +106,14 @@ async def submit_payment_proof(
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
 
 
-async def _after_money(db, settings, booking, *, notify: bool = True) -> None:
+async def _after_money(db, settings, booking) -> None:
     """audit 2026-10-28 Phase 3: money landed on a booking -- 50 points if it is now fully paid by transfer (flag
-    player_points), and a carried due is settled once the balance reaches 0. Best effort, never fails the approval.
-    `notify=False` (a balance screenshot approved at the venue): the same bookkeeping, no message to the player."""
+    player_points), and a carried due is settled once the balance reaches 0. Best effort, never fails the approval."""
     from app.services.phase3_service import maybe_award_transfer_points, sync_claim_after_payment
 
     try:
-        await maybe_award_transfer_points(db, settings, booking, notify=notify)
-        await sync_claim_after_payment(db, settings, booking, notify=notify)
+        await maybe_award_transfer_points(db, settings, booking)
+        await sync_claim_after_payment(db, settings, booking)
         await db.refresh(booking)
     except Exception:  # noqa: BLE001
         import structlog
@@ -173,8 +172,8 @@ async def approve_payment(
     payment_service.require_awaiting(payment, booking)
     await payment_service.require_duplicate_confirmed(payment, bool(payload and payload.confirm_duplicate))
     paid_before = int(round(float(booking.amount_paid or 0)))
-    # audit fixes 2026-10-31 (a): a balance / no-show-reversal screenshot is checked at the venue; whoever approves it owns it,
-    # and the player is not messaged about it (no receipt, no "confirmed", no points notice). An advance is unchanged.
+    # audit fixes 2026-10-31: a balance / no-show-reversal screenshot (checked at the venue) gets the normal receipt instead of
+    # "booking confirmed" (the booking was confirmed long ago) and no "pay the rest by transfer" line. Points notices as usual.
     at_venue = is_balance_proof(payment) and booking.status in BALANCE_PROOF_STATUSES
 
     payment = await payment_service.approve_payment(
@@ -185,14 +184,19 @@ async def approve_payment(
         accept_mode=payload.accept_mode if payload else None,
     )
     await db.refresh(booking)
-    await _after_money(db, settings, booking, notify=not at_venue)
-    if not at_venue:
-        await _receipt_whatsapp(db, settings, booking, int(round(float(booking.amount_paid or 0))) - paid_before)
+    await _after_money(db, settings, booking)
+    credited = int(round(float(booking.amount_paid or 0))) - paid_before
+    if at_venue:
+        from app.services.phase3_service import send_balance_receipt
+
+        await send_balance_receipt(db, settings, booking, credited)
+    else:
+        await _receipt_whatsapp(db, settings, booking, credited)
     try:
         # audit fixes 2026-10-31: the transfer sent with a no-show reversal, approved as correct -> +10 (once, flag player_points)
         from app.services.phase3_service import award_noshow_transfer_points
 
-        await award_noshow_transfer_points(db, settings, owner, booking, payment, notify=not at_venue)
+        await award_noshow_transfer_points(db, settings, owner, booking, payment)
     except Exception:  # noqa: BLE001 -- the approval already committed
         import structlog
 

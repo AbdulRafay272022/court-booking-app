@@ -7,7 +7,9 @@ the bank. No new table, no migration:
 - the owner decides once (audit row `bank.not_received_decided`):
     staff  -> "Staff se wasool karein": an `other` ledger entry for the amount (the venue collects it from that staff member;
               the player owes nothing and hears nothing);
-    player -> "Player se baqi maangein": the normal short-payment flow starts (Sahi hai / Ghalat hai, +5 / -20, carried due).
+              the player keeps any points that transfer earned;
+    player -> "Player se baqi maangein": the points that transfer earned are taken back (never below 0, audited) and the normal
+              short-payment flow starts (Sahi hai / Ghalat hai, +5 / -20, carried due); the notice says so.
 """
 
 from __future__ import annotations
@@ -97,7 +99,7 @@ async def mark_not_received(db: AsyncSession, settings: Settings, actor: User, e
 async def decide(db: AsyncSession, settings: Settings, actor: User, entry_id: uuid.UUID, decision: str) -> dict:
     from app.services.audit_service import AuditService
     from app.services.payment_ledger_service import PaymentLedgerService
-    from app.services.phase3_service import start_short_round
+    from app.services.phase3_service import start_short_round, take_back_transfer_points
     from app.utils.timezone import format_pkr
 
     if decision not in DECISIONS:
@@ -125,10 +127,11 @@ async def decide(db: AsyncSession, settings: Settings, actor: User, entry_id: uu
     else:
         booking = await db.get(Booking, booking.id)
         await db.refresh(booking)
-        await start_short_round(
-            db, settings, booking, actor,
-            note=f"Aap ka transfer {format_pkr(entry.amount_pkr)} venue ke bank mein nahi mila.",
-        )
+        taken, balance = await take_back_transfer_points(db, actor, booking, entry)
+        note = f"Aap ka transfer {format_pkr(entry.amount_pkr)} venue ke bank mein nahi mila."
+        if taken:
+            note += f" Is transfer ke {taken} points wapas liye gaye, ab kul {balance}."
+        await start_short_round(db, settings, booking, actor, note=note)
     return (await states(db, [entry.id]))[entry.id]
 
 

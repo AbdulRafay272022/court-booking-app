@@ -152,9 +152,8 @@ async def add_points(db: AsyncSession, player_id: uuid.UUID, booking_id: uuid.UU
     return delta
 
 
-async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, booking: Booking, *, notify: bool = True) -> int:
-    """50 points once the whole booking is paid and every rupee came by transfer (no cash, no manual 'other' entry).
-    `notify=False`: a balance screenshot approved at the venue -- the points are given, the player is not messaged."""
+async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, booking: Booking) -> int:
+    """50 points once the whole booking is paid and every rupee came by transfer (no cash, no manual 'other' entry)."""
     if booking.player_id is None or not await flag_on(db, "player_points"):
         return 0
     if booking.status not in (BookingStatus.BOOKED, BookingStatus.COMPLETED) or float(booking.balance_due or 0) > 0:
@@ -164,13 +163,13 @@ async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, book
         return 0
     got = await add_points(db, booking.player_id, booking.id, TRANSFER_POINTS, "transfer_booking")
     await db.commit()
-    if got and notify:
+    if got:
         player = await db.get(User, booking.player_id)
         bal = await points_balance(db, booking.player_id)
         code = short_code(booking.id)
         await _notify(
             db, settings, player, "player_points_reward", "Points mile",
-            f"Mubarak! Booking {code} poori transfer se ada hui: {got} points mile. Ab aap ke {bal} points hain. {POINTS_RULE_RU}",
+            f"Mubarak! Booking {code} poori transfer se ada hui: +{got} points mile, kul {bal}. {POINTS_RULE_RU}",
             reference_id=booking.id, template="khelo_points_reward", params=[str(got), code, str(bal)],
         )
     return got
@@ -403,9 +402,8 @@ async def _actor_can_record(db: AsyncSession, settings: Settings, actor: User, b
     return await BookingService(db, settings).require_accessible_booking(booking_id, actor, permission="record_payments")
 
 
-async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClaim, how: str, *, notify: bool = True) -> None:
-    """Settle a due ("paid" / "waived") and give back the no-reply penalty if one was taken. Commits. `notify=False`: settled by
-    a screenshot approved at the venue -- no message to the player."""
+async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClaim, how: str) -> None:
+    """Settle a due ("paid" / "waived") and give back the no-reply penalty if one was taken. Commits."""
     if claim.resolved_at is not None:
         return
     claim.resolved_at = datetime.now(timezone.utc)
@@ -415,8 +413,6 @@ async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClai
         returned = await add_points(db, claim.player_id, claim.booking_id, claim.penalty_applied, "short_no_reply_returned")
         claim.penalty_returned = True
     await db.commit()
-    if not notify:
-        return
     player = await db.get(User, claim.player_id) if claim.player_id else None
     code = short_code(claim.booking_id)
     text = "clear ho gaya" if how == "paid" else "venue ne maaf kar diya"
@@ -603,11 +599,9 @@ async def reverse_noshow(db: AsyncSession, settings: Settings, actor: User, book
     return booking
 
 
-async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, actor: User, booking: Booking, payment, *,
-                                       notify: bool = True) -> int:
+async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, actor: User, booking: Booking, payment) -> int:
     """The owner approved, as correct, the transfer screenshot sent with a no-show reversal: +10 points, once per booking,
-    audited. Only with player_points on. The approval at the venue sends no message (`notify=False`); the points show in the
-    player's points history."""
+    audited, with a notice ("+10 points mile, kul X"). Only with player_points on."""
     from app.services.audit_service import AuditService
 
     raw = payment.ocr_raw if isinstance(payment.ocr_raw, dict) else {}
@@ -620,23 +614,86 @@ async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, act
             entity_id=booking.id, new_value={"points": got, "payment_id": str(payment.id)},
         )
     await db.commit()
-    if got and notify:
+    if got:
         player = await db.get(User, booking.player_id)
         bal = await points_balance(db, booking.player_id)
         code = short_code(booking.id)
         await _notify(
             db, settings, player, "player_points_reward", "Points mile",
-            f"Booking {code}: venue ne aap ka transfer sahi maan liya, {got} points mile. Ab aap ke {bal} points hain.",
+            f"Booking {code}: venue ne aap ka transfer sahi maan liya: +{got} points mile, kul {bal}.",
             reference_id=booking.id, template="khelo_points_reward", params=[str(got), code, str(bal)],
         )
     return got
 
 
-async def sync_claim_after_payment(db: AsyncSession, settings: Settings, booking: Booking, *, notify: bool = True) -> None:
+async def sync_claim_after_payment(db: AsyncSession, settings: Settings, booking: Booking) -> None:
     """A later payment (e.g. an approved balance screenshot) that clears the balance settles the due too."""
     claim = await claim_for_booking(db, booking.id)
     if claim is not None and claim.resolved_at is None and float(booking.balance_due or 0) <= 0:
-        await _resolve(db, settings, claim, "paid", notify=notify)
+        await _resolve(db, settings, claim, "paid")
+
+
+async def send_balance_receipt(db: AsyncSession, settings: Settings, booking: Booking, credited: int) -> None:
+    """A balance / no-show-reversal screenshot approved at the venue: the normal receipt -- push + in-app always, WhatsApp
+    (khelo_payment_receipt) only while whatsapp_templates is on. No "pay the rest by transfer" line: balance is paid at the
+    venue."""
+    if credited <= 0 or booking.player_id is None:
+        return
+    player = await db.get(User, booking.player_id)
+    code = short_code(booking.id)
+    paid, due = float(booking.amount_paid or 0), float(booking.balance_due or 0)
+    await _notify(
+        db, settings, player, "payment_receipt", "Payment mil gayi",
+        f"Booking {code}: {format_pkr(credited)} mil gaye. Kul ada {format_pkr(paid)}, baqi {format_pkr(due)}. Shukriya!",
+        reference_id=booking.id, template="khelo_payment_receipt",
+        params=[code, format_pkr(credited), format_pkr(paid), format_pkr(due)],
+    )
+
+
+TAKE_BACK_REASONS = {"transfer_booking": "transfer_booking_taken_back", "noshow_transfer_ok": "noshow_transfer_taken_back"}
+
+
+async def take_back_transfer_points(db: AsyncSession, actor: User, booking: Booking, entry: PaymentEntry) -> tuple[int, int]:
+    """"Bank mein nahi mila" + "Player se baqi maangein": the points that transfer earned are taken back -- the 50 for a
+    booking paid fully by transfer (it no longer is) and the +10 when the transfer was a no-show reversal. Never below 0
+    (add_points), once per booking and reason, audited. Returns (points taken, balance after). Commits."""
+    from app.models.payment import Payment
+    from app.services.audit_service import AuditService
+
+    if booking.player_id is None:
+        return 0, 0
+    given = {
+        p.reason: p.delta
+        for p in (
+            await db.execute(select(PointEntry).where(PointEntry.booking_id == booking.id, PointEntry.reason.in_(tuple(TAKE_BACK_REASONS))))
+        ).scalars()
+    }
+    if "noshow_transfer_ok" in given:
+        # only when THIS entry came from the no-show-reversal screenshot (the approval that wrote it, same approver, just before)
+        payment = (
+            await db.execute(
+                select(Payment)
+                .where(Payment.booking_id == booking.id, Payment.review_verdict == "approved", Payment.reviewed_by == entry.recorded_by,
+                       Payment.reviewed_at <= entry.created_at)
+                .order_by(Payment.reviewed_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        raw = payment.ocr_raw if payment is not None and isinstance(payment.ocr_raw, dict) else {}
+        if raw.get("origin") != NOSHOW_REVERSE_ORIGIN:
+            given.pop("noshow_transfer_ok")
+    taken = 0
+    for reason, delta in given.items():
+        if delta > 0:
+            taken += -await add_points(db, booking.player_id, booking.id, -delta, TAKE_BACK_REASONS[reason],
+                                       note=f"Bank mein nahi mila ({entry.id})")
+    if taken:
+        await AuditService(db).log(
+            actor_user_id=actor.id, actor_type=actor.role.value, action="points.bank_missing_taken_back", entity_type="booking",
+            entity_id=booking.id, new_value={"points": taken, "entry_id": str(entry.id), "reasons": sorted(given)},
+        )
+    await db.commit()
+    return taken, await points_balance(db, booking.player_id)
 
 
 async def start_short_round(db: AsyncSession, settings: Settings, booking: Booking, actor: User | None, *, note: str,

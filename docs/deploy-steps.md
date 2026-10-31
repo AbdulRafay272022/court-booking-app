@@ -88,11 +88,13 @@ The push deploys automatically through GitHub Actions:
   "No-show hatayein": final price, amount received now, Cash / Transfer. A transfer needs its screenshot, which waits in Approvals and is
   credited only when approved. Web is live at once; the app sheet needs the new EAS build. The OLD app build shows the server's message
   when Haan is pressed on a no-show (nothing is recorded): "No-show hatane ke liye web dashboard istemal karein (naya app update jald)".
-- **Approving a balance / no-show-reversal screenshot sends the player nothing** (no receipt, no "confirmed", no "baqi clear", no
-  points notice). Advance approvals are unchanged.
+- **Approving a balance / no-show-reversal screenshot** sends the player the receipt ("PKR N mil gaye, kul ada ..., baqi ...", push +
+  in-app; WhatsApp only with `whatsapp_templates`) instead of "Booking confirmed", plus "+50 / +10 points mile, kul X" when points are
+  given. Advance approvals are unchanged.
 - **"Bank se mila lein" has a "Bank mein nahi mila" button** (owner only) on balance transfers. Marking one takes the money out (a
   reversing ledger entry), and "Staff ka kaam" shows it in red under the staff member who approved it until the owner picks "Staff se
-  wasool karein" or "Player se baqi maangein". Web live at once; the app screens need the new EAS build.
+  wasool karein" (player keeps the points, no message) or "Player se baqi maangein" (the transfer's points are taken back and the
+  short-payment message says so). Web live at once; the app screens need the new EAS build.
 - **Rejecting a balance screenshot** starts the short-payment flow only while `short_payment_reply` / `player_dues` are on; with them off
   the player gets the old "payment rejected" message, as today.
 - **Every "kitna mila" box** reads "Pehle Rs X mil chuke. Abhi kitna mila? (baqi Rs Y)" and will not take more than Y (web now, app with

@@ -2,9 +2,10 @@
 
 1. an old app pressing "Haan" on a no-show gets "No-show hatane ke liye web dashboard istemal karein (naya app update jald)".
 2. balance / no-show-reversal transfers are checked at the venue:
-   a. approved -> the approver owns it, the player is not messaged;
+   a. approved -> the approver owns it; the player gets the normal receipt and the points notices (only problems are silent);
    b. the owner marks it "bank mein nahi mila" -> red on "Staff ka kaam" under that staff member; the owner chooses
-      "Staff se wasool karein" (no player message) or "Player se baqi maangein" (the short-payment flow);
+      "Staff se wasool karein" (no player message, points kept) or "Player se baqi maangein" (the points that transfer earned
+      are taken back, audited, and the short-payment flow starts);
    c. rejected -> exactly a short payment (the amount is not counted, Sahi hai / Ghalat hai, +5 within 4 days, -20 after 24 h).
    An advance rejection is unchanged.
 Real Postgres; flags are switched on per test."""
@@ -83,13 +84,13 @@ async def test_old_app_haan_on_a_no_show_gets_the_roman_urdu_message(client, db_
     assert (await _booking(db_session_factory, b.id)).status == BookingStatus.NO_SHOW
 
 
-# ---------------------------------------------------------------- 2a. approved at the venue: no player message
+# ---------------------------------------------------------------- 2a. approved at the venue: the normal good news
 
 
-async def test_approving_a_noshow_reversal_transfer_sends_the_player_nothing(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+async def test_approving_a_noshow_reversal_transfer_sends_the_receipt_and_the_points_notices(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+    seen = _capture(monkeypatch)
     mock_upload(monkeypatch)
     await set_flag(db_session_factory, "player_points")
-    await set_flag(db_session_factory, "whatsapp_templates")
     owner, _v, (court,) = await seed_venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923003130021")
     player = await make_user("+923003130022")
     oh = await make_auth_headers(owner)
@@ -97,30 +98,35 @@ async def test_approving_a_noshow_reversal_transfer_sends_the_player_nothing(cli
     r = await client.post(f"/api/v1/owners/bookings/{b.id}/noshow-reverse",
                           data={"final_price_pkr": 2000, "received_pkr": 1500, "method": "transfer"}, files={"screenshot": _shot()}, headers=oh)
     assert r.status_code == 200, r.text
-    before = len(await log_rows(db_session_factory, user_id=player.id))
     pay = await _pending_payment(db_session_factory, b.id)
     assert (await client.post(f"/api/v1/payments/{pay.id}/approve", headers=oh)).status_code == 200
-    assert await _player_logs_since(db_session_factory, player.id, before) == []
     bk = await _booking(db_session_factory, b.id)
     assert float(bk.amount_paid) == 2000 and float(bk.balance_due) == 0
-    async with db_session_factory() as s:
-        from app.models.audit_phase3 import PointEntry
+    # the receipt (push + in-app; WhatsApp only with whatsapp_templates), not "booking confirmed"
+    receipts = _bodies(seen, "payment_receipt")
+    assert len(receipts) == 1 and "PKR 1,500 mil gaye" in receipts[0] and "baqi PKR 0" in receipts[0]
+    assert await log_rows(db_session_factory, user_id=player.id, event_type="payment_receipt")
+    assert not await log_rows(db_session_factory, user_id=player.id, event_type="booking_confirmed")
+    # +50 (fully paid by transfer) and +10 (no-show transfer), each with its own notice
+    points = _bodies(seen, "player_points_reward")
+    assert any("+50 points mile, kul 50" in t for t in points), points
+    assert any("+10 points mile, kul 60" in t for t in points), points
+    assert await _balance(db_session_factory, player) == 60
 
-        reasons = {p.reason for p in (await s.execute(select(PointEntry).where(PointEntry.booking_id == b.id))).scalars()}
-    assert "noshow_transfer_ok" in reasons  # the +10 is still given, silently
 
-
-async def test_approving_a_due_done_transfer_settles_the_due_without_a_player_message(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+async def test_approving_a_due_done_transfer_sends_the_receipt(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+    seen = _capture(monkeypatch)
     mock_upload(monkeypatch)
     await set_flag(db_session_factory, "player_dues")
     _o, _v, _c, player, b, oh, _ph = await _short_booking(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, "+923003130031")
     claim = await _claim(db_session_factory, b.id)
     assert (await client.post(f"/api/v1/owners/dues/{claim.id}/done", data={"method": "transfer"}, files={"screenshot": _shot()}, headers=oh)).status_code == 200
-    before = len(await log_rows(db_session_factory, user_id=player.id))
     pay = await _pending_payment(db_session_factory, b.id)
     assert (await client.post(f"/api/v1/payments/{pay.id}/approve", headers=oh)).status_code == 200
     assert (await _claim(db_session_factory, b.id)).resolution == "paid"
-    assert await _player_logs_since(db_session_factory, player.id, before) == []
+    assert [t for t in _bodies(seen, "payment_receipt") if "PKR 1,000 mil gaye" in t]
+    assert not await log_rows(db_session_factory, user_id=player.id, event_type="booking_confirmed")
+    assert not await log_rows(db_session_factory, user_id=player.id, event_type="balance_payment_wa")
 
 
 # ---------------------------------------------------------------- 2c. rejected at the venue = a short payment
@@ -289,6 +295,66 @@ async def test_bank_not_received_player_se_baqi_starts_the_short_payment_flow(cl
     assert [x["booking_id"] for x in dues] == [str(b.id)]
     assert (await client.post(f"/api/v1/short-payments/{c.id}/reply", json={"answer": "no"}, headers=ph)).status_code == 200
     assert await log_rows(db_session_factory, user_id=owner.id, event_type="owner_short_dispute")
+
+
+async def _staff_approved_noshow_transfer(client, sf, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch, phone):
+    """A no-show taken back by transfer (PKR 1,500 on PKR 500 paid), the screenshot approved by STAFF: +50 and +10 points."""
+    mock_upload(monkeypatch)
+    await set_flag(sf, "player_points")
+    owner, venue, (court,) = await seed_venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone)
+    player = await make_user(phone[:-1] + "9")
+    staff = await make_staff(sf, make_user, venue, phone[:-1] + "7", ["approve_payments", "record_payments", "view_ledger"])
+    oh, sh, ph = await make_auth_headers(owner), await make_auth_headers(staff), await make_auth_headers(player)
+    b = await _noshow(sf, court, player)
+    r = await client.post(f"/api/v1/owners/bookings/{b.id}/noshow-reverse",
+                          data={"final_price_pkr": 2000, "received_pkr": 1500, "method": "transfer"}, files={"screenshot": _shot()}, headers=sh)
+    assert r.status_code == 200, r.text
+    pay = await _pending_payment(sf, b.id)
+    assert (await client.post(f"/api/v1/payments/{pay.id}/approve", headers=sh)).status_code == 200
+    assert await _balance(sf, player) == 60
+    entry = (await _entries(sf, b.id))[-1]
+    assert entry.recorded_by == staff.id and entry.amount_pkr == 1500
+    return owner, player, b, oh, ph, entry
+
+
+async def test_player_se_baqi_takes_back_the_points_that_transfer_earned_and_says_so(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+    seen = _capture(monkeypatch)
+    await set_flag(db_session_factory, "short_payment_reply")
+    _owner, player, b, oh, _ph, entry = await _staff_approved_noshow_transfer(
+        client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch, "+923003130101")
+    # the player spent some points meanwhile: the take-back never goes below 0
+    async with db_session_factory() as s:
+        from app.models.audit_phase3 import PointEntry
+
+        s.add(PointEntry(player_id=player.id, delta=-25, reason="redeem"))
+        await s.commit()
+    assert (await client.post(f"/api/v1/owners/bank-check/{entry.id}/not-received", headers=oh)).status_code == 200
+    assert await _balance(db_session_factory, player) == 35  # marking alone takes nothing
+    assert (await client.post(f"/api/v1/owners/bank-check/{entry.id}/decide", json={"decision": "player"}, headers=oh)).status_code == 200
+    assert await _balance(db_session_factory, player) == 0
+    async with db_session_factory() as s:
+        from app.models.audit import AuditLog
+        from app.models.audit_phase3 import PointEntry
+
+        taken = {p.reason: p.delta for p in (await s.execute(select(PointEntry).where(PointEntry.booking_id == b.id, PointEntry.delta < 0))).scalars()}
+        audit = (await s.execute(select(AuditLog).where(AuditLog.action == "points.bank_missing_taken_back"))).scalars().all()
+    assert sum(taken.values()) == -35 and set(taken) <= {"transfer_booking_taken_back", "noshow_transfer_taken_back"}
+    assert len(audit) == 1 and audit[0].new_value["points"] == 35
+    ask = _bodies(seen, "player_short_ask")[-1]
+    assert "bank mein nahi mila" in ask and "35 points wapas liye gaye, ab kul 0" in ask
+    # a second decision is refused, so nothing is taken twice
+    assert (await client.post(f"/api/v1/owners/bank-check/{entry.id}/decide", json={"decision": "player"}, headers=oh)).status_code == 409
+
+
+async def test_staff_se_wasool_keeps_the_points_and_sends_nothing(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+    _owner, player, b, oh, _ph, entry = await _staff_approved_noshow_transfer(
+        client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch, "+923003130111")
+    before = len(await log_rows(db_session_factory, user_id=player.id))
+    assert (await client.post(f"/api/v1/owners/bank-check/{entry.id}/not-received", headers=oh)).status_code == 200
+    assert (await client.post(f"/api/v1/owners/bank-check/{entry.id}/decide", json={"decision": "staff"}, headers=oh)).status_code == 200
+    assert await _balance(db_session_factory, player) == 60
+    assert await _player_logs_since(db_session_factory, player.id, before) == []
+    assert float((await _booking(db_session_factory, b.id)).balance_due) == 0
 
 
 async def test_an_owner_approved_transfer_cannot_be_put_on_staff_and_an_advance_cannot_be_marked(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
