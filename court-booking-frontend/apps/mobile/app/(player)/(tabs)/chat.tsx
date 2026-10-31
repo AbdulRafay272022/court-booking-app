@@ -64,7 +64,8 @@ export default function ChatTabScreen() {
           onAction={() => router.push("/(player)/search")}
         />
       ) : (
-        <View style={{ backgroundColor: palette.white, borderRadius: radius.card, overflow: "hidden" }} testID="chat-rows">
+        // PChat inbox board: one white card per chat, 10 apart.
+        <View style={{ gap: 10 }} testID="chat-rows">
           {rows.map((b, i) => (
             <ChatRow key={b.id} booking={b} history={histories[i]?.data} loadingHistory={!!histories[i]?.isLoading} divider={i < rows.length - 1} />
           ))}
@@ -88,7 +89,7 @@ function ChatRow({ booking, history, loadingHistory, divider }: { booking: Booki
       onPress={() => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id: booking.id } })}
       accessibilityRole="button"
       accessibilityLabel={`${name}, ${when}${last ? `, ${last.content}` : ""}`}
-      style={({ pressed }) => ({ flexDirection: "row", gap: space[3], padding: space[4], alignItems: "center", backgroundColor: pressed ? palette.ground : palette.white, borderBottomWidth: divider ? 1 : 0, borderBottomColor: palette.divider, minHeight: 72 })}
+      style={({ pressed }) => ({ flexDirection: "row", gap: space[3], padding: space[4], alignItems: "center", backgroundColor: pressed ? palette.mist : palette.white, borderRadius: radius.card, minHeight: 72 })}
     >
       <Avatar name={name} tone="night" />
       <View style={{ flex: 1, gap: 3 }}>
