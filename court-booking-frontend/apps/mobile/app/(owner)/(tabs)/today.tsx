@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router, useIsFocused } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, ChevronDown, ChevronLeft, ChevronRight, Clock } from "lucide-react-native";
+import { Bell, ChevronDown, ChevronLeft, ChevronRight, Clock, Plus, ScanLine } from "lucide-react-native";
 import type { OwnerBookingRow, OwnerOverview } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { alpha, initials, palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
@@ -254,6 +254,23 @@ export default function OwnerTodayScreen() {
             </Pressable>
           ) : null}
 
+          {perms.isStaff && (perms.can("check_in") || perms.can("walkin")) ? (
+            // OStaffView board: staff get the two big actions first (teal Check-in scan, white Walk-in).
+            <View testID="staff-actions" style={{ flexDirection: "row", gap: space[3] }}>
+              {perms.can("check_in") ? (
+                <Pressable onPress={() => router.push("/(owner)/checkin-scan")} accessibilityRole="button" accessibilityLabel="Check-in scan" style={{ flex: 1, minHeight: 100, borderRadius: radius.card, backgroundColor: palette.teal, alignItems: "center", justifyContent: "center", gap: space[2] }}>
+                  <ScanLine size={26} color={palette.white} />
+                  <Text variant="bodyStrong" tone="onDark">Check-in scan</Text>
+                </Pressable>
+              ) : null}
+              {perms.can("walkin") ? (
+                <Pressable onPress={() => router.push("/(owner)/walkin")} accessibilityRole="button" accessibilityLabel="Walk-in" style={{ flex: 1, minHeight: 100, borderRadius: radius.card, backgroundColor: palette.white, alignItems: "center", justifyContent: "center", gap: space[2] }}>
+                  <Plus size={26} color={palette.teal} />
+                  <Text variant="bodyStrong">Walk-in</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
           {isOwner ? <PremiumNotices /> : null}
           {activeVenue ? (
             <VenueStatusBanner
