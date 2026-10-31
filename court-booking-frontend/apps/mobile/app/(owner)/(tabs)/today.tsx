@@ -135,7 +135,11 @@ export default function OwnerTodayScreen() {
   const dayWord = date === today ? "AAJ" : date === addDays(today, 1) ? "KAL" : date === addDays(today, -1) ? "KAL (GUZRA)" : null;
   const dayLine = `${dayWord ? `${dayWord} · ` : ""}${formatDayHeader(date).toUpperCase()}`;
 
-  if (perms.settled && !allowed) return <NoAccess what="Aaj" withBack={false} />;
+  if (perms.settled && !allowed) {
+    // OStaffView board: a check-in / walk-in staff member gets their own Aaj (venue + name, today, the two big actions).
+    if (isStaffUser && (perms.can("check_in") || perms.can("walkin"))) return <StaffAaj venueName={activeVenue?.name} />;
+    return <NoAccess what="Aaj" withBack={false} />;
+  }
 
   const hero = (
     <View style={{ gap: 18 }}>
@@ -255,23 +259,7 @@ export default function OwnerTodayScreen() {
             </Pressable>
           ) : null}
 
-          {isStaffUser && (perms.can("check_in") || perms.can("walkin")) ? (
-            // OStaffView board: staff get the two big actions first (teal Check-in scan, white Walk-in).
-            <View testID="staff-actions" style={{ flexDirection: "row", gap: space[3] }}>
-              {perms.can("check_in") ? (
-                <Pressable onPress={() => router.push("/(owner)/checkin-scan")} accessibilityRole="button" accessibilityLabel="Check-in scan" style={{ flex: 1, minHeight: 100, borderRadius: radius.card, backgroundColor: palette.teal, alignItems: "center", justifyContent: "center", gap: space[2] }}>
-                  <ScanLine size={26} color={palette.white} />
-                  <Text variant="bodyStrong" tone="onDark">Check-in scan</Text>
-                </Pressable>
-              ) : null}
-              {perms.can("walkin") ? (
-                <Pressable onPress={() => router.push("/(owner)/walkin")} accessibilityRole="button" accessibilityLabel="Walk-in" style={{ flex: 1, minHeight: 100, borderRadius: radius.card, backgroundColor: palette.white, alignItems: "center", justifyContent: "center", gap: space[2] }}>
-                  <Plus size={26} color={palette.teal} />
-                  <Text variant="bodyStrong">Walk-in</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
+          {isStaffUser ? <StaffActions /> : null}
           {isOwner ? <PremiumNotices /> : null}
           {activeVenue ? (
             <VenueStatusBanner
@@ -603,3 +591,52 @@ function LegendButton({ label, sub, swatch, onPress }: { label: string; sub?: st
   );
 }
 
+
+/** OStaffView board: the two big staff actions (teal Check-in scan, white Walk-in), each only with its permission. */
+function StaffActions() {
+  const perms = useMyPermissions();
+  if (!perms.can("check_in") && !perms.can("walkin")) return null;
+  return (
+    <View testID="staff-actions" style={{ flexDirection: "row", gap: space[3] }}>
+      {perms.can("check_in") ? (
+        <Pressable onPress={() => router.push("/(owner)/checkin-scan")} accessibilityRole="button" accessibilityLabel="Check-in scan" style={{ flex: 1, minHeight: 100, borderRadius: radius.card, backgroundColor: palette.teal, alignItems: "center", justifyContent: "center", gap: space[2] }}>
+          <ScanLine size={26} color={palette.white} />
+          <Text variant="bodyStrong" tone="onDark">Check-in scan</Text>
+        </Pressable>
+      ) : null}
+      {perms.can("walkin") ? (
+        <Pressable onPress={() => router.push("/(owner)/walkin")} accessibilityRole="button" accessibilityLabel="Walk-in" style={{ flex: 1, minHeight: 100, borderRadius: radius.card, backgroundColor: palette.white, alignItems: "center", justifyContent: "center", gap: space[2] }}>
+          <Plus size={26} color={palette.teal} />
+          <Text variant="bodyStrong">Walk-in</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * OStaffView board, staff without the ledger: hero "Venue · Staff: Name" over "Aaj · Sun 1 Nov", the two big actions, and
+ * the line that money and settings are the owner's. The board's "Aane wale players" list needs a booking list a
+ * check-in-only account may read; every such endpoint needs view_ledger today, so it is not shown.
+ */
+function StaffAaj({ venueName }: { venueName?: string }) {
+  const name = useAuthStore((s) => s.user?.name);
+  const eyebrow = [venueName, name ? `Staff: ${name.split(" ")[0]}` : "Staff"].filter(Boolean).join(" · ");
+  return (
+    <ScrollView testID="staff-aaj" contentContainerStyle={{ paddingBottom: 140 }}>
+      <HeroLayout
+        hero={
+          <View style={{ gap: 8 }}>
+            <Text variant="label" tone="hero">{eyebrow}</Text>
+            <Text variant="display" tone="hero">{`Aaj · ${formatDayHeader(pktDateString())}`}</Text>
+          </View>
+        }
+      >
+        <StaffActions />
+        <Text variant="caption" tone="muted" style={{ paddingHorizontal: space[1] }}>
+          Paisa aur settings sirf owner dekh sakta hai. Zyada access ke liye owner se kahein.
+        </Text>
+      </HeroLayout>
+    </ScrollView>
+  );
+}

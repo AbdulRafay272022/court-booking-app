@@ -20,7 +20,8 @@ export const OWNER_TABS: { key: OwnerTabKey; route: "today" | "approvals" | "ref
 ];
 
 const TAB_NEEDS: Record<OwnerTabKey, StaffPermissionKey[]> = {
-  overview: ["view_ledger"],
+  // check_in / walkin staff get their own Aaj (OStaffView board: the two big actions), not the money board
+  overview: ["view_ledger", "check_in", "walkin"],
   approvals: ["view_ledger"],
   refunds: ["mark_refunds"],
   ledger: ["view_ledger"],

@@ -34,7 +34,7 @@ test("ownerBarTabs: owner gets Aaj, Approvals, Paisa (ledger), Aur", () => {
 });
 
 test("ownerBarTabs: staff only see permitted cells; Paisa falls back to Refunds; Aur always", () => {
-  assert.deepEqual(ownerBarTabs(staffWith("check_in", "walkin")).map((t) => t.key), ["aur"]);
+  assert.deepEqual(ownerBarTabs(staffWith("check_in", "walkin")).map((t) => t.key), ["aaj", "aur"]);
   assert.deepEqual(ownerBarTabs(staffWith("mark_refunds")).map((t) => `${t.key}:${t.route}`), ["paisa:refunds", "aur:more"]);
   assert.deepEqual(ownerBarTabs(staffWith("view_ledger")).map((t) => t.key), ["aaj", "approvals", "paisa", "aur"]);
   assert.deepEqual(ownerBarTabs(staffWith("approve_payments")).map((t) => t.key), ["aur"]);

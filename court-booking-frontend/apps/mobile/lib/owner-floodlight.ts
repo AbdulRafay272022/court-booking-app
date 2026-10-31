@@ -31,6 +31,9 @@ export function ownerBarTabs(can: Can): OwnerBarTab[] {
   if (can("view_ledger")) {
     out.push({ key: "aaj", route: "today", label: "Aaj" });
     out.push({ key: "approvals", route: "approvals", label: "Approvals" });
+  } else if (can("check_in") || can("walkin")) {
+    // OStaffView board: check-in / walk-in staff get their own Aaj (two big actions), never the money board.
+    out.push({ key: "aaj", route: "today", label: "Aaj" });
   }
   if (can("view_ledger")) out.push({ key: "paisa", route: "ledger", label: "Paisa" });
   else if (can("mark_refunds")) out.push({ key: "paisa", route: "refunds", label: "Paisa" });
