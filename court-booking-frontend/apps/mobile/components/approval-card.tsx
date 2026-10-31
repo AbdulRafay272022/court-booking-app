@@ -109,11 +109,9 @@ export function ApprovalCard({
         <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} uri={item.player_avatar_url} />
         <View style={{ flex: 1, gap: 1 }}>
           <Text variant="bodyStrong">{item.player_name ?? "Player"}</Text>
-          <Text variant="meta" tone="muted">
-            {courtText}
-          </Text>
-          <Text testID="approval-when" variant="meta" weight="bold">
-            {slotWhen(item.starts_at, item.ends_at)}
+          {/* Approvals board: one muted line "Court 1 · Mon 26 Oct · 5:30–7:30 PM". */}
+          <Text testID="approval-when" variant="meta" tone="muted">
+            {`${courtText} · ${slotWhen(item.starts_at, item.ends_at)}`}
           </Text>
         </View>
         {!grey ? (
@@ -364,9 +362,10 @@ export function RejectSheet({
       subtitle={`${item.player_name ?? "Player"} · ${slotWhen(item.starts_at, item.ends_at)} · PKR ${formatPKR(item.expected_amount)}`}
       onClose={onClose}
       footer={
-        <View style={{ flexDirection: "row", gap: space[3] }}>
-          <OutlineButton flex label="Wapas" onPress={onClose} />
-          <DangerButton flex label={busy ? "Reject ho raha hai" : "Reject karein"} disabled={!reason || busy} onPress={() => reason && onConfirm(reason)} />
+        // OSheets reject: the red action first, full width, "Wapas" under it as a quiet grey button.
+        <View style={{ gap: space[2] }}>
+          <DangerButton label={busy ? "Reject ho raha hai" : "Reject karein"} disabled={!reason || busy} onPress={() => reason && onConfirm(reason)} />
+          <Button label="Wapas" variant="quiet" size="md" block onPress={onClose} />
         </View>
       }
     >

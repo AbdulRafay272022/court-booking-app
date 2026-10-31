@@ -45,7 +45,7 @@ export default function ApprovalsScreen() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [show, setShow] = useState<View3>("all");
+  const [show, setShow] = useState<View3>("awaiting");
   // Stage 2 (B.b): staff without the approve permission see the note up front (GET /owners/me/permissions); a 403
   // NOT_STAFF_PERMITTED (older backend, or a permission removed meanwhile) still swaps the buttons for the same note.
   const [noPermission, setNoPermission] = useState(false);
@@ -226,27 +226,21 @@ export default function ApprovalsScreen() {
         <Text variant="h1" tone="hero" accessibilityRole="header">
           Approvals
         </Text>
-        <Text testID="approvals-count" variant="bodyBold" tone="hero">
-          {query.data ? `${awaiting} approvals baqi` : "Approvals"}
+        <Text testID="approvals-count" variant="body" tone="hero">
+          {query.data
+            ? `${awaiting} ${awaiting === 1 ? "payment" : "payments"} check karni hain${awaiting > 0 && oldest !== null ? ` · sab se purani ${waitLabel(oldest)}` : ""}`
+            : "Payments load ho rahi hain"}
         </Text>
-        {query.data && awaiting > 0 && oldest !== null ? (
-          <Text variant="body" tone="heroMuted">{`Sab se purani ${waitLabel(oldest)} se wait kar rahi hai`}</Text>
-        ) : null}
-        {query.data && closed > 0 ? (
-          <Text testID="approvals-count-closed" variant="meta" tone="heroMuted">
-            {`(${closed} cancel/expire hue, Theek hai dabayein)`}
-          </Text>
-        ) : null}
       </View>
-      {query.data && closed > 0 && awaiting > 0 ? (
+      {query.data && closed > 0 ? (
+        // Approvals board: two tabs, "Baqi · N" (default) and "Cancel/expire · N".
         <SegmentedToggle
           tone="dark"
           testID="approvals-view"
           accessibilityLabel="Kaun se dikhayein"
-          value={show}
+          value={show === "closed" ? "closed" : "awaiting"}
           onChange={setShow}
           options={[
-            { value: "all", label: "Sab" },
             { value: "awaiting", label: "Baqi", count: awaiting },
             { value: "closed", label: "Cancel/expire", count: closed },
           ]}
