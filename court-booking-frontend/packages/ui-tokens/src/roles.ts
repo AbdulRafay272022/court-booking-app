@@ -140,6 +140,8 @@ export const tone: Record<Tone, { bg: string; fg: string; border: string; icon: 
 export const buttonVariant = {
   /** Dark, calm secondary action ("Wahi slot", "Meri bookings"). */
   secondary: { bg: palette.night, fg: palette.white, border: palette.night },
+  /** Quiet grey fill, no border (OSheets "Wapas", "Kam mila", "Cancel"). */
+  quiet: { bg: palette.ground, fg: palette.night, border: palette.ground },
   /** Light outline ("Home par jayein"). */
   soft: { bg: palette.white, fg: palette.night, border: palette.lineStrong },
   /** Destructive ("Reject", "Cancel karein"). */

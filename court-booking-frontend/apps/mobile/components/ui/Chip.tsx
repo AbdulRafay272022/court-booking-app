@@ -16,6 +16,8 @@ export interface ChipProps {
   icon?: ReactNode;
   /** Optional trailing count badge (e.g. Amenities [6]). */
   count?: number;
+  /** Selected = solid role colour (OPaisa range / court filters) instead of tint + border. Still prefixed "✓ ". */
+  solid?: boolean;
   /** "pill" (999 radius, filters) or "tile" (14 radius, courts / durations / payment methods). */
   shape?: "pill" | "tile";
   /** Stretch to fill a grid cell. */
@@ -28,11 +30,16 @@ export interface ChipProps {
 }
 
 /** Selectable chip / option tile (PSearch filters, Venue courts/days, OWalkin payment method). Height >= 44. */
-export function Chip({ label, selected, onPress, disabled, icon, count, shape = "pill", block, meta, accessibilityLabel, testID, style }: ChipProps) {
+export function Chip({ label, selected, solid, onPress, disabled, icon, count, shape = "pill", block, meta, accessibilityLabel, testID, style }: ChipProps) {
   const t = useRoleTheme();
-  const bg = selected ? t.selected.bg : palette.white;
-  const fg = selected ? t.selected.fg : palette.night;
-  const border = selected ? t.selected.border : palette.lineStrong;
+  // Boards: a pill (filters) is white with a 1.5 px line when idle; a tile (court, day, duration, payment method) is a
+  // calm ground fill with a transparent 2 px border, so selecting it never shifts the layout.
+  // Solid: owner = teal + white (OPaisa), player = night + white (PBookings "Sab · 3"), never white on orange.
+  const solidLook = t.role === "owner" ? { bg: t.primary.bg, fg: t.primary.fg, border: t.primary.bg } : { bg: palette.night, fg: palette.white, border: palette.night };
+  const on = selected ? (solid ? solidLook : t.selected) : null;
+  const bg = on ? on.bg : shape === "tile" ? palette.ground : palette.white;
+  const fg = on ? on.fg : palette.night;
+  const border = on ? on.border : shape === "tile" ? "transparent" : palette.lineStrong;
   return (
     <Pressable
       testID={testID}
@@ -46,12 +53,12 @@ export function Chip({ label, selected, onPress, disabled, icon, count, shape = 
       }}
       style={({ pressed }) => [
         {
-          minHeight: meta ? 60 : size.tap,
+          minHeight: meta ? 60 : shape === "tile" ? 52 : size.tap,
           paddingHorizontal: shape === "pill" ? space[4] : space[3],
           paddingVertical: space[2],
           borderRadius: shape === "pill" ? radius.pill : radius.md,
           backgroundColor: bg,
-          borderWidth: selected ? 2 : 1.5,
+          borderWidth: selected || shape === "tile" ? 2 : 1.5,
           borderColor: border,
           flexDirection: meta ? "column" : "row",
           alignItems: meta ? "flex-start" : "center",

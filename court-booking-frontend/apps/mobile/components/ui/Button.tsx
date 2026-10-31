@@ -6,7 +6,7 @@ import { Text } from "./Text";
 import { useRoleTheme } from "./theme";
 import { haptic, type HapticKind } from "./haptics";
 
-export type ButtonVariant = "primary" | "secondary" | "soft" | "danger" | "dangerSolid";
+export type ButtonVariant = "primary" | "secondary" | "quiet" | "soft" | "danger" | "dangerSolid";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps {

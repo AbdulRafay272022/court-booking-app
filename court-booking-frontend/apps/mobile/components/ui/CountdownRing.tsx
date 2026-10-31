@@ -68,7 +68,8 @@ export function CountdownRing({ expiresAt, totalMs, caption, tone = "dark", diam
         />
       </Svg>
       <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
-        <Text variant="h1" tone={dark ? "onDark" : "primary"} style={{ fontSize: diameter < 120 ? 24 : 34 }}>
+        {/* "H:MM:SS" (a long hold) is two digits wider than "MM:SS": step the size down so it stays inside the ring. */}
+        <Text variant="h1" tone={dark ? "onDark" : "primary"} style={{ fontSize: (diameter < 120 ? 24 : 34) * (c.label.length > 5 ? 0.72 : 1) }}>
           {c.label}
         </Text>
         {caption ? (

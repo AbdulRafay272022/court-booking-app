@@ -41,22 +41,22 @@ export function Header({ title, eyebrow, subtitle, onBack, backLabel, right, ton
       </View>
     );
   }
+  // Boards (OSettings, OPaisa History, OGrowthTeam, PAccount): back button, title and actions share ONE row; the title
+  // wraps inside its column, never truncated. Eyebrow and subtitle sit under the row.
   return (
     <View testID={testID} style={{ gap: space[2] }}>
-      {back || right ? (
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[3] }}>
-          {back ?? <View />}
-          <View style={{ flexDirection: "row", gap: space[2] }}>{right}</View>
-        </View>
-      ) : null}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+        {back}
+        <Text variant="h2" tone={dark ? "onDark" : "primary"} accessibilityRole="header" style={{ flex: 1, minWidth: 0 }}>
+          {title}
+        </Text>
+        {right ? <View style={{ flexDirection: "row", gap: space[2] }}>{right}</View> : null}
+      </View>
       {eyebrow ? (
         <Text variant="label" weight="bold" tone={dark ? "onDarkMuted" : "muted"}>
           {eyebrow}
         </Text>
       ) : null}
-      <Text variant="h2" tone={dark ? "onDark" : "primary"} accessibilityRole="header">
-        {title}
-      </Text>
       {subtitle ? (
         <Text variant="body" tone={dark ? "onDarkMuted" : "muted"}>
           {subtitle}
