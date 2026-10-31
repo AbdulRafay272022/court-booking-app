@@ -21,7 +21,7 @@ Not every app shot can show the same data as the design, because the app only sh
 
 Where data is missing, the app's empty state is compared with the design's empty state.
 
-**Capture note:** Metro's file watcher stopped noticing edits partway through the session, so some first after-shots showed old code. Metro was restarted with `--clear` and every after-image was taken again from commit d8ab487. Root cause found on 2026-11-01: Metro was started with `CI=1`, which turns file watching off. Start it without `CI` (stdin from `/dev/null`). The second round (2026-11-01, commits e42b6b6..e1accbc) re-took OPaisa-history, OPaisa-refunds, OSettings-hub, OStaffView-staff and PBookings-tab; the third round (adee39f, 248e3f2) re-took PBookings-detail, OSettings-hub and OSettings-courts.
+**Capture note:** Metro's file watcher stopped noticing edits partway through the session, so some first after-shots showed old code. Metro was restarted with `--clear` and every after-image was taken again from commit d8ab487. Root cause found on 2026-11-01: Metro was started with `CI=1`, which turns file watching off. Start it without `CI` (stdin from `/dev/null`). The second round (2026-11-01, commits e42b6b6..e1accbc) re-took OPaisa-history, OPaisa-refunds, OSettings-hub, OStaffView-staff and PBookings-tab; the third round (adee39f, 248e3f2) re-took PBookings-detail, OSettings-hub and OSettings-courts; the fourth round (1dfdda6, cc3759d) re-took OSettings-courts and added PStates-unreachable.
 
 **Severity:**
 
@@ -171,7 +171,9 @@ Where data is missing, the app's empty state is compared with the design's empty
 | All labels English (Minimum booking time, Opening hours, Prices for this court, Cancellations…) | court-setup-fields.tsx | fixed (Roman Urdu) |
 | Layout is the form, not the board's card list | per-court form | kept (opened from the hub row) |
 | Court details, advance chips, blackout form, photos, time picker and toasts still English ("Court name", "Fixed amount", "Starts on", "Add blackout", "Couldn't save"…) | venue-settings.tsx, court-identity-fields, advance-settings, time-fields, photo-manager | fixed (248e3f2: Roman Urdu, owner tone; the wizard uses the same fields so it changed too) |
-| Board: compact 2×2 "Court 1 ki tafseel", rule cards with "+ Rule" and a "chhup raha hai" warning, three advance chips, sticky "Sab save karein" footer | the editable per-court form | still different (labels match; layout is the long form) |
+| Board: compact 2×2 "Court 1 ki tafseel", rule cards with "+ Rule" and a "chhup raha hai" warning, three advance chips, sticky "Sab save karein" footer | the editable per-court form | fixed (1dfdda6: details grid with Khel / Slot / Jagah sheets, rule cards that open to edit, Default / Percent / Fixed PKR, pinned white save bar, pill court tabs) |
+| Board has no hours card | hours are per court | kept ("Khulne ke ghante" card between details and rules) |
+| Board advance chips read "100% / 50% / Fixed PKR" | the app's modes are Default (the rate's own %) / Percent / Fixed | kept as Default / Percent / Fixed PKR with the board's one-line summary |
 
 **OWizard step 1 / 2:** `app/(owner)/venue-setup/register.tsx`, `courts.tsx`. Match: **partial**.
 
@@ -298,6 +300,7 @@ Where data is missing, the app's empty state is compared with the design's empty
 |---|---|---|
 | Error "Dobara koshish" invisible | S1 | fixed |
 | "Something went wrong" English body | `lib/error-messages.ts` | fixed (e1accbc: "Kuch gadbad ho gayi. Dobara koshish karein.") |
+| Session-unreachable "Can't reach Khelo right now" English, logo + small button | `components/session-unreachable.tsx`, outside the language provider | fixed (cc3759d: board error layout, "Abhi Khelo tak nahi pohanch sake" / "Dobara koshish"; own LangProvider from the device's language) |
 | 404 | — | matches |
 
 ## Still different (to do)
@@ -306,6 +309,6 @@ Second round (2026-11-01) closed items 1-6 of the first list; see the screen tab
 
 1. **OStaffView "Aane wale players"** needs a backend endpoint a check-in-only account may read (today's arrivals). Every booking list needs `view_ledger` now. Owner decision.
 2. ~~PBookings separate ticket screen~~ done (adee39f).
-3. ~~OSettings court-line art and English forms~~ done (248e3f2). Left: the court form's layout (board: 2×2 details grid, rule cards, sticky save).
-4. **Session-unreachable** screen ("Can't reach Khelo right now") is English; it sits outside the language provider.
+3. ~~OSettings court-line art, English forms and courts layout~~ done (248e3f2, 1dfdda6).
+4. ~~Session-unreachable screen English~~ done (cc3759d).
 5. **Data-only gaps** (screenshot thumbs, two courts, reviews, growth) show the empty state. They are not code differences.
