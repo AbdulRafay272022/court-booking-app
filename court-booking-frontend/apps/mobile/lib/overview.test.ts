@@ -60,3 +60,25 @@ test("duplicateCreditText: singular / plural", () => {
   assert.equal(duplicateCreditText(1), "Ye screenshot 1 aur booking par bhi credit hua");
   assert.equal(duplicateCreditText(3), "Ye screenshot 3 aur bookings par bhi credit hua");
 });
+
+import { compactTimeRange, historyDateTile, historyStatus } from "./overview";
+
+test("compactTimeRange: board style short ranges in Pakistan time", () => {
+  assert.equal(compactTimeRange("2026-10-24T13:00:00Z", "2026-10-24T14:00:00Z"), "6–7 PM");
+  assert.equal(compactTimeRange("2026-10-24T15:00:00Z", "2026-10-24T16:30:00Z"), "8–9:30 PM");
+  assert.equal(compactTimeRange("2026-10-24T18:00:00Z", "2026-10-24T19:00:00Z"), "11 PM–12 AM");
+});
+
+test("historyDateTile: weekday + day of the Pakistan date", () => {
+  assert.deepEqual(historyDateTile("2026-10-24T13:00:00Z"), { weekday: "SAT", day: "24" });
+  assert.deepEqual(historyDateTile("2026-10-24T20:00:00Z"), { weekday: "SUN", day: "25" });
+});
+
+test("historyStatus: board pills", () => {
+  const base = { kind: "booked", status_key: "booked", completion: null, refund_status: null, status_pending: false } as unknown as Parameters<typeof historyStatus>[0];
+  assert.equal(historyStatus({ ...base, completion: { result: "yes" } } as typeof base).label, "Mukammal");
+  assert.equal(historyStatus({ ...base, completion: { result: "no" } } as typeof base).label, "Baqi");
+  assert.equal(historyStatus({ ...base, kind: "cancelled", status_key: "cancelled" } as typeof base).label, "Cancelled");
+  assert.equal(historyStatus({ ...base, status_key: "no_show" } as typeof base).label, "No-show");
+  assert.equal(historyStatus({ ...base, status_pending: true } as typeof base).label, "Status baqi");
+});

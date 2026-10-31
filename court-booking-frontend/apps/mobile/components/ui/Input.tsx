@@ -13,6 +13,10 @@ export interface InputProps extends Omit<TextInputProps, "style" | "placeholderT
   error?: string | null;
   /** Fixed prefix box, e.g. "+92". */
   prefix?: string;
+  /** Leading element inside the box (OPaisa History: the search glass). */
+  leading?: ReactNode;
+  /** Search fields only (OPaisa History board): the label stays for screen readers but is not drawn. */
+  labelHidden?: boolean;
   /** Trailing element (e.g. "Dikhao" toggle). Use `secureToggle` for passwords. */
   trailing?: ReactNode;
   /** Password field with a "Dikhao / Chhupao" toggle. */
@@ -28,7 +32,7 @@ export interface InputProps extends Omit<TextInputProps, "style" | "placeholderT
  * sensible returnKeyType / autoCorrect defaults.
  */
 export const Input = forwardRef<TextInput, InputProps>(function Input(
-  { label, help, error, prefix, trailing, secureToggle, multiline, testID, onFocus, onBlur, secureTextEntry, ...rest },
+  { label, help, error, prefix, leading, labelHidden, trailing, secureToggle, multiline, testID, onFocus, onBlur, secureTextEntry, ...rest },
   ref,
 ) {
   const t = useRoleTheme();
@@ -41,9 +45,11 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   const body = typeScale.bodyL;
   return (
     <View style={{ gap: space[2] }}>
-      <Text variant="label" nativeID={`${id}-label`}>
-        {label}
-      </Text>
+      {labelHidden ? null : (
+        <Text variant="label" nativeID={`${id}-label`}>
+          {label}
+        </Text>
+      )}
       <View
         style={{
           minHeight: multiline ? 112 : size.input,
@@ -61,11 +67,12 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <Text variant="bodyStrong">{prefix}</Text>
           </View>
         ) : null}
+        {leading ? <View style={{ paddingLeft: space[4] }}>{leading}</View> : null}
         <TextInput
           ref={ref}
           testID={testID}
           accessibilityLabel={label}
-          accessibilityLabelledBy={`${id}-label`}
+          accessibilityLabelledBy={labelHidden ? undefined : `${id}-label`}
           aria-invalid={!!error}
           placeholderTextColor={palette.muted2}
           multiline={multiline}
@@ -83,6 +90,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             minWidth: 0,
             minHeight: multiline ? 108 : size.input - 4,
             paddingHorizontal: space[4],
+            paddingLeft: leading ? space[2] : space[4],
             paddingVertical: multiline ? space[3] : 0,
             fontFamily: fontFamily.mobile.body,
             fontSize: body.size * scale,
