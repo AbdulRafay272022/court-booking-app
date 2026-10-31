@@ -1,4 +1,4 @@
-import type { BookingStatus, CancelledBy } from "@court-booking/types";
+import { formatTime, formatTimeRange, pktDateString, type BookingStatus, type CancelledBy } from "@court-booking/types";
 
 export type DoneTone = "confirmed" | "waiting" | "ended";
 export type DoneIcon = "check" | "clock" | "x";
@@ -124,4 +124,36 @@ export const DONE_TONE_COLORS: Record<DoneTone, { bg: string; badge: string; sub
 export function donePaidAmount(booking: { amount_paid: number | null | undefined }): number | null {
   const paid = Number(booking.amount_paid ?? 0);
   return Number.isFinite(paid) && paid > 0 ? paid : null;
+}
+
+/** "KH-" + the first 8 hex characters of the booking id, upper case (same as the backend's `short_code`). */
+export function bookingShortCode(id: string): string {
+  return `KH-${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
+
+/** Which layout the booking screen uses. A booking that was ALREADY pakki when the screen opened is the PBookings
+ * ticket ("Booking KH-…"); one that turned pakki while the player watched (or arrived via `celebrate`) gets the
+ * Status board's "Court aap ka hai!" celebration. Everything that is not pakki keeps the Status timeline. */
+export function doneView(firstStatus: BookingStatus | null, status: BookingStatus, celebrate: boolean): "ticket" | "status" {
+  const pakki = (s: BookingStatus | null) => s === "booked" || s === "completed";
+  return pakki(status) && pakki(firstStatus) && !celebrate ? "ticket" : "status";
+}
+
+/** Google Calendar "add event" link (opens the Calendar app or the browser; no native calendar package needed). */
+export function calendarLink(title: string, startsAt: string, endsAt: string, location?: string | null): string {
+  const stamp = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const q = [`action=TEMPLATE`, `text=${encodeURIComponent(title)}`, `dates=${stamp(startsAt)}/${stamp(endsAt)}`];
+  if (location) q.push(`location=${encodeURIComponent(location)}`);
+  return `https://calendar.google.com/calendar/render?${q.join("&")}`;
+}
+
+/** Ticket "Waqt" like the board: "7:00 – 8:00 PM" (one AM/PM when both ends share it, "11:00 PM – 12:00 AM" when not).
+ * A range that runs into a later day keeps the long form so the day is named. */
+export function ticketTimeRange(startsAt: string, endsAt: string, lang: "en" | "ru" = "ru"): string {
+  const s = formatTime(startsAt);
+  const e = formatTime(endsAt);
+  const crosses = pktDateString(startsAt) !== pktDateString(endsAt) && !e.startsWith("12:00 AM");
+  if (crosses) return formatTimeRange(startsAt, endsAt, lang);
+  const sm = s.slice(-2);
+  return sm === e.slice(-2) ? `${s.slice(0, -3)} – ${e}` : `${s} – ${e}`;
 }

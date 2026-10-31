@@ -1,11 +1,11 @@
-import { useState, type ReactNode } from "react";
-import { Linking, View } from "react-native";
+import { useRef, useState, type ReactNode } from "react";
+import { Linking, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Clock3, MessageCircle, Navigation, Phone, QrCode, Share2, X } from "lucide-react-native";
+import { ArrowLeft, CalendarPlus, Check, Clock3, MessageCircle, Navigation, Phone, QrCode, ScanLine, Share2, X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink } from "@court-booking/types";
+import { formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink, type BookingStatus } from "@court-booking/types";
 import { formatPkr, isConfirmed, journeySteps, palette, radius, space } from "@court-booking/ui-tokens";
 
 import {
@@ -27,14 +27,15 @@ import {
   useLang,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { doneCopy, donePaidAmount, donePollMs } from "@/lib/booking-done";
+import { bookingShortCode, calendarLink, doneCopy, donePaidAmount, donePollMs, doneView, ticketTimeRange } from "@/lib/booking-done";
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { LightStatusBar } from "@/components/ui/StatusBarStyle";
 import { safeBack } from "@/lib/safe-back";
 import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from "@/lib/player-flow";
 import { RaastQr } from "@/components/raast-qr";
 import { BalanceProofUpload } from "@/components/balance-proof-upload";
 import { BookingExtrasCard } from "@/components/booking-extras";
-import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
+import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useNow } from "../../_components";
 
 /**
  * Status board + PBookings booking detail. Honest timeline Hold -> Screenshot bheja -> Venue check -> Pakki (journeySteps:
@@ -43,14 +44,13 @@ import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, u
  * Polls while the venue or the player still has to act (focus-gated).
  */
 export default function BookingStatusScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, celebrate } = useLocalSearchParams<{ id: string; celebrate?: string }>();
   const copy = useCopy();
   const lang = useLang();
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const queryClient = useQueryClient();
   const now = useNow(30_000);
-  useLightStatusBar();
 
   const bookingQuery = useQuery({
     queryKey: ["booking", id],
@@ -59,6 +59,9 @@ export default function BookingStatusScreen() {
     subscribed: focused,
   });
   const booking = bookingQuery.data;
+  // The status the screen opened with decides ticket vs celebration (doneView).
+  const firstStatus = useRef<BookingStatus | null>(null);
+  if (booking && firstStatus.current === null) firstStatus.current = booking.status;
   const place = useBookingPlace(booking);
   // Audit 2026-10-28 item 4: the money lines, the event history and the venue's contact (one call, same rule as the web page).
   const detailQuery = useQuery({
@@ -100,6 +103,7 @@ export default function BookingStatusScreen() {
   if (!booking) {
     return (
       <Screen gutter={false} edgeToEdgeTop>
+        <LightStatusBar />
         <Hero topInset={insets.top} roundedBottom>
           <View style={{ alignItems: "center", gap: space[3], paddingTop: space[6] }} accessibilityLabel={copy("Load ho raha hai", "Loading")}>
             <Skeleton width={72} height={72} r={36} />
@@ -178,9 +182,65 @@ export default function BookingStatusScreen() {
   const HeroIcon = c.icon === "check" ? Check : c.icon === "clock" ? Clock3 : X;
   const heroBadge = c.tone === "confirmed" ? palette.teal : c.tone === "waiting" ? palette.waitingTint : palette.dangerTint;
   const heroIconColor = c.tone === "confirmed" ? palette.white : c.tone === "waiting" ? palette.waiting : palette.danger;
+  // PBookings detail board: an already-pakki booking opens as the "Booking KH-…" ticket screen.
+  const ticketView = doneView(firstStatus.current, booking.status, celebrate === "1") === "ticket";
+  const indoor = place.court ? (place.court.is_indoor ? "Indoor" : "Outdoor") : null;
+  const tileRows: { label: string; icon: ReactNode; onPress: () => void }[][] = [
+    [
+      ...(place.venue ? [{ label: copy("Raasta", "Directions"), icon: <Navigation size={22} color={palette.night} />, onPress: () => openDirections(place.venue!) }] : []),
+      {
+        label: "Calendar",
+        icon: <CalendarPlus size={22} color={palette.night} />,
+        onPress: () => void Linking.openURL(calendarLink([place.court ? sportLabel(place.court.sport) : null, venueName].filter(Boolean).join(" · "), booking.starts_at, booking.ends_at, place.venue?.address)),
+      },
+      { label: "Chat", icon: <MessageCircle size={22} color={palette.night} />, onPress: () => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id } }) },
+    ],
+    // the venue's own contacts (not on the board, kept because they are real); only when the venue has them
+    [
+      ...(wa ? [{ label: "WhatsApp", icon: <MessageCircle size={22} color={palette.night} />, onPress: () => void Linking.openURL(wa) }] : []),
+      ...(tel ? [{ label: copy("Call", "Call"), icon: <Phone size={22} color={palette.night} />, onPress: () => void Linking.openURL(tel) }] : []),
+    ],
+  ].filter((row) => row.length > 0);
+  const shareBooking = () => shareText(copy(`${venueName}, ${when}, ${time}. Booking pakki hai.`, `${venueName}, ${when}, ${time}. The booking is confirmed.`));
+
+  const policyCard = policy ? (
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-policy">
+            <Text variant={ticketView ? "button" : "title"} accessibilityRole="header">
+              {copy("Cancel policy", "Cancellation policy")}
+            </Text>
+            <Text variant="body" tone="muted">
+              {policy}
+            </Text>
+            {!heldExpired && (booking.status === "held" || booking.status === "payment_submitted") ? (
+              <Text variant="meta" tone="muted">
+                {copy("Venue ke approve karne se pehle aap kabhi bhi cancel kar sakte hain.", "Until the venue approves you can cancel any time.")}
+              </Text>
+            ) : null}
+            {cancel.canCancel && !heldExpired ? (
+              <View style={ticketView ? { alignSelf: "flex-start" } : undefined}>
+                <Button label={copy("Booking cancel karein", "Cancel booking")} variant="danger" size="md" block={!ticketView} onPress={() => setCancelOpen(true)} testID="status-cancel" />
+              </View>
+            ) : booking.status === "booked" && cancel.blocked === "window_closed" ? (
+              <Text variant="meta" tone="danger">
+                {copy("Cancel ka waqt guzar gaya.", "The cancellation window has closed.")}
+              </Text>
+            ) : null}
+          </Card>
+        ) : null;
 
   return (
-    <Screen gutter={false} edgeToEdgeTop testID="status-screen" refreshing={bookingQuery.isRefetching} onRefresh={() => bookingQuery.refetch()}>
+    <Screen gutter={false} edgeToEdgeTop={!ticketView} testID="status-screen" refreshing={bookingQuery.isRefetching} onRefresh={() => bookingQuery.refetch()}>
+      {ticketView ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[4] }}>
+          <IconButton icon={ArrowLeft} variant="surface" accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack()} testID="status-back" />
+          <Text variant="bodyStrong" style={{ flex: 1, fontSize: 18, lineHeight: 24 }} accessibilityRole="header" testID="status-title">
+            {`Booking ${bookingShortCode(booking.id)}`}
+          </Text>
+          <IconButton icon={Share2} variant="surface" accessibilityLabel={copy("Team ko batao", "Tell the team")} onPress={shareBooking} testID="status-share" />
+        </View>
+      ) : (
+      <>
+      <LightStatusBar />
       <Hero topInset={insets.top} roundedBottom>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <IconButton icon={ArrowLeft} variant="onDark" accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack()} testID="status-back" />
@@ -198,10 +258,40 @@ export default function BookingStatusScreen() {
           </Text>
         </View>
       </Hero>
+      </>
+      )}
 
-      <View style={{ paddingHorizontal: space[5], gap: space[4] }}>
+      <View style={{ paddingHorizontal: ticketView ? space[4] : space[5], gap: ticketView ? 14 : space[4] }}>
         <PlayerOfflineBanner />
-        {booked ? (
+        {ticketView ? (
+          <Ticket
+            dark
+            testID="status-ticket"
+            bookingId={booking.id}
+            booking={booking}
+            venueName={venueName}
+            subtitle={place.court ? [place.court.name, sportLabel(place.court.sport), indoor].filter(Boolean).join(" · ") : undefined}
+            fields={[
+              { label: copy("Din", "Day"), value: when },
+              { label: copy("Waqt", "Time"), value: ticketTimeRange(booking.starts_at, booking.ends_at, lang) },
+            ]}
+            footer={
+              booking.checked_in_at ? (
+                <Banner tone="open" body={copy(`Check-in ho gaya · ${formatTime(booking.checked_in_at)}`, `Checked in · ${formatTime(booking.checked_in_at)}`)} icon={Check} />
+              ) : !isOver && booking.status === "booked" ? (
+                <Button
+                  label={copy("Venue ka QR khud scan karein", "Scan the venue's QR yourself")}
+                  variant="soft"
+                  size="sm"
+                  block
+                  icon={<ScanLine size={16} color={palette.night} />}
+                  onPress={() => router.push({ pathname: "/(player)/booking/[id]/checkin", params: { id } })}
+                  testID="status-self-checkin"
+                />
+              ) : null
+            }
+          />
+        ) : booked ? (
           <Ticket
             testID="status-ticket"
             bookingId={booking.id}
@@ -251,6 +341,20 @@ export default function BookingStatusScreen() {
           />
         ) : null}
 
+        {ticketView ? (
+          <View style={{ gap: space[2] }} testID="status-tiles">
+            {tileRows.map((row, r) => (
+              <View key={r} style={{ flexDirection: "row", gap: space[2] }}>
+                {row.map((t) => (
+                  <Tile key={t.label} {...t} />
+                ))}
+                {Array.from({ length: 3 - row.length }, (_, i) => (
+                  <View key={`pad-${i}`} style={{ flex: 1 }} />
+                ))}
+              </View>
+            ))}
+          </View>
+        ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
           {booked && !isOver ? (
             <QuickButton label={copy("Check-in", "Check in")} icon={<QrCode size={16} color={palette.night} />} onPress={() => router.push({ pathname: "/(player)/booking/[id]/checkin", params: { id } })} />
@@ -267,11 +371,25 @@ export default function BookingStatusScreen() {
             />
           ) : null}
         </View>
+        )}
 
         <Card padding={4} radiusSize="cardL" style={{ gap: space[3] }} testID="status-money">
-          <Text variant="title" accessibilityRole="header">
+          <Text variant={ticketView ? "button" : "title"} accessibilityRole="header">
             {copy("Paisa", "Money")}
           </Text>
+          {ticketView ? (
+            // PBookings board: three plain rows, no inner box
+            [
+              { k: copy("Total", "Total"), v: formatPkr(booking.price), tone: "primary" as const },
+              { k: copy("Aap ne diye", "You paid"), v: formatPkr(booking.amount_paid), tone: "primary" as const },
+              { k: copy("Venue par baqi", "Due at venue"), v: formatPkr(booking.balance_due), tone: booking.balance_due > 0 ? ("waiting" as const) : ("open" as const) },
+            ].map((m) => (
+              <View key={m.k} style={{ flexDirection: "row", justifyContent: "space-between", gap: space[3] }}>
+                <Text variant="body" tone="muted">{m.k}</Text>
+                <Text variant="bodyBold" tone={m.tone}>{m.v}</Text>
+              </View>
+            ))
+          ) : (
           <MoneyRows
             rows={[
               { label: copy("Total", "Total"), value: formatPkr(booking.price) },
@@ -280,7 +398,9 @@ export default function BookingStatusScreen() {
               { label: copy("Baqi", "Balance"), value: formatPkr(booking.balance_due), strong: true, tone: booking.balance_due > 0 ? "waiting" : "default" },
             ]}
           />
+          )}
         </Card>
+        {ticketView ? policyCard : null}
 
         {booking.status === "booked" && booking.balance_due > 0 && balancePay.data && (balancePay.data.account_number || balancePay.data.iban) ? (
           // audit 2026-10-28 item 20: the balance can be sent by transfer too (bank details + Raast QR when switched on)
@@ -371,35 +491,14 @@ export default function BookingStatusScreen() {
           </Card>
         ) : null}
 
-        {policy ? (
-          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-policy">
-            <Text variant="title" accessibilityRole="header">
-              {copy("Cancel policy", "Cancellation policy")}
-            </Text>
-            <Text variant="body" tone="muted">
-              {policy}
-            </Text>
-            {!heldExpired && (booking.status === "held" || booking.status === "payment_submitted") ? (
-              <Text variant="meta" tone="muted">
-                {copy("Venue ke approve karne se pehle aap kabhi bhi cancel kar sakte hain.", "Until the venue approves you can cancel any time.")}
-              </Text>
-            ) : null}
-            {cancel.canCancel && !heldExpired ? (
-              <Button label={copy("Booking cancel karein", "Cancel booking")} variant="danger" size="md" block onPress={() => setCancelOpen(true)} testID="status-cancel" />
-            ) : booking.status === "booked" && cancel.blocked === "window_closed" ? (
-              <Text variant="meta" tone="danger">
-                {copy("Cancel ka waqt guzar gaya.", "The cancellation window has closed.")}
-              </Text>
-            ) : null}
-          </Card>
-        ) : null}
+        {ticketView ? null : policyCard}
 
         {booking.status === "payment_submitted" ? (
           <Text variant="meta" tone="muted" align="center">
             {copy("Venue ke approve karte hi ye screen khud update ho jayegi.", "This screen updates by itself as soon as the venue approves.")}
           </Text>
         ) : null}
-        <Button label={copy("Meri bookings", "My bookings")} variant="secondary" size="md" block onPress={() => router.replace("/bookings")} testID="status-bookings" />
+        {ticketView ? null : <Button label={copy("Meri bookings", "My bookings")} variant="secondary" size="md" block onPress={() => router.replace("/bookings")} testID="status-bookings" />}
       </View>
 
       <Sheet
@@ -429,6 +528,23 @@ export default function BookingStatusScreen() {
         </Text>
       </Sheet>
     </Screen>
+  );
+}
+
+/** PBookings detail board: white 72-tall tile, icon over a short label. */
+function Tile({ label, icon, onPress }: { label: string; icon: ReactNode; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={{ flex: 1, height: 72, borderRadius: 18, backgroundColor: palette.white, alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 4 }}
+    >
+      {icon}
+      <Text variant="label" align="center" numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 

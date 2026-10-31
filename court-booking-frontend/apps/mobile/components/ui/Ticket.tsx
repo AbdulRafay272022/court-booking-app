@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import Svg, { Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
 import { isConfirmed, palette, radius, shadow, space, type StatusInput } from "@court-booking/ui-tokens";
 import { StatusPill } from "./StatusPill";
 import { Text } from "./Text";
@@ -26,18 +27,49 @@ export interface TicketProps {
   qrBody?: string;
   /** Extra content under the stub (e.g. checked-in note). */
   footer?: ReactNode;
+  /** PBookings detail board: a night header (glow, status pill, venue, `subtitle`) above the fields. */
+  dark?: boolean;
+  /** Dark header only: "Court 1 · Padel · Indoor". */
+  subtitle?: string;
   /** Page background colour behind the ticket (for the punched notches). Default ground. */
   pageColor?: string;
   testID?: string;
 }
 
 /** Status board booked ticket: header, fields, dashed tear line with notches, QR (react-native-qrcode-svg). */
-export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle, qrBody, footer, pageColor = palette.ground, testID }: TicketProps) {
+export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle, qrBody, footer, dark, subtitle, pageColor = palette.ground, testID }: TicketProps) {
   const copy = useCopy();
   const ok = isConfirmed(booking.status);
+  const glowId = `ticket-glow-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <View testID={testID ?? "ticket"} style={{ backgroundColor: palette.white, borderRadius: radius.cardL, boxShadow: shadow.ticket, overflow: "hidden" }}>
-      <View style={{ padding: space[5], gap: 14 }}>
+      {dark ? (
+        <View style={{ backgroundColor: palette.night, padding: 18, gap: 6, overflow: "hidden" }}>
+          {/* board: a blurred orange glow in the top-right corner (RN has no blur, so a soft radial gradient) */}
+          <Svg width={320} height={260} pointerEvents="none" style={{ position: "absolute", right: -110, top: -120 }} accessibilityElementsHidden importantForAccessibility="no">
+            <Defs>
+              <RadialGradient id={glowId} cx="50%" cy="50%" r="50%">
+                <Stop offset="0" stopColor={palette.orange} stopOpacity={0.42} />
+                <Stop offset="1" stopColor={palette.orange} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Ellipse cx={160} cy={130} rx={160} ry={130} fill={`url(#${glowId})`} />
+          </Svg>
+          <View style={{ alignSelf: "flex-start" }}>
+            <StatusPill booking={booking} />
+          </View>
+          <Text variant="h2" tone="onDark">
+            {venueName}
+          </Text>
+          {subtitle ? (
+            <Text variant="body" tone="onDarkMuted">
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={{ padding: dark ? 18 : space[5], paddingVertical: dark ? space[4] : space[5], gap: 14 }}>
+        {dark ? null : (
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
           <View style={{ flex: 1, minWidth: 160, gap: 2 }}>
             {eyebrow ? (
@@ -49,6 +81,7 @@ export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle
           </View>
           <StatusPill booking={booking} />
         </View>
+        )}
         <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: space[3] }}>
           {fields.map((f) => (
             <View key={f.label} style={{ width: "50%", paddingRight: space[2], gap: 2 }}>

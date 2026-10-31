@@ -98,7 +98,7 @@ export default function PayScreen() {
 
   // Not an open hold any more (screenshot sent, booked, cancelled, rejected): the Status screen tells the honest story.
   useEffect(() => {
-    if (booking && booking.status !== "held") router.replace({ pathname: "/(player)/booking/[id]/done", params: { id } });
+    if (booking && booking.status !== "held") router.replace({ pathname: "/(player)/booking/[id]/done", params: booking.status === "booked" ? { id, celebrate: "1" } : { id } });
   }, [booking?.status, id]);
 
   async function pickImage(fromCamera: boolean) {
