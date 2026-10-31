@@ -339,7 +339,7 @@ export function VenueCard({ venue, onPress, saved, onToggleSave, visible = false
                 accessibilityRole="button"
                 accessibilityLabel={copy(`${tm.label} khaali, book karein`, `${tm.label} available, book`)}
                 onPress={tm.onPress}
-                // Main / VenueCard boards: a free time is the "open" green tint (#DFF5EA / #0B6B43), no border.
+                // Main / VenueCard boards: a free time is the "open" green tint (openTint / open text), no border.
                 style={{ minHeight: 44, minWidth: 76, paddingHorizontal: 14, borderRadius: 12, backgroundColor: palette.openTint, alignItems: "center", justifyContent: "center" }}
               >
                 <Text variant="bodyBold" color={palette.open}>
