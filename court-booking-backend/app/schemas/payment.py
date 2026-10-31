@@ -73,6 +73,7 @@ class PaymentCheckOut(BaseModel):
 
     verdict: str  # "match" | "mismatch" | "warning" | "not_available" | "not_configured"
     text: str
+    text_ru: str | None = None  # audit 2026-10-28 item 12: the same sentence in Roman Urdu
 
 
 class PaymentChecksOut(BaseModel):
@@ -85,6 +86,7 @@ class PaymentChecksOut(BaseModel):
     name: PaymentCheckOut
     amount: PaymentCheckOut
     balance_text: str
+    balance_text_ru: str | None = None
     time: PaymentCheckOut
     bank: PaymentCheckOut
     duplicate: PaymentCheckOut

@@ -120,6 +120,9 @@ class VenueUpdateIn(BaseModel):
     cancellation_allowed: bool | None = None
     cancellation_cutoff_hours: int | None = Field(default=None, ge=0, le=720)
     booking_horizon_days: int | None = Field(default=None, ge=1, le=365)
+    # audit Phase 3 item 3: the owner-funded points discount (500 points -> this many rupees off)
+    points_discount_enabled: bool | None = None
+    points_discount_pkr: int | None = Field(default=None, ge=0, le=100000)
 
 
 class VenueOut(BaseModel):
@@ -147,6 +150,8 @@ class VenueOut(BaseModel):
     cancellation_allowed: bool = True
     cancellation_cutoff_hours: int | None = None
     booking_horizon_days: int = 90
+    points_discount_enabled: bool = False
+    points_discount_pkr: int = 500
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None
@@ -163,6 +168,14 @@ class VenueOut(BaseModel):
     # Public venue coordinates (read-only; same decoding as the list item); null if missing.
     latitude: float | None = None
     longitude: float | None = None
+    # audit 2026-10-28 item 9: what the venue still needs before it can go live (owner + admin views only; see
+    # app/services/venue_completeness.py). Each item: {"code": "schedule", "court": "Court 1"}.
+    missing_for_approval: list[dict] | None = None
+    # audit 2026-10-28 item 15: settings still running on a hidden default (owner + admin only): confirm by saving
+    unconfirmed_settings: list[dict] | None = None
+    # audit 2026-10-28 Phase 2 item 2: why players cannot see this venue right now ("cnic" while the CNIC gate is on and the
+    # owner's CNIC is not approved; "not_approved" / "inactive"); None = players can see it. Owner + admin views only.
+    player_hidden_reason: str | None = None
 
 
 class VenueDetailResponse(BaseModel):
@@ -201,6 +214,8 @@ class VenuePublicOut(BaseModel):
     cancellation_allowed: bool = True
     cancellation_cutoff_hours: int | None = None
     booking_horizon_days: int = 90
+    points_discount_enabled: bool = False
+    points_discount_pkr: int = 500
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None

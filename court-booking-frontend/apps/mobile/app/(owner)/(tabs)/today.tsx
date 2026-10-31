@@ -326,6 +326,15 @@ export default function OwnerTodayScreen() {
               )}
 
               {isOwner ? <CnicBanner /> : null}
+              {activeVenue?.status === "approved" && activeVenue.player_hidden_reason === "cnic" ? (
+                // audit 2026-10-28 Phase 2 item 2: approved, but hidden from players until the owner's CNIC is approved
+                <Banner
+                  tone="danger"
+                  title="Players ko venue abhi nazar nahi aa raha"
+                  body="Aap ka CNIC abhi approve nahi hua. CNIC approve hote hi venue players ko dikhne lagega."
+                  testID="venue-hidden-cnic"
+                />
+              ) : null}
 
               <Text variant="title" accessibilityRole="header" style={{ marginTop: space[2] }}>
                 {`${dateTitle(date)} ki bookings`}

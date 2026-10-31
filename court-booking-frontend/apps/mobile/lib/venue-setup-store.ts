@@ -10,7 +10,7 @@ import {
   type CourtSetup,
 } from "@court-booking/types";
 
-import { EMPTY_TIMER_DRAFT, type TimerDraft } from "./settings-defaults";
+import { FILLED_TIMER_DRAFT, type TimerDraft } from "./settings-defaults";
 
 // SPORT_OPTIONS / AMENITY_OPTIONS now live in @court-booking/types (single source of truth shared with web).
 
@@ -105,7 +105,7 @@ const initialState = {
   createdVenueId: null as string | null,
   createdCourtIds: {} as Record<number, string>,
   removedCreatedCourtIds: [] as string[],
-  timers: { ...EMPTY_TIMER_DRAFT } as TimerDraft,
+  timers: { ...FILLED_TIMER_DRAFT } as TimerDraft,
 };
 
 export const useVenueSetupStore = create<VenueSetupState>()(
@@ -165,7 +165,7 @@ export const useVenueSetupStore = create<VenueSetupState>()(
         set({ createdCourtIds: { ...get().createdCourtIds, [index]: courtId } });
       },
 
-      reset: () => set({ ...initialState, timers: { ...EMPTY_TIMER_DRAFT } }),
+      reset: () => set({ ...initialState, timers: { ...FILLED_TIMER_DRAFT } }),
     }),
     {
       name: "maidan.venue-setup-draft",
@@ -226,7 +226,7 @@ export const useVenueSetupStore = create<VenueSetupState>()(
         // v5 (Stage 2): venue timers from "Advanced". Older drafts have none = every timer on its default.
         // (Every version lands here, so a v5 draft with a damaged timers object is repaired too.)
         const t = (state.timers ?? {}) as Partial<TimerDraft>;
-        state.timers = { ...EMPTY_TIMER_DRAFT, ...(typeof t === "object" && t ? t : {}) };
+        state.timers = { ...FILLED_TIMER_DRAFT, ...(typeof t === "object" && t ? t : {}) };
         // Whatever version it came from, never hand the app a draft missing a field the screens now read.
         if (!Array.isArray(state.sports)) state.sports = [];
         if (!Array.isArray(state.amenities)) state.amenities = [];

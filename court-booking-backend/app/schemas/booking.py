@@ -72,6 +72,8 @@ class WalkInBookingIn(BaseModel):
     player_name: str = Field(min_length=1, max_length=100)
     player_phone: str | None = None
     amount_paid: float = Field(ge=0)
+    # audit 2026-10-28 Phase 2 item 3: the owner ticked "Player ko bata diya ke WhatsApp par rasid aayegi" (both apps require it)
+    whatsapp_opt_in: bool | None = None
 
     @field_validator("player_name", mode="before")
     @classmethod
@@ -138,3 +140,93 @@ class BookingResponse(BaseModel):
 class BookingHoldResponse(BaseModel):
     booking: BookingOut
     payment_instructions: PaymentInstructionsOut | None = None
+
+
+# ---- audit 2026-10-28 item 4: the player's own booking detail (web /booking/{id}, app booking/[id]/detail) ----
+
+
+class PlayerBookingVenueOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    area: str | None = None
+    city: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    whatsapp: str | None = None
+    cancellation_allowed: bool = True
+    cancellation_cutoff_hours: int | None = None
+
+
+class PlayerBookingCourtOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    sport: str
+    is_indoor: bool = False
+
+
+class PlayerPaymentLineOut(BaseModel):
+    """One real money line on the booking (payment_entries): positive = paid in, negative = refund or correction."""
+
+    at: datetime
+    amount: int
+    method: PaymentMethod
+    is_reversal: bool = False
+
+
+class PlayerTimelineEventOut(BaseModel):
+    at: datetime
+    kind: str
+    amount: float | None = None
+    note: str | None = None
+
+
+class PlayerRefundOut(BaseModel):
+    amount: float
+    status: str  # "owed" | "paid"
+    paid_at: datetime | None = None
+
+
+class PlayerBookingDetailOut(BaseModel):
+    booking: BookingOut
+    venue: PlayerBookingVenueOut
+    court: PlayerBookingCourtOut
+    duration_minutes: int
+    payments: list[PlayerPaymentLineOut]
+    timeline: list[PlayerTimelineEventOut]
+    refund: PlayerRefundOut | None = None
+    refund_request: "PlayerRefundRequestOut | None" = None
+
+
+class BookingPaymentInstructionsOut(BaseModel):
+    """audit 2026-10-28 item 20: what the player pays now and where, for the advance (held / payment_submitted) and the balance
+    (booked with money due). `qr_payload` is the Raast QR text (flag `iban_qr` on AND the venue saved a valid IBAN), else null
+    with `qr_unavailable_reason` = "flag_off" | "no_iban" | "invalid_iban" | "nothing_due"."""
+
+    kind: str  # "advance" | "balance" | "none"
+    amount: float
+    bank: str | None = None
+    account_title: str | None = None
+    account_number: str | None = None
+    iban: str | None = None
+    reference: str
+    qr_payload: str | None = None
+    qr_unavailable_reason: str | None = None
+    # Phase 3 item 2: "open" = the player can upload a balance screenshot now, "pending" = one is waiting for the owner,
+    # "off" = not offered (flag off, nothing due, or not the player's own booking)
+    balance_upload: str = "off"
+
+
+class RefundRequestIn(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
+class PlayerRefundRequestOut(BaseModel):
+    """audit 2026-10-28 Phase 2 item 3: whether "Refund maangein" is offered on this booking, and for how much.
+    state: eligible | not_cancelled | policy_no_refund | window_closed | already_owed | nothing_paid."""
+
+    state: str
+    amount: float = 0
+
+
+PlayerBookingDetailOut.model_rebuild()

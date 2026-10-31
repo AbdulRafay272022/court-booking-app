@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { unconfirmedSettingLabel } from "@court-booking/types";
+import { VenueMissingCard } from "@/components/setup/venue-missing";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   accountNumberError,
@@ -22,7 +25,7 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
-import { useT } from "@/components/i18n/lang-provider";
+import { useLang, useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import { Chip, Field, FieldLabel, PrimaryButton, SectionCard, SectionLabel } from "@/components/setup/ui";
 import { DayPicker, TimeField12 } from "@/components/setup/time-fields";
@@ -63,13 +66,37 @@ type SettingsTab = "venue" | "courts";
 
 export default function VenueSettingsPage() {
   const t = useT();
+  const lang = useLang();
   const { activeVenue } = useOwnerVenues();
-  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
+  const role = useAuthStore((s) => s.user?.role);
+  const isOwner = role === "owner";
   const [tab, setTab] = useState<SettingsTab>("venue");
+  // audit 2026-10-28 item 11: venue basics and bank details are owner-only (PATCH /venues is RequireOwner); courts need
+  // edit_court_settings and photos manage_photos. Say up front what a staff member can and cannot change here.
+  const perms = useMyPermissions();
+  const staffReadOnly = role === "staff" && !perms.loading && !perms.can("edit_court_settings");
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl flex flex-col gap-6 min-w-0">
       <h1 className="text-2xl font-bold">{t("setup.set.title")}</h1>
+      <VenueMissingCard missing={activeVenue?.missing_for_approval} />
+      {activeVenue?.unconfirmed_settings && activeVenue.unconfirmed_settings.length > 0 ? (
+        // audit 2026-10-28 item 15: a live venue is never blocked; the owner confirms the hidden defaults by saving
+        <div className="rounded-2xl border border-owner-warn-soft-border bg-owner-warn-soft p-4 text-sm" data-testid="unconfirmed-settings" role="status">
+          <p className="font-semibold text-owner-warn">{t("setup.unconfirmed.title")}</p>
+          <ul className="mt-2 list-disc pl-5 text-owner-ink-muted">
+            {activeVenue.unconfirmed_settings.map((u, i) => (
+              <li key={`${u.code}-${u.court ?? ""}-${i}`}>{unconfirmedSettingLabel(u, lang)}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-owner-ink-faint">{t("setup.unconfirmed.hint")}</p>
+        </div>
+      ) : null}
+      {role === "staff" ? (
+        <p className="rounded-xl border border-owner-border bg-owner-surface p-3 text-sm text-owner-ink-muted" data-testid="staff-settings-note">
+          {staffReadOnly ? t("setup.set.staffReadOnly") : t("setup.set.staffCourtsOnly")}
+        </p>
+      ) : null}
 
       {/* Venue-level and court-level settings live on separate tabs so it is always clear what an edit applies to. */}
       <div role="tablist" aria-label={t("setup.set.sectionsAria")} className="flex gap-1 border-b border-owner-border">
@@ -108,6 +135,15 @@ export default function VenueSettingsPage() {
               venueId={activeVenue.id}
               initialAllowed={activeVenue.cancellation_allowed}
               initialCutoff={activeVenue.cancellation_cutoff_hours}
+            />
+          ) : null}
+          {/* audit Phase 3 item 3: the owner-funded points discount (shown to players only while player_points is on). */}
+          {activeVenue && isOwner ? (
+            <VenuePointsCard
+              key={`points-${activeVenue.id}`}
+              venueId={activeVenue.id}
+              initialEnabled={!!activeVenue.points_discount_enabled}
+              initialAmount={activeVenue.points_discount_pkr ?? 500}
             />
           ) : null}
           {/* Stage 2: hold / reminders / auto-cancel per venue (null = default), saved with PUT .../timers. */}
@@ -550,6 +586,48 @@ function VenueCancellationCard({
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
       <SaveMessage message={message} />
       <PrimaryButton label={t("setup.set.saveCancel")} onClick={save} busy={saving} />
+    </div>
+  );
+}
+
+function VenuePointsCard({ venueId, initialEnabled, initialAmount }: { venueId: string; initialEnabled: boolean; initialAmount: number }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [enabled, setEnabled] = useState(initialEnabled);
+  const [amount, setAmount] = useState(String(initialAmount));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+  const valid = /^\d{1,6}$/.test(amount.trim()) && Number(amount) <= 100000;
+
+  async function save() {
+    if (!valid) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api.venues.update(venueId, { points_discount_enabled: enabled, points_discount_pkr: Number(amount) });
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ kind: "ok", text: t("odash.p3.pointsSaved") });
+    } catch (e) {
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-owner-border bg-white p-5" data-testid="venue-points">
+      <h3 className="text-[16px] font-bold">{t("odash.p3.pointsTitle")}</h3>
+      <p className="text-[13.5px] text-owner-ink-muted">{t("odash.p3.pointsHelp")}</p>
+      <label className="flex cursor-pointer items-center gap-2 text-[14px] font-semibold">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-5 w-5" />
+        {t("odash.p3.pointsOn")}
+      </label>
+      <label className="flex flex-col gap-1 text-[13px] font-semibold">
+        {t("odash.p3.pointsAmount")}
+        <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-40 rounded-xl border border-owner-border px-3 py-2 text-[15px]" />
+      </label>
+      <SaveMessage message={message} />
+      <PrimaryButton label={t("odash.p3.pointsSave")} onClick={save} busy={saving} />
     </div>
   );
 }

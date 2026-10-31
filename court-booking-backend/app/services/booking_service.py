@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +46,8 @@ class BookingService:
         self.db = db
         self.settings = settings
         self.audit = AuditService(db)
+        # audit 2026-10-28 item 10: the refund row the last cancel_booking() created (None = no refund owed)
+        self.created_refund = None
         self.availability = AvailabilityService(db)
 
     async def _load_active_court(self, court_id: uuid.UUID) -> Court:
@@ -65,8 +67,12 @@ class BookingService:
         walk-in (create_walkin) is exempt, since that's their own venue."""
         from app.models.venue import Venue, VenueStatus
 
+        from app.services.venue_visibility import is_public_for_players
+
         venue = await self.db.get(Venue, court.venue_id)
-        if venue is None or venue.status != VenueStatus.APPROVED:
+        # audit 2026-10-28 item 2: a soft-deleted venue (is_active=False, its courts left active) was still holdable by
+        # court id. Same public rule as the venue page and availability (incl. the Phase 2 CNIC gate when it is on).
+        if venue is None or venue.status != VenueStatus.APPROVED or not await is_public_for_players(self.db, venue):
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.VENUE_NOT_APPROVED, "This venue is not yet approved for bookings"
             )
@@ -318,6 +324,7 @@ class BookingService:
         method: PaymentMethod = PaymentMethod.CASH_AT_VENUE,
         slot_count: int | None = None,
         legacy_units: bool = False,
+        whatsapp_opt_in: bool | None = None,
     ) -> Booking:
         """The owner/staff records a booking for a customer: `slot_count` consecutive 30-minute slots (None = the court's
         minimum) as ONE booking, validated and priced by the same quote_range as a player's hold (grid, closing time,
@@ -356,6 +363,7 @@ class BookingService:
             player_phone=player_phone,
             price=price,
             advance_amount=amount_paid,
+            whatsapp_opt_in=whatsapp_opt_in,
         )
         await self._insert_booking(booking)
 
@@ -380,7 +388,7 @@ class BookingService:
 
         await self.audit.log(
             actor_user_id=recorded_by.id,
-            actor_type="owner",
+            actor_type=recorded_by.role.value,
             action="booking.walkin",
             entity_type="booking",
             entity_id=booking.id,
@@ -430,7 +438,9 @@ class BookingService:
                         )
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
 
-    async def cancel_booking(self, booking: Booking, cancelled_by: CancelledBy, reason: str | None) -> Booking:
+    async def cancel_booking(
+        self, booking: Booking, cancelled_by: CancelledBy, reason: str | None, actor: User | None = None
+    ) -> Booking:
         """Idempotent by design: a booking that's already CANCELLED is a
         safe no-op (same booking returned, unchanged) rather than a 400 --
         this matters because both the AI chat tool and a duplicate WhatsApp
@@ -469,18 +479,20 @@ class BookingService:
             raise AppError(
                 status.HTTP_409_CONFLICT, ErrorCode.INVALID_BOOKING_STATE, "Booking cannot be cancelled"
             )
+        self.created_refund = None
         if old_status == BookingStatus.BOOKED:
             # Money-correctness fix: an OWNER cancelling a paid (booked) booking owes the player a refund
             # exactly like a player cancel does (previously only PLAYER cancels were flagged).
-            await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
+            self.created_refund = await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
+        # audit 2026-10-28 item 8: the REAL person (owner / staff / admin / the player), not always the booking's player
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type=cancelled_by.value,
+            actor_user_id=actor.id if actor is not None else booking.player_id,
+            actor_type=actor.role.value if actor is not None else cancelled_by.value,
             action="booking.cancelled",
             entity_type="booking",
             entity_id=booking.id,
             old_value={"status": old_status.value},
-            new_value={"status": booking.status.value, "reason": reason},
+            new_value={"status": booking.status.value, "reason": reason, "cancelled_by": cancelled_by.value},
         )
         await self.db.commit()
         await self.db.refresh(booking)
@@ -536,12 +548,13 @@ class BookingService:
             .order_by(Payment.reviewed_at.desc())
             .limit(1)
         )
-        if payment is None:
-            return
-        self.db.add(
-            PaymentDispute(
+        if payment is None and float(booking.amount_paid or 0) <= 0:
+            return None
+        # audit 2026-10-28 item 10 (Phase 2): a booking paid in CASH at the venue has no approved proof; it still owes the
+        # refund, so the row is written without a payment (the owner refunds in cash; no "refund owed" push, see bookings.py)
+        dispute = PaymentDispute(
                 booking_id=booking.id,
-                payment_id=payment.id,
+                payment_id=payment.id if payment is not None else None,
                 player_id=booking.player_id,
                 reason=f"{cancelled_by.value}_cancelled_paid_booking",
                 # Section 32 Part 10: a voluntary cancel that reaches this point already
@@ -553,7 +566,80 @@ class BookingService:
                 # fix is the REAL amount the player paid (capped at the price), cash entries included.
                 refund_amount=booking.amount_paid,
             )
+        self.db.add(dispute)
+        return dispute
+
+    async def refund_request_state(self, booking: Booking) -> tuple[str, float]:
+        """audit 2026-10-28 Phase 2 item 3: may the player ask for a refund on this CANCELLED booking? Returns (state, amount):
+        "eligible" | "not_cancelled" | "policy_no_refund" | "window_closed" | "already_owed" | "nothing_paid". The window is the
+        venue's policy judged at the moment the booking was cancelled (whoever cancelled it: player, owner or admin)."""
+        from app.models.audit import AuditLog
+        from app.models.venue import Venue
+
+        if booking.status != BookingStatus.CANCELLED:
+            return "not_cancelled", 0.0
+        court = await self.db.get(Court, booking.court_id)
+        venue = await self.db.get(Venue, court.venue_id) if court is not None else None
+        if venue is None or not venue.cancellation_allowed:
+            return "policy_no_refund", 0.0
+        cancelled_at = await self.db.scalar(
+            select(AuditLog.created_at)
+            .where(AuditLog.entity_type == "booking", AuditLog.entity_id == booking.id, AuditLog.action.in_(("booking.cancelled", "booking.expired")))
+            .order_by(AuditLog.created_at.desc())
+            .limit(1)
+        ) or booking.updated_at
+        cutoff = venue.cancellation_cutoff_hours
+        if cutoff is not None and cancelled_at > booking.starts_at - timedelta(hours=cutoff):
+            return "window_closed", 0.0
+        if cutoff is None and cancelled_at >= booking.starts_at:
+            return "window_closed", 0.0
+        existing = await self.db.scalar(
+            select(func.count(PaymentDispute.id)).where(
+                PaymentDispute.booking_id == booking.id, func.coalesce(PaymentDispute.refund_amount, 0) > 0
+            )
         )
+        if existing:
+            return "already_owed", 0.0
+        amount = float(booking.amount_paid or 0)
+        if amount <= 0:
+            proof = await self.db.scalar(
+                select(Payment).where(Payment.booking_id == booking.id, Payment.proof_key.is_not(None)).order_by(Payment.created_at.desc()).limit(1)
+            )
+            if proof is not None:
+                amount = float(proof.ocr_amount if proof.ocr_amount is not None else (proof.amount_claimed or 0))
+        if amount <= 0:
+            return "nothing_paid", 0.0
+        return "eligible", amount
+
+    async def request_refund(self, booking: Booking, player: User, note: str | None) -> PaymentDispute:
+        """The player's "Refund maangein": puts the booking on the owner's Refunds list (payment_disputes, reason
+        player_refund_request; the latest proof is attached when there is one)."""
+        state, amount = await self.refund_request_state(booking)
+        if state != "eligible":
+            raise AppError(status.HTTP_409_CONFLICT, ErrorCode.INVALID_BOOKING_STATE, "A refund cannot be requested for this booking.", details={"state": state})
+        proof = await self.db.scalar(
+            select(Payment).where(Payment.booking_id == booking.id, Payment.proof_key.is_not(None)).order_by(Payment.created_at.desc()).limit(1)
+        )
+        dispute = PaymentDispute(
+            booking_id=booking.id,
+            payment_id=proof.id if proof is not None else None,
+            player_id=player.id,
+            reason="player_refund_request",
+            refund_amount=amount,
+            player_note=(note or "").strip()[:500] or None,
+        )
+        self.db.add(dispute)
+        await self.audit.log(
+            actor_user_id=player.id,
+            actor_type=player.role.value,
+            action="refund.requested",
+            entity_type="booking",
+            entity_id=booking.id,
+            new_value={"amount": amount, "note": dispute.player_note},
+        )
+        await self.db.commit()
+        await self.db.refresh(dispute)
+        return dispute
 
     async def confirm_booking(
         self,
@@ -628,8 +714,9 @@ class BookingService:
             if player is not None:
                 player.total_bookings += 1
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type="system",
+            # audit 2026-10-28 item 8: the owner/staff who approved (None = auto-approve, then the system)
+            actor_user_id=recorded_by.id if recorded_by is not None else booking.player_id,
+            actor_type=recorded_by.role.value if recorded_by is not None else "system",
             action="booking.confirmed",
             entity_type="booking",
             entity_id=booking.id,
@@ -678,7 +765,7 @@ class BookingService:
         await self.db.refresh(booking)
         return booking
 
-    async def _do_check_in(self, booking: Booking, actor: str) -> Booking:
+    async def _do_check_in(self, booking: Booking, actor: str, actor_user: User | None = None) -> Booking:
         """Shared by the owner-scan (`check_in`) and player-self-scan
         (`check_in_self`) paths -- see finding #17 in AUDIT_FINDINGS.md.
         Idempotent: whichever happens first wins; a second attempt via
@@ -706,8 +793,9 @@ class BookingService:
             booking.checkin_flag_reason = "implausible_timing"
 
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type=actor,
+            # audit 2026-10-28 item 8: the owner/staff member who checked the player in (self check-in: the player)
+            actor_user_id=actor_user.id if actor_user is not None else booking.player_id,
+            actor_type=actor_user.role.value if actor_user is not None else actor,
             action="booking.checked_in",
             entity_type="booking",
             entity_id=booking.id,
@@ -717,9 +805,9 @@ class BookingService:
         await self.db.refresh(booking)
         return booking
 
-    async def check_in(self, booking: Booking) -> Booking:
-        """Owner scans the player's QR from My Bookings."""
-        return await self._do_check_in(booking, "owner")
+    async def check_in(self, booking: Booking, actor_user: User | None = None) -> Booking:
+        """Owner (or staff with check_in) scans the player's QR from My Bookings."""
+        return await self._do_check_in(booking, "owner", actor_user)
 
     async def check_in_self(self, booking: Booking, venue_qr_token: uuid.UUID) -> Booking:
         """Player scans a QR physically posted at the venue -- an

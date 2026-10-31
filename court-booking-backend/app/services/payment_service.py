@@ -15,6 +15,7 @@ from app.models.booking import Booking, BookingStatus, CancelledBy
 from app.models.court import Court
 from app.models.dispute import PaymentDispute
 from app.models.payment import Payment
+from app.models.payment_entry import PaymentMethod
 from app.models.user import User
 from app.models.venue import Venue
 from app.schemas.payment import PaymentCheckOut, PaymentChecksOut
@@ -48,6 +49,35 @@ def compute_name_match(payer_name: str | None, account_name: str | None) -> str:
     if not payer_name or not account_name:
         return "unavailable"
     return "match" if fuzzy_name_match(payer_name, account_name) else "mismatch"
+
+
+BALANCE_PURPOSE = "balance"
+
+
+def is_balance_proof(payment: Payment | None) -> bool:
+    """audit 2026-10-28 Phase 3 item 2: a screenshot for the BALANCE of a booked booking (marked at submit, in ocr_raw)."""
+    return payment is not None and isinstance(payment.ocr_raw, dict) and payment.ocr_raw.get("purpose") == BALANCE_PURPOSE
+
+
+def compute_balance_time_check(ocr_timestamp: datetime | None, booking: Booking) -> str:
+    """A balance transfer is plausible from the hold until 3 hours after the slot ends (2-minute clock tolerance)."""
+    if ocr_timestamp is None:
+        return "not_visible"
+    tolerance = timedelta(minutes=2)
+    if ocr_timestamp < booking.created_at - tolerance:
+        return "before_hold"
+    if ocr_timestamp > booking.ends_at + timedelta(hours=3) + tolerance:
+        return "after_timer"
+    return "within_timer"
+
+
+def compute_late_balance_time_check(ocr_timestamp: datetime | None, booking: Booking) -> str:
+    """An owner-reported transfer (due "Done", no-show reversal) can come any time after the booking was made."""
+    if ocr_timestamp is None:
+        return "not_visible"
+    if ocr_timestamp < booking.created_at - timedelta(minutes=2):
+        return "before_hold"
+    return "within_timer"
 
 
 def compute_time_check(ocr_timestamp: datetime | None, booking: Booking) -> str:
@@ -94,13 +124,19 @@ def default_credit_amount(payment: Payment, booking: Booking) -> int:
 
 # The approvals-queue state of an unreviewed payment, from its booking (docs/round2-contract.md A1/A5).
 AWAITING_STATES = (BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED)
+# a balance screenshot waits for the owner on a booked booking (player) and also on a completed one (owner-reported due /
+# no-show reversal; NO_SHOW only for the moment between the screenshot and the reversal itself)
+BALANCE_PROOF_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED, BookingStatus.NO_SHOW)
 
 
-def approval_state(booking: Booking) -> str:
+def approval_state(booking: Booking, payment: "Payment | None" = None) -> str:
     """"awaiting" (the owner can approve/reject) | "cancelled_by_player" | "cancelled_by_owner" | "expired".
     A booking that left the pending states any other way (system cancel, or confirmed/completed through another
-    path while this proof stayed unreviewed) is "expired": the proof can only be acknowledged now."""
+    path while this proof stayed unreviewed) is "expired": the proof can only be acknowledged now.
+    audit 2026-10-28 Phase 3 item 2: a BALANCE screenshot on a booked booking is awaiting too."""
     if booking.status in AWAITING_STATES:
+        return "awaiting"
+    if booking.status in BALANCE_PROOF_STATUSES and is_balance_proof(payment):
         return "awaiting"
     if booking.status == BookingStatus.CANCELLED:
         if booking.cancelled_by == CancelledBy.PLAYER:
@@ -140,6 +176,8 @@ def build_payment_summary(payment: Payment, booking: Booking) -> tuple[str, str,
     (screenshot amount, else the expected one) with the expected amount for this booking's flow, and says what the
     booking will look like once approved at that amount (credit capped at the price)."""
     expected = int(round(float(booking.advance_amount)))
+    if is_balance_proof(payment) and payment.amount_claimed is not None:
+        expected = int(round(float(payment.amount_claimed)))  # Phase 3 item 2: a balance screenshot is measured against the balance
     paid = default_credit_amount(payment, booking)
     price = int(round(float(booking.price)))
     credited = min(paid, price)
@@ -169,18 +207,33 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
     at that amount, not just the current state."""
     payer_name = payment.ocr_payer_name
 
-    if payment.name_match_verdict == "match":
-        name = PaymentCheckOut(
-            verdict="match", text=f"Name on screenshot: {payer_name}. App account: {account_name}. Matched."
+    def chk(verdict: str, en: str, ru: str) -> PaymentCheckOut:
+        # audit 2026-10-28 item 12: every sentence in English AND Roman Urdu; the owner screens pick by their language
+        return PaymentCheckOut(verdict=verdict, text=en, text_ru=ru)
+
+    if payment.name_match_verdict == "not_checked":
+        # Phase 3 item 2: a friend often pays the balance, so the sender's name is not compared (the receiver account is)
+        name = chk(
+            "not_available",
+            f"Balance payment: the sender's name is not checked{f' (screenshot: {payer_name})' if payer_name else ''}.",
+            f"Baqi raqam: bhejne wale ka naam check nahi hota{f' (screenshot: {payer_name})' if payer_name else ''}.",
+        )
+    elif payment.name_match_verdict == "match":
+        name = chk(
+            "match",
+            f"Name on screenshot: {payer_name}. App account: {account_name}. Matched.",
+            f"Screenshot par naam: {payer_name}. App account: {account_name}. Mil gaya.",
         )
     elif payment.name_match_verdict == "mismatch":
-        name = PaymentCheckOut(
-            verdict="mismatch", text=f"Name on screenshot: {payer_name}. App account: {account_name}. Not matched."
+        name = chk(
+            "mismatch",
+            f"Name on screenshot: {payer_name}. App account: {account_name}. Not matched.",
+            f"Screenshot par naam: {payer_name}. App account: {account_name}. Nahi mila.",
         )
     elif not payer_name:
-        name = PaymentCheckOut(verdict="not_available", text="Name not visible on the screenshot.")
+        name = chk("not_available", "Name not visible on the screenshot.", "Screenshot par naam nazar nahi aa raha.")
     else:
-        name = PaymentCheckOut(verdict="not_available", text=f"Name on screenshot: {payer_name}.")
+        name = chk("not_available", f"Name on screenshot: {payer_name}.", f"Screenshot par naam: {payer_name}.")
 
     total = float(booking.price)
     summary_status, summary_text, paid_amt, expected_amt, total_after, balance_after = build_payment_summary(
@@ -190,84 +243,106 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
         f"Total {format_pkr(total)}. Paid after approval {format_pkr(total_after)}. "
         f"Balance due at the venue: {format_pkr(balance_after)}."
     )
+    balance_text_ru = (
+        f"Kul {format_pkr(total)}. Approve ke baad mila: {format_pkr(total_after)}. "
+        f"Venue par baqi: {format_pkr(balance_after)}."
+    )
     ocr_amount = float(payment.ocr_amount) if payment.ocr_amount is not None else None
     expected = float(payment.amount_claimed) if payment.amount_claimed is not None else None
     if ocr_amount is None:
-        amount = PaymentCheckOut(verdict="not_available", text="Amount not visible on the screenshot.")
+        amount = chk("not_available", "Amount not visible on the screenshot.", "Screenshot par raqam nazar nahi aa rahi.")
     elif payment.ocr_verdict == "match":
-        amount = PaymentCheckOut(
-            verdict="match",
-            text=f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}. Matched.",
+        amount = chk(
+            "match",
+            f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}. Matched.",
+            f"Screenshot par {format_pkr(ocr_amount)}. Abhi aana tha: {format_pkr(expected or 0)}. Mil gaya.",
         )
     elif expected is not None and ocr_amount < expected:
-        amount = PaymentCheckOut(
-            verdict="mismatch",
-            text=f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(expected - ocr_amount)} less than expected.",
+        amount = chk(
+            "mismatch",
+            f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(expected - ocr_amount)} less than expected.",
+            f"Screenshot par {format_pkr(ocr_amount)}: {format_pkr(expected - ocr_amount)} kam.",
         )
     elif expected is not None and ocr_amount > expected:
-        amount = PaymentCheckOut(
-            verdict="mismatch",
-            text=f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(ocr_amount - expected)} more than expected.",
+        amount = chk(
+            "mismatch",
+            f"Screenshot shows {format_pkr(ocr_amount)} -- {format_pkr(ocr_amount - expected)} more than expected.",
+            f"Screenshot par {format_pkr(ocr_amount)}: {format_pkr(ocr_amount - expected)} zyada.",
         )
     else:
-        amount = PaymentCheckOut(
-            verdict="mismatch",
-            text=f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}.",
+        amount = chk(
+            "mismatch",
+            f"Screenshot shows {format_pkr(ocr_amount)}. Expected now: {format_pkr(expected or 0)}.",
+            f"Screenshot par {format_pkr(ocr_amount)}. Abhi aana tha: {format_pkr(expected or 0)}.",
         )
 
     if payment.time_check_verdict == "within_timer":
-        # `booking.held_until` is cleared to None once the booking leaves
-        # HELD (mark_payment_submitted/confirm_booking both null it out) --
-        # by the time this card is rendered the booking has almost always
-        # already moved past HELD, so the verdict itself (computed and
-        # stored once, at submission time, before it was cleared) is the
-        # source of truth here, not whatever held_until reads *now*. Show
-        # the fuller sentence when it's still available, a shorter but
-        # still correct one otherwise -- never downgrade the verdict itself.
+        # `booking.held_until` is cleared to None once the booking leaves HELD, so the stored verdict (computed at
+        # submission time) is the source of truth; show the fuller sentence only when the times are still there.
         if payment.ocr_timestamp and booking.held_until:
-            time_check = PaymentCheckOut(
-                verdict="match",
-                text=(
-                    f"Paid {format_time(payment.ocr_timestamp)}. Booking started {format_time(booking.created_at)}. "
-                    f"Timer ended {format_time(booking.held_until)}. Within the timer."
-                ),
+            time_check = chk(
+                "match",
+                f"Paid {format_time(payment.ocr_timestamp)}. Booking started {format_time(booking.created_at)}. "
+                f"Timer ended {format_time(booking.held_until)}. Within the timer.",
+                f"Payment {format_time(payment.ocr_timestamp)} par hui. Booking {format_time(booking.created_at)} par shuru hui. "
+                f"Timer {format_time(booking.held_until)} par khatam. Waqt ke andar.",
             )
         elif payment.ocr_timestamp:
-            time_check = PaymentCheckOut(verdict="match", text=f"Paid {format_time(payment.ocr_timestamp)}. Within the timer.")
+            time_check = chk(
+                "match",
+                f"Paid {format_time(payment.ocr_timestamp)}. Within the timer.",
+                f"Payment {format_time(payment.ocr_timestamp)} par hui. Waqt ke andar.",
+            )
         else:
-            time_check = PaymentCheckOut(verdict="match", text="Within the timer.")
+            time_check = chk("match", "Within the timer.", "Waqt ke andar.")
     elif payment.time_check_verdict == "before_hold":
-        time_check = PaymentCheckOut(verdict="warning", text="Paid before the booking started.")
+        time_check = chk("warning", "Paid before the booking started.", "Payment booking shuru hone se pehle ki hai.")
     elif payment.time_check_verdict == "after_timer":
-        time_check = PaymentCheckOut(verdict="warning", text="Paid after the timer ended.")
+        time_check = chk("warning", "Paid after the timer ended.", "Payment timer khatam hone ke baad hui.")
     else:
-        time_check = PaymentCheckOut(verdict="warning", text="Time not visible.")
+        time_check = chk("warning", "Time not visible.", "Waqt nazar nahi aa raha.")
 
-    bank_label = payment.ocr_bank or "an unknown bank/wallet"
+    bank_en = payment.ocr_bank or "an unknown bank/wallet"
+    bank_ru = payment.ocr_bank or "na-maloom bank/wallet"
     if payment.receiver_match_verdict == "match":
-        bank = PaymentCheckOut(verdict="match", text=f"Paid via {bank_label}. Receiver matches the venue's saved bank details.")
+        bank = chk(
+            "match",
+            f"Paid via {bank_en}. Receiver matches the venue's saved bank details.",
+            f"{bank_ru} se payment. Paane wala venue ki bank details se mil gaya.",
+        )
     elif payment.receiver_match_verdict == "mismatch":
-        bank = PaymentCheckOut(
-            verdict="mismatch", text=f"Paid via {bank_label}. Receiver does not match the venue's saved bank details."
+        bank = chk(
+            "mismatch",
+            f"Paid via {bank_en}. Receiver does not match the venue's saved bank details.",
+            f"{bank_ru} se payment. Paane wala venue ki bank details se NAHI mila.",
         )
     elif payment.receiver_match_verdict == "not_configured":
-        bank = PaymentCheckOut(
-            verdict="not_configured", text=f"Paid via {bank_label}. The venue hasn't saved bank details to check against."
+        bank = chk(
+            "not_configured",
+            f"Paid via {bank_en}. The venue hasn't saved bank details to check against.",
+            f"{bank_ru} se payment. Venue ki bank details save nahi, is liye check nahi ho saka.",
         )
     else:
-        bank = PaymentCheckOut(verdict="not_available", text=f"Paid via {bank_label}. Receiver name not visible.")
+        bank = chk(
+            "not_available",
+            f"Paid via {bank_en}. Receiver name not visible.",
+            f"{bank_ru} se payment. Paane wale ka naam nazar nahi aa raha.",
+        )
 
     if payment.is_duplicate:
-        duplicate = PaymentCheckOut(
-            verdict="mismatch", text="This screenshot (or transaction reference) matches a payment already on file."
+        duplicate = chk(
+            "mismatch",
+            "This screenshot (or transaction reference) matches a payment already on file.",
+            "Ye screenshot (ya transaction number) pehle bhi kisi payment mein aa chuka hai.",
         )
     else:
-        duplicate = PaymentCheckOut(verdict="match", text="No duplicate found.")
+        duplicate = chk("match", "No duplicate found.", "Koi duplicate nahi mila.")
 
     return PaymentChecksOut(
         name=name,
         amount=amount,
         balance_text=balance_text,
+        balance_text_ru=balance_text_ru,
         time=time_check,
         bank=bank,
         duplicate=duplicate,
@@ -439,8 +514,11 @@ class PaymentService:
         return None
 
     async def submit_payment(
-        self, booking: Booking, *, proof_bytes: bytes, filename: str, content_type: str
+        self, booking: Booking, *, proof_bytes: bytes, filename: str, content_type: str, owner_balance: dict | None = None
     ) -> Payment:
+        """`owner_balance` = {"amount", "origin", "actor"}: a transfer the OWNER reports (no-show reversal, dues "Done").
+        It goes in as a balance screenshot for exactly `amount` on a booked / completed / no-show booking, with the same
+        checks, never auto-approved, and is credited only when approved (audit fixes 2026-10-31)."""
         # Owner Round 2 (B1): the hold time is enforced the moment it runs out, not when the expiry job next runs.
         if (
             booking.status == BookingStatus.HELD
@@ -453,13 +531,31 @@ class PaymentService:
                     await self.waitlist_service.notify_matching_entries(court, booking.starts_at, booking.ends_at)
         if is_expired_hold(booking):
             await self._record_late_proof(booking, proof_bytes=proof_bytes, filename=filename, content_type=content_type)
-        if booking.status != BookingStatus.HELD:
+        # audit 2026-10-28 Phase 3 item 2 (flag balance_proof, default OFF): a booked booking with money still due accepts
+        # a screenshot for the BALANCE, with the same checks as the advance.
+        if owner_balance is not None:
+            if booking.status not in BALANCE_PROOF_STATUSES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Booking is not awaiting a payment proof",
+                )
+            balance = True
+        else:
+            balance = (
+                booking.status == BookingStatus.BOOKED
+                and float(booking.balance_due or 0) > 0
+                and await flag_on(self.db, "balance_proof")
+            )
+        if booking.status != BookingStatus.HELD and not balance:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Booking is not awaiting a payment proof",
             )
 
-        expected_amount = float(booking.advance_amount)
+        if owner_balance is not None:
+            expected_amount = float(owner_balance["amount"])
+        else:
+            expected_amount = float(booking.balance_due) if balance else float(booking.advance_amount)
         proof_key = await upload_private_proof(proof_bytes, filename, content_type)
         proof_hash = perceptual_hash(proof_bytes)
 
@@ -480,13 +576,19 @@ class PaymentService:
         else:
             ocr_verdict = "mismatch"
 
-        duplicate = await self._find_duplicate(proof_hash, extraction.reference, booking.id)
+        # a balance screenshot is also checked against THIS booking's earlier proofs (re-sending the advance receipt)
+        duplicate = await self._find_duplicate(proof_hash, extraction.reference, uuid.uuid4() if balance else booking.id)
         ocr_timestamp = self._parse_ocr_timestamp(extraction.timestamp)
 
         venue = await self._venue_for_booking(booking)
         account_name = await self._resolve_player_account_name(booking)
-        name_match_verdict = compute_name_match(extraction.payer_name, account_name)
-        time_check_verdict = compute_time_check(ocr_timestamp, booking)
+        # the balance check does NOT compare the sender's name (a friend often pays the balance); everything else is the same
+        name_match_verdict = "not_checked" if balance else compute_name_match(extraction.payer_name, account_name)
+        if owner_balance is not None:
+            # a due / reversal may be paid days after the slot: only "before the booking existed" is a warning
+            time_check_verdict = compute_late_balance_time_check(ocr_timestamp, booking)
+        else:
+            time_check_verdict = compute_balance_time_check(ocr_timestamp, booking) if balance else compute_time_check(ocr_timestamp, booking)
         receiver_match_verdict = compute_receiver_match(extraction.receiver_name, venue, self.settings)
 
         payment = Payment(
@@ -499,7 +601,11 @@ class PaymentService:
             ocr_timestamp=ocr_timestamp,
             ocr_verdict=ocr_verdict,
             ocr_confidence=extraction.confidence,
-            ocr_raw=extraction.raw_response,
+            ocr_raw=(
+                {**(extraction.raw_response or {}), "purpose": BALANCE_PURPOSE, **((owner_balance or {}).get("origin") or {})}
+                if balance
+                else extraction.raw_response
+            ),
             ocr_payer_name=extraction.payer_name,
             ocr_bank=extraction.bank_name,
             ocr_receiver=extraction.receiver_name,
@@ -527,17 +633,25 @@ class PaymentService:
                 ) from exc
             raise
 
-        auto_approved = await self._maybe_auto_approve(payment, booking, ocr_verdict, duplicate is not None)
-        if not auto_approved:
-            await self.booking_service.mark_payment_submitted(booking)
+        if balance:
+            # the owner always looks at a balance screenshot (nothing is auto-approved); the booking stays booked
+            auto_approved = False
+        else:
+            auto_approved = await self._maybe_auto_approve(payment, booking, ocr_verdict, duplicate is not None)
+            if not auto_approved:
+                await self.booking_service.mark_payment_submitted(booking)
 
+        owner_actor = (owner_balance or {}).get("actor")
         await self.audit.log(
-            actor_user_id=booking.player_id,
-            actor_type="player",
+            actor_user_id=owner_actor.id if owner_actor is not None else booking.player_id,
+            actor_type=owner_actor.role.value if owner_actor is not None else "player",
             action="payment.submitted",
             entity_type="payment",
             entity_id=payment.id,
-            new_value={"ocr_verdict": ocr_verdict, "is_duplicate": payment.is_duplicate},
+            new_value={
+                "ocr_verdict": ocr_verdict, "is_duplicate": payment.is_duplicate, "purpose": "balance" if balance else "advance",
+                **({"origin": (owner_balance.get("origin") or {}).get("origin"), "amount": expected_amount} if owner_balance else {}),
+            },
         )
         await self.db.commit()
         await self.db.refresh(payment)
@@ -777,7 +891,7 @@ class PaymentService:
         """Owner Round 2 (A5): approve/reject on an unreviewed payment whose booking was cancelled or expired gets a
         clear 409 BOOKING_NO_LONGER_PENDING {state} up front (no reason asked, nobody messaged). An already-reviewed
         payment falls through to the claim's own PAYMENT_ALREADY_REVIEWED."""
-        if payment.review_verdict is None and approval_state(booking) != "awaiting":
+        if payment.review_verdict is None and approval_state(booking, payment) != "awaiting":
             raise self._no_longer_pending(booking)
 
     async def require_duplicate_confirmed(self, payment: Payment, confirmed: bool) -> None:
@@ -806,7 +920,7 @@ class PaymentService:
         screenshot showed (`ocr_amount` when OCR read one, else `amount_claimed`, the advance the player was asked
         for). That money was never credited to the ledger, so its reason `cancelled_payment_received` is one of
         UNCREDITED_REFUND_REASONS (no negative entry when it is paid out). The player is never messaged here."""
-        if payment.review_verdict is None and approval_state(booking) == "awaiting":
+        if payment.review_verdict is None and approval_state(booking, payment) == "awaiting":
             raise AppError(
                 status.HTTP_409_CONFLICT,
                 ErrorCode.PAYMENT_STILL_PENDING,
@@ -883,11 +997,32 @@ class PaymentService:
             )
         await self.audit.log(
             actor_user_id=approved_by.id,
-            actor_type="owner",
+            actor_type=approved_by.role.value,
             action="payment.approved",
             entity_type="payment",
             entity_id=payment.id,
         )
+        if is_balance_proof(payment) and booking.status in BALANCE_PROOF_STATUSES:
+            # audit 2026-10-28 Phase 3 item 2: a balance transfer is a ledger entry on the booked booking (never past what is
+            # still due); the booking itself is already confirmed.
+            from app.services.payment_ledger_service import PaymentLedgerService
+
+            if amount_pkr is not None:
+                amount = amount_pkr
+            elif payment.ocr_raw.get("origin"):
+                # owner-reported transfer: the owner already said how much (the screenshot may show a bigger total)
+                amount = int(round(float(payment.amount_claimed or 0)))
+            else:
+                amount = int(round(float(payment.ocr_amount or payment.amount_claimed or 0)))
+            amount = max(0, min(amount, int(round(float(booking.balance_due or 0)))))
+            if amount > 0:
+                await PaymentLedgerService(self.db).record_entry(
+                    booking.id, amount_pkr=amount, method=PaymentMethod.BANK_TRANSFER_PROOF, recorded_by=approved_by,
+                    note="Balance by transfer (screenshot approved)",
+                )
+            await self.db.commit()
+            await self.db.refresh(payment)
+            return payment
         # Credit the amount the owner confirmed, defaulting to what the screenshot showed (else the expected
         # advance) -- never blindly the advance (money-correctness fix).
         credit = amount_pkr if amount_pkr is not None else default_credit_amount(payment, booking)
@@ -923,7 +1058,7 @@ class PaymentService:
             )
             await self.audit.log(
                 actor_user_id=approved_by.id,
-                actor_type="owner",
+                actor_type=approved_by.role.value,
                 action="payment.overpayment_queued",
                 entity_type="payment",
                 entity_id=payment.id,
@@ -951,16 +1086,18 @@ class PaymentService:
             )
         await self.audit.log(
             actor_user_id=rejected_by.id,
-            actor_type="owner",
+            actor_type=rejected_by.role.value,
             action="payment.rejected",
             entity_type="payment",
             entity_id=payment.id,
             new_value={"reason": reason},
         )
 
-        # A rejected payment releases the slot entirely (not back to "held") --
-        # the player starts over with a fresh hold if they want to try again.
-        await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason)
+        # A rejected ADVANCE releases the slot entirely (not back to "held") -- the player starts over with a fresh hold.
+        # audit 2026-10-28 Phase 3 item 1: a rejected BALANCE screenshot (or any proof on a booking that is already booked /
+        # completed) only rejects that screenshot; the booking stays. It used to cancel a paid booking.
+        if booking.status in AWAITING_STATES:
+            await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason, actor=rejected_by)
 
         # Safety net: the owner rejected the proof, but "rejected" does not prove no money moved (the transfer may have
         # been real and the rejection for another reason -- wrong amount, wrong account, a stale screenshot). Leave a

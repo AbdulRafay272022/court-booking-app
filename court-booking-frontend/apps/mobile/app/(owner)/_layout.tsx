@@ -34,6 +34,9 @@ export default function OwnerLayout() {
               <Stack.Screen name="walkin" />
               <Stack.Screen name="history" />
               <Stack.Screen name="staff" />
+              <Stack.Screen name="staff-activity" />
+              <Stack.Screen name="bank-check" />
+              <Stack.Screen name="dues" />
               <Stack.Screen name="premium" />
               <Stack.Screen name="notifications" />
               <Stack.Screen name="venue-setup" />

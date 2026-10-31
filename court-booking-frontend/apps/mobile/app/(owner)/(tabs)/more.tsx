@@ -85,6 +85,8 @@ export default function OwnerMoreScreen() {
       title: "Paisa",
       items: [
         { key: "ledger", label: "Ledger", sub: "Har payment ka hisaab", icon: Receipt, tone: "open", perm: "view_ledger", onPress: () => router.navigate("/(owner)/(tabs)/ledger") },
+        { key: "bankCheck", label: "Bank se mila lein", sub: "Aaj transfer se kitna aaya", icon: Receipt, perm: "view_ledger", onPress: go("/(owner)/bank-check") },
+        { key: "dues", label: "Baqi raqam (dues)", sub: "Kis booking par paisa baqi hai", icon: Receipt, perm: "view_ledger", onPress: go("/(owner)/dues") },
         {
           key: "refunds",
           label: "Refunds",
@@ -126,6 +128,8 @@ export default function OwnerMoreScreen() {
           badge: staffList.data && staffList.data.length > 0 ? { text: String(staffList.data.length), tone: "neutral" } : null,
           onPress: go("/(owner)/staff"),
         },
+        // audit 2026-10-28 item 16: what each person marked and recorded (owner only)
+        { key: "staffActivity", label: "Staff ka kaam", sub: "No-show, cash, kam mila: kis ne kya kiya", icon: Users, ownerOnly: true, onPress: go("/(owner)/staff-activity") },
         { key: "growth", label: "Growth suggestions", sub: "Kam bharne wale ghante", icon: TrendingUp, tone: "open", gate: "growth", flag: "growth_suggestions", onPress: go("/(owner)/growth") },
         { key: "reviews", label: "Reviews", sub: "Players ki rai aur jawab", icon: Star, gate: "reviews", flag: "reviews", onPress: go("/(owner)/reviews") },
         { key: "notifications", label: "Notifications", sub: "Payments, bookings, refunds", icon: Bell, onPress: go("/(owner)/notifications") },
@@ -152,7 +156,7 @@ export default function OwnerMoreScreen() {
             Aur
           </Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], boxShadow: shadow.card }}>
-            <Avatar name={user?.name ?? "Owner"} size={48} tone="teal" />
+            <Avatar name={user?.name ?? "Owner"} size={48} tone="teal" uri={user?.avatar_url} />
             <View style={{ flex: 1, gap: 2 }}>
               <Text variant="bodyStrong">{user?.name ?? "Owner"}</Text>
               <Text variant="meta" tone="muted">{`${activeVenue?.name ?? "Venue"} · ${isOwner ? "Owner" : staff ? "Staff" : "Admin"}`}</Text>

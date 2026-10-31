@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
-import { useT } from "@/components/i18n/lang-provider";
+import { useLang, useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
 import { pollInterval } from "@/lib/polling";
@@ -28,6 +28,7 @@ import { parseQueueFilter } from "@/lib/queue-filter";
 import { isNaya } from "@/lib/owner-seen";
 import { useSeenSince } from "@/lib/use-owner-seen";
 import { useMyPermissions } from "@/lib/use-my-permissions";
+import { DueDoneDialog } from "@/components/owner/money-dialogs";
 import {
   PAGE_SIZE,
   amountChip,
@@ -313,7 +314,12 @@ export default function OwnerApprovalsPage() {
   );
 }
 
-function Avatar({ name }: { name: string }) {
+function Avatar({ name, url }: { name: string; url?: string | null }) {
+  if (url) {
+    // audit 2026-10-28 item 6: the player's photo, initials only as the fallback
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 rounded-full object-cover" />;
+  }
   return (
     <div aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-owner-accent font-semibold text-white">
       {name.slice(0, 2).toUpperCase()}
@@ -329,6 +335,47 @@ function useCardText(item: ApprovalQueueItem) {
   const court = courtLabel(item.court_name, item.court_sport ?? sports.byName(item.court_name));
   const when = `${fmt.dateRelative(item.starts_at)}, ${fmt.timeRange(item.starts_at, item.ends_at)}`;
   return { who, court, when, sent: fmt.relative(item.submitted_at) };
+}
+
+/** audit Phase 3 item 5: this player's old dues at this venue (booking ID + "Done") and "No-show X / kul bookings Y". The new
+ * booking is never blocked by them. */
+function PlayerContext({ ctx }: { ctx: NonNullable<ApprovalQueueItem["player_context"]> }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  // "Done" asks cash or transfer first (audit fixes 2026-10-31); a transfer screenshot lands back in this queue
+  const [doneFor, setDoneFor] = useState<(typeof ctx.dues)[number] | null>(null);
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-owner-border bg-owner-bg px-3 py-2 text-[13px]" data-testid="player-context">
+      {doneFor ? (
+        <DueDoneDialog
+          claimId={doneFor.id}
+          due={doneFor.due_pkr}
+          label={doneFor.code}
+          onClose={() => setDoneFor(null)}
+          onDone={async () => {
+            setDoneFor(null);
+            await queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+            await queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+          }}
+        />
+      ) : null}
+      <span className={ctx.no_shows > 0 ? "font-bold text-owner-danger" : "text-owner-ink-muted"}>
+        {t("odash.p3.record", { noShows: String(ctx.no_shows), total: String(ctx.total_bookings) })}
+      </span>
+      {ctx.dues.map((d) => (
+        <div key={d.id} className="flex flex-wrap items-center justify-between gap-2" data-testid="player-due">
+          <span className="font-bold text-owner-ink">{t("odash.p3.oldDue", { code: d.code, amount: formatPKR(d.due_pkr) })}</span>
+          <button
+            type="button"
+            onClick={() => setDoneFor(d)}
+            className="cursor-pointer whitespace-nowrap rounded-full border border-owner-ink px-3 py-1 text-[12.5px] font-bold disabled:opacity-60"
+          >
+            {t("odash.p3.done")}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function AmountChips({ item }: { item: ApprovalQueueItem }) {
@@ -349,6 +396,11 @@ function AmountChips({ item }: { item: ApprovalQueueItem }) {
         : t("appr.amt.unread", { expected: formatPKR(chip.expected) });
   return (
     <div className="flex flex-wrap gap-2">
+      {item.is_balance ? (
+        <span data-testid="balance-chip" className="inline-flex items-center whitespace-nowrap rounded-full border border-owner-border bg-owner-bg px-3 py-1 text-[13px] font-bold text-owner-ink">
+          {t("appr.balanceChip")}
+        </span>
+      ) : null}
       <span data-testid="amount-chip" data-kind={chip.kind} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-bold ${tone}`}>
         <span aria-hidden="true" className="font-extrabold">
           {icon}
@@ -460,7 +512,7 @@ function AwaitingCard({
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex items-start gap-3">
-            <Avatar name={who} />
+            <Avatar name={who} url={item.player_avatar_url} />
             <div className="min-w-0 flex-1">
               <h2 id={nameId} className="break-words text-[16.5px] font-bold text-owner-ink">
                 {who}
@@ -477,6 +529,7 @@ function AwaitingCard({
             <p className="text-[12.5px] text-owner-ink-faint">{t("appr.sent", { when: sent })}</p>
           </div>
           <AmountChips item={item} />
+          {item.player_context ? <PlayerContext ctx={item.player_context} /> : null}
         </div>
         <div className="min-w-0">
           <Shot item={item} who={who} />
@@ -620,14 +673,15 @@ const CHECK_COLORS: Record<string, string> = {
 };
 const CHECK_ICONS: Record<string, string> = { match: "\u2713", mismatch: "\u2715", warning: "!" };
 
-function CheckRow({ check }: { check: { verdict: string; text: string } }) {
+function CheckRow({ check }: { check: { verdict: string; text: string; text_ru?: string | null } }) {
+  const lang = useLang();
   const color = CHECK_COLORS[check.verdict] ?? "var(--color-fl-muted2)";
   return (
     <li className="flex items-start gap-2.5">
       <span aria-hidden="true" className="mt-0.5 w-4 shrink-0 text-center text-[13px] font-extrabold" style={{ color }}>
         {CHECK_ICONS[check.verdict] ?? "\u2013"}
       </span>
-      <span className="flex-1 text-[13px] leading-[18px] text-owner-ink">{check.text}</span>
+      <span className="flex-1 text-[13px] leading-[18px] text-owner-ink">{lang === "ru" ? (check.text_ru ?? check.text) : check.text}</span>
     </li>
   );
 }

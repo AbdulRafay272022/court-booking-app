@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View } from "react-native";
-import type { PaymentMethod } from "@court-booking/types";
+import { acceptReceivedInput, receivedPrompt, type PaymentMethod } from "@court-booking/types";
 import { space } from "@court-booking/ui-tokens";
 import { Chip, Input, Text } from "@/components/ui";
 
@@ -24,12 +24,15 @@ export function RecordPaymentSheet({
   bookingId,
   playerLabel,
   balanceDue,
+  alreadyPaid = 0,
   onClose,
   onRecorded,
 }: {
   bookingId: string;
   playerLabel: string;
   balanceDue: number;
+  /** what is already recorded on the booking, for "Pehle Rs X mil chuke" */
+  alreadyPaid?: number;
   onClose: () => void;
   onRecorded: (result: { amount_paid: number; balance_due: number }) => void;
 }) {
@@ -38,6 +41,7 @@ export function RecordPaymentSheet({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState(false);
 
   const amountNum = Number(amount);
   const valid = Number.isFinite(amountNum) && amountNum > 0 && amountNum <= balanceDue;
@@ -68,11 +72,25 @@ export function RecordPaymentSheet({
       footer={<PrimaryButton label={`PKR ${valid ? formatPKR(amountNum) : "0"} record karein`} onPress={handleSubmit} disabled={!valid} loading={submitting} />}
     >
       <Input
-        label="Kitna mila (PKR)"
+        label={receivedPrompt(alreadyPaid, balanceDue)}
         value={amount}
-        onChangeText={setAmount}
+        onChangeText={(t) => {
+          // audit fixes 2026-10-31: more than the remaining due can't be typed
+          const next = acceptReceivedInput(t, balanceDue, amount);
+          setBlocked(next.blocked);
+          setAmount(next.value);
+        }}
         keyboardType="number-pad"
-        error={!valid && amount.length > 0 ? (amountNum > balanceDue ? `PKR ${formatPKR(balanceDue)} se zyada nahi` : "Zero se zyada likhein") : null}
+        accessibilityLabel={receivedPrompt(alreadyPaid, balanceDue)}
+        error={
+          blocked
+            ? `Baqi Rs ${formatPKR(balanceDue)} se zyada nahi likh sakte.`
+            : !valid && amount.length > 0
+              ? amountNum > balanceDue
+                ? `PKR ${formatPKR(balanceDue)} se zyada nahi`
+                : "Zero se zyada likhein"
+              : null
+        }
       />
       <View style={{ gap: space[2] }}>
         <Text variant="label">Kaise mila?</Text>

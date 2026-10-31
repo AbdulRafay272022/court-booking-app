@@ -27,8 +27,10 @@ class PaymentDispute(UUIDPkMixin, TimestampMixin, Base):
     booking_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("bookings.id"), nullable=False, index=True
     )
-    payment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("payments.id"), nullable=False
+    # audit 2026-10-28 Phase 2 (migration f7c3a9d2b415): NULL for a refund on a cash-paid booking and for a player's
+    # "Refund maangein" request -- there is no payment proof behind those.
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True
     )
     player_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -36,6 +38,7 @@ class PaymentDispute(UUIDPkMixin, TimestampMixin, Base):
     reason: Mapped[str] = mapped_column(String(50), nullable=False)
     resolved: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    player_note: Mapped[str | None] = mapped_column(Text, nullable=True)  # the player's reason ("Refund maangein")
 
     # Section 32 Part 10 (manual refunds). `refund_amount` is computed once,
     # at the moment this row is written (BookingService), from what was

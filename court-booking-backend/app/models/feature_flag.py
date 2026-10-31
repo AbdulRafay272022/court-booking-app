@@ -34,6 +34,16 @@ class FeatureFlagKey(str, enum.Enum):
     # Owner premium billing. NOT a kill switch: ships OFF and a MISSING row also means off (the one flag that fails closed),
     # so no owner is cut off until an admin turns enforcement on deliberately.
     OWNER_BILLING_ENFORCED = "owner_billing_enforced"
+    # audit 2026-10-28 build: new behaviour ships OFF (DEFAULT_OFF_FLAGS: a missing row = off, the admin creates it by
+    # switching it on). Nothing here needs a migration.
+    CNIC_VISIBILITY_GATE = "cnic_visibility_gate"   # hide venues of owners whose CNIC is not approved
+    IBAN_QR = "iban_qr"                              # Raast QR with the amount on the payment screens
+    WHATSAPP_TEMPLATES = "whatsapp_templates"        # send the khelo_* WhatsApp templates (only once Meta approved them)
+    BALANCE_PROOF = "balance_proof"                  # a booked booking accepts a balance screenshot
+    PLAYER_POINTS = "player_points"                  # 50 points per fully-transferred booking, 500 = discount
+    PLAYER_DUES = "player_dues"                      # baqi carried to the next booking
+    SHORT_PAYMENT_REPLY = "short_payment_reply"      # "Sahi hai / Ghalat hai" with +5 / -20
+    NOSHOW_REPLY = "noshow_reply"                    # "Main aaya tha" + GPS "Pohanch gaya"
 
 
 # key -> (human label, one-line description) for the seed and the admin panel.
@@ -96,7 +106,54 @@ FEATURE_FLAG_SEED: dict[str, tuple[str, str]] = {
         "Owner billing enforcement",
         "ON: premium features need a paid plan or the free trial. OFF (default): every owner keeps every feature, nothing is charged.",
     ),
+    FeatureFlagKey.CNIC_VISIBILITY_GATE.value: (
+        "CNIC visibility gate",
+        "ON: a venue is hidden from players until its owner's CNIC is approved. OFF (default): CNIC does not affect visibility.",
+    ),
+    FeatureFlagKey.IBAN_QR.value: (
+        "Raast QR",
+        "ON: the payment screens show a Raast QR (IBAN + amount). OFF (default): bank details only.",
+    ),
+    FeatureFlagKey.WHATSAPP_TEMPLATES.value: (
+        "WhatsApp templates",
+        "ON: send the khelo_* WhatsApp templates. Turn on ONLY after Meta approved them. OFF (default): push + bell only.",
+    ),
+    FeatureFlagKey.BALANCE_PROOF.value: (
+        "Balance by transfer",
+        "ON: a booked booking accepts a balance screenshot with the same checks. OFF (default): balance at the venue only.",
+    ),
+    FeatureFlagKey.PLAYER_POINTS.value: (
+        "Player points",
+        "ON: 50 points per booking paid fully by transfer; 500 points = an owner-funded discount. OFF (default).",
+    ),
+    FeatureFlagKey.PLAYER_DUES.value: (
+        "Dues carried forward",
+        "ON: an unpaid balance is carried to the player's next booking at that venue. OFF (default).",
+    ),
+    FeatureFlagKey.SHORT_PAYMENT_REPLY.value: (
+        "Short payment reply",
+        "ON: the player confirms or disputes a short payment (+5 / -20 points). OFF (default).",
+    ),
+    FeatureFlagKey.NOSHOW_REPLY.value: (
+        "No-show reply + GPS",
+        "ON: 'Main aaya tha' and the one-tap 'Pohanch gaya' location proof. OFF (default).",
+    ),
 }
+
+# audit 2026-10-28: flags that are OFF while their row is missing (every older flag fails OPEN, see FeatureFlagService).
+DEFAULT_OFF_FLAGS: frozenset[str] = frozenset(
+    {
+        FeatureFlagKey.OWNER_BILLING_ENFORCED.value,
+        FeatureFlagKey.CNIC_VISIBILITY_GATE.value,
+        FeatureFlagKey.IBAN_QR.value,
+        FeatureFlagKey.WHATSAPP_TEMPLATES.value,
+        FeatureFlagKey.BALANCE_PROOF.value,
+        FeatureFlagKey.PLAYER_POINTS.value,
+        FeatureFlagKey.PLAYER_DUES.value,
+        FeatureFlagKey.SHORT_PAYMENT_REPLY.value,
+        FeatureFlagKey.NOSHOW_REPLY.value,
+    }
+)
 
 
 class FeatureFlag(Base):

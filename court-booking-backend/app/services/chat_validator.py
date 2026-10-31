@@ -10,6 +10,7 @@
     unknown_fact     (c) mentions a price, clock time, court or sport that is not in the real facts / tool results of this turn
     contradiction    (d) names another date, or another sport, than the one the player asked for
     wrong_language   (e) is not in the player's language (Roman Urdu or English)
+    non_latin_script (e) contains Devanagari or Arabic/Urdu script (replies are Latin letters only)
     stale_intent     (g) does not answer the player's LAST message (price question answered without a price, ...)
     bad_proposal     offers a Yes/No booking while a field is not player-sourced, or for a slot that is not what they asked
 
@@ -24,7 +25,7 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
 from app.services.chat_facts import PlatformFacts
-from app.services.chat_language import score
+from app.services.chat_language import has_non_latin, score
 from app.services.chat_state import (
     ChatState,
     TurnFacts,
@@ -303,8 +304,11 @@ def validate(draft: str, ctx: ValidationContext) -> list[Issue]:
     if contradictions:
         issues.append(Issue("contradiction", "; ".join(contradictions)))
 
-    # (e) language
-    if check_language(text, ctx.lang):
+    # (e) language. A reply is Latin letters only (audit 2026-10-28 item 3: a model once replied "शुक्रिया"); the score() vote
+    # cannot see Devanagari at all, so script is checked first and on its own.
+    if has_non_latin(text):
+        issues.append(Issue("non_latin_script", ctx.lang))
+    elif check_language(text, ctx.lang):
         issues.append(Issue("wrong_language", ctx.lang))
 
     # (g) answers the player's LAST message
@@ -335,6 +339,7 @@ _INSTRUCTIONS = {
     "unknown_fact": "Your draft mentions {detail}, which is not in the real facts or tool results. Mention only what the facts or tool results contain.",
     "contradiction": "Your draft contradicts what the player asked for ({detail}). Stay with the sport, court, date and time in the conversation state.",
     "wrong_language": "Write the reply in the player's language: {lang}. Plain text only.",
+    "non_latin_script": "Your draft used Urdu or Hindi script. Rewrite it in {lang} using ONLY Latin letters (A-Z), e.g. \"Shukriya, aap ka slot book ho gaya\".",
     "stale_intent": "Answer the player's LAST message directly ({detail}); do not answer an older message.",
     "bad_proposal": "Do not offer a Yes/No booking yet ({detail}). Ask the ONE next question instead.",
 }

@@ -222,4 +222,10 @@ export const enSetup = {
   "setup.set.endsOn": "Ends on",
   "setup.set.endsAt": "Ends at",
   "setup.set.blackoutButton": "Add blackout",
+  "setup.missing.title": "Before the venue can go live it needs:",
+  "setup.missing.hint": "Fill these in Venue settings; then the admin can approve it.",
+  "setup.set.staffReadOnly": "You can only view these settings. Ask the owner for permission to change them.",
+  "setup.set.staffCourtsOnly": "You can change courts, hours and prices. Only the owner can change the venue details and bank details.",
+  "setup.unconfirmed.title": "These settings still run on a default. Check them and save your own value:",
+  "setup.unconfirmed.hint": "Your venue stays live; this is only a reminder.",
 } as const;

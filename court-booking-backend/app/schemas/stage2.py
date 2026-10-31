@@ -44,19 +44,22 @@ class MyPermissionsOut(BaseModel):
 
 
 class OwnerIdentityOut(BaseModel):
-    status: Literal["missing", "submitted", "verified"]
+    status: Literal["missing", "submitted", "verified", "rejected"]
     masked: str | None
     flags: list[str]
+    rejection_reason: str | None = None  # audit 2026-10-28 Phase 2 item 1
 
 
 class AdminIdentityRowOut(BaseModel):
     user_id: uuid.UUID
     owner_name: str | None
     phone_last4: str | None
-    status: Literal["missing", "submitted", "verified"]
+    status: Literal["missing", "submitted", "verified", "rejected"]
     masked: str | None
     flags: list[str]
     submitted_at: datetime | None
+    rejection_reason: str | None = None
+    reviewed_at: datetime | None = None
 
 
 class AdminIdentityPageOut(BaseModel):
@@ -71,6 +74,10 @@ class AdminIdentityFullOut(AdminIdentityRowOut):
     front_url: str
     back_url: str
     verified_at: datetime | None
+
+
+class IdentityRejectIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class WebPushConfigOut(BaseModel):

@@ -34,12 +34,14 @@ export interface MyPermissions {
   venue_permissions: { venue_id: string; permissions: string[] }[];
 }
 
-export type IdentityStatus = "missing" | "submitted" | "verified";
+/** audit 2026-10-28 Phase 2: "rejected" = the admin did not approve it (see `rejection_reason`); a new upload goes back to "submitted". */
+export type IdentityStatus = "missing" | "submitted" | "verified" | "rejected";
 
 export interface OwnerIdentity {
   status: IdentityStatus;
   masked: string | null;
   flags: string[];
+  rejection_reason?: string | null;
 }
 
 export interface AdminIdentityRow {
@@ -50,6 +52,8 @@ export interface AdminIdentityRow {
   masked: string | null;
   flags: string[];
   submitted_at: string | null;
+  rejection_reason?: string | null;
+  reviewed_at?: string | null;
 }
 
 export interface AdminIdentityPage {

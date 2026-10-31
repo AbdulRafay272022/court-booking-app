@@ -129,12 +129,18 @@ function PlayerCell({
     : `${fmt.timeRange(row.starts_at, row.ends_at)}, ${fmt.duration(row.duration_minutes)}`;
   return (
     <div className="flex items-center gap-3 min-w-0">
-      <span
-        aria-hidden="true"
-        className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-khelo-display font-extrabold text-lg text-white ${TONE_AVATAR[tone]}`}
-      >
-        {initialOf(row.player_name)}
-      </span>
+      {row.player_avatar_url ? (
+        // audit 2026-10-28 item 6: the player's photo, the coloured initial only as the fallback
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={row.player_avatar_url} alt="" aria-hidden="true" className="w-11 h-11 shrink-0 rounded-full object-cover" />
+      ) : (
+        <span
+          aria-hidden="true"
+          className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center font-khelo-display font-extrabold text-lg text-white ${TONE_AVATAR[tone]}`}
+        >
+          {initialOf(row.player_name)}
+        </span>
+      )}
       <div className="min-w-0">
         <button
           type="button"

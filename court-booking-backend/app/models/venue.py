@@ -87,6 +87,11 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
         UUID(as_uuid=True), unique=True, server_default=text("gen_random_uuid()"), nullable=False
     )
 
+    # audit 2026-10-28 Phase 3 item 3 (flag player_points): the owner-funded points discount -- 500 points buy this many
+    # rupees off a booking at this venue, only while the owner switched it on.
+    points_discount_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    points_discount_pkr: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("500"))
+
     # NOTE: the GIST index on `location` is created automatically by GeoAlchemy2's
     # DDL event listener (named idx_venues_location, matching the spec) as part of
     # table creation -- an explicit Index() here would collide with it.

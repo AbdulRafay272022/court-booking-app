@@ -283,36 +283,85 @@ def _norm(text: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", (text or "").lower()))
 
 
-def match_venue(text: str, venues: list[VenueFact]) -> VenueFact | None:
-    """The one venue the text names (full name, or its distinctive words, typos tolerated); None when none or several match equally."""
+_WHOLE_NAME_CUTOFF = 0.85  # "court sight" ~ "court site", "kha legend arena" ~ "kha legends arena"
+_CLOSE_SCORE = 0.03  # two whole-name scores this close are "both could be meant": ask which one
+
+
+def _whole_name_score(words: list[str], name: str) -> float:
+    """Best difflib ratio between the venue's full name and any run of the text's words of about the same length."""
+    n = len(name.split())
+    best = 0.0
+    for size in {max(1, n - 1), n, n + 1}:
+        for i in range(0, max(len(words) - size + 1, 0)):
+            best = max(best, difflib.SequenceMatcher(None, " ".join(words[i : i + size]), name).ratio())
+    return best
+
+
+def venue_matches(text: str, venues: list[VenueFact]) -> list[VenueFact]:
+    """The venue(s) the text names, best first; more than one only when they match equally well (the caller asks which one).
+
+    Tiers, strongest first (audit 2026-10-28 Phase 3 item 7 added 3 and 4):
+    1. the full name, word for word;
+    2. every distinctive word of the name (typos tolerated): "kha legends" for "KHA Legends Arena";
+    3. the whole name with a typo or a letter missing: "court sight" for "Court Site";
+    4. some of the distinctive words, when the word is long and not a sport: "legends arena" for "KHA Legends Arena".
+    """
     norm = _norm(text)
     if not norm:
-        return None
+        return []
     words = norm.split()
-    best: list[tuple[int, VenueFact]] = []
+    tiers: dict[int, list[tuple[float, VenueFact]]] = {1: [], 2: [], 3: [], 4: []}
     for venue in venues:
         name = _norm(venue.name)
         if not name:
             continue
         if re.search(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])", norm):
-            best.append((100 + len(name), venue))
+            tiers[1].append((float(len(name)), venue))
             continue
         tokens = name.split()
         distinctive = [t for t in tokens if t not in _GENERIC_NAME_WORDS and not t.isdigit() and len(t) >= 3]
-        if not distinctive:
+        hits = [
+            tok for tok in distinctive
+            if tok in words or (len(tok) >= 5 and _fuzzy(tok, [w for w in words if len(w) >= 4], 0.86))
+        ]
+        if distinctive and len(hits) == len(distinctive):
+            tiers[2].append((float(len(hits)), venue))
             continue
-        hits = 0
-        for tok in distinctive:
-            if tok in words or (len(tok) >= 5 and _fuzzy(tok, [w for w in words if len(w) >= 4], 0.86)):
-                hits += 1
-        if hits == len(distinctive):
-            best.append((10 * hits, venue))
-    if not best:
-        return None
-    best.sort(key=lambda x: -x[0])
-    if len(best) > 1 and best[0][0] == best[1][0]:
-        return None
-    return best[0][1]
+        if len(tokens) >= 2:
+            score = _whole_name_score(words, name)
+            if score >= _WHOLE_NAME_CUTOFF:
+                tiers[3].append((score, venue))
+                continue
+        strong = [t for t in hits if len(t) >= 5 and canonical_sport(t) is None]
+        if strong:
+            tiers[4].append((float(len(strong)), venue))
+    for tier in (1, 2, 3, 4):
+        found = sorted(tiers[tier], key=lambda x: -x[0])
+        if not found:
+            continue
+        top = found[0][0]
+        margin = _CLOSE_SCORE if tier == 3 else 0.0
+        return [v for s, v in found if top - s <= margin]
+    return []
+
+
+def match_venue(text: str, venues: list[VenueFact]) -> VenueFact | None:
+    """The one venue the text names (full name, its distinctive words, or a close spelling); None when none or several match equally."""
+    found = venue_matches(text, venues)
+    return found[0] if len(found) == 1 else None
+
+
+_OTHER_VENUE = re.compile(
+    r"(?i)\b(?:koi|aur|or)\s+(?:dusra|doosra|dosra|dusri|doosri|dosri|aur|or|koi)\s+(?:venue|jagah|jaga|club|arena|ground)s?\b"
+    r"|\b(?:dusra|doosra|dosra|dusri|doosri|dosri)\s+(?:venue|jagah|jaga|club|arena|ground)s?\b"
+    r"|\b(?:another|other|different)\s+(?:venue|place|club|arena|ground)s?\b"
+    r"|\bkahin\s+(?:aur|or)\b|\baur\s+venues?\b|\bany\s+other\s+venues?\b"
+)
+
+
+def asks_other_venue(text: str) -> bool:
+    """"koi dusra venue?", "aur koi jagah", "another venue", "kahin aur": the player wants OTHER venues, not other slots here."""
+    return bool(_OTHER_VENUE.search(text or ""))
 
 
 def match_court(text: str, venue_courts: list[tuple[VenueFact, object]]) -> tuple[VenueFact, object] | None:
@@ -857,6 +906,8 @@ class TurnFacts:
     bargain: bool = False
     listing: bool = False
     more_options: bool = False
+    other_venue: bool = False  # "koi dusra venue?": other venues, answered by code (audit Phase 3 item 7)
+    venue_choices: list[str] = field(default_factory=list)  # two or more venues the text could mean equally: ask which one
     complaint: bool = False
     new_booking: bool = False
     picked_option: bool = False
@@ -942,7 +993,8 @@ def _apply_player(
     turn.new_booking = starts_new_booking(raw)
     turn.bargain = is_bargain(raw)
     turn.listing = bool(_LISTING_RE.search(raw))
-    turn.more_options = bool(_MORE_OPTIONS.search(raw))
+    turn.other_venue = asks_other_venue(raw)
+    turn.more_options = bool(_MORE_OPTIONS.search(raw)) and not turn.other_venue
     turn.complaint = bool(_COMPLAINT.search(raw))
     words = _tokens(raw)
     turn.question = looks_like_question(raw) and not picked
@@ -951,7 +1003,10 @@ def _apply_player(
     venues = facts.venues if facts and not facts.empty else []
     # venue, then court (courts of the venue in play, else of every venue)
     venue_text = raw
-    named_venue = match_venue(raw, venues) if venues else None
+    found_venues = venue_matches(raw, venues) if venues and not turn.other_venue else []
+    named_venue = found_venues[0] if len(found_venues) == 1 else None
+    if len(found_venues) > 1:
+        turn.venue_choices = [v.name for v in found_venues]
     if named_venue is not None:
         before = state.venue_id
         _set_venue(state, named_venue, prov, turn)

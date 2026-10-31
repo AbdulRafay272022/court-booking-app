@@ -13,6 +13,7 @@ import { ErrorState } from "@/components/error-state";
 import { PrimaryButton, SecondaryButton, Stepper } from "@/components/setup/ui";
 import { PhotoManager } from "@/components/setup/photo-manager";
 import { IdentityCard } from "@/components/identity/identity-card";
+import { VenueMissingCard } from "@/components/setup/venue-missing";
 
 function Timeline({ rows }: { rows: { state: "done" | "active" | "upcoming"; title: string; subtitle: string }[] }) {
   return (
@@ -127,6 +128,7 @@ function StatusView() {
     <>
       {backToDashboard}
       <Stepper current={3} />
+      <VenueMissingCard missing={venue.missing_for_approval} />
       <div className="bg-owner-surface border border-owner-border rounded-2xl p-5 flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-[18px] font-bold tracking-tight">{venue.name}</h1>

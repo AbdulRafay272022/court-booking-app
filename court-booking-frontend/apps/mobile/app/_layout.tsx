@@ -85,6 +85,12 @@ function routeForNotification(data: Record<string, unknown> | undefined): void {
     router.push("/(owner)/(tabs)/approvals");
   } else if ((eventType === "booking_confirmed" || eventType === "payment_rejected") && referenceId) {
     router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: referenceId } });
+  } else if ((eventType === "player_no_show" || eventType === "player_short") && referenceId) {
+    // audit 2026-10-28 item 18: the player's booking, with its money lines and the venue's WhatsApp
+    router.push({ pathname: "/(player)/booking/[id]/done", params: { id: referenceId } });
+  } else if (eventType === "owner_staff_action") {
+    // audit 2026-10-28 item 17: what the staff member did, per person
+    router.push("/(owner)/staff-activity" as never);
   } else if (eventType.includes("slot") || eventType === "waitlist_slot_available") {
     router.push("/(player)/search");
   }

@@ -19,6 +19,8 @@ import { PremiumNotices } from "@/components/owner/premium-notices";
 import { CnicBanner } from "@/components/identity/cnic-banner";
 import { NotificationBell } from "@/components/site/notification-bell";
 import { useT } from "@/components/i18n/lang-provider";
+import { useMyPermissions } from "@/lib/use-my-permissions";
+import { routeAllowed } from "@/lib/my-permissions";
 
 interface NavItem {
   href: string;
@@ -63,20 +65,27 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
   // Nav entries hide when their feature flag is globally off; "Staff" is
   // owner/admin-only (staff can't manage other staff). Per-action permissions
   // are still enforced by the backend if a staff member deep-links.
-  const NAV: NavItem[] = [
+  // audit 2026-10-28 item 11: a staff member sees (and can open) only the pages their permissions allow, like the app.
+  const perms = useMyPermissions();
+  const allNav: NavItem[] = [
     { href: "/dashboard/owner/today", label: t("notif.nav.overview") },
     { href: "/dashboard/owner/approvals", label: t("odash.nav.approvals"), count: approvalsCount },
     { href: "/dashboard/owner/walkin", label: t("notif.nav.walkin") },
     { href: "/dashboard/bookings", label: t("notif.nav.bookings") },
     { href: "/dashboard/owner/ledger", label: t("odash.nav.ledger") },
+    { href: "/dashboard/owner/bank-check", label: t("odash.bank.nav") },
+    { href: "/dashboard/owner/dues", label: t("odash.p3.duesNav") },
     ...(refundsOn ? [{ href: "/dashboard/owner/refunds", label: t("odash.nav.refunds"), count: refundsCount }] : []),
     ...(isOn("growth_suggestions") ? [{ href: "/dashboard/owner/growth", label: t("odash.nav.growth") }] : []),
     ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: t("odash.nav.reviews") }] : []),
     { href: "/dashboard/owner/settings", label: t("odash.nav.settings") },
     ...(!isStaff ? [{ href: "/dashboard/owner/staff", label: t("odash.nav.staff") }] : []),
+    ...(!isStaff ? [{ href: "/dashboard/owner/staff-activity", label: t("odash.sact.nav") }] : []),
     ...(!isStaff ? [{ href: "/dashboard/owner/premium", label: t("odash.nav.premium") }] : []),
     { href: "/account", label: t("odash.nav.account") },
   ];
+  const NAV: NavItem[] = allNav.filter((item) => routeAllowed(item.href, isStaff, (k) => perms.can(k)));
+  const blocked = isStaff && !perms.loading && !routeAllowed(pathname, isStaff, (k) => perms.can(k));
   // Section 32 Part 11: on a phone the sidebar becomes a slide-in drawer.
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -109,7 +118,10 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen bg-owner-bg" />;
   }
 
-  const currentLabel = NAV.find((n) => isNavActive(pathname, n.href))?.label ?? t("odash.nav.dashboard");
+  // Pages that are not in the sidebar still get their own title in the phone top bar (audit 2026-10-28 B8: check-in said "Dashboard").
+  const currentLabel =
+    NAV.find((n) => isNavActive(pathname, n.href))?.label ??
+    (pathname.startsWith("/dashboard/owner/checkin") ? t("odash.meta.checkin") : t("odash.nav.dashboard"));
 
   const sidebarBody = (
     <>
@@ -220,7 +232,14 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
         {!isStaff ? <PremiumNotices /> : null}
         <CnicBanner />
         {activeVenue ? <VenueStatusBanner venue={activeVenue} /> : null}
-        {children}
+        {blocked ? (
+          <div className="mx-auto max-w-xl px-6 py-16 text-center" data-testid="staff-no-access" role="alert">
+            <h1 className="text-xl font-bold text-owner-ink">{t("odash.noAccess.title")}</h1>
+            <p className="mt-2 text-owner-ink-muted">{t("odash.noAccess.body")}</p>
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );

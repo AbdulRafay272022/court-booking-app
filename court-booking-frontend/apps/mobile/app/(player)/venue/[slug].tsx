@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, View, type LayoutChangeEvent } from "react-native";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Heart, Info, MapPin, MessageCircle, Navigation, Share2, Star } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { amenityLabel, formatDate, formatDuration, formatTime, formatTimeRange, minSlotsFor, monthOf, pktDateString, type Court, type Review, type Venue } from "@court-booking/types";
+import { amenityLabel, formatDate, refundPolicyShort, formatDuration, formatTime, formatTimeRange, minSlotsFor, monthOf, pktDateString, type Court, type Review, type Venue } from "@court-booking/types";
 import { formatPkr, palette, radius, slot as slotLook, space } from "@court-booking/ui-tokens";
 
 import {
@@ -134,6 +134,14 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
   }, [minSlots]);
   const [start, setStart] = useState<string | null>(null);
   const slots = availQuery.data?.slots ?? [];
+  // Audit 2026-10-28 item 5: the slot area never SHRINKS while the same court + day is on screen (the 30 s clock drops
+  // started slots and the 30 s refetch can swap the grid), so the page below it does not jump up. A new court or day resets it.
+  const [slotAreaMin, setSlotAreaMin] = useState(0);
+  useEffect(() => setSlotAreaMin(0), [court?.id, date]);
+  const onSlotAreaLayout = (e: LayoutChangeEvent) => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    setSlotAreaMin((m) => (h > m ? h : m));
+  };
   const model = pickerModel(slots, slotCount, start, now);
 
   const quoteQuery = useQuery({
@@ -231,6 +239,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
       gutter={false}
       edgeToEdgeTop
       floatingBar="bar"
+      keepPosition
       testID="venue-screen"
       overlay={
         <GlassBar solid testID="venue-book-bar">
@@ -365,7 +374,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
                         shape="tile"
                         block
                         label={c.name}
-                        meta={[sportLabel(c.sport), c.is_indoor ? copy("Indoor", "Indoor") : copy("Outdoor", "Outdoor")].join(" · ")}
+                        meta={[sportLabel(c.sport), c.is_indoor ? copy("Indoor", "Indoor") : copy("Outdoor", "Outdoor"), refundPolicyShort(venue, lang)].join(" · ")}
                         selected={c.id === court?.id}
                         onPress={() => chooseCourt(c.id)}
                         testID={`court-${c.id}`}
@@ -407,6 +416,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
                     ) : null
                   }
                 />
+                <View style={{ minHeight: slotAreaMin }} onLayout={onSlotAreaLayout} testID="venue-slot-area">
                 {availQuery.isLoading ? (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel={copy("Slots load ho rahe hain", "Loading slots")}>
                     {Array.from({ length: 9 }, (_, i) => (
@@ -446,6 +456,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
                     })}
                   </View>
                 )}
+                </View>
                 <SlotLegend />
               </View>
             </>

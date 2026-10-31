@@ -141,4 +141,5 @@ export const enVenue = {
   "venue.pop.closed": "Closed",
   "venue.pop.waitlistJoined": "You're on the list. We'll let you know if this slot opens up. You're #{position} in line.",
   "venue.pop.waitlistFailed": "Couldn't join the waitlist: {error}",
+  "venue.aside.refund": "Refund",
 } as const;

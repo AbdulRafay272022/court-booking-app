@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
+import { useScrollLock } from "@/lib/scroll-lock";
 import { useT } from "@/components/i18n/lang-provider";
 import { Button, Chip, MoneyRows, type MoneyRow } from "@/components/fl";
 
@@ -42,6 +43,7 @@ export function DurationSheet({
 }) {
   const t = useT();
   const fmt = useFmt();
+  useScrollLock(true);
   const slot = slots[index];
   // `slotMinutes` is the court's MINIMUM booking time (the grid itself is always 30 minutes)
   const choices = durationChoices(slots, index, minSlotsFor(slotMinutes));
@@ -66,13 +68,13 @@ export function DurationSheet({
     : [];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-fl-a-scrim font-fl-body text-fl-night sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center overscroll-contain bg-fl-a-scrim font-fl-body text-fl-night sm:items-center" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t("venue.sheet.book", { court: courtLabel(courtName, courtSport) })}
         data-testid="confirm-sheet"
-        className="flex max-h-[92dvh] w-full flex-col gap-5 overflow-y-auto rounded-t-fl-sheet bg-fl-white p-6 shadow-fl-raised sm:max-w-md sm:rounded-fl-sheet"
+        className="flex max-h-[92dvh] w-full flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-fl-sheet bg-fl-white p-6 shadow-fl-raised sm:max-w-md sm:rounded-fl-sheet"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">

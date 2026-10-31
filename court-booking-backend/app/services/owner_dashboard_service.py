@@ -23,7 +23,7 @@ from app.services.availability_service import AvailabilityService
 from app.services.duplicate_proof import used_on_bookings_map
 from app.services.feature_flag_service import flag_on
 from app.services.overview_slots import operating_day_expr, starts_between_prefilter
-from app.services.payment_service import PaymentService, approval_state, build_payment_checks, overpayment_of
+from app.services.payment_service import PaymentService, approval_state, build_payment_checks, is_balance_proof, overpayment_of
 from app.utils.timezone import pkt_date_of, pkt_time_to_utc, pkt_today
 from app.schemas.owner_dashboard import (
     GrowthOut,
@@ -55,6 +55,7 @@ REFUND_REASON_KEYS = {
     "cancelled_payment_received": "rfd.reason.cancelled_payment_received",
     "payment_review_expired": "rfd.reason.review_expired",
     "payment_rejected": "rfd.reason.payment_rejected",
+    "player_refund_request": "rfd.reason.player_request",  # audit 2026-10-28 Phase 2: "Refund maangein"
 }
 
 
@@ -116,6 +117,7 @@ def refund_out(
         remaining_amount=round(max(refund_due - already, 0.0), 2),
         player_sent=player_sent,
         payment_id=dispute.payment_id,
+        player_note=dispute.player_note,
         refund_due=refund_due,
         already_refunded=already,
         reason_label_key=REFUND_REASON_KEYS.get(dispute.reason, "rfd.reason.other"),
@@ -152,6 +154,13 @@ class OwnerDashboardService:
             query = query.where(Court.venue_id == venue_id)
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def _account_avatars(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """Profile photo URLs by user id (one query), audit 2026-10-28 item 6."""
+        if not user_ids:
+            return {}
+        result = await self.db.execute(select(User.id, User.avatar_url).where(User.id.in_(user_ids)))
+        return {uid: url for uid, url in result.all() if url}
 
     async def _account_names(self, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
         """Registered account names by user id (one query), for owner screens that show the account behind a booking
@@ -228,6 +237,7 @@ class OwnerDashboardService:
                     bookings_today.append(b)
         bookings_by_id = {b.id: b for b in bookings_today}
         account_names = await self._account_names({b.player_id for b in bookings_today if b.player_id is not None})
+        account_avatars = await self._account_avatars({b.player_id for b in bookings_today if b.player_id is not None})
 
         # `get_day_slots` only considers LIVE_BOOKING_STATUSES (Section 32 Part 9 finding), so once a booking is
         # checked in or marked no-show its grid cell reverts to "available" -- correct for booking purposes (that
@@ -260,6 +270,7 @@ class OwnerDashboardService:
                         booking_id=booking.id if booking is not None else slot.booking_id,
                         # The name the booking was made under first (walk-in / booked for a friend), then the account.
                         player_name=(booking.player_name or account_names.get(booking.player_id)) if booking else None,
+                        player_avatar_url=account_avatars.get(booking.player_id) if booking and booking.player_id else None,
                         amount_paid=float(booking.amount_paid) if booking else None,
                         price=float(booking.price) if booking else None,
                         balance_due=float(booking.balance_due) if booking else None,
@@ -359,9 +370,12 @@ class OwnerDashboardService:
         # query per approval card.
         player_ids = {booking.player_id for _, booking in rows if booking.player_id is not None}
         account_names: dict[uuid.UUID, str] = {}
+        account_avatars: dict[uuid.UUID, str] = {}
         if player_ids:
-            users_result = await self.db.execute(select(User.id, User.name).where(User.id.in_(player_ids)))
-            account_names = {uid: name for uid, name in users_result.all() if name}
+            users_result = await self.db.execute(select(User.id, User.name, User.avatar_url).where(User.id.in_(player_ids)))
+            user_rows = users_result.all()
+            account_names = {uid: name for uid, name, _a in user_rows if name}
+            account_avatars = {uid: url for uid, _n, url in user_rows if url}
 
         court_venues: dict[uuid.UUID, Venue] = {}
         venue_ids = {c.venue_id for c in courts}
@@ -374,6 +388,13 @@ class OwnerDashboardService:
         if queue:
             dup_used = await used_on_bookings_map(self.db, [p for p, _b in rows if p.is_duplicate])
         now = datetime.now(timezone.utc)
+        # audit Phase 3 item 5: open dues + record at this venue per player (empty unless the player_dues flag is on)
+        from app.services.phase3_service import approval_context
+
+        ctx = await approval_context(
+            self.db,
+            {b.player_id: court_venues[b.court_id].id for _p, b in rows if b.player_id is not None and b.court_id in court_venues},
+        )
         out = []
         for payment, booking in rows:
             account_name = account_names.get(booking.player_id) or booking.player_name
@@ -381,7 +402,7 @@ class OwnerDashboardService:
             model = PendingApprovalOut
             if queue:
                 model = ApprovalQueueItemOut
-                state = approval_state(booking)
+                state = approval_state(booking, payment)
                 extra = dict(
                     state=state,
                     cancelled_at=booking.updated_at if booking.status == BookingStatus.CANCELLED else None,
@@ -402,10 +423,21 @@ class OwnerDashboardService:
                     ends_at=booking.ends_at,
                     # The name the booking was made under first; the account name only if it has none.
                     player_name=booking.player_name or account_names.get(booking.player_id),
+                    player_avatar_url=account_avatars.get(booking.player_id) if booking.player_id else None,
                     player_phone=booking.player_phone,
                     ocr_verdict=payment.ocr_verdict,
                     ocr_amount=float(payment.ocr_amount) if payment.ocr_amount is not None else None,
-                    expected_amount=float(booking.advance_amount),
+                    expected_amount=(
+                        float(payment.amount_claimed)
+                        if is_balance_proof(payment) and payment.amount_claimed is not None
+                        else float(booking.advance_amount)
+                    ),
+                    is_balance=is_balance_proof(payment),
+                    player_context=(
+                        ctx.get((court_venues[booking.court_id].id, booking.player_id))
+                        if booking.player_id is not None and booking.court_id in court_venues
+                        else None
+                    ),
                     proof_url=PaymentService.proof_url(payment),
                     submitted_at=payment.created_at,
                     minutes_since_submission=round((now - payment.created_at).total_seconds() / 60, 1),

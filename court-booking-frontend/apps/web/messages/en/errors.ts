@@ -32,6 +32,7 @@ export const enErrors = {
   "errors.code.INVALID_CHECKIN_CODE": "That check-in code isn't right. Try scanning the venue's QR again.",
   "errors.code.TOO_EARLY_FOR_NO_SHOW": "It's too early to mark this as a no-show yet.",
   "errors.code.VENUE_NOT_APPROVED": "This venue isn't live yet.",
+  "errors.code.VENUE_INCOMPLETE": "The venue is not complete yet: courts, hours, prices, a photo and bank details are required.",
   "errors.code.VENUE_NOT_FOUND": "We couldn't find that venue.",
   "errors.code.NOT_VENUE_OWNER": "You don't manage this venue.",
   "errors.code.DUPLICATE_PROOF": "This screenshot looks like it's already been used.",

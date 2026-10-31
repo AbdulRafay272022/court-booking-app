@@ -37,7 +37,7 @@ export function IdentityCard() {
   if (!isOwner) return null;
 
   const identity = q.data;
-  const open = editing || identity?.status === "missing";
+  const open = editing || identity?.status === "missing" || identity?.status === "rejected";
 
   async function submit() {
     if (!cnicDraftComplete(draft)) return;
@@ -68,6 +68,12 @@ export function IdentityCard() {
           {identity.masked ? (
             <Text testID="identity-masked" variant="body" tone="muted">
               {identity.masked}
+            </Text>
+          ) : null}
+          {identity.status === "rejected" && identity.rejection_reason ? (
+            // audit 2026-10-28 Phase 2 item 1: why the admin did not approve it
+            <Text testID="identity-rejection" variant="body" tone="danger">
+              {`Wajah: ${identity.rejection_reason}`}
             </Text>
           ) : null}
         </View>

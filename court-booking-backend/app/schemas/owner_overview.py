@@ -28,6 +28,7 @@ class OwnerBookingRowOut(BaseModel):
     status_key: BookingStatusKey
     player_name: str | None
     player_phone: str | None
+    player_avatar_url: str | None = None  # audit 2026-10-28 item 6: the booking account's photo
     court_id: uuid.UUID
     court_name: str
     starts_at: datetime

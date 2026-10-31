@@ -32,6 +32,7 @@ export const ruErrors = {
   "errors.code.INVALID_CHECKIN_CODE": "Check-in code sahi nahi. Venue ka QR dobara scan karo.",
   "errors.code.TOO_EARLY_FOR_NO_SHOW": "Abhi isay no-show likhna jaldi hai.",
   "errors.code.VENUE_NOT_APPROVED": "Yeh venue abhi live nahi hai.",
+  "errors.code.VENUE_INCOMPLETE": "Venue abhi mukammal nahi: courts, auqaat, qeemat, photo aur bank details zaroori hain.",
   "errors.code.VENUE_NOT_FOUND": "Yeh venue nahi mila.",
   "errors.code.NOT_VENUE_OWNER": "Aap is venue ko manage nahi karte.",
   "errors.code.DUPLICATE_PROOF": "Lagta hai yeh screenshot pehle istemal ho chuka hai.",

@@ -22,9 +22,13 @@ from app.schemas.booking import (
     BookingHoldIn,
     BookingHoldResponse,
     BookingOut,
+    BookingPaymentInstructionsOut,
     BookingResponse,
     BookingSelfCheckinIn,
     PaymentInstructionsOut,
+    PlayerBookingDetailOut,
+    PlayerRefundOut,
+    RefundRequestIn,
     WalkInBookingIn,
 )
 from app.services.booking_service import BookingService
@@ -83,6 +87,19 @@ async def hold_booking(
                     owner=owner, court_name=court.name, starts_at=booking.starts_at, ends_at=booking.ends_at,
                     reference_id=booking.id,
                 )
+            # audit Phase 3 item 8: the advance instructions on WhatsApp too (approved template, flag whatsapp_templates)
+            from app.utils.timezone import format_pkr, format_slot_label
+
+            account = " / ".join(
+                x for x in (bank_details.get("bank"), bank_details.get("account_title"), bank_details.get("iban") or bank_details.get("account_number")) if x
+            ) or "venue se poochein"
+            await NotificationService(db, settings).send_khelo_whatsapp(
+                user, "advance_payment_wa",
+                f"{venue.name}: {court.name} hold ho gaya. Advance {format_pkr(booking.advance_amount)} is account mein bhejein: {account}.",
+                template_name="khelo_advance_payment",
+                template_params=[venue.name, f"{court.name}, {format_slot_label(booking.starts_at, booking.ends_at)}", format_pkr(booking.advance_amount), account],
+                reference_id=booking.id,
+            )
 
     return BookingHoldResponse(booking=BookingOut.model_validate(booking), payment_instructions=payment_instructions)
 
@@ -100,6 +117,15 @@ async def create_walkin_booking(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Court not found")
     venue_service = VenueService(db, settings)
     await venue_service.require_owned_venue(court.venue_id, owner, permission="walkin")
+    # audit 2026-10-28 item 19: the player's mobile number is required (the receipt goes there). TRANSITION: an app build from
+    # before this change (no X-Slot-Grid header) has an optional phone box, so it is not refused until that build is gone.
+    if not legacy and payload.player_phone is None:
+        raise AppError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            ErrorCode.VALIDATION_ERROR,
+            "The player's mobile number is required for a walk-in.",
+            details={"field": "player_phone"},
+        )
 
     service = BookingService(db, settings)
     booking = await service.create_walkin(
@@ -112,7 +138,34 @@ async def create_walkin_booking(
         method=payload.method,
         slot_count=slot_compat.to_new_slot_count(court, payload.slot_count) if legacy else payload.slot_count,
         legacy_units=legacy,
+        whatsapp_opt_in=payload.whatsapp_opt_in,
     )
+    # audit fixes 2026-10-31: every walk-in whose box was ticked gets the welcome, with or without an account (flag
+    # whatsapp_templates)
+    if booking.whatsapp_opt_in and (booking.player_id or booking.player_phone):
+        venue = await db.get(Venue, court.venue_id)
+        player = await db.get(User, booking.player_id) if booking.player_id else None
+        if venue is not None:
+            welcome = f"{venue.name} mein khelne ka shukriya! Agli booking Khelo app se karein aur rasid WhatsApp par payein."
+            notifications = NotificationService(db, settings)
+            if player is not None:
+                await notifications.send_khelo_whatsapp(
+                    player, "walkin_welcome_wa", welcome,
+                    template_name="khelo_walkin_welcome", template_params=[venue.name], reference_id=booking.id,
+                )
+            elif booking.player_phone:
+                why_not = await notifications.send_khelo_whatsapp_to_phone(
+                    booking.player_phone, welcome, template_name="khelo_walkin_welcome", template_params=[venue.name]
+                )
+                if why_not != "flag_off":
+                    from app.services.audit_service import AuditService
+
+                    await AuditService(db).log(
+                        actor_user_id=owner.id, actor_type=owner.role.value, action="walkin.welcome_whatsapp",
+                        entity_type="booking", entity_id=booking.id,
+                        new_value={"sent": why_not is None, "error": why_not, "account": False},
+                    )
+                    await db.commit()
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
@@ -157,7 +210,7 @@ async def cancel_booking(
     was_awaiting_approval = booking.status == BookingStatus.PAYMENT_SUBMITTED
 
     cancelled_by = CancelledBy.PLAYER if booking.player_id == user.id else CancelledBy.OWNER
-    booking = await service.cancel_booking(booking, cancelled_by, payload.reason)
+    booking = await service.cancel_booking(booking, cancelled_by, payload.reason, actor=user)
     response = BookingResponse(booking=BookingOut.model_validate(booking))
 
     # cancel_booking is idempotent (a no-op on an already-cancelled
@@ -188,9 +241,15 @@ async def cancel_booking(
                 logger.warning("booking.cancel.owner_player_cancelled_notification_failed", error=type(exc).__name__)
         # Owner Overview (spec 5.3): a PLAYER cancelling a booking that was paid for means a refund is now owed, so
         # tell the venue owner too. Strictly best effort: a notification problem must never fail the cancel.
+        # audit 2026-10-28 item 10: only when this cancel really put a refund on the owner's Refunds list (money that
+        # came in online, via an approved screenshot). A booking paid only in cash at the venue used to send "refund owed"
+        # with nothing on the Refunds screen.
+        refund = service.created_refund
         if (
             cancelled_by == CancelledBy.PLAYER
-            and float(booking.amount_paid or 0) > 0
+            and refund is not None
+            and refund.payment_id is not None  # money that came in online; a cash refund is settled at the counter
+            and float(refund.refund_amount or 0) > 0
             and booking.status == BookingStatus.CANCELLED
         ):
             try:
@@ -203,7 +262,7 @@ async def cancel_booking(
                         court_name=court.name,
                         starts_at=booking.starts_at,
                         ends_at=booking.ends_at,
-                        amount=float(booking.amount_paid),
+                        amount=float(refund.refund_amount),
                         player_name=booking.player_name or user.name,
                     )
             except Exception as exc:  # noqa: BLE001 -- see comment above
@@ -218,7 +277,7 @@ async def check_in_booking(
 ) -> BookingResponse:
     service = BookingService(db, settings)
     booking = await service.require_accessible_booking(booking_id, owner, permission="check_in")
-    booking = await service.check_in(booking)
+    booking = await service.check_in(booking, actor_user=owner)
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
@@ -237,6 +296,10 @@ async def mark_booking_no_show(
             raise
         booking = await service.require_accessible_booking(booking_id, owner, permission="record_payments")
     booking = await service.owner_mark_no_show(booking, actor=owner)
+    # audit 2026-10-28 items 17 + 18: the owner (when staff did it) and the player hear about it
+    from app.services.unsettled_notices import notify_unsettled
+
+    await notify_unsettled(db, settings, booking, owner, "no_show")
     return BookingResponse(booking=BookingOut.model_validate(booking))
 
 
@@ -258,3 +321,114 @@ async def check_in_booking_self(
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
     booking = await service.check_in_self(booking, payload.venue_qr_token)
     return BookingResponse(booking=BookingOut.model_validate(booking))
+
+
+@router.get("/{booking_id}/detail", response_model=PlayerBookingDetailOut)
+async def get_booking_detail(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, user: CurrentUser
+) -> PlayerBookingDetailOut:
+    """Audit 2026-10-28 item 4: one booking's full detail for its player (venue, court, money lines, timeline, policy,
+    contact). Same access rule as GET /bookings/{id}."""
+    from app.services.player_booking_detail import player_booking_detail
+
+    return await player_booking_detail(db, settings, user, booking_id)
+
+
+@router.get("/{booking_id}/payment-instructions", response_model=BookingPaymentInstructionsOut)
+async def get_payment_instructions(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, user: CurrentUser
+) -> BookingPaymentInstructionsOut:
+    """Audit 2026-10-28 item 20: bank, account title, IBAN / account number and the amount for this booking's advance or
+    balance, read fresh from the venue (the app no longer depends on the hold response it saved), plus a Raast QR with the
+    amount filled in when the `iban_qr` flag is on."""
+    from app.services.feature_flag_service import flag_on
+    from app.services.owner_overview_service import short_code
+    from app.services.raast_qr import raast_qr_payload
+
+    service = BookingService(db, settings)
+    booking = await service.require_accessible_booking(booking_id, user)
+    court = await db.get(Court, booking.court_id)
+    venue = await db.get(Venue, court.venue_id) if court is not None else None
+    bank = (VenueService(db, settings).decrypted_bank_details(venue) if venue is not None else None) or {}
+    if booking.status in (BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED):
+        kind, amount = "advance", float(booking.advance_amount)
+    elif booking.status == BookingStatus.BOOKED and float(booking.balance_due or 0) > 0:
+        kind, amount = "balance", float(booking.balance_due)
+    else:
+        kind, amount = "none", 0.0
+    reference = short_code(booking.id)
+    qr, reason = None, None
+    iban = (bank.get("iban") or "").replace(" ", "").upper()
+    if kind == "none":
+        reason = "nothing_due"
+    elif not await flag_on(db, "iban_qr"):
+        reason = "flag_off"
+    elif not iban:
+        reason = "no_iban"
+    else:
+        try:
+            qr = raast_qr_payload(
+                iban=iban, amount_pkr=int(round(amount)), account_title=bank.get("account_title") or (venue.name if venue else ""),
+                city=venue.city if venue else None, reference=reference,
+            )
+        except ValueError:
+            reason = "invalid_iban"
+    # audit 2026-10-28 Phase 3 item 2: may the player send a balance screenshot now (flag balance_proof)?
+    balance_upload = "off"
+    if kind == "balance" and booking.player_id == user.id and await flag_on(db, "balance_proof"):
+        from sqlalchemy import select
+
+        from app.models.payment import Payment
+
+        waiting = (
+            await db.execute(
+                select(Payment.id).where(
+                    Payment.booking_id == booking.id,
+                    Payment.review_verdict.is_(None),
+                    Payment.ocr_raw["purpose"].astext == "balance",
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        balance_upload = "pending" if waiting else "open"
+    return BookingPaymentInstructionsOut(
+        balance_upload=balance_upload,
+        kind=kind,
+        amount=amount,
+        bank=bank.get("bank"),
+        account_title=bank.get("account_title"),
+        account_number=bank.get("account_number"),
+        iban=bank.get("iban"),
+        reference=reference,
+        qr_payload=qr,
+        qr_unavailable_reason=reason,
+    )
+
+
+@router.post("/{booking_id}/refund-request", response_model=PlayerRefundOut, status_code=status.HTTP_201_CREATED)
+async def request_booking_refund(
+    booking_id: uuid.UUID, payload: RefundRequestIn, db: DbSession, settings: AppSettings, user: CurrentUser
+) -> PlayerRefundOut:
+    """Audit 2026-10-28 Phase 2 item 3: "Refund maangein" on a CANCELLED booking (whoever cancelled it) when the venue's
+    policy allows a refund and the booking was cancelled inside the window. Puts it on the owner's Refunds list and tells both."""
+    from app.services.owner_overview_service import short_code
+
+    service = BookingService(db, settings)
+    booking = await service.require_accessible_booking(booking_id, user)
+    if booking.player_id != user.id:
+        raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
+    dispute = await service.request_refund(booking, user, payload.note)
+    try:
+        court = await db.get(Court, booking.court_id)
+        venue = await db.get(Venue, court.venue_id) if court is not None else None
+        owner = await db.get(User, venue.owner_id) if venue is not None else None
+        notifications = NotificationService(db, settings)
+        code = short_code(booking.id)
+        if owner is not None:
+            await notifications.notify_owner_refund_requested(
+                owner=owner, player_name=booking.player_name or user.name, booking_id=booking.id, code=code,
+                amount=float(dispute.refund_amount or 0), note=dispute.player_note,
+            )
+        await notifications.notify_player_refund_requested(player=user, booking_id=booking.id, code=code, amount=float(dispute.refund_amount or 0))
+    except Exception as exc:  # noqa: BLE001 -- best effort, the request is already saved
+        logger.warning("refund_request.notify_failed", error=type(exc).__name__)
+    return PlayerRefundOut(amount=float(dispute.refund_amount or 0), status="owed", paid_at=None)

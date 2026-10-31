@@ -6,7 +6,7 @@ import { X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
 import { addDays, durationChoices, formatDuration, isValidPkMobile, minSlotsFor, walkinSlots } from "@court-booking/types";
 import { palette, radius, space, type SlotChipState } from "@court-booking/ui-tokens";
-import { ActionBar, Banner, Button, Chip, IconButton, Input, Screen, Skeleton, SlotChip, Text } from "@/components/ui";
+import { ActionBar, Banner, Button, Checkbox, Chip, IconButton, Input, Screen, Skeleton, SlotChip, Text } from "@/components/ui";
 
 import { courtLabel } from "@/components/court-label";
 import { api } from "@/lib/api";
@@ -43,6 +43,8 @@ export default function WalkInScreen() {
   const [playerName, setPlayerName] = useState("");
   const [playerPhone, setPlayerPhone] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
+  // audit 2026-10-28 item 19: the owner confirms they told the player the receipt comes on WhatsApp (required)
+  const [optIn, setOptIn] = useState(false);
   const [amount, setAmount] = useState("");
   const [amountTouched, setAmountTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -147,15 +149,16 @@ export default function WalkInScreen() {
     if (quote && !amountTouched) setAmount(String(Math.round(quote.price)));
   }, [quote, amountTouched]);
 
-  const phoneOk = playerPhone.trim() === "" || isValidPkMobile(playerPhone);
+  // audit 2026-10-28 item 19: the player's mobile is required (the receipt goes there)
+  const phoneOk = isValidPkMobile(playerPhone);
   const nameOk = playerName.trim().length > 0;
   const paid = amount === "" ? null : Number(amount);
-  const isValid = !!courtId && !!startIso && !!selectedChoice && !!quote && nameOk && phoneOk && paid !== null && paid >= 0;
+  const isValid = !!courtId && !!startIso && !!selectedChoice && !!quote && nameOk && phoneOk && optIn && paid !== null && paid >= 0;
   const baqi = quote && paid !== null ? Math.max(0, Math.round(quote.price) - paid) : null;
 
   async function handleSubmit() {
     if (!isValid || !courtId || !startIso) {
-      setProblem({ title: "Thora baqi hai", body: "Court, waqt aur player ka naam chunein (phone dalein to sahi number)." });
+      setProblem({ title: "Thora baqi hai", body: "Court, waqt, player ka naam aur sahi mobile number dalein, aur WhatsApp rasid wala tick lagayein." });
       return;
     }
     setSubmitting(true);
@@ -166,7 +169,8 @@ export default function WalkInScreen() {
         starts_at: startIso,
         slot_count: slotCount,
         player_name: playerName.trim(),
-        player_phone: playerPhone.trim() || undefined,
+        player_phone: playerPhone.trim(),
+        whatsapp_opt_in: optIn,
         amount_paid: Number(amount),
       });
       // Aaj, ledger, history and badges all show the new booking at once (the old ["owner-today"] key was dead).
@@ -303,16 +307,22 @@ export default function WalkInScreen() {
       <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: 14 }}>
         <Input label="Player ka naam" value={playerName} onChangeText={setPlayerName} placeholder="Usman Tariq" testID="walkin-name" />
         <Input
-          label="Phone (optional)"
+          label="Player ka mobile number"
           value={playerPhone}
           onChangeText={setPlayerPhone}
           onBlur={() => setPhoneTouched(true)}
           placeholder="0333 5119042"
           keyboardType="phone-pad"
-          help="Agar ye number Khelo par hai to booking us player ke account se jur jayegi."
+          help="Zaroori: rasid is number par jayegi. Agar ye number Khelo par hai to booking us player ke account se jur jayegi."
           error={phoneTouched && !phoneOk ? "Sahi mobile number likhein, jaise 0333 5119042" : null}
           testID="walkin-phone"
         />
+        <Checkbox checked={optIn} onChange={setOptIn} label="Player ko bata diya ke WhatsApp par rasid aayegi" testID="walkin-optin" />
+        {!optIn ? (
+          <Text variant="caption" tone="danger">
+            Ye tick zaroori hai.
+          </Text>
+        ) : null}
         <Input
           label="Kitna mila (PKR)"
           value={amount}

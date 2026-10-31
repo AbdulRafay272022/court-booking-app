@@ -114,7 +114,7 @@ async def update_staff_permissions(
     service = StaffService(db, settings)
     sm = await service.get_owned(staff_member_id, owner)
     flag_map = await flags.as_map()
-    sm = await service.set_permissions(sm, payload.permissions, flag_map)
+    sm = await service.set_permissions(sm, payload.permissions, flag_map, actor=owner)
     return _to_out(sm)
 
 
@@ -130,6 +130,6 @@ async def update_staff_active(
     sessions immediately (owner decision)."""
     service = StaffService(db, settings)
     sm = await service.get_owned(staff_member_id, owner)
-    await service.set_active(sm, payload.is_active)
+    await service.set_active(sm, payload.is_active, actor=owner)
     sm = await service.get_owned(staff_member_id, owner)
     return _to_out(sm)

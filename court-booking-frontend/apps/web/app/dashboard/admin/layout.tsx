@@ -14,6 +14,8 @@ const NAV = [
   { href: "/dashboard/admin/premium-payments", label: "Premium payments" },
   { href: "/dashboard/admin/billing", label: "Premium revenue" },
   { href: "/dashboard/admin/identities", label: "Owner CNIC" },
+  { href: "/dashboard/admin/staff-activity", label: "Staff activity" },
+  { href: "/dashboard/admin/money-health", label: "Dues & points" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

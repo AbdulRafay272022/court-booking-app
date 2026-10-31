@@ -60,4 +60,13 @@ export const ruCnic = {
   "cnic.admin.next": "Agla",
   "cnic.admin.page": "Safha {page}",
   "cnic.admin.noName": "(naam nahi)",
+  "cnic.status.rejected": "Approve nahi hua",
+  "cnic.help.rejected": "Admin ne CNIC approve nahi kiya. Wajah dekh kar dono taraf ki saaf photo dobara upload karein.",
+  "cnic.rejectedReason": "Wajah: {reason}",
+  "cnic.banner.rejected": "Aap ka CNIC approve nahi hua: {reason}. Dobara upload karein.",
+  "cnic.admin.reject": "Approve na karein",
+  "cnic.admin.rejectReason": "Wajah (owner ko dikhegi, zaroori)",
+  "cnic.admin.rejectConfirm": "Wajah ke saath bhejein",
+  "cnic.admin.rejected": "Approve nahi kiya; owner ko wajah bhej di gayi.",
+  "cnic.admin.notCardLike": "Ye tasveer CNIC card jaisi nahi lagti (shakal ya size). Dhyan se dekhein.",
 } as const;

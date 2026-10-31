@@ -11,6 +11,38 @@ from typing import Literal
 Lang = Literal["ru", "en"]
 
 _URDU_SCRIPT = re.compile("[؀-ۿ]")
+# audit 2026-10-28 item 3: any non-Latin script a reply must never contain. Devanagari (Hindi), Arabic/Urdu incl. the
+# supplement, extended-A and presentation forms.
+_NON_LATIN = re.compile("[ऀ-ॿ؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]")
+_DEVANAGARI = re.compile("[ऀ-ॿ]")
+
+# Common courtesy / booking words a model writes in the wrong script, mapped to the Roman Urdu the rest of the app uses.
+# Longest first so "शुक्रिया" wins over shorter fragments. Anything not listed stays and fails the validator instead.
+_TRANSLIT = sorted(
+    {
+        "शुक्रिया": "Shukriya", "धन्यवाद": "Shukriya", "नमस्ते": "Assalam o Alaikum", "जी": "Ji", "हाँ": "Haan", "हां": "Haan",
+        "नहीं": "Nahi", "ठीक है": "Theek hai", "ठीक": "Theek", "बुकिंग": "booking", "कोर्ट": "court",
+        "شکریہ": "Shukriya", "شکریا": "Shukriya", "جی": "Ji", "ہاں": "Haan", "نہیں": "Nahi", "ٹھیک ہے": "Theek hai",
+        "السلام علیکم": "Assalam o Alaikum", "بکنگ": "booking", "کورٹ": "court",
+    }.items(),
+    key=lambda kv: -len(kv[0]),
+)
+
+
+def has_non_latin(text: str) -> bool:
+    """True when the text contains Devanagari or Arabic/Urdu script (a reply must be Latin letters only)."""
+    return bool(_NON_LATIN.search(text or ""))
+
+
+def transliterate_common(text: str) -> str:
+    """Replace the common words above with their Roman Urdu spelling. Returns the text unchanged when it has no non-Latin
+    script. Never guesses at words it does not know (those are left for the validator to reject)."""
+    if not text or not has_non_latin(text):
+        return text
+    for src, dst in _TRANSLIT:
+        text = text.replace(src, dst)
+    # tidy the Urdu full stop / comma / question mark the model may have used
+    return text.replace("۔", ".").replace("،", ",").replace("؟", "?").replace("।", ".")
 _WORD = re.compile(r"[a-z؀-ۿ']+")
 
 # Common Roman Urdu / Hindi-Urdu chat words and the spellings players actually use. Short ambiguous English words ("me", "to", "so", "do") are excluded.
@@ -57,7 +89,8 @@ def _words(text: str) -> list[str]:
 
 def score(text: str) -> tuple[int, int]:
     """(roman_urdu_votes, english_votes) for one message."""
-    if _URDU_SCRIPT.search(text or ""):
+    if _URDU_SCRIPT.search(text or "") or _DEVANAGARI.search(text or ""):
+        # a player writing Urdu or Hindi script gets a Roman Urdu reply (we always reply in Latin script)
         return (5, 0)
     ru = en = 0
     for w in _words(text):

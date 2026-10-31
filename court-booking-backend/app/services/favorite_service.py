@@ -27,8 +27,10 @@ class FavoriteService:
     async def add(self, user: User, venue_id: uuid.UUID) -> None:
         """Save a venue. Idempotent: saving one that is already saved changes nothing (ON CONFLICT DO NOTHING), so two taps
         or two devices can never fail or duplicate."""
+        from app.services.venue_visibility import is_public_for_players
+
         venue = await self.db.get(Venue, venue_id)
-        if venue is None or venue.status != VenueStatus.APPROVED or not venue.is_active:
+        if venue is None or not await is_public_for_players(self.db, venue):
             raise AppError(404, ErrorCode.VENUE_NOT_FOUND, "Venue not found")
         await self.db.execute(pg_insert(FavoriteVenue).values(user_id=user.id, venue_id=venue_id).on_conflict_do_nothing())
         await self.db.commit()
@@ -39,6 +41,8 @@ class FavoriteService:
         await self.db.commit()
 
     async def list_for(self, user: User):
+        from app.services.venue_visibility import public_filters
+
         """The user's saved venues as search cards, most recently saved first. A venue that is no longer approved/active is
         left out (its row stays, so it comes back if the venue does)."""
         venues = (
@@ -46,7 +50,7 @@ class FavoriteService:
                 await self.db.execute(
                     select(Venue)
                     .join(FavoriteVenue, FavoriteVenue.venue_id == Venue.id)
-                    .where(FavoriteVenue.user_id == user.id, Venue.status == VenueStatus.APPROVED, Venue.is_active.is_(True))
+                    .where(FavoriteVenue.user_id == user.id, *(await public_filters(self.db)))
                     .options(selectinload(Venue.courts).selectinload(Court.pricing_rules))
                     .order_by(FavoriteVenue.created_at.desc(), Venue.name)
                     .limit(MAX_LISTED)

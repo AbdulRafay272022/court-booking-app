@@ -264,7 +264,8 @@ class AdminService:
         lost even if no admin ever manually reconciles the ledger."""
         query = (
             select(PaymentDispute, Payment, Booking, Court, Venue, User)
-            .join(Payment, Payment.id == PaymentDispute.payment_id)
+            # audit 2026-10-28 Phase 2: cash refunds and "Refund maangein" rows have no payment proof
+            .outerjoin(Payment, Payment.id == PaymentDispute.payment_id)
             .join(Booking, Booking.id == PaymentDispute.booking_id)
             .join(Court, Court.id == Booking.court_id)
             .join(Venue, Venue.id == Court.venue_id)
@@ -280,13 +281,13 @@ class AdminService:
             RefundQueueEntryOut(
                 id=dispute.id,
                 booking_id=booking.id,
-                payment_id=payment.id,
+                payment_id=payment.id if payment is not None else None,
                 player_id=dispute.player_id,
                 player_name=player.name if player else None,
                 player_phone=player.phone if player else booking.player_phone,
                 court_name=court.name,
                 venue_name=venue.name,
-                amount_claimed=float(payment.amount_claimed) if payment.amount_claimed is not None else None,
+                amount_claimed=float(payment.amount_claimed) if payment is not None and payment.amount_claimed is not None else None,
                 reason=dispute.reason,
                 resolved=dispute.resolved,
                 created_at=dispute.created_at,

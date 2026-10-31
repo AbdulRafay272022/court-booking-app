@@ -13,6 +13,7 @@ from app.api import (
     owner_premium,
     owners,
     payments,
+    phase3,
     public,
     reviews,
     stage2,
@@ -26,6 +27,7 @@ from app.api import (
 
 api_router = APIRouter()
 
+api_router.include_router(phase3.router)  # audit Phase 3 (before users/owners so its fixed paths win)
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(web_push.router)

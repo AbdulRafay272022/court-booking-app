@@ -12,6 +12,7 @@ import { Button } from "@/components/site/button";
 import { BookingCard, NextBookingCard } from "@/components/bookings/booking-card";
 import { useMyBookings } from "@/components/bookings/use-my-bookings";
 import { Card } from "./parts";
+import { PointsCard } from "./points-card";
 
 const PAST_SHOWN = 3;
 
@@ -26,6 +27,7 @@ export function BookingsPanel() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PointsCard />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-khelo-display text-[22px] font-extrabold tracking-tight">{t("account.bookings.title")}</h2>
         <Link href="/bookings" className="inline-flex min-h-11 items-center text-[15px] font-extrabold text-khelo-orange-text hover:underline" data-testid="account-all-bookings">

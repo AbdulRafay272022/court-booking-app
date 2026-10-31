@@ -272,7 +272,16 @@ function DetailContent({
             <SectionTitle>{t("detail.sec.slot")}</SectionTitle>
           </span>
           <dl className="mt-2">
-            <Row label={t("detail.player")}>{row.player_name?.trim() || t("detail.walkinPlayer")}</Row>
+            <Row label={t("detail.player")}>
+              <span className="inline-flex items-center gap-2">
+                {row.player_avatar_url ? (
+                  // audit 2026-10-28 item 6: the player's photo beside the name
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={row.player_avatar_url} alt="" aria-hidden="true" className="h-7 w-7 rounded-full object-cover" data-testid="detail-player-photo" />
+                ) : null}
+                {row.player_name?.trim() || t("detail.walkinPlayer")}
+              </span>
+            </Row>
             <Row label={t("detail.phone")}>
               {row.player_phone ? <span className="tabular-nums">{row.player_phone}</span> : <span className="font-semibold text-owner-ink-muted">{t("detail.phoneHidden")}</span>}
             </Row>
@@ -328,7 +337,7 @@ function DetailContent({
               {showNoShow ? <NoShowButton name={row.player_name?.trim() || row.short_code} onClick={() => noShow.ask(row)} /> : null}
               {!row.slot_ended ? <span className="text-[13px] text-owner-ink-muted">{t("hist.completed.early")}</span> : null}
             </div>
-            {row.status_key === "no_show" && allowed.complete ? <p className="mt-2 text-[13px] text-owner-ink-muted">{t("nsw.fixHint")}</p> : null}
+            {row.status_key === "no_show" && allowed.complete ? <p className="mt-2 text-[13px] text-owner-ink-muted">{t("nsw.fixHint2")}</p> : null}
             <p role="status" aria-live="polite" className={flow.message ? `mt-2 text-[13.5px] font-semibold ${flow.message.kind === "ok" ? "text-owner-success-dark" : "text-owner-danger"}` : "sr-only"}>
               {flow.message?.text}
             </p>

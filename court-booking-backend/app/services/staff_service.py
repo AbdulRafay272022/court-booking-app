@@ -236,20 +236,44 @@ class StaffService:
         await self.db.flush()
         for p in perms:
             self.db.add(StaffPermission(staff_member_id=sm.id, permission=p))
+        await self._audit(owner, sm, "staff.created", None, {"permissions": sorted(perms), "venue_id": str(venue.id)})
         await self.db.commit()
         return await self.get_owned(sm.id, owner)
 
-    async def set_permissions(self, sm: StaffMember, permissions: list[str], flag_map: dict[str, bool]) -> StaffMember:
+    async def _audit(self, actor: User | None, sm: StaffMember, action: str, old: dict | None, new: dict | None) -> None:
+        """audit 2026-10-28 item 8: who added a staff member / changed what they may do, and when."""
+        from app.services.audit_service import AuditService
+
+        await AuditService(self.db).log(
+            actor_user_id=actor.id if actor is not None else None,
+            actor_type=actor.role.value if actor is not None else "system",
+            action=action,
+            entity_type="staff_member",
+            entity_id=sm.id,
+            old_value=old,
+            new_value=new,
+        )
+
+    async def set_permissions(
+        self, sm: StaffMember, permissions: list[str], flag_map: dict[str, bool], actor: User | None = None
+    ) -> StaffMember:
         perms = self._validate_permissions(permissions, flag_map)
+        before = sorted(
+            (await self.db.execute(select(StaffPermission.permission).where(StaffPermission.staff_member_id == sm.id))).scalars().all()
+        )
         await self.db.execute(delete(StaffPermission).where(StaffPermission.staff_member_id == sm.id))
         for p in perms:
             self.db.add(StaffPermission(staff_member_id=sm.id, permission=p))
+        if before != sorted(perms):
+            await self._audit(actor, sm, "staff.permissions_changed", {"permissions": before}, {"permissions": sorted(perms)})
         await self.db.commit()
         reloaded = await self._load_full(sm.id)
         assert reloaded is not None
         return reloaded
 
-    async def set_active(self, sm: StaffMember, active: bool) -> None:
+    async def set_active(self, sm: StaffMember, active: bool, actor: User | None = None) -> None:
+        if bool(sm.is_active) != active:
+            await self._audit(actor, sm, "staff.activated" if active else "staff.deactivated", {"is_active": bool(sm.is_active)}, {"is_active": active})
         sm.is_active = active
         await self.db.commit()
         if not active:

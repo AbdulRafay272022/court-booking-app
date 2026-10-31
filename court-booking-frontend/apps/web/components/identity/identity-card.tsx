@@ -27,6 +27,8 @@ export function IdentityStatusChip({ status }: { status: IdentityStatus }) {
   const look =
     status === "verified"
       ? { icon: "\u2713", cls: "bg-owner-success-soft text-owner-success-dark border-owner-success-soft" }
+      : status === "rejected"
+        ? { icon: "\u2715", cls: "bg-owner-danger/10 text-owner-danger border-owner-danger/30" }
       : status === "submitted"
         ? { icon: "\u23F3", cls: "bg-owner-bg text-owner-ink-muted border-owner-border" }
         : { icon: "!", cls: "bg-owner-warn-soft text-owner-warn-dark border-owner-warn-soft-border" };
@@ -61,7 +63,7 @@ export function IdentityCard() {
 function IdentityBody({ identity }: { identity: OwnerIdentity }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(identity.status === "missing");
+  const [editing, setEditing] = useState(identity.status === "missing" || identity.status === "rejected");
   const [draft, setDraft] = useState<IdentityDraft>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -99,6 +101,12 @@ function IdentityBody({ identity }: { identity: OwnerIdentity }) {
         ) : null}
       </div>
       <p className="text-[13px] text-owner-ink-muted">{t(`cnic.help.${identity.status}` as "cnic.help.missing")}</p>
+      {identity.status === "rejected" && identity.rejection_reason ? (
+        // audit 2026-10-28 Phase 2 item 1: why the admin did not approve it
+        <p className="rounded-lg border border-owner-danger/30 bg-owner-danger/5 px-3 py-2 text-[13px] font-semibold text-owner-danger" data-testid="cnic-rejection">
+          {t("cnic.rejectedReason", { reason: identity.rejection_reason })}
+        </p>
+      ) : null}
       {editing ? (
         <>
           <CnicFields value={draft} onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))} />

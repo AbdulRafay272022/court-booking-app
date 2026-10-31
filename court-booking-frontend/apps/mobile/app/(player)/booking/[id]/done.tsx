@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Clock3, MessageCircle, Navigation, QrCode, Share2, X } from "lucide-react-native";
+import { ArrowLeft, Check, Clock3, MessageCircle, Navigation, Phone, QrCode, Share2, X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { formatDate, formatTime, formatTimeRange } from "@court-booking/types";
+import { formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink } from "@court-booking/types";
 import { formatPkr, isConfirmed, journeySteps, palette, radius, space } from "@court-booking/ui-tokens";
 
 import {
@@ -31,6 +31,9 @@ import { doneCopy, donePaidAmount, donePollMs } from "@/lib/booking-done";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { safeBack } from "@/lib/safe-back";
 import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from "@/lib/player-flow";
+import { RaastQr } from "@/components/raast-qr";
+import { BalanceProofUpload } from "@/components/balance-proof-upload";
+import { BookingExtrasCard } from "@/components/booking-extras";
 import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useLightStatusBar, useNow } from "../../_components";
 
 /**
@@ -57,6 +60,19 @@ export default function BookingStatusScreen() {
   });
   const booking = bookingQuery.data;
   const place = useBookingPlace(booking);
+  // Audit 2026-10-28 item 4: the money lines, the event history and the venue's contact (one call, same rule as the web page).
+  const detailQuery = useQuery({
+    queryKey: ["booking-detail", id, booking?.status],
+    queryFn: () => api.bookings.detail(id),
+    enabled: !!booking,
+    subscribed: focused,
+  });
+  const [refundBusy, setRefundBusy] = useState(false);
+  const balancePay = useQuery({
+    queryKey: ["payment-instructions", id, booking?.status],
+    queryFn: () => api.bookings.paymentInstructions(id),
+    enabled: booking?.status === "booked" && (booking?.balance_due ?? 0) > 0,
+  });
   const paymentsQuery = useQuery({
     queryKey: ["booking-payments", id, booking?.status],
     queryFn: () => api.payments.listForBooking(id),
@@ -127,6 +143,9 @@ export default function BookingStatusScreen() {
   const cancel = cancelState(booking, place.venue, now);
   const paid = donePaidAmount(booking);
   const isOver = Date.parse(booking.ends_at) <= now;
+  const detail = detailQuery.data;
+  const wa = detail ? whatsappLink(detail.venue.whatsapp ?? detail.venue.phone, copy(`Salam, meri booking ${booking.id.slice(0, 8)} ke baare mein baat karni hai.`, `Hi, I'd like to talk about my booking ${booking.id.slice(0, 8)}.`)) : null;
+  const tel = detail?.venue.phone ? `tel:${detail.venue.phone.replace(/[^\d+]/g, "")}` : null;
 
   // Why it stopped, in the venue's own words where there are some.
   const stopReason =
@@ -238,6 +257,8 @@ export default function BookingStatusScreen() {
           ) : null}
           {place.venue ? <QuickButton label={copy("Raasta", "Directions")} icon={<Navigation size={16} color={palette.night} />} onPress={() => openDirections(place.venue!)} /> : null}
           <QuickButton label={copy("Venue se baat", "Talk to venue")} icon={<MessageCircle size={16} color={palette.night} />} onPress={() => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id } })} />
+          {wa ? <QuickButton label={copy("WhatsApp karo", "WhatsApp")} icon={<MessageCircle size={16} color={palette.night} />} onPress={() => void Linking.openURL(wa)} /> : null}
+          {tel ? <QuickButton label={copy("Call karo", "Call")} icon={<Phone size={16} color={palette.night} />} onPress={() => void Linking.openURL(tel)} /> : null}
           {booked ? (
             <QuickButton
               label={copy("Team ko batao", "Tell the team")}
@@ -260,6 +281,95 @@ export default function BookingStatusScreen() {
             ]}
           />
         </Card>
+
+        {booking.status === "booked" && booking.balance_due > 0 && balancePay.data && (balancePay.data.account_number || balancePay.data.iban) ? (
+          // audit 2026-10-28 item 20: the balance can be sent by transfer too (bank details + Raast QR when switched on)
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-balance-pay">
+            <Text variant="title" accessibilityRole="header">
+              {copy(`Baqi ${formatPkr(balancePay.data.amount)} transfer se bhi de sakte hain`, `You can also send the ${formatPkr(balancePay.data.amount)} balance by transfer`)}
+            </Text>
+            {balancePay.data.bank ? <Text variant="bodyStrong">{balancePay.data.bank}</Text> : null}
+            {balancePay.data.account_title ? <Text variant="body">{copy(`Account ka naam: ${balancePay.data.account_title}`, `Account name: ${balancePay.data.account_title}`)}</Text> : null}
+            {balancePay.data.account_number ? <Text variant="body" selectable>{`Account: ${balancePay.data.account_number}`}</Text> : null}
+            {balancePay.data.iban ? <Text variant="body" selectable>{`IBAN: ${balancePay.data.iban}`}</Text> : null}
+            <Text variant="meta" tone="muted" selectable>{copy(`Transfer note mein likhein: ${balancePay.data.reference}`, `Write in the transfer note: ${balancePay.data.reference}`)}</Text>
+            {balancePay.data.qr_payload ? <RaastQr payload={balancePay.data.qr_payload} /> : null}
+            <BalanceProofUpload bookingId={id} state={balancePay.data.balance_upload ?? "off"} />
+          </Card>
+        ) : null}
+
+        {booking.player_id ? <BookingExtrasCard bookingId={id} /> : null}
+
+        {detail ? (
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-payment-lines">
+            <Text variant="title" accessibilityRole="header">
+              {copy("Payments", "Payments")}
+            </Text>
+            {detail.payments.length === 0 ? (
+              <Text variant="body" tone="muted">
+                {copy("Abhi koi payment record nahi hui.", "No payment recorded yet.")}
+              </Text>
+            ) : (
+              detail.payments.map((p, i) => (
+                <View key={`${p.at}-${i}`} style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[2] }}>
+                  <Text variant="body">{`${paymentLineLabel(p, lang)} · ${formatWhen(p.at, new Date(), lang)}`}</Text>
+                  <Text variant="bodyStrong" tone={p.amount < 0 ? "danger" : "open"}>{`${p.amount < 0 ? "−" : ""}${formatPkr(Math.abs(p.amount))}`}</Text>
+                </View>
+              ))
+            )}
+            {detail.refund ? (
+              <Text variant="bodyStrong" tone={detail.refund.status === "owed" ? "waiting" : "open"} testID="status-refund">
+                {detail.refund.status === "owed" ? copy(`Refund baqi: ${formatPkr(detail.refund.amount)}`, `Refund owed: ${formatPkr(detail.refund.amount)}`) : copy(`Refund bhej diya gaya: ${formatPkr(detail.refund.amount)}`, `Refund sent: ${formatPkr(detail.refund.amount)}`)}
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
+
+        {detail && detail.timeline.length > 0 ? (
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-history">
+            <Text variant="title" accessibilityRole="header">
+              {copy("Booking ki kahani", "What happened")}
+            </Text>
+            {detail.timeline.map((e, i) => (
+              <View key={`${e.at}-${e.kind}-${i}`} style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[2] }}>
+                <Text variant="bodyStrong" style={{ flexShrink: 1 }}>
+                  {`${timelineLabel(e.kind, lang)}${e.amount ? ` · ${formatPkr(e.amount)}` : ""}`}
+                </Text>
+                <Text variant="meta" tone="muted">{formatWhen(e.at, new Date(), lang)}</Text>
+              </View>
+            ))}
+          </Card>
+        ) : null}
+
+        {detail?.refund_request?.state === "eligible" ? (
+          // audit 2026-10-28 Phase 2 item 3: "Refund maangein" on a cancelled booking the venue's policy refunds
+          <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-refund-request">
+            <Text variant="title">{copy("Refund maangein", "Ask for a refund")}</Text>
+            <Text variant="body" tone="muted">
+              {copy(
+                `Venue ki policy ke mutabiq aap ${formatPkr(detail.refund_request.amount)} wapas maang sakte hain. Venue khud paisa bhejega.`,
+                `Under the venue's policy you can ask for ${formatPkr(detail.refund_request.amount)} back. The venue sends it itself.`,
+              )}
+            </Text>
+            <Button
+              label={copy(`${formatPkr(detail.refund_request.amount)} ka refund maangein`, `Ask for ${formatPkr(detail.refund_request.amount)} back`)}
+              block
+              loading={refundBusy}
+              onPress={async () => {
+                setRefundBusy(true);
+                try {
+                  await api.bookings.requestRefund(id);
+                  await detailQuery.refetch();
+                } catch (e) {
+                  setCancelError(friendlyErrorMessage(e));
+                } finally {
+                  setRefundBusy(false);
+                }
+              }}
+              testID="refund-request"
+            />
+          </Card>
+        ) : null}
 
         {policy ? (
           <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-policy">

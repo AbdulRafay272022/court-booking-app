@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { EMPTY_TIMER_DRAFT, type TimerDraft } from "./venue-timers";
+import { FILLED_TIMER_DRAFT, type TimerDraft } from "./venue-timers";
 
 /**
  * Round 2 Stage 2: the wizard's venue timers, kept beside the main venue-setup draft (like the
@@ -18,9 +18,9 @@ interface TimerDraftState {
 export const useTimerDraftStore = create<TimerDraftState>()(
   persist(
     (set, get) => ({
-      timers: EMPTY_TIMER_DRAFT,
+      timers: FILLED_TIMER_DRAFT,
       setTimers: (patch) => set({ timers: { ...get().timers, ...patch } }),
-      reset: () => set({ timers: EMPTY_TIMER_DRAFT }),
+      reset: () => set({ timers: FILLED_TIMER_DRAFT }),
     }),
     {
       name: "khelo.venue-setup-timers",

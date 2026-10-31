@@ -21,7 +21,7 @@ from app.services.web_push import topic_for as web_push_topic
 from app.services.feature_flag_service import flag_on
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
-from app.utils.timezone import format_date_relative, format_pkr, format_time_range, format_when, format_when_range
+from app.utils.timezone import format_date_relative, format_pkr, format_time, format_time_range, format_when, format_when_range
 from app.services.whatsapp_templates import TEMPLATES
 
 logger = structlog.get_logger(__name__)
@@ -41,6 +41,18 @@ def _when(starts_at: "datetime | str", ends_at: "datetime | None" = None) -> str
 class MarketingSendLimitExceeded(Exception):
     pass
 
+
+
+def _wa_link(phone: str | None) -> str | None:
+    """wa.me link for a Pakistani mobile number in any common spelling; None when it is not one."""
+    if not phone:
+        return None
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if digits.startswith("0"):
+        digits = "92" + digits[1:]
+    if len(digits) == 10 and digits.startswith("3"):
+        digits = "92" + digits
+    return f"https://wa.me/{digits}" if len(digits) == 12 and digits.startswith("923") else None
 
 class NotificationService:
     """Routes notifications by tier (see Section 8):
@@ -240,7 +252,8 @@ class NotificationService:
         )
 
     async def _whatsapp_smart_best_effort(
-        self, user: User, body: str, *, template_name: str, template_params: list[str]
+        self, user: User, body: str, *, template_name: str, template_params: list[str],
+        buttons: list[tuple[str, str]] | None = None,
     ) -> tuple[str | None, str | None]:
         """WhatsApp leg of a notification, which must NEVER fail the action that triggered it.
 
@@ -265,6 +278,7 @@ class NotificationService:
                 last_inbound_at=last_inbound,
                 template_name=template_name,
                 template_params=template_params,
+                **({"buttons": buttons} if buttons else {}),
             )
             return template_used, None
         except Exception as exc:  # noqa: BLE001 -- see docstring: any failure must be contained
@@ -286,13 +300,14 @@ class NotificationService:
         template_name: str | None = None,
         bell: bool = False,
         payload: dict | None = None,
+        buttons: list[tuple[str, str]] | None = None,
     ) -> None:
         """Tier 2: push + WhatsApp. `event_type` doubles as the template name
         to fall back to outside the 24h window (see whatsapp_templates.py);
         if there's no dedicated template for it, the generic one-param
         fallback is used automatically."""
         template_used, whatsapp_error = await self._whatsapp_smart_best_effort(
-            user, body, template_name=template_name or event_type, template_params=template_params or [body]
+            user, body, template_name=template_name or event_type, template_params=template_params or [body], buttons=buttons
         )
         # cost_category describes what *kind* of message this is (per Meta's
         # own template categorization), independent of whether this
@@ -353,6 +368,11 @@ class NotificationService:
             "Upcoming booking",
             f"Reminder: your booking at {court_name} is {_when(starts_at, ends_at)}.",
             reference_id=booking_id,
+        )
+        when = _when(starts_at, ends_at)
+        await self.send_khelo_whatsapp(
+            user, "booking_reminder_wa", f"Yaad dehaani: {court_name}, {when}. Waqt par pohanchein.",
+            template_name="khelo_booking_reminder", template_params=[court_name, when, "Khelo"], reference_id=booking_id,
         )
 
     # -- Tier 2 ----------------------------------------------------------
@@ -520,6 +540,164 @@ class NotificationService:
             bell=True,
         )
         return True
+
+    async def _audit_tier(
+        self,
+        user: User,
+        event_type: str,
+        title: str,
+        body: str,
+        *,
+        reference_id: uuid.UUID | None,
+        template_name: str | None = None,
+        template_params: list[str] | None = None,
+        buttons: list[tuple[str, str]] | None = None,
+    ) -> None:
+        """audit 2026-10-28: push (app) + web push + bell ALWAYS; WhatsApp only while the `whatsapp_templates` flag is on
+        (the founder turns it on once Meta approved the khelo_* templates), never the unapproved generic fallback."""
+        if await flag_on(self.db, "whatsapp_templates") and template_name:
+            await self._send_push_and_whatsapp(
+                user, event_type, title, body, reference_id=reference_id,
+                template_name=template_name, template_params=template_params, bell=True, buttons=buttons,
+            )
+        else:
+            await self._send_push_tier(user, event_type, title, body, reference_id=reference_id, bell=True)
+
+    async def send_khelo_whatsapp(
+        self, user: User, event_type: str, body: str, *, template_name: str, template_params: list[str],
+        reference_id: uuid.UUID | None = None,
+    ) -> None:
+        """audit 2026-10-28 Phase 3 item 8: a WhatsApp-ONLY copy of something the app already shows (hold instructions,
+        balance, receipt, reminder, walk-in welcome), sent with an approved khelo_* template. Nothing at all while the
+        `whatsapp_templates` flag is off (push / bell for these already exist elsewhere, so they are not doubled). Once per
+        (user, event, reference). Never raises."""
+        try:
+            if not await flag_on(self.db, "whatsapp_templates"):
+                return
+            if reference_id is not None and await self.has_sent(user.id, event_type, reference_id):
+                return
+            template_used, error = await self._whatsapp_smart_best_effort(
+                user, body, template_name=template_name, template_params=template_params
+            )
+            template = TEMPLATES.get(template_name)
+            await self._log(
+                user_id=user.id, channel="whatsapp", event_type=event_type, reference_id=reference_id,
+                cost_category=template.category if template else "utility", template_name=template_used,
+                status_value="failed" if error else "sent", error_message=error,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notification.khelo_whatsapp_failed", event_type=event_type, error=type(exc).__name__)
+
+    async def send_khelo_whatsapp_to_phone(
+        self, phone: str, body: str, *, template_name: str, template_params: list[str]
+    ) -> str | None:
+        """Same as send_khelo_whatsapp for a number with NO account (a walk-in who never signed up). notification_log needs
+        a user, so the caller keeps the trail (audit row on the booking). Returns None when sent, else why not. Never raises."""
+        try:
+            if not await flag_on(self.db, "whatsapp_templates"):
+                return "flag_off"
+            if not await flag_on(self.db, "push_notifications"):
+                return "notifications_off"
+            await self.whatsapp.send_smart(
+                phone, body, last_inbound_at=None, template_name=template_name, template_params=template_params
+            )
+            return None
+        except Exception as exc:  # noqa: BLE001
+            outcome, code = describe_send_failure(exc)
+            logger.warning("notification.khelo_whatsapp_failed", event_type=template_name, outcome=outcome, meta_error_code=code)
+            return f"{outcome}; meta_error_code={code}"
+
+    async def notify_owner_cnic_result(self, *, owner: User, approved: bool, reason: str | None) -> None:
+        """audit 2026-10-28 Phase 2 item 1: the admin approved / did not approve the owner's CNIC."""
+        if approved:
+            title, body = "CNIC approve ho gaya", "Aap ka CNIC tasdeeq ho gaya. Shukriya!"
+        else:
+            title = "CNIC approve nahi hua"
+            body = f"Aap ka CNIC approve nahi hua: {reason}. Sahi CNIC ki dono taraf ki photo dobara upload karein."
+        await self._audit_tier(owner, "owner_cnic_result", title, body, reference_id=None)
+
+    async def notify_owner_refund_requested(
+        self, *, owner: User, player_name: str | None, booking_id: uuid.UUID, code: str, amount: float, note: str | None
+    ) -> None:
+        """audit 2026-10-28 Phase 2 item 3: a player pressed "Refund maangein"; it is on the owner's Refunds list now."""
+        who = player_name or "Player"
+        extra = f" Wajah: {note}" if note else ""
+        await self._audit_tier(
+            owner, "owner_refund_requested", "Player ne refund maanga",
+            f"{who} ne booking {code} ka refund maanga: {format_pkr(amount)}. Refunds mein dekhein.{extra}",
+            reference_id=booking_id,
+        )
+
+    async def notify_player_refund_requested(self, *, player: User, booking_id: uuid.UUID, code: str, amount: float) -> None:
+        await self._audit_tier(
+            player, "player_refund_requested", "Refund ki darkhwast bhej di",
+            f"Booking {code}: {format_pkr(amount)} refund ki darkhwast venue ko chali gayi. Venue khud paisa wapas bhejega.",
+            reference_id=booking_id,
+        )
+
+    async def notify_owner_staff_action(
+        self,
+        *,
+        owner: User,
+        staff_name: str,
+        kind: str,
+        booking_id: uuid.UUID,
+        starts_at: datetime,
+        court_name: str,
+        player_name: str | None,
+        short_pkr: int = 0,
+        due_pkr: int = 0,
+    ) -> None:
+        """audit 2026-10-28 item 17: the owner hears AT ONCE when a staff member marks a no-show or records less than the
+        due ("Bilal ne 7:00 PM wali booking no-show ki")."""
+        when = format_time(starts_at)
+        who = f" ({player_name})" if player_name else ""
+        if kind == "no_show":
+            title = "Staff ne no-show mark kiya"
+            body = f"{staff_name} ne {when} wali booking no-show ki: {court_name}{who}."
+        else:
+            title = "Staff ne kam paisa darj kiya"
+            body = (
+                f"{staff_name} ne {when} wali booking par {format_pkr(short_pkr)} kam darj kiye: {court_name}{who}. "
+                f"Baqi {format_pkr(due_pkr)}."
+            )
+        await self._audit_tier(owner, "owner_staff_action", title, body, reference_id=booking_id)
+
+    async def notify_player_unsettled(
+        self,
+        *,
+        player: User,
+        kind: str,
+        booking_id: uuid.UUID,
+        code: str,
+        starts_at: datetime,
+        court_name: str,
+        total_pkr: int,
+        paid_pkr: int,
+        due_pkr: int,
+        venue_whatsapp: str | None,
+        buttons: list[tuple[str, str]] | None = None,
+    ) -> None:
+        """audit 2026-10-28 item 18: the player is told when their booking was marked no-show, or completed with money still
+        due ("kam mila"): booking ID, total, paid, due, and the venue's WhatsApp to sort it out."""
+        link = _wa_link(venue_whatsapp)
+        contact = f" Venue se baat: {link}" if link else ""
+        money = f"Kul {format_pkr(total_pkr)}, diye {format_pkr(paid_pkr)}, baqi {format_pkr(due_pkr)}."
+        slot = f"{court_name}, {format_time(starts_at)}"
+        if kind == "no_show":
+            title = "Booking no-show mark hui"
+            body = f"Booking {code} ({slot}) no-show mark hui. {money}{contact}"
+            template = "khelo_no_show"
+            params = [code, slot, format_pkr(total_pkr), format_pkr(paid_pkr), format_pkr(due_pkr)]
+        else:
+            title = "Booking par paisa baqi hai"
+            body = f"Booking {code} ({slot}): {money}{contact}"
+            template = "khelo_short_payment"
+            params = [code, format_pkr(total_pkr), format_pkr(paid_pkr), format_pkr(due_pkr)]
+        await self._audit_tier(
+            player, f"player_{kind}", title, body, reference_id=booking_id, template_name=template, template_params=params,
+            buttons=buttons,
+        )
 
     async def notify_owner_refund_owed(
         self,

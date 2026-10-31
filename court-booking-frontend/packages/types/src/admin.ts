@@ -147,3 +147,26 @@ export interface Dispute {
   rejection_count: number;
   recent_rejections: DisputeRejection[];
 }
+
+/** GET /admin/disputes/refund-queue (app/schemas/admin.py RefundQueueEntryOut); audit 2026-10-28 Phase 2 item 4 (admin in the app). */
+export interface RefundQueueEntry {
+  id: string;
+  booking_id: string;
+  payment_id: string | null;
+  player_id: string | null;
+  player_name: string | null;
+  player_phone: string | null;
+  court_name: string;
+  venue_name: string;
+  amount_claimed: number | null;
+  reason: string;
+  resolved: boolean;
+  created_at: string;
+  refund_amount: number | null;
+  refund_status: string;
+  refunded_amount: number | null;
+  refund_reference: string | null;
+  refunded_at: string | null;
+  remaining_amount: number;
+  is_overdue: boolean;
+}

@@ -52,17 +52,24 @@ export const EMPTY_TIMER_DRAFT: TimerDraft = {
 
 const str = (n: number | null): string | null => (n === null ? null : String(n));
 
-export function draftFromValues(v: VenueTimerValues): TimerDraft {
+/**
+ * audit 2026-10-28 item 15: every timer holds a REAL value. A value the server still has as null (the default runs) is shown
+ * as that default number, so saving the card confirms it as the owner's own; nothing is ever silently "default" again.
+ */
+export function draftFromValues(v: VenueTimerValues, defaults: VenueTimerEffective = VENUE_TIMER_DEFAULTS): TimerDraft {
   return {
-    hold_minutes: str(v.hold_minutes),
-    reminders_enabled: v.reminders_enabled,
-    first_reminder_after_min: str(v.first_reminder_after_min),
-    repeat_every_min: str(v.repeat_every_min),
-    max_reminders: str(v.max_reminders),
-    auto_cancel_enabled: v.auto_cancel_enabled,
-    auto_cancel_after_min: str(v.auto_cancel_after_min),
+    hold_minutes: str(v.hold_minutes ?? defaults.hold_minutes),
+    reminders_enabled: v.reminders_enabled ?? defaults.reminders_enabled,
+    first_reminder_after_min: str(v.first_reminder_after_min ?? defaults.first_reminder_after_min),
+    repeat_every_min: str(v.repeat_every_min ?? defaults.repeat_every_min),
+    max_reminders: str(v.max_reminders ?? defaults.max_reminders),
+    auto_cancel_enabled: v.auto_cancel_enabled ?? defaults.auto_cancel_enabled,
+    auto_cancel_after_min: str(v.auto_cancel_after_min ?? defaults.auto_cancel_after_min),
   };
 }
+
+/** The wizard's starting timers: the defaults, as real values the owner sends (audit item 15). */
+export const FILLED_TIMER_DRAFT: TimerDraft = draftFromValues(EMPTY_TIMER_DRAFT as unknown as VenueTimerValues);
 
 const num = (s: string | null): number | null => (s === null || s.trim() === "" ? null : Number(s));
 
@@ -112,8 +119,17 @@ const HOLD_MSG = {
 export function validateTimers(d: TimerDraft, lang: TextLang, defaults: VenueTimerEffective = VENUE_TIMER_DEFAULTS): TimerValidation {
   const e = effectiveFromDraft(d, defaults);
   const errors: TimerValidation["errors"] = {};
+  // audit 2026-10-28 item 15: an empty box is an error (red), never "the default"
+  const REQUIRED = { ru: "Ye bharna zaroori hai.", en: "This is required." } as const;
+  const blank = (k: TimerNumberKey) => d[k] === null || (d[k] as string).trim() === "";
+  const required: TimerNumberKey[] = ["hold_minutes", "auto_cancel_after_min"];
+  if (e.reminders_enabled) required.push("first_reminder_after_min", "repeat_every_min", "max_reminders");
+  for (const k of required) {
+    if (k === "auto_cancel_after_min" && !e.auto_cancel_enabled) continue;
+    if (blank(k)) errors[k] = REQUIRED[lang];
+  }
   const hold = e.hold_minutes;
-  if (!Number.isInteger(hold) || hold < HOLD_LIMITS.min || hold > HOLD_LIMITS.max) {
+  if (!errors.hold_minutes && (!Number.isInteger(hold) || hold < HOLD_LIMITS.min || hold > HOLD_LIMITS.max)) {
     errors.hold_minutes = HOLD_MSG[lang](HOLD_LIMITS.min, HOLD_LIMITS.max);
   }
   const r = validateReminderInput(

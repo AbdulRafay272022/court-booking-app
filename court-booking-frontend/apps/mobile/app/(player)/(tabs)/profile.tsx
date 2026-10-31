@@ -4,7 +4,7 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CircleHelp, FileText, Languages, LogOut, Pencil, ShieldCheck } from "lucide-react-native";
-import { CITY_OPTIONS, formatDate, formatTime, type WaitlistEntry } from "@court-booking/types";
+import { CITY_OPTIONS, formatDate, formatTime, pointsReasonLabel, type WaitlistEntry } from "@court-booking/types";
 import { palette, radius, space } from "@court-booking/ui-tokens";
 
 import { Avatar, Button, Card, IconButton, ListRow, Screen, Sheet, Text, useCopy, useLang, useToast } from "@/components/ui";
@@ -60,7 +60,7 @@ export default function PlayerProfileScreen() {
           {user?.avatar_url ? (
             <Image source={{ uri: user.avatar_url }} style={{ width: 60, height: 60, borderRadius: 30 }} accessibilityLabel={copy("Aap ki tasveer", "Your photo")} />
           ) : (
-            <Avatar name={user?.name ?? user?.phone ?? "?"} size={60} tone="orange" />
+            <Avatar name={user?.name ?? user?.phone ?? "?"} size={60} tone="orange" uri={user?.avatar_url} />
           )}
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="title" tone="onDark">
@@ -83,6 +83,8 @@ export default function PlayerProfileScreen() {
           ))}
         </View>
       </Card>
+
+      <PointsCard />
 
       {fav.enabled ? (
         <View style={{ gap: space[2] }}>
@@ -191,3 +193,21 @@ function WaitlistRow({ entry, onLeave }: { entry: WaitlistEntry; onLeave: () => 
   );
 }
 
+/** audit 2026-10-28 Phase 3 item 3 (flag player_points): the player's points, the rule, the last few lines. */
+function PointsCard() {
+  const query = useQuery({ queryKey: ["my-points"], queryFn: () => api.phase3.myPoints() });
+  const data = query.data;
+  if (!data?.enabled) return null;
+  return (
+    <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="profile-points">
+      <Text variant="title" accessibilityRole="header">{`Points: ${data.balance}`}</Text>
+      <Text variant="meta" tone="muted">{data.rule_text_ru}</Text>
+      {data.entries.slice(0, 5).map((e) => (
+        <View key={e.id} style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
+          <Text variant="body" style={{ flex: 1 }}>{`${pointsReasonLabel(e.reason, "ru")}${e.code ? ` · ${e.code}` : ""}`}</Text>
+          <Text variant="bodyStrong" tone={e.delta < 0 ? "danger" : "primary"}>{e.delta > 0 ? `+${e.delta}` : String(e.delta)}</Text>
+        </View>
+      ))}
+    </Card>
+  );
+}

@@ -62,4 +62,13 @@ export const enCnic: Record<keyof typeof ruCnic, string> = {
   "cnic.admin.next": "Next",
   "cnic.admin.page": "Page {page}",
   "cnic.admin.noName": "(no name)",
+  "cnic.status.rejected": "Not approved",
+  "cnic.help.rejected": "The admin did not approve the CNIC. See the reason and upload clear photos of both sides again.",
+  "cnic.rejectedReason": "Reason: {reason}",
+  "cnic.banner.rejected": "Your CNIC was not approved: {reason}. Please upload it again.",
+  "cnic.admin.reject": "Not approve",
+  "cnic.admin.rejectReason": "Reason (the owner sees it, required)",
+  "cnic.admin.rejectConfirm": "Send with this reason",
+  "cnic.admin.rejected": "Not approved; the owner was told the reason.",
+  "cnic.admin.notCardLike": "This image does not look like a CNIC card (shape or size). Check it carefully.",
 };

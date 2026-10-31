@@ -14,6 +14,7 @@ import { PERM, canOfferNoShow, courtNumber, durationLabel, isStatusPending, rowS
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { BottomSheet, SmallChip } from "./ui";
 import { CompletionSheet, NoShowSheet } from "@/components/completion-sheet";
+import { NoShowReverseSheet } from "@/components/money-sheets";
 
 /** Stage 2 (C.3): booked, slot over, not marked yet (icon + text, never colour alone). */
 export function StatusPendingChip() {
@@ -84,6 +85,8 @@ export function BookingCard({
   const afterPick = useRef(false);
   const [adhoora, setAdhoora] = useState(false);
   const [noShow, setNoShow] = useState(false);
+  // audit fixes 2026-10-31: on a no-show row "Booking completed?" opens "No-show hatayein" (price / received / method)
+  const [reverse, setReverse] = useState(false);
   // Stage 2 (B.b): staff without the permission never see these buttons (the 403 message stays as the fallback).
   const { can } = useMyPermissions();
   const mayComplete = canComplete && can(PERM.recordPayments);
@@ -122,7 +125,7 @@ export function BookingCard({
     >
       <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${row.player_name ?? "Booking"}, ${row.short_code}`} style={{ padding: space[4], gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[3] }}>
-          <Avatar name={row.player_name ?? "?"} size={44} tone={row.kind === "refund" ? "waiting" : "info"} />
+          <Avatar name={row.player_name ?? "?"} size={44} tone={row.kind === "refund" ? "waiting" : "info"} uri={row.player_avatar_url} />
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="bodyStrong">
               {row.player_name ?? "Player"}
@@ -154,6 +157,10 @@ export function BookingCard({
           {mayComplete ? (
             <Pressable
               onPress={() => {
+              if (row.status_key === "no_show") {
+                setReverse(true);
+                return;
+              }
               setPickerOpen(true);
               setPicking(true);
             }}
@@ -225,7 +232,7 @@ export function BookingCard({
           <View style={{ gap: 10, paddingBottom: space[2] }}>
             <Text testID="completion-hint" variant="meta" tone="muted">
               {row.status_key === "no_show"
-                ? "Abhi No-show hai. Haan ya Nahi chunne se booking Completed ho jayegi."
+                ? "Abhi No-show hai."
                 : "Khel ho gaya? Haan ya Nahi, dono se booking Completed ho jayegi."}
             </Text>
             {[
@@ -258,6 +265,13 @@ export function BookingCard({
       ) : null}
       {noShow ? <NoShowSheet row={row} onClose={() => setNoShow(false)} onSaved={invalidate} /> : null}
       {adhoora ? <CompletionSheet row={row} onClose={() => setAdhoora(false)} onSaved={invalidate} /> : null}
+      {reverse ? (
+        <NoShowReverseSheet
+          target={{ bookingId: row.booking_id, subtitle: `${row.player_name ?? "Player"} · ${row.short_code}`, total: row.total, paid: row.total_paid }}
+          onClose={() => setReverse(false)}
+          onSaved={invalidate}
+        />
+      ) : null}
     </View>
   );
 }

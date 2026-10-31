@@ -1,5 +1,6 @@
 from app.models.ai_usage import AIUsageLog
 from app.models.audit import AuditLog
+from app.models.audit_phase3 import ArrivalCheck, NoShowReply, PointEntry, ShortPaymentClaim
 from app.models.blackout import Blackout
 from app.models.booking import LIVE_BOOKING_STATUSES, Booking, BookingSource, BookingStatus, CancelledBy
 from app.models.court import Court, CourtAdvanceType
@@ -45,6 +46,10 @@ __all__ = [
     "PremiumFeatureKey",
     "AIUsageLog",
     "AuditLog",
+    "ArrivalCheck",
+    "NoShowReply",
+    "PointEntry",
+    "ShortPaymentClaim",
     "Blackout",
     "LIVE_BOOKING_STATUSES",
     "Booking",

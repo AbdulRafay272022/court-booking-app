@@ -65,6 +65,22 @@ EVENT_KINDS: dict[str, tuple[str, str, str, str]] = {
     "hold_expiring": ("hold_expiring", "hold_expiring", "booking", "booking"),
     "slot_reopened": ("slot_freed", "slot_reopened", "waitlist", "none"),  # reference = waitlist entry id
     "court_deactivated": ("other", "court_deactivated", "booking", "booking"),
+    # audit 2026-10-28 items 17 + 18: staff marked a no-show / short payment (owner); the player's own notice
+    "owner_staff_action": ("other", "owner_staff_action", "booking", "booking"),
+    "player_no_show": ("other", "player_no_show", "booking", "booking"),
+    "player_short": ("other", "player_short", "booking", "booking"),
+    "owner_cnic_result": ("other", "owner_cnic_result", "none", "venue_status"),
+    "owner_refund_requested": ("refund_owed", "owner_refund_requested", "booking", "refunds"),
+    "player_refund_requested": ("other", "player_refund_requested", "booking", "booking"),
+    # audit 2026-10-28 Phase 3: points, short payments / dues, no-show replies
+    "player_points_reward": ("other", "player_points_reward", "booking", "booking"),
+    "player_points_deducted": ("other", "player_points_deducted", "booking", "booking"),
+    "player_short_ask": ("other", "player_short_ask", "booking", "booking"),
+    "player_short_decision": ("other", "player_short_decision", "booking", "booking"),
+    "player_due_resolved": ("other", "player_due_resolved", "booking", "booking"),
+    "player_noshow_decision": ("other", "player_noshow_decision", "booking", "booking"),
+    "owner_short_dispute": ("other", "owner_short_dispute", "booking", "booking"),
+    "owner_noshow_reply": ("other", "owner_noshow_reply", "booking", "booking"),
     # admin / premium billing / marketing: kind only (reference is an invoice / venue we don't resolve)
     "venue_pending_review": ("other", "venue_pending_review", "venue", "none"),
     "premium_renewal_reminder": ("other", "premium_renewal_reminder", "none", "none"),

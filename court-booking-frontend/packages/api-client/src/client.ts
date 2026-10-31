@@ -117,6 +117,19 @@ export function createApiClient(config: ApiClientConfig) {
     return refreshPromise;
   }
 
+  /** What to do with a 401 for a request that was sent with `sentToken` (audit 2026-10-28 item 1).
+   * - The token changed while the request was in flight (the page hydrated it, or another request already refreshed
+   *   it): just retry with the current token. Refreshing again would rotate a session that is fine and 401 every
+   *   other request still carrying it, which is what logged a second owner tab out on every page load.
+   * - No token was sent and none exists: the caller is simply signed out; nothing to refresh, nobody to sign out.
+   * - The same token was refused: refresh once (shared by every concurrent caller). */
+  async function on401(sentToken: string | null): Promise<"retry" | RefreshOutcome | "none"> {
+    const current = await config.getToken();
+    if (current && current !== sentToken) return "retry";
+    if (!sentToken) return "none";
+    return tryRefresh();
+  }
+
   /** Proactive refresh (Section 26): sessions last 8h, so callers refresh BEFORE expiry --
    * on app foreground / tab focus and on a timer -- rather than waiting for a 401, by which
    * time the token is already dead and there is nothing left to refresh. */
@@ -142,8 +155,8 @@ export function createApiClient(config: ApiClientConfig) {
     const response = await fetchWithTimeout(url, { ...options, headers }, DEFAULT_TIMEOUT_MS);
 
     if (response.status === 401 && !opts.retried && !opts.skipAuth) {
-      const outcome = await tryRefresh();
-      if (outcome === "ok") return request<T>(path, options, { ...opts, retried: true });
+      const outcome = await on401(token);
+      if (outcome === "ok" || outcome === "retry") return request<T>(path, options, { ...opts, retried: true });
       // Only a server-side refusal means the session is gone; a network blip must not log anyone out.
       if (outcome === "rejected") await config.onUnauthorized();
     }
@@ -196,8 +209,8 @@ export function createApiClient(config: ApiClientConfig) {
         xhr.ontimeout = () => reject(timeoutError());
         xhr.onload = async () => {
           if (xhr.status === 401 && !opts.retried) {
-            const outcome = await tryRefresh();
-            if (outcome === "ok") {
+            const outcome = await on401(token);
+            if (outcome === "ok" || outcome === "retry") {
               try {
                 resolve(await requestUpload<T>(path, formData, onProgress, { ...opts, retried: true }));
               } catch (e) {
@@ -233,7 +246,7 @@ export function createApiClient(config: ApiClientConfig) {
   }
 
   /** For non-JSON responses (e.g. CSV export) — returns the raw response body as text. */
-  async function requestText(path: string, options: RequestInit = {}): Promise<string> {
+  async function requestText(path: string, options: RequestInit = {}, retried = false): Promise<string> {
     const token = await config.getToken();
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string> | undefined),
@@ -247,9 +260,9 @@ export function createApiClient(config: ApiClientConfig) {
       DEFAULT_TIMEOUT_MS,
     );
 
-    if (response.status === 401) {
-      const outcome = await tryRefresh();
-      if (outcome === "ok") return requestText(path, options);
+    if (response.status === 401 && !retried) {
+      const outcome = await on401(token);
+      if (outcome === "ok" || outcome === "retry") return requestText(path, options, true);
       if (outcome === "rejected") await config.onUnauthorized();
     }
 

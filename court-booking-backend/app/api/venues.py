@@ -33,6 +33,7 @@ from app.schemas.venue import (
 from app.services.availability_service import AvailabilityService
 from app.services.entitlement_service import EntitlementService, premium_required_error
 from app.services.notification_service import MarketingSendLimitExceeded, NotificationService
+from app.services.venue_visibility import require_viewable
 from app.services.venue_service import VenueService
 from app.utils.timezone import pkt_today
 
@@ -152,7 +153,7 @@ async def get_venue(
     on that model (QA signup-venue round item 10). The venue's own owner (or an admin) still
     gets the full VenueOut with those fields populated."""
     service = VenueService(db, settings)
-    venue = await service.get_venue(venue_id)
+    venue = await require_viewable(db, await service.get_venue(venue_id), user)
     return await service.to_out_for(venue, requesting_user=user)
 
 
@@ -162,7 +163,7 @@ async def get_venue_by_slug(
 ) -> VenueOut | VenuePublicOut:
     """Public read by slug. Same public-vs-owner shape split as GET /venues/{id}."""
     service = VenueService(db, settings)
-    venue = await service.get_venue_by_slug(slug)
+    venue = await require_viewable(db, await service.get_venue_by_slug(slug), user)
     out = await service.to_out_for(venue, requesting_user=user)
 
     availability = AvailabilityService(db)
@@ -183,7 +184,7 @@ async def update_venue(
 ) -> VenueOut:
     service = VenueService(db, settings)
     venue = await service.require_owned_venue(venue_id, owner)
-    venue = await service.update_venue(venue, payload)
+    venue = await service.update_venue(venue, payload, actor=owner)
     return await service.to_out(venue, requesting_user=owner)
 
 

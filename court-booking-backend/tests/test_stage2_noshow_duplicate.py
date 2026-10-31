@@ -155,8 +155,11 @@ async def test_haan_nahi_sets_completed_from_booked_and_from_no_show(
     r = await client.post(url.format(booked.id), headers=oh, json={"result": "no", "received_now": 0, "reason": "baqi kal"})
     assert r.status_code == 200, r.text
     assert r.json()["status_pending"] is False and r.json()["status_key"] == "booked"
-    r = await client.post(url.format(old_no_show.id), headers=oh, json={"result": "yes"})
-    assert r.status_code == 200 and r.json()["status_key"] == "booked"
+    # audit fixes 2026-10-31: a no-show is taken back through the price / received / method step, not Haan
+    assert (await client.post(url.format(old_no_show.id), headers=oh, json={"result": "yes"})).status_code == 409
+    r = await client.post(f"/api/v1/owners/bookings/{old_no_show.id}/noshow-reverse", headers=oh,
+                          data={"final_price_pkr": 1000, "received_pkr": 0, "method": "cash"})
+    assert r.status_code == 200 and r.json()["status"] == "completed", r.text
     assert (await _load(db_session_factory, type(booked), booked.id)).status == BookingStatus.COMPLETED
     assert (await _load(db_session_factory, type(booked), old_no_show.id)).status == BookingStatus.COMPLETED
     assert (await _load(db_session_factory, User, player.id)).total_no_shows == 0  # the wrong no-show is given back

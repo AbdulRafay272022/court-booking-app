@@ -149,6 +149,11 @@ export default function OwnerRefundsPage() {
                     {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))}{" \u00b7 "}{fmt.when(refund.starts_at)}
                   </p>
                   {why ? <p className="text-owner-ink-faint text-[12.5px]">{why}</p> : null}
+                  {refund.player_note ? (
+                    <p className="text-owner-ink text-[12.5px]" data-testid="refund-player-note">
+                      {t("rfd.playerNote", { note: refund.player_note })}
+                    </p>
+                  ) : null}
                   {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (
                     <DuplicateProofChip n={refund.duplicate_proof.used_on_bookings} />
                   ) : null}

@@ -445,7 +445,10 @@ async def test_reminders_go_once_per_kind_per_period_and_the_job_does_it_all(db_
     # the job end to end: statuses, invoices, reminders; and it is safe to run twice
     async with db_session_factory() as session:
         row = (await session.execute(select(OwnerFeature))).scalar_one()
-        row.paid_through = pkt_today() + timedelta(days=3)  # a period ending in three days
+        # a period ending in three days -- but never the SAME period end as the hardcoded 2026-10-31 above (on 2026-10-28
+        # today+3 IS that date, so the job's once-per-period rule rightly sent nothing and this test failed on that one day)
+        end = pkt_today() + timedelta(days=3)
+        row.paid_through = end if end != date(2026, 10, 31) else end + timedelta(days=1)
         await session.commit()
     first = await run_billing_job(session_factory=db_session_factory)
     assert first["enforced"] is True and first["invoices_issued"] == 1 and first["reminders_sent"] == 1

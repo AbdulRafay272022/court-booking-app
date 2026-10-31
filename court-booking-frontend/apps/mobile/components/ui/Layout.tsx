@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { Image, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { ChevronRight } from "lucide-react-native";
 import { initials as toInitials, palette, radius, size, space, tone as toneTokens, type Tone } from "@court-booking/ui-tokens";
@@ -96,7 +96,11 @@ export function ListRow({ title, subtitle, icon: Icon, leading, trailing, onPres
 }
 
 /** Initials avatar (PChat inbox) or photo-less person/venue mark. Tone picks a token pair. */
-export function Avatar({ name, size: d = 48, tone = "night" }: { name: string; size?: number; tone?: Tone | "teal" | "orange" }) {
+/** Round avatar: the person's photo when `uri` is set (audit 2026-10-28 item 6), else their initials on a tone. */
+export function Avatar({ name, size: d = 48, tone = "night", uri }: { name: string; size?: number; tone?: Tone | "teal" | "orange"; uri?: string | null }) {
+  if (uri) {
+    return <Image source={{ uri }} accessibilityElementsHidden importantForAccessibility="no" style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: palette.mist }} />;
+  }
   const look =
     tone === "teal" ? { bg: palette.teal, fg: palette.white } : tone === "orange" ? { bg: palette.orange, fg: palette.night } : { bg: toneTokens[tone].bg, fg: toneTokens[tone].fg };
   return (

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { CircleAlert, CircleCheck } from "lucide-react-native";
-import type { OwnerBookingRow } from "@court-booking/types";
+import { acceptReceivedInput, receivedPrompt, type OwnerBookingRow } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Input, Text } from "@/components/ui";
@@ -53,7 +53,7 @@ export function NoShowSheet({ row, onClose, onSaved }: { row: OwnerBookingRow; o
         <Banner tone="danger" body="Player khelne nahi aaya? Booking No-show mark ho jayegi." />
       </View>
       <Text variant="meta" tone="muted">
-        Ye record ke saath save hoga (kis ne, kab). Ghalti ho to baad mein Haan/Nahi se booking Completed kar sakte hain.
+        {'Ye record ke saath save hoga (kis ne, kab). Ghalti ho to baad mein "No-show hatayein" se theek kar sakte hain.'}
       </Text>
       {error ? (
         <Text variant="meta" weight="bold" tone="danger">
@@ -87,6 +87,7 @@ export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRo
   const [amount, setAmount] = useState("0");
   const [reason, setReason] = useState(row.completion?.reason ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState(false);
   const received = parsePkr(amount);
   const inRange = received !== null && received >= 0 && received <= due;
   const dueAfter = inRange ? due - (received as number) : null;
@@ -143,16 +144,19 @@ export function CompletionSheet({ row, onClose, onSaved }: { row: OwnerBookingRo
       />
 
       <Input
-        label="Baqi mein se kitna mila? (PKR)"
+        label={receivedPrompt(row.total_paid, due)}
         value={amount}
         onChangeText={(t) => {
-          setAmount(t);
+          // audit fixes 2026-10-31: more than the remaining due can't be typed
+          const next = acceptReceivedInput(t, due, amount);
+          setBlocked(next.blocked);
+          setAmount(next.value);
           setError(null);
         }}
         keyboardType="number-pad"
-        accessibilityLabel="Baqi mein se kitna mila, PKR"
+        accessibilityLabel={receivedPrompt(row.total_paid, due)}
         help={`0 se ${formatPKR(due)} tak. Pehle se mila hua paisa kam nahi hoga.`}
-        error={!inRange && amount !== "" ? `Sirf 0 se PKR ${formatPKR(due)} tak likhein.` : null}
+        error={blocked ? `Baqi Rs ${formatPKR(due)} se zyada nahi likh sakte.` : !inRange && amount !== "" ? `Sirf 0 se PKR ${formatPKR(due)} tak likhein.` : null}
       />
 
       {dueAfter !== null ? (

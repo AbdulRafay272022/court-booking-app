@@ -7,6 +7,8 @@ export interface TodaySlot {
   status: string;
   booking_id: string | null;
   player_name: string | null;
+  /** audit 2026-10-28 item 6: the booking account's profile photo (null: no account / no photo). */
+  player_avatar_url?: string | null;
   amount_paid: number | null;
   price: number | null;
   balance_due: number | null;
@@ -106,6 +108,8 @@ export interface PendingApproval {
   starts_at: string;
   ends_at: string;
   player_name: string | null;
+  /** audit 2026-10-28 item 6: the booking account's profile photo (null: no account / no photo). */
+  player_avatar_url?: string | null;
   player_phone: string | null;
   ocr_verdict: string | null;
   ocr_amount: number | null;
@@ -115,6 +119,10 @@ export interface PendingApproval {
   minutes_since_submission: number;
   /** Section 32 Part 7 -- the five plain-language checks for this payment. */
   checks: PaymentChecks;
+  /** audit Phase 3 item 2: a screenshot for the BALANCE of an already-booked booking (approving never re-confirms it). */
+  is_balance?: boolean;
+  /** audit Phase 3 item 5 (flag player_dues): open dues at this venue + "No-show X / kul bookings Y"; null when off. */
+  player_context?: import("./phase3").ApprovalPlayerContext | null;
 }
 
 /** Section 32 Part 5: one row per PAYMENT (payment_entries), not per booking -- a booking with an advance
@@ -200,6 +208,8 @@ export interface OwnerRefund {
   reason_label_key?: string;
   /** Round 2: the payment this refund came from (a screenshot thumb is shown when present). */
   payment_id?: string | null;
+  /** audit 2026-10-28 Phase 2: the player's reason ("Refund maangein"). */
+  player_note?: string | null;
   refund_reference: string | null;
   refunded_at: string | null;
   created_at: string;

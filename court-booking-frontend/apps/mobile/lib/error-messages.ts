@@ -34,6 +34,7 @@ const MESSAGES: Record<string, string> = {
   INVALID_CHECKIN_CODE: "That check-in code isn't right. Try scanning the venue's QR again.",
   TOO_EARLY_FOR_NO_SHOW: "It's too early to mark this as a no-show yet.",
   VENUE_NOT_APPROVED: "This venue isn't live yet.",
+  VENUE_INCOMPLETE: "Venue abhi mukammal nahi: courts, auqaat, qeemat, photo aur bank details zaroori hain.",
   VENUE_NOT_FOUND: "We couldn't find that venue.",
   NOT_VENUE_OWNER: "You don't manage this venue.",
   DUPLICATE_PROOF: "This screenshot looks like it's already been used.",

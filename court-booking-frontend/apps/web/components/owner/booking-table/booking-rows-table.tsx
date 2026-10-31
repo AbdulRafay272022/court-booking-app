@@ -91,6 +91,11 @@ function rowKey(row: OwnerBookingRow): string {
 
 function Avatar({ row }: { row: OwnerBookingRow }) {
   const name = row.player_name?.trim() || "?";
+  if (row.player_avatar_url) {
+    // audit 2026-10-28 item 6: the player's photo; the coloured initial is only the fallback
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={row.player_avatar_url} alt="" aria-hidden="true" className="h-10 w-10 shrink-0 rounded-full object-cover" />;
+  }
   return (
     <span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[16px] font-bold text-white ${avatarTone(row)}`}>
       {name.charAt(0).toUpperCase()}

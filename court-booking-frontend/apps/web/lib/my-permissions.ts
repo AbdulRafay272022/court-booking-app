@@ -38,3 +38,35 @@ export function permissionAllows(
   if (!entry) return false;
   return entry.permissions.includes(key);
 }
+
+/**
+ * audit 2026-10-28 item 11: which staff key opens each owner dashboard page on WEB, mirroring the app (apps/mobile/lib/
+ * owner-access.ts) and what the backend enforces. Any one key in the list is enough. `"owner"` = never for staff. A route not
+ * listed (account, notifications) is open to everyone on the owner side.
+ */
+export const ROUTE_NEEDS: { prefix: string; needs: StaffPermission[] | "owner" }[] = [
+  { prefix: "/dashboard/owner/today", needs: ["view_ledger"] },
+  { prefix: "/dashboard/owner/approvals", needs: ["view_ledger", "approve_payments"] },
+  { prefix: "/dashboard/owner/walkin", needs: ["walkin"] },
+  { prefix: "/dashboard/bookings", needs: ["view_ledger"] },
+  { prefix: "/dashboard/owner/ledger", needs: ["view_ledger"] },
+  { prefix: "/dashboard/owner/bank-check", needs: ["view_ledger"] },
+  { prefix: "/dashboard/owner/dues", needs: ["view_ledger"] },
+  { prefix: "/dashboard/owner/refunds", needs: ["mark_refunds"] },
+  { prefix: "/dashboard/owner/checkin", needs: ["check_in"] },
+  { prefix: "/dashboard/owner/growth", needs: ["view_growth"] },
+  { prefix: "/dashboard/owner/reviews", needs: ["respond_reviews"] },
+  { prefix: "/dashboard/owner/settings", needs: ["edit_court_settings", "manage_photos", "view_ledger"] },
+  { prefix: "/dashboard/owner/staff", needs: "owner" },
+  { prefix: "/dashboard/owner/staff-activity", needs: "owner" },
+  { prefix: "/dashboard/owner/premium", needs: "owner" },
+];
+
+/** May a staff member open `pathname`? Owners / admins always may (`isStaff` false). */
+export function routeAllowed(pathname: string, isStaff: boolean, can: (key: StaffPermission) => boolean): boolean {
+  if (!isStaff) return true;
+  const rule = ROUTE_NEEDS.find((r) => pathname === r.prefix || pathname.startsWith(`${r.prefix}/`));
+  if (!rule) return true;
+  if (rule.needs === "owner") return false;
+  return rule.needs.some((k) => can(k));
+}

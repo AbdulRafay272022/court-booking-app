@@ -169,7 +169,7 @@ async def test_walkin_channel_detail_owner_vs_staff(make_user, make_venue, make_
         resp = await client.post(
             "/api/v1/bookings/walkin",
             headers=headers,
-            json={"court_id": str(court.id), "starts_at": f"{day.isoformat()}T{hour:02d}:00:00+00:00", "player_name": "Walk In", "amount_paid": 500},
+            json={"court_id": str(court.id), "starts_at": f"{day.isoformat()}T{hour:02d}:00:00+00:00", "player_phone": "+923009990001", "player_name": "Walk In", "amount_paid": 500},
         )
         assert resp.status_code == 201, resp.text
         ids.append(resp.json()["booking"]["id"])

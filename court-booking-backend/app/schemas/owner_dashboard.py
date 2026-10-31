@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel
 
 from app.schemas.payment import PaymentChecksOut
+from app.schemas.phase3 import ApprovalPlayerContextOut
 
 
 class TodaySlotOut(BaseModel):
@@ -12,6 +13,8 @@ class TodaySlotOut(BaseModel):
     status: str
     booking_id: uuid.UUID | None = None
     player_name: str | None = None
+    # audit 2026-10-28 item 6: the booking account's profile photo (None for a walk-in without an account / no photo)
+    player_avatar_url: str | None = None
     amount_paid: float | None = None
     # Section 32 Part 2: the owner's Today row shows what is still owed at the venue, not just what was paid.
     price: float | None = None
@@ -65,6 +68,7 @@ class PendingApprovalOut(BaseModel):
     ends_at: datetime
     player_name: str | None
     player_phone: str | None
+    player_avatar_url: str | None = None  # audit 2026-10-28 item 6
     ocr_verdict: str | None
     ocr_amount: float | None
     expected_amount: float
@@ -72,6 +76,9 @@ class PendingApprovalOut(BaseModel):
     submitted_at: datetime
     minutes_since_submission: float
     checks: PaymentChecksOut  # Section 32 Part 7 -- the five plain-language checks
+    is_balance: bool = False  # audit Phase 3 item 2: a screenshot for the BALANCE of an already-booked booking
+    # audit Phase 3 item 5 (flag player_dues): this player's open dues at this venue + "No-show X / kul bookings Y"
+    player_context: "ApprovalPlayerContextOut | None" = None
 
 
 class OverpaymentOut(BaseModel):

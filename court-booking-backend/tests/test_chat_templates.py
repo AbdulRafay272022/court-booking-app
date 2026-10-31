@@ -46,6 +46,14 @@ SAMPLE = {
     "fallback_unavailable": {},
     "held": dict(label="9:00 PM to 10:00 PM, Wed 14 Oct", total="PKR 3,000", advance="PKR 1,000", until="9:15 PM"),
     "steer_back": dict(sports=["Cricket", "Futsal", "Padel"]),
+    "other_venues": dict(
+        sport="Padel",
+        venues=[
+            {"name": "Court Site", "sports": "Padel", "kind": "free_at", "when": "Sat 17 Oct 2026, 9:00 PM"},
+            {"name": "Gulshan Padel Point", "sports": "Padel", "kind": "free_count", "count": 4, "when": "Sat 17 Oct 2026"},
+        ],
+    ),
+    "other_venues_none": dict(sport="Padel"),
 }
 
 

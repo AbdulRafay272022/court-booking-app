@@ -69,6 +69,9 @@ export interface Venue {
   /** Section 32 Part 4b: how many days ahead a player may book at this venue (1-365, default 90). An owner's
    * walk-in is not limited by it. */
   booking_horizon_days: number;
+  /** audit Phase 3 item 3: the owner-funded points discount (500 points -> this many rupees off). */
+  points_discount_enabled?: boolean;
+  points_discount_pkr?: number;
   created_at: string;
   courts: Court[];
   average_rating: number | null;
@@ -87,6 +90,19 @@ export interface Venue {
   /** Public venue coordinates (null if missing; absent on older API builds). */
   latitude?: number | null;
   longitude?: number | null;
+  /** audit 2026-10-28 item 9: what the venue still needs before it can go live (owner + admin views only). */
+  missing_for_approval?: VenueMissingItem[] | null;
+  /** audit 2026-10-28 item 15: settings still running on a hidden default; the owner confirms them by saving. */
+  unconfirmed_settings?: VenueMissingItem[] | null;
+  /** audit 2026-10-28 Phase 2 item 2: why players cannot see the venue now ("cnic" = the CNIC gate is on and the owner's CNIC
+   * is not approved); null = they can. Owner + admin views only. */
+  player_hidden_reason?: "cnic" | "not_approved" | "inactive" | null;
+}
+
+/** One gap that stops a venue going live (backend app/services/venue_completeness.py). */
+export interface VenueMissingItem {
+  code: "court" | "schedule" | "pricing" | "bank_details" | "photo" | "address" | "location" | "sports" | string;
+  court: string | null;
 }
 
 export interface VenueListResponse {

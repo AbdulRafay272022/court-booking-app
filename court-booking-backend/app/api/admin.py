@@ -1,7 +1,8 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, status
+from app.errors import AppError, ErrorCode
 from sqlalchemy import select
 
 from app.dependencies import AppSettings, DbSession, FeatureFlags, PageParams, RequireAdmin
@@ -9,6 +10,7 @@ from app.models.booking import BookingStatus
 from app.models.user import User
 from app.models.venue import Venue, VenueStatus
 from app.models.user import UserRole
+from app.schemas.staff_activity import StaffActivityOut
 from app.schemas.admin import (
     AdminBookingOut,
     AdminDashboardOut,
@@ -135,6 +137,17 @@ async def _review_venue(
     venue_service = VenueService(db, settings)
     venue = await venue_service.get_venue(venue_id)
     old_status = venue.status.value
+    if new_status == VenueStatus.APPROVED:
+        from app.services.venue_completeness import missing_for_approval
+
+        missing = missing_for_approval(venue, venue_service.decrypted_bank_details(venue))
+        if missing:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                ErrorCode.VENUE_INCOMPLETE,
+                "This venue is not complete yet, so it cannot go live.",
+                details={"missing": missing},
+            )
     venue = await venue_service.set_status(venue, new_status, reason)
 
     await AuditService(db).log(
@@ -313,3 +326,17 @@ async def unhide_review(
     )
     await db.commit()
     return out
+
+
+@router.get("/staff-activity", response_model=StaffActivityOut)
+async def admin_staff_activity(
+    db: DbSession,
+    admin: RequireAdmin,
+    venue_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> StaffActivityOut:
+    """Audit 2026-10-28 item 16: the same staff dashboard as the owner's, for any venue."""
+    from app.services.staff_activity_service import staff_activity
+
+    return StaffActivityOut(**await staff_activity(db, admin, venue_id, date_from, date_to))

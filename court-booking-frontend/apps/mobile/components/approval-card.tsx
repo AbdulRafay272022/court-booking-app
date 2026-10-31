@@ -1,10 +1,14 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { View } from "react-native";
 import { Ban, TriangleAlert } from "lucide-react-native";
-import { approvalSummary, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
+import { approvalSummary, type ApprovalPlayerContext, type ApprovalQueueItem, type ApproveAcceptMode } from "@court-booking/types";
 import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
 import { Avatar, Banner, Button, Input, MoneyRows, Pill, RadioGroup, Text } from "@/components/ui";
+import { DueDoneSheet } from "@/components/money-sheets";
 
+import { api } from "@/lib/api";
+import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
 import { duplicateChipCount, duplicateUsedText } from "@/lib/overview";
 import { refundAmountFor } from "@/lib/refund-confirm";
@@ -99,9 +103,10 @@ export function ApprovalCard({
       style={{ backgroundColor: grey ? palette.mist : palette.white, borderRadius: radius.card, padding: 14, gap: space[3], boxShadow: grey ? undefined : shadow.card }}
     >
       {grey ? <Pill tone="neutral" icon={<Ban size={13} color={palette.body} />} label={STATE_CHIP[item.state as Exclude<typeof item.state, "awaiting">]} /> : null}
+      {item.is_balance ? <Pill tone="info" label="Baqi raqam (balance) ka screenshot" size="sm" testID="balance-chip" /> : null}
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
-        <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} />
+        <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} uri={item.player_avatar_url} />
         <View style={{ flex: 1, gap: 1 }}>
           <Text variant="bodyStrong">{item.player_name ?? "Player"}</Text>
           <Text variant="meta" tone="muted">
@@ -117,6 +122,8 @@ export function ApprovalCard({
           </Text>
         ) : null}
       </View>
+
+      {item.player_context ? <PlayerContext ctx={item.player_context} /> : null}
 
       {!grey ? (
         <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
@@ -439,3 +446,33 @@ export function BulkApproveSheet({
   );
 }
 
+/** audit 2026-10-28 Phase 3 item 5 (flag player_dues): this player's record and open dues at this venue. The booking is
+ * never blocked; "Done" records the old balance as received. */
+function PlayerContext({ ctx }: { ctx: ApprovalPlayerContext }) {
+  const queryClient = useQueryClient();
+  // "Done" asks cash or transfer first (audit fixes 2026-10-31)
+  const [doneFor, setDoneFor] = useState<ApprovalPlayerContext["dues"][number] | null>(null);
+  return (
+    <View style={{ gap: space[2] }} testID="approval-player-context">
+      <Text variant="meta" weight="bold" tone={ctx.no_shows > 0 ? "danger" : "muted"}>{`No-show ${ctx.no_shows} / kul bookings ${ctx.total_bookings}`}</Text>
+      {ctx.dues.map((d) => (
+        <View key={d.id} style={{ flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" }} testID="approval-due">
+          <Text variant="body" style={{ flex: 1 }}>{`Purana baqi ${d.code}: PKR ${formatPKR(d.due_pkr)}`}</Text>
+          <Button label="Done" size="sm" variant="soft" onPress={() => setDoneFor(d)} testID="approval-due-done" />
+        </View>
+      ))}
+      {doneFor ? (
+        <DueDoneSheet
+          claimId={doneFor.id}
+          due={doneFor.due_pkr}
+          subtitle={doneFor.code}
+          onClose={() => setDoneFor(null)}
+          onSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: ["owner-approvals-queue"] });
+            void queryClient.invalidateQueries({ queryKey: ["owner-dues"] });
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}

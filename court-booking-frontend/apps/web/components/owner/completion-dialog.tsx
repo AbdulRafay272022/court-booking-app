@@ -2,7 +2,8 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { ApiError } from "@court-booking/api-client";
-import type { CompletionInput, CompletionResult, OwnerBookingRow } from "@court-booking/types";
+import { acceptReceivedInput, type CompletionInput, type CompletionResult, type OwnerBookingRow } from "@court-booking/types";
+import { formatPKR } from "@/lib/format";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -12,6 +13,7 @@ import { useT } from "@/components/i18n/lang-provider";
 import { ModalShell } from "@/components/owner/modal-shell";
 import { VoiceTextarea } from "@/components/voice/voice-textarea";
 import { canSaveCompletion, completionBody, planCompletion, validateReceivedNow } from "@/lib/overview-completion";
+import { NoShowReverseDialog } from "@/components/owner/money-dialogs";
 
 type T = ReturnType<typeof useT>;
 
@@ -59,6 +61,7 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
   const due = Math.max(0, row.due);
   const check = validateReceivedNow(received, due);
@@ -110,14 +113,19 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor={inputId} className="text-[14px] font-bold text-owner-ink">
-            {t("ovw.cmp.amount")}
+            {t("nsw.rev.prompt", { paid: formatPKR(row.total_paid), due: formatPKR(due) })}
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
               id={inputId}
               data-testid="ovw-received"
               value={received}
-              onChange={(e) => setReceived(e.target.value.replace(/[^0-9,]/g, ""))}
+              onChange={(e) => {
+                // audit fixes 2026-10-31: more than the remaining due can't be typed
+                const next = acceptReceivedInput(e.target.value, due, received);
+                setBlocked(next.blocked);
+                setReceived(next.value);
+              }}
               onFocus={(e) => e.currentTarget.select()}
               inputMode="numeric"
               autoComplete="off"
@@ -128,7 +136,10 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
             {due > 0 ? (
               <button
                 type="button"
-                onClick={() => setReceived(String(due))}
+                onClick={() => {
+                  setBlocked(false);
+                  setReceived(String(due));
+                }}
                 data-testid="ovw-received-full"
                 className="min-h-12 px-4 rounded-xl border-[1.5px] border-owner-border bg-owner-surface text-[14px] font-bold text-owner-ink whitespace-nowrap"
               >
@@ -136,8 +147,12 @@ export function CompletionDialog({ row, onClose, onSaved, submit }: CompletionDi
               </button>
             ) : null}
           </div>
-          <p id={`${inputId}-hint`} className={`text-[13px] ${amountInvalid ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
-            {amountInvalid ? t("ovw.cmp.amountErr", { due: pkr(due) }) : t("ovw.cmp.amountHint", { due: pkr(due) })}
+          <p id={`${inputId}-hint`} className={`text-[13px] ${amountInvalid || blocked ? "font-semibold text-owner-danger" : "text-owner-ink-muted"}`}>
+            {blocked
+              ? t("nsw.rev.tooMuch", { due: formatPKR(due) })
+              : amountInvalid
+                ? t("ovw.cmp.amountErr", { due: pkr(due) })
+                : t("ovw.cmp.amountHint", { due: pkr(due) })}
           </p>
         </div>
 
@@ -211,15 +226,23 @@ export interface CompletionFlow {
   message: { kind: "ok" | "error"; text: string } | null;
 }
 
-/** Haan saves at once; Nahi opens the popup. `onDone` gets the updated row so the caller can patch or refetch. */
+/** Haan saves at once; Nahi opens the popup. `onDone` gets the updated row so the caller can patch or refetch.
+ * A NO-SHOW row opens the "No-show hatayein" dialog instead (final price / received / cash or transfer): the server refuses
+ * Haan / Nahi on a no-show so the full price is never assumed as cash (audit fixes 2026-10-31). */
 export function useCompletionFlow(onDone: (row: OwnerBookingRow) => void): CompletionFlow {
   const t = useT();
+  const fmt = useFmt();
   const [target, setTarget] = useState<OwnerBookingRow | null>(null);
+  const [reverseRow, setReverseRow] = useState<OwnerBookingRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<CompletionFlow["message"]>(null);
 
   function pick(row: OwnerBookingRow, result: CompletionResult) {
     setMessage(null);
+    if (row.status_key === "no_show") {
+      setReverseRow(row);
+      return;
+    }
     if (result === "no") {
       setTarget(row);
       return;
@@ -245,6 +268,23 @@ export function useCompletionFlow(onDone: (row: OwnerBookingRow) => void): Compl
         setTarget(null);
         setMessage({ kind: "ok", text: updated.completion?.result === "yes" ? t("ovw.cmp.savedFull") : t("ovw.cmp.savedNo") });
         onDone(updated);
+      }}
+    />
+  ) : reverseRow ? (
+    <NoShowReverseDialog
+      key={reverseRow.booking_id}
+      target={{
+        bookingId: reverseRow.booking_id,
+        label: [reverseRow.player_name ?? t("ovw.table.noName"), reverseRow.court_name, fmt.timeRange(reverseRow.starts_at, reverseRow.ends_at), reverseRow.short_code].join(" · "),
+        total: reverseRow.total,
+        paid: reverseRow.total_paid,
+      }}
+      onClose={() => setReverseRow(null)}
+      onDone={(transfer) => {
+        const row = reverseRow;
+        setReverseRow(null);
+        setMessage({ kind: "ok", text: transfer ? t("nsw.rev.savedTransfer") : t("nsw.rev.saved") });
+        api.owners.bookingDetail(row.booking_id).then((d) => onDone(d.row)).catch(() => onDone(row));
       }}
     />
   ) : null;

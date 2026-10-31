@@ -85,7 +85,7 @@ export const enNotif: Record<keyof typeof ruNotif, string> = {
   "notif.walkin.summary.one": "{duration} · 1 slot",
   "notif.walkin.summary.many": "{duration} · {count} slots",
   "notif.walkin.name": "Customer name",
-  "notif.walkin.phone": "Customer phone (optional)",
+  "notif.walkin.phone": "Player mobile number (required)",
   "notif.walkin.phoneErr": "Enter a valid mobile number, e.g. 0333 5119042",
   "notif.walkin.amount": "Amount collected (PKR)",
   "notif.walkin.total": "Court price for {duration}: PKR {price}",
@@ -94,4 +94,6 @@ export const enNotif: Record<keyof typeof ruNotif, string> = {
   "notif.walkin.saved": "Booking saved.",
   "notif.walkin.taken": "Part of that time was just booked — pick another.",
   "notif.walkin.noFit": "That start can't fit the court's minimum booking of {duration} in a row.",
+  "notif.walkin.optIn": "I told the player the receipt will come on WhatsApp",
+  "notif.walkin.optInRequired": "This tick is required.",
 };

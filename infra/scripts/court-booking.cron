@@ -19,3 +19,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Owner premium billing: lapse statuses, due invoices, reminders. Daily 03:00 PKT. A no-op until the `owner_billing_enforced`
 # flag is switched on, and safe to repeat.
 0 22 * * *     root flock -n /var/lock/cb-billing.lock   docker exec court-booking-backend python -m app.jobs.runner billing   >> /var/log/court-booking-jobs.log 2>&1
+# audit 2026-10-28 Phase 3: unanswered short-payment questions after 24 h (-20 points), points back on cancelled bookings.
+# A no-op while the short_payment_reply / player_points flags are off. Every 10 minutes.
+*/10 * * * *   root flock -n /var/lock/cb-short.lock     docker exec court-booking-backend python -m app.jobs.runner short-payments >> /var/log/court-booking-jobs.log 2>&1

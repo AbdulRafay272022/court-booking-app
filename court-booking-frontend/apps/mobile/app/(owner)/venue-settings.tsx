@@ -22,6 +22,8 @@ import {
   type CourtSetup,
   type CreateVenueInput,
   type Venue,
+  unconfirmedSettingLabel,
+  venueMissingLabel,
 } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -109,6 +111,24 @@ export default function VenueSettingsScreen() {
             <Pill size="sm" tone={status === "approved" ? "open" : status === "rejected" ? "danger" : "waiting"} label={status === "approved" ? "Live ✓" : status === "rejected" ? "Approve nahi" : "Review mein"} />
           </View>
         ) : null}
+        {activeVenue?.missing_for_approval && activeVenue.missing_for_approval.length > 0 ? (
+          // audit 2026-10-28 item 9: what the venue needs before the admin can approve it
+          <Banner
+            tone="danger"
+            title="Venue live hone se pehle ye cheezein zaroori hain"
+            body={activeVenue.missing_for_approval.map((m) => `• ${venueMissingLabel(m, "ru")}`).join("\n")}
+            testID="venue-missing"
+          />
+        ) : null}
+        {activeVenue?.unconfirmed_settings && activeVenue.unconfirmed_settings.length > 0 ? (
+          // audit 2026-10-28 item 15: a live venue is never blocked; saving confirms the hidden defaults
+          <Banner
+            tone="waiting"
+            title="Ye settings abhi default par chal rahi hain. Dekh kar apni value save karein:"
+            body={activeVenue.unconfirmed_settings.map((u) => `• ${unconfirmedSettingLabel(u, "ru")}`).join("\n")}
+            testID="unconfirmed-settings"
+          />
+        ) : null}
         {perms.settled && access.note ? (
           <View testID="venue-settings-read-only-note">
             <Banner tone="waiting" body={access.note} />
@@ -153,6 +173,12 @@ export default function VenueSettingsScreen() {
                   key={`horizon-${activeVenue.id}`}
                   venueId={activeVenue.id}
                   initialDays={activeVenue.booking_horizon_days}
+                />
+                <PointsDiscountCard
+                  key={`points-${activeVenue.id}`}
+                  venueId={activeVenue.id}
+                  initialEnabled={!!activeVenue.points_discount_enabled}
+                  initialAmount={activeVenue.points_discount_pkr ?? 500}
                 />
               </ReadOnlyFence>
               {/* Stage 2: hold / reminders / auto-cancel, saved per venue (null = default). */}
@@ -393,6 +419,74 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
       <PrimaryButton label="Save cancellation policy" onPress={save} loading={saving} />
     </View>
+  );
+}
+
+/** audit 2026-10-28 Phase 3 item 3: the owner-funded points discount (500 points -> this many rupees off one booking). */
+function PointsDiscountCard({ venueId, initialEnabled, initialAmount }: { venueId: string; initialEnabled: boolean; initialAmount: number }) {
+  const queryClient = useQueryClient();
+  const [enabled, setEnabled] = useState(initialEnabled);
+  const [amount, setAmount] = useState(String(initialAmount));
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const n = Number(amount);
+  const problem = enabled && (!amount.trim() || !Number.isInteger(n) || n < 1 || n > 100000) ? "1 se 100,000 ke beech raqam likhein." : null;
+
+  async function save() {
+    if (problem) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api.venues.update(venueId, { points_discount_enabled: enabled, ...(amount.trim() ? { points_discount_pkr: n } : {}) });
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ ok: true, text: "Saved." });
+    } catch (e) {
+      setMessage({ ok: false, text: friendlyErrorMessage(e) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>Points ki chhoot</SectionLabel>
+      <Text variant="meta" tone="muted">
+        Player 500 points de kar aap ke venue par itni chhoot le sakta hai. Ye chhoot aap dete hain.
+      </Text>
+      <SegmentedToggle
+        options={[
+          { value: "off", label: "Band" },
+          { value: "on", label: "Chalu" },
+        ]}
+        value={enabled ? "on" : "off"}
+        onChange={(v) => {
+          setMessage(null);
+          setEnabled(v === "on");
+        }}
+        accessibilityLabel="Points ki chhoot"
+        testID="points-discount-toggle"
+      />
+      {enabled ? (
+        <TextField
+          label="Chhoot ki raqam (PKR)"
+          value={amount}
+          onChangeText={(v) => {
+            setMessage(null);
+            setAmount(v.replace(/\D/g, ""));
+          }}
+          keyboardType="number-pad"
+          mono
+          error={problem}
+          testID="points-discount-amount"
+        />
+      ) : null}
+      {message ? (
+        <Text accessibilityRole="alert" variant="bodyBold" tone={message.ok ? "info" : "danger"}>
+          {message.text}
+        </Text>
+      ) : null}
+      <PrimaryButton label="Save points chhoot" onPress={save} disabled={!!problem || saving} loading={saving} />
+    </SectionCard>
   );
 }
 

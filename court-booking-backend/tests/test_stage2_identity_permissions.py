@@ -58,22 +58,31 @@ def s3(monkeypatch):
     return uploads
 
 
+def _card_png() -> bytes:
+    """A CNIC-shaped (ID-1, ~1.59:1) image: audit 2026-10-28 Phase 2 flags uploads that do not look like a card."""
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (856, 540), (200, 200, 200)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _files(number=CNIC, front=None, back=None, ctype="image/png"):
     return {
         "number": (None, number),
-        "front": ("front.png", io.BytesIO(front if front is not None else png_bytes()), ctype),
-        "back": ("back.png", io.BytesIO(back if back is not None else png_bytes()), ctype),
+        "front": ("front.png", io.BytesIO(front if front is not None else _card_png()), ctype),
+        "back": ("back.png", io.BytesIO(back if back is not None else _card_png()), ctype),
     }
 
 
 async def test_identity_submit_get_masked_and_stored_encrypted(client, db_session_factory, make_user, make_auth_headers, s3):
     owner = await make_user("+923022000011", role=UserRole.OWNER)
     oh = await make_auth_headers(owner)
-    assert (await client.get("/api/v1/owners/identity", headers=oh)).json() == {"status": "missing", "masked": None, "flags": []}
+    assert (await client.get("/api/v1/owners/identity", headers=oh)).json() == {"status": "missing", "masked": None, "flags": [], "rejection_reason": None}
 
     resp = await client.post("/api/v1/owners/identity", headers=oh, files=_files())
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"status": "submitted", "masked": "*****-*******-3", "flags": []}
+    assert resp.json() == {"status": "submitted", "masked": "*****-*******-3", "flags": [], "rejection_reason": None}
     assert "4210112345673" not in resp.text and "1234567" not in resp.text
     assert set(s3) == {f"owner-identity/{owner.id}/front.png", f"owner-identity/{owner.id}/back.png"}
 

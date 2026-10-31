@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID, ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -115,6 +115,10 @@ class Booking(UUIDPkMixin, TimestampMixin, Base):
         pg_enum(CancelledBy, "cancelled_by"), nullable=True
     )
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # audit 2026-10-28 Phase 2 item 3: the owner ticked "Player ko bata diya ke WhatsApp par rasid aayegi" (walk-ins)
+    whatsapp_opt_in: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # audit 2026-10-28 Phase 3 item 3: rupees taken off this booking's price for points (owner-funded); 0 = none
+    points_discount_pkr: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     checked_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     checked_in_by: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "owner" | "player"
     # Flag, don't block (same pattern as the passive-owner-inaction signal,

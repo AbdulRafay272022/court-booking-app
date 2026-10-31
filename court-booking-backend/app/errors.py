@@ -77,6 +77,7 @@ class ErrorCode:
     # Venue
     VENUE_NOT_APPROVED = "VENUE_NOT_APPROVED"
     VENUE_NOT_FOUND = "VENUE_NOT_FOUND"
+    VENUE_INCOMPLETE = "VENUE_INCOMPLETE"  # audit 2026-10-28 item 9: approve refused, details.missing lists the gaps
     NOT_VENUE_OWNER = "NOT_VENUE_OWNER"
 
     # Payment
@@ -112,6 +113,12 @@ class ErrorCode:
     STAFF_ALREADY_EXISTS = "STAFF_ALREADY_EXISTS"  # this user is already staff at this venue
     INVALID_STAFF_PERMISSION = "INVALID_STAFF_PERMISSION"
     NOT_STAFF_PERMITTED = "NOT_STAFF_PERMITTED"  # staff account lacks the permission for this action
+    # audit 2026-10-28 Phase 3
+    POINTS_NOT_AVAILABLE = "POINTS_NOT_AVAILABLE"  # not enough points / venue discount off / already used
+    REPLY_WINDOW_CLOSED = "REPLY_WINDOW_CLOSED"  # the 24 h to answer a short-payment message have passed
+    ARRIVAL_WINDOW_CLOSED = "ARRIVAL_WINDOW_CLOSED"  # "Pohanch gaya" only from 1 h before the start to the end
+    PROOF_REQUIRED = "PROOF_REQUIRED"  # a transfer reported by the owner needs its screenshot
+    NOSHOW_REVERSAL_REQUIRED = "NOSHOW_REVERSAL_REQUIRED"  # 409: a no-show is taken back only with price/received/method
 
     # General
     RATE_LIMITED = "RATE_LIMITED"

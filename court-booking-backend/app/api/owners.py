@@ -15,6 +15,8 @@ from app.models.payment import Payment
 from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.services.duplicate_proof import used_on_bookings
+from app.schemas.staff_activity import StaffActivityOut
+from app.schemas.bank_check import BankCheckOut, BankMissingDecideIn, BankMissingStateOut
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
 from app.schemas.owner_dashboard import ApprovalsQueuePageOut, GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
@@ -344,9 +346,27 @@ async def owner_booking_completion(
 ) -> OwnerBookingRowOut:
     """Booking completed (Haan / Nahi). Permission record_payments (owner always); deliberately NOT behind the
     split_payments flag so it works for plain bookings."""
-    return await OwnerOverviewService(db, settings).mark_completion(
+    row = await OwnerOverviewService(db, settings).mark_completion(
         owner, booking_id, payload.result, payload.received_pkr, payload.reason, received_now=payload.received_now
     )
+    # audit 2026-10-28 items 17 + 18: "kam mila" (money still due after completing) tells the owner (when staff did it)
+    # and the player
+    from app.models.booking import Booking
+    from app.services.phase3_service import maybe_award_transfer_points, open_short_claim, sync_claim_after_payment
+
+    booking = await db.get(Booking, booking_id)
+    if booking is not None:
+        await db.refresh(booking)
+        if row.due > 0:
+            from app.services.unsettled_notices import notify_unsettled
+
+            # audit Phase 3 items 4 + 5: the "Sahi hai / Ghalat hai" question replaces the plain notice when it is on
+            asked = await open_short_claim(db, settings, booking)
+            await notify_unsettled(db, settings, booking, owner, "short", short_pkr=int(round(row.due)), player_notice=not asked)
+        else:
+            await sync_claim_after_payment(db, settings, booking)
+            await maybe_award_transfer_points(db, settings, booking)
+    return row
 
 
 @router.get("/badges", response_model=OwnerBadgesOut)
@@ -417,7 +437,7 @@ async def owner_mark_refund_paid(
             )
 
     await db.refresh(dispute)
-    payment = await db.get(Payment, dispute.payment_id)
+    payment = await db.get(Payment, dispute.payment_id) if dispute.payment_id else None
     positives = await positive_entries_by_booking(db, {booking.id})
     out = refund_out(
         dispute, booking, venue, None, payment, positives.get(booking.id, 0),
@@ -429,3 +449,48 @@ async def owner_mark_refund_paid(
     out.player_phone = booking.player_phone
     out.is_overdue = False
     return out
+
+
+@router.get("/staff-activity", response_model=StaffActivityOut)
+async def owner_staff_activity(
+    db: DbSession,
+    owner: RequireStaffCapable,
+    venue_id: uuid.UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> StaffActivityOut:
+    """Audit 2026-10-28 item 16: per person (owner + staff) bookings marked, no-shows, check-ins, walk-ins, short payments,
+    cash recorded, transfers credited, refunds paid, and the no-show list with who marked it and when. Owner (or admin) only."""
+    from app.services.staff_activity_service import staff_activity
+
+    return StaffActivityOut(**await staff_activity(db, owner, venue_id, date_from, date_to))
+
+
+@router.get("/bank-check", response_model=BankCheckOut)
+async def owner_bank_check(
+    db: DbSession, owner: RequireStaffCapable, venue_id: uuid.UUID | None = None, date_: date | None = Query(None, alias="date")
+) -> BankCheckOut:
+    """Audit 2026-10-28 Phase 3 item 2: "bank se mila lein" -- every transfer credited on one Pakistan day, to tick off against
+    the bank statement (owner; staff with view_ledger; admin with venue_id)."""
+    from app.services.bank_check_service import bank_check
+
+    return BankCheckOut(**await bank_check(db, owner, venue_id, date_))
+
+
+@router.post("/bank-check/{entry_id}/not-received", response_model=BankMissingStateOut)
+async def owner_bank_not_received(entry_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable) -> BankMissingStateOut:
+    """audit fixes 2026-10-31 (b): the owner says a balance transfer approved at the venue is not in the bank. The money stops
+    counting (a reversing ledger entry); it shows in red on "Staff ka kaam" under whoever approved it. No player message."""
+    from app.services.bank_missing_service import mark_not_received
+
+    return BankMissingStateOut(entry_id=entry_id, **await mark_not_received(db, settings, owner, entry_id))
+
+
+@router.post("/bank-check/{entry_id}/decide", response_model=BankMissingStateOut)
+async def owner_bank_not_received_decide(
+    entry_id: uuid.UUID, payload: BankMissingDecideIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+) -> BankMissingStateOut:
+    """staff = "Staff se wasool karein" (no player message); player = "Player se baqi maangein" (the short-payment flow)."""
+    from app.services.bank_missing_service import decide
+
+    return BankMissingStateOut(entry_id=entry_id, **await decide(db, settings, owner, entry_id, payload.decision))

@@ -91,7 +91,7 @@ class PaymentLedgerService:
 
         await self.audit.log(
             actor_user_id=recorded_by.id if recorded_by else None,
-            actor_type="owner" if recorded_by else "system",
+            actor_type=recorded_by.role.value if recorded_by else "system",
             action="payment_entry.recorded",
             entity_type="booking",
             entity_id=booking.id,
@@ -176,7 +176,7 @@ class PaymentLedgerService:
 
         await self.audit.log(
             actor_user_id=actor.id,
-            actor_type="admin" if actor.role == UserRole.ADMIN else "owner",
+            actor_type=actor.role.value,
             action="payment_entry.reversed",
             entity_type="payment_entry",
             entity_id=original.id,

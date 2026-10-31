@@ -424,7 +424,7 @@ async def test_walkin_records_a_payment_entry(
         headers=headers,
         json={
             "court_id": str(court.id), "starts_at": starts.isoformat().replace("+00:00", "Z"),
-            "player_name": "Bilal", "amount_paid": 3500,
+            "player_phone": "+923009990001", "player_name": "Bilal", "amount_paid": 3500,
         },
     )
     assert resp.status_code == 201, resp.text

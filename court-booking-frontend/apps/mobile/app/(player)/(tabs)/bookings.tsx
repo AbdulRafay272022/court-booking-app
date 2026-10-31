@@ -3,7 +3,7 @@ import { Pressable, View } from "react-native";
 import { router, useIsFocused } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Star } from "lucide-react-native";
-import { countByGroup, formatTimeRange, statusGroup, type Booking, type Review, type StatusGroup } from "@court-booking/types";
+import { countByGroup, formatTimeRange, refundPolicyShort, statusGroup, type Booking, type Review, type StatusGroup } from "@court-booking/types";
 import { palette, radius, size, space, statusPill } from "@court-booking/ui-tokens";
 
 import { Banner, Button, Card, Chip, EmptyState, ErrorState, Input, Screen, SegmentedToggle, Sheet, SkeletonCard, StatusPill, Text, useCopy, useLang, useToast } from "@/components/ui";
@@ -156,6 +156,12 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
           <Text variant="meta" tone="muted">
             {[place.court?.name, formatTimeRange(booking.starts_at, booking.ends_at, lang)].filter(Boolean).join(" · ")}
           </Text>
+          {place.venue ? (
+            // audit 2026-10-28 item 14: every booking says its refund rule in one line
+            <Text variant="meta" tone="muted" testID="booking-refund-line">
+              {refundPolicyShort(place.venue, lang)}
+            </Text>
+          ) : null}
         </View>
       </Pressable>
       <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }}>

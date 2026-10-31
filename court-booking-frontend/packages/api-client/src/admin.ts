@@ -1,4 +1,6 @@
 import type {
+  RefundQueueEntry,
+  StaffActivity,
   AdminIdentityFull,
   AdminIdentityPage,
   AdminOwnerInvoice,
@@ -24,15 +26,25 @@ import { toQuery } from "./util";
 export function createAdminApi(client: ApiClient) {
   return {
     /** Stage 2 CNIC review. The full view writes an audit row on every call. */
-    ownerIdentities: (filter: "missing" | "duplicates" | "unverified" | "all" = "all", page = 1) =>
+    ownerIdentities: (filter: "missing" | "duplicates" | "unverified" | "rejected" | "all" = "all", page = 1) =>
       client.request<AdminIdentityPage>(`/admin/owner-identities${toQuery({ filter, page })}`),
     ownerIdentity: (userId: string) => client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}`),
     verifyOwnerIdentity: (userId: string) =>
       client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}/verify`, { method: "POST" }),
 
+    /** audit 2026-10-28 Phase 2 item 1: "Not approve" with a required reason (the owner is told and can upload again). */
+    rejectOwnerIdentity: (userId: string, reason: string) =>
+      client.request<AdminIdentityFull>(`/admin/owner-identities/${userId}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+
     stats: () => client.request<PlatformStats>("/admin/stats"),
 
     overview: () => client.request<AdminOverview>("/admin/overview"),
+
+    /** Audit 2026-10-28 item 16: the staff dashboard for any venue. */
+    staffActivity: (venueId: string, dateFrom?: string, dateTo?: string) =>
+      client.request<StaffActivity>(
+        `/admin/staff-activity?${new URLSearchParams({ venue_id: venueId, ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) }).toString()}`,
+      ),
 
     /** Owner premium billing price list. */
     premiumFeatures: () => client.request<PremiumFeature[]>("/admin/premium-features"),
@@ -87,6 +99,9 @@ export function createAdminApi(client: ApiClient) {
       client.request<AdminUser[]>(`/admin/users${toQuery(params)}`),
 
     disputes: () => client.request<Dispute[]>("/admin/disputes"),
+
+    /** audit 2026-10-28 Phase 2 item 4: every refund owed on the platform (the app admin's Refunds screen). */
+    refundQueue: () => client.request<RefundQueueEntry[]>("/admin/disputes/refund-queue"),
 
     suspendUser: (userId: string, reason: string) =>
       client.request<AdminUser>(`/admin/users/${userId}/suspend`, {

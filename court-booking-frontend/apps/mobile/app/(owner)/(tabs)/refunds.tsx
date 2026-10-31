@@ -26,6 +26,18 @@ const DAY = 86400_000;
 /** OPaisa frame 2 "Refunds dene hain" (Section 32 Part 10 + Round 2 A10). A refund here was always sent OUTSIDE the app
  * (JazzCash/bank): there is no payment gateway; this records that it happened. Tap opens the confirm sheet (amount +
  * player shown again, reference required). */
+/** audit 2026-10-28: the refund reasons in words (they used to show as raw codes). */
+const REFUND_REASON_RU: Record<string, string> = {
+  player_cancelled_paid_booking: "Player ne paid booking cancel ki",
+  owner_cancelled_paid_booking: "Aap ne paid booking cancel ki",
+  system_cancelled_paid_booking: "Booking khud cancel hui",
+  overpayment_excess: "Zyada paisa aa gaya",
+  cancelled_payment_received: "Cancel booking ka paisa aaya",
+  payment_review_expired: "Screenshot waqt par check nahi hua",
+  payment_rejected: "Payment reject hui",
+  player_refund_request: "Player ne refund maanga",
+};
+
 export default function RefundsScreen() {
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
@@ -134,7 +146,12 @@ export default function RefundsScreen() {
                   </Pressable>
                   {refund.reason ? (
                     <Text variant="meta" tone="body">
-                      {`Wajah: ${refund.reason}`}
+                      {`Wajah: ${REFUND_REASON_RU[refund.reason] ?? refund.reason.replace(/_/g, " ")}`}
+                    </Text>
+                  ) : null}
+                  {refund.player_note ? (
+                    <Text variant="meta" tone="body" testID="refund-player-note">
+                      {`Player ki wajah: ${refund.player_note}`}
                     </Text>
                   ) : null}
                   {refund.duplicate_proof && refund.duplicate_proof.used_on_bookings > 0 ? (

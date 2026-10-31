@@ -29,6 +29,25 @@ MAX_VENUE_PHOTOS = 8
 MAX_COURT_PHOTOS = 5
 
 
+
+def _mask_number(value: object) -> str | None:
+    digits = "".join(ch for ch in str(value or "") if ch.isalnum())
+    if not digits:
+        return None
+    return "*" * max(len(digits) - 4, 0) + digits[-4:]
+
+
+def mask_bank_details(details: dict | None) -> dict | None:
+    """Bank details safe for the audit log: account number and IBAN keep only their last 4 characters."""
+    if not details:
+        return None
+    return {
+        "bank": details.get("bank"),
+        "account_title": details.get("account_title"),
+        "account_number": _mask_number(details.get("account_number")),
+        "iban": _mask_number(details.get("iban")),
+    }
+
 class VenueService:
     def __init__(self, db: AsyncSession, settings: Settings) -> None:
         self.db = db
@@ -132,7 +151,7 @@ class VenueService:
             )
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_VENUE_OWNER, "Not your venue")
 
-    async def update_venue(self, venue: Venue, payload: VenueUpdateIn) -> Venue:
+    async def update_venue(self, venue: Venue, payload: VenueUpdateIn, actor: User | None = None) -> Venue:
         data = payload.model_dump(exclude_unset=True)
         lat = data.pop("latitude", None)
         lon = data.pop("longitude", None)
@@ -142,7 +161,22 @@ class VenueService:
         if data.get("cancellation_allowed") is False:
             venue.cancellation_cutoff_hours = None  # a cutoff means nothing when cancelling is not allowed
         if bank_details != "unset":
+            before = self.decrypted_bank_details(venue)
             venue.bank_details = encrypt_json(bank_details, self.settings) if bank_details else None
+            if (before or None) != (bank_details or None):
+                # audit 2026-10-28 item 8: who changed where players send money, and when. Numbers are masked (last 4
+                # digits); bank name and account title are kept so a wrong-title change is visible.
+                from app.services.audit_service import AuditService
+
+                await AuditService(self.db).log(
+                    actor_user_id=actor.id if actor is not None else None,
+                    actor_type=actor.role.value if actor is not None else "system",
+                    action="venue.bank_details_changed",
+                    entity_type="venue",
+                    entity_id=venue.id,
+                    old_value=mask_bank_details(before),
+                    new_value=mask_bank_details(bank_details),
+                )
         if lat is not None and lon is not None:
             venue.location = f"SRID=4326;POINT({lon} {lat})"
         await self.db.commit()
@@ -207,7 +241,9 @@ class VenueService:
         play the candidates are filtered/sorted in Python and paginated afterwards; otherwise SQL paginates."""
         base_query = select(Venue)
         if only_approved:
-            base_query = base_query.where(Venue.status == VenueStatus.APPROVED, Venue.is_active.is_(True))
+            from app.services.venue_visibility import public_filters
+
+            base_query = base_query.where(*(await public_filters(self.db)))
         if city:
             base_query = base_query.where(func.lower(Venue.city) == city.lower())
         if area:
@@ -327,11 +363,12 @@ class VenueService:
 
     async def list_areas(self) -> list[str]:
         """Distinct non-empty areas of approved, active venues, sorted case-insensitively."""
+        from app.services.venue_visibility import public_filters
+
         result = await self.db.execute(
             select(Venue.area)
             .where(
-                Venue.status == VenueStatus.APPROVED,
-                Venue.is_active.is_(True),
+                *(await public_filters(self.db)),
                 Venue.area.is_not(None),
                 func.trim(Venue.area) != "",
             )
@@ -473,6 +510,14 @@ class VenueService:
             requesting_user.role == UserRole.ADMIN or requesting_user.id == venue.owner_id
         )
         out.bank_details = self.decrypted_bank_details(venue) if can_see_bank_details else None
+        if can_see_bank_details:
+            from app.services.venue_completeness import missing_for_approval, unconfirmed_settings
+
+            out.missing_for_approval = missing_for_approval(venue, out.bank_details)
+            out.unconfirmed_settings = unconfirmed_settings(venue)
+            from app.services.venue_visibility import hidden_reason
+
+            out.player_hidden_reason = await hidden_reason(self.db, venue)
         # checkin_qr_token isn't encrypted like bank_details, so model_validate
         # above already populated it from the ORM object -- explicitly clear
         # it for anyone who isn't the owner/admin rather than relying on a

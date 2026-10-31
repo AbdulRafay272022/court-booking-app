@@ -71,4 +71,5 @@ export const ruAppr = {
   "appr.dup.help": "Player se pakka kar lein ke ye nayi payment hai, purani payment ka screenshot nahi.",
   "appr.dup.confirm": "Haan, phir bhi approve karein",
   "appr.dup.back": "Wapas",
+  "appr.balanceChip": "Baqi raqam ka screenshot",
 } as const;
