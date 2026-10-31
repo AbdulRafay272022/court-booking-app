@@ -244,7 +244,8 @@ export default function PayScreen() {
             />
           }
         />
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space[4], flexWrap: "wrap", justifyContent: "center" }}>
+        {/* Pay board: the ring centred, then the big amount and the slot under it. */}
+        <View style={{ alignItems: "center", gap: space[3] }}>
           <CountdownRing
             expiresAt={booking.held_until}
             totalMs={windowMs(booking.created_at, booking.held_until)}
@@ -252,14 +253,14 @@ export default function PayScreen() {
             diameter={140}
             testID="pay-countdown"
           />
-          <View style={{ flex: 1, minWidth: 150, gap: 4 }}>
-            <Text variant="h2" tone="hero" testID="pay-amount">
+          <View style={{ alignItems: "center", gap: 2 }}>
+            <Text variant="display" tone="hero" align="center" testID="pay-amount">
               {amount}
             </Text>
-            <Text variant="meta" tone="heroMuted">
+            <Text variant="meta" tone="heroMuted" align="center">
               {[venueName, courtName].filter(Boolean).join(" · ")}
             </Text>
-            <Text variant="meta" tone="heroMuted">
+            <Text variant="meta" tone="heroMuted" align="center">
               {`${formatDate(booking.starts_at, new Date(), lang)} · ${formatTimeRange(booking.starts_at, booking.ends_at, lang)}`}
             </Text>
           </View>
