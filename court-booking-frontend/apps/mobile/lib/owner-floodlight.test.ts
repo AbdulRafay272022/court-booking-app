@@ -241,3 +241,21 @@ test("Aaj 'Courts ka din' range is the short opening window", () => {
   assert.equal(dayRangeLabel("2026-10-24T12:00:00Z", "2026-10-24T18:00:00Z"), "5 PM – 11 PM");
   assert.equal(dayRangeLabel("2026-10-24T03:30:00Z", "2026-10-24T20:00:00Z"), "8:30 AM – 1 AM");
 });
+
+test("timelineScale: 72 px an hour, long empty stretches drawn as one hour", async () => {
+  const { timelineScale, TIMELINE_PX_HOUR } = await import("./owner-floodlight");
+  const hours = Array.from({ length: 13 }, (_, i) => ({ ms: i * 3600_000, offset: i * 60 }));
+  const block = (start: number, end: number) => ({ kind: "booked" as const, row: {} as never, start, end });
+  // 12 hours; bookings 0-60 and 600-720 on court A; 9 empty hours between
+  const s = timelineScale({ minutes: 720, hours, columns: [{ courtId: "a", name: "A", blocks: [block(0, 60), block(600, 720)], gaps: [] }] });
+  assert.equal(TIMELINE_PX_HOUR, 72);
+  assert.deepEqual(s.collapsed, [{ start: 60, end: 600 }]);
+  assert.equal(s.y(60), 72);
+  assert.equal(s.y(600), 144);
+  assert.equal(s.height, 144 + 144);
+  assert.ok(!s.hours.some((h) => h.offset > 60 && h.offset < 600));
+  // a 2-hour gap stays linear
+  const t = timelineScale({ minutes: 240, hours: hours.slice(0, 5), columns: [{ courtId: "a", name: "A", blocks: [block(0, 60), block(180, 240)], gaps: [] }] });
+  assert.deepEqual(t.collapsed, []);
+  assert.equal(t.height, 4 * 72);
+});

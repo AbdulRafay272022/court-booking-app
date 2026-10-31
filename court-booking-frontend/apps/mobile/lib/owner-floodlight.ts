@@ -336,3 +336,51 @@ export function growthGrid(slots: { court_id: string; day_of_week: number; hour:
   const hours = [...new Set(slots.filter((s) => s.day_of_week >= 0 && s.day_of_week <= 6).map((s) => s.hour))].sort((a, b) => a - b);
   return { hours, cell: (d, h) => map.get(`${d}-${h}`) ?? null };
 }
+
+/** OwnerToday board: 72 px per hour (5 PM to 11 PM fits one screen). */
+export const TIMELINE_PX_HOUR = 72;
+
+export interface TimelineScale {
+  /** Minutes from the window start -> px from the top. */
+  y: (min: number) => number;
+  height: number;
+  /** Stretches with no booking on any court that are drawn short (one hour tall). */
+  collapsed: { start: number; end: number }[];
+  /** Hour ticks still drawn (none strictly inside a collapsed stretch). */
+  hours: { ms: number; offset: number }[];
+}
+
+/**
+ * Vertical scale for the courts timeline. A stretch longer than `maxEmptyMin` where NO court has a booking is drawn as
+ * one hour (`collapsedMin`) instead of its real length, so a quiet afternoon does not push the evening off the screen
+ * (OwnerToday board: long "khaali" blocks are short). Everything else is linear at `pxHour`.
+ */
+export function timelineScale(model: Pick<TimelineModel, "minutes" | "hours" | "columns">, pxHour = TIMELINE_PX_HOUR, maxEmptyMin = 120, collapsedMin = 60): TimelineScale {
+  const busy = model.columns.flatMap((c) => c.blocks.map((b) => [b.start, b.end] as const)).sort((a, b) => a[0] - b[0]);
+  const free: { start: number; end: number }[] = [];
+  let cursor = 0;
+  for (const [s, e] of busy) {
+    if (s > cursor) free.push({ start: cursor, end: s });
+    cursor = Math.max(cursor, e);
+  }
+  if (cursor < model.minutes) free.push({ start: cursor, end: model.minutes });
+  const collapsed = free.filter((f) => f.end - f.start > maxEmptyMin);
+  // visual minutes for a real minute offset
+  const vmin = (min: number) => {
+    let v = min;
+    for (const c of collapsed) {
+      if (min <= c.start) break;
+      const inside = Math.min(min, c.end) - c.start;
+      const len = c.end - c.start;
+      v -= inside - (inside / len) * collapsedMin;
+    }
+    return v;
+  };
+  const y = (min: number) => (vmin(min) / 60) * pxHour;
+  return {
+    y,
+    height: y(model.minutes),
+    collapsed,
+    hours: model.hours.filter((h) => !collapsed.some((c) => h.offset > c.start && h.offset < c.end)),
+  };
+}
