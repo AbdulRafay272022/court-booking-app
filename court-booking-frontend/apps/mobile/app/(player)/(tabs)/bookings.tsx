@@ -11,7 +11,7 @@ import { Banner, Button, Card, Chip, EmptyState, ErrorState, Input, Screen, Segm
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { bookingAction, shownStatus } from "@/lib/player-flow";
-import { DateTile, PlayerOfflineBanner, asList, useBookingPlace } from "../_components";
+import { DateTile, PlayerOfflineBanner, asList, openDirections, useBookingPlace } from "../_components";
 
 type Tab = "upcoming" | "past";
 type Filter = "all" | StatusGroup;
@@ -129,18 +129,8 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
   const lang = useLang();
   const place = useBookingPlace(booking);
   const action = bookingAction(booking);
-  const open = () =>
-    action === "pay"
-      ? router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } })
-      : router.push({ pathname: "/(player)/booking/[id]/done", params: { id: booking.id } });
-  const label =
-    action === "pay"
-      ? copy("Pay karein", "Pay now")
-      : action === "status"
-        ? copy("Status dekhein", "See status")
-        : action === "ticket"
-          ? copy("Ticket / QR", "Ticket / QR")
-          : copy("Tafseel", "Details");
+  const details = () => router.push({ pathname: "/(player)/booking/[id]/done", params: { id: booking.id } });
+  const open = () => (action === "pay" ? router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } }) : details());
   const canRate = booking.status === "completed" && (review == null || Date.now() - Date.parse(review.created_at) <= SEVEN_DAYS_MS);
   return (
     <Card padding={4} radiusSize="tile" style={{ gap: space[3] }} testID={`booking-row-${booking.status}`}>
@@ -166,7 +156,18 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
         </View>
       </Pressable>
       <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }}>
-        <Button label={label} size="sm" variant={action === "pay" ? "primary" : "soft"} onPress={open} testID={`booking-action-${action}`} />
+        {/* PBookings board: Pakki = QR dikhao / Raasta / Tafseel, check ho rahi = Chat / Tafseel, pay baqi = Abhi pay karein / Tafseel. */}
+        {action === "pay" ? (
+          <Button label={copy("Abhi pay karein", "Pay now")} size="sm" variant="primary" onPress={open} testID="booking-action-pay" />
+        ) : null}
+        {action === "ticket" ? (
+          <Button label={copy("QR dikhao", "Show QR")} size="sm" variant="secondary" onPress={() => router.push({ pathname: "/(player)/booking/[id]/checkin", params: { id: booking.id } })} testID="booking-action-ticket" />
+        ) : null}
+        {action === "ticket" && place.venue ? <Button label={copy("Raasta", "Directions")} size="sm" variant="soft" onPress={() => openDirections(place.venue!)} testID="booking-action-directions" /> : null}
+        {action === "status" ? (
+          <Button label={copy("Chat", "Chat")} size="sm" variant="soft" onPress={() => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id: booking.id } })} testID="booking-action-chat" />
+        ) : null}
+        <Button label={copy("Tafseel", "Details")} size="sm" variant="soft" onPress={details} testID={`booking-action-${action === "pay" || action === "ticket" || action === "status" ? "details" : action}`} />
         {booking.status === "completed" && review ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: size.tap }} accessibilityLabel={copy(`Aap ki rating ${review.rating} mein se 5`, `Your rating ${review.rating} of 5`)}>
             <Star size={14} color={palette.orange} fill={palette.orange} />
