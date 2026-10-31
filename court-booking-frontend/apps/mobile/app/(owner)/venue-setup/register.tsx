@@ -205,8 +205,8 @@ export default function VenueRegisterScreen() {
         <SectionCard>
           <SectionLabel>Players paisa kahan bhejein</SectionLabel>
           <Text variant="caption" tone="subtle">
-            Players pay you directly. Khelo never holds your money — we only check that the
-            screenshot matches what's owed. You can add this later if you'd rather skip it for now.
+            Players seedha aap ko paisa bhejte hain. Khelo paisa nahi rakhta; hum sirf dekhte hain ke screenshot ki raqam
+            sahi hai. Abhi chhorna ho to baad mein add kar sakte hain.
           </Text>
           <TextField
             label="Bank ka naam"
