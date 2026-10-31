@@ -248,7 +248,8 @@ export default function WalkInScreen() {
 
         <View style={{ gap: space[2] }}>
           <Text variant="bodyBold">Din</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {/* OWalkin board: Aaj · Kal · <day> · Tareekh in ONE row of equal tiles (they wrapped at 360 dp with a 70 basis). */}
+          <View style={{ flexDirection: "row", gap: 6 }}>
             {quickDays.map((i) => (
               <Chip
                 key={i}
@@ -259,10 +260,10 @@ export default function WalkInScreen() {
                   setDateIdx(i);
                   reset();
                 }}
-                style={{ flexGrow: 1, flexBasis: 70 }}
+                style={{ flex: 1, minWidth: 0, paddingHorizontal: 4 }}
               />
             ))}
-            <Chip shape="tile" label={dateIdx > 2 ? dayLabel(dateIdx) : "Tareekh"} selected={dateIdx > 2} onPress={() => setDaySheet(true)} style={{ flexGrow: 1, flexBasis: 70 }} />
+            <Chip shape="tile" label={dateIdx > 2 ? dayLabel(dateIdx) : "Tareekh"} selected={dateIdx > 2} onPress={() => setDaySheet(true)} style={{ flex: 1, minWidth: 0, paddingHorizontal: 4 }} />
           </View>
         </View>
 

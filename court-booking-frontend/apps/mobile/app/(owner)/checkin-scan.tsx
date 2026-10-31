@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { Platform, Pressable, ScrollView, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -135,21 +135,46 @@ export default function CheckinScanScreen() {
           </View>
         ) : null}
 
-        <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[3] }}>
-          <Input
-            label="Ya booking ID likhein"
-            value={manualCode}
-            onChangeText={(v) => {
-              setManualCode(v);
-              setError(null);
-            }}
-            placeholder="Poora ID, jaise 3b9a41d7-..."
-            autoCapitalize="none"
-            autoCorrect={false}
-            help="Player ki booking / ticket screen par poora booking ID hota hai. Chhota code (KH-...) abhi check-in mein nahi chalta."
-            testID="checkin-code"
-          />
-          <Button label={submitting ? "Ho raha hai" : "Check in"} block size="md" onPress={() => submitCheckin(manualCode)} disabled={!manualCode.trim() || submitting} loading={submitting} testID="checkin-submit" />
+        {/* OWalkin frame 2: label on the dark stage, white code field + mint "Check" button in one row. */}
+        <View style={{ gap: space[2] }}>
+          <Text variant="label" tone="onDark" nativeID="checkin-code-label">
+            Ya booking code likhein
+          </Text>
+          <View style={{ flexDirection: "row", gap: space[2] }}>
+            <TextInput
+              value={manualCode}
+              onChangeText={(v) => {
+                setManualCode(v);
+                setError(null);
+              }}
+              placeholder="Poora booking ID"
+              placeholderTextColor={palette.muted2}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="go"
+              onSubmitEditing={() => manualCode.trim() && submitCheckin(manualCode)}
+              accessibilityLabelledBy="checkin-code-label"
+              accessibilityLabel="Booking code"
+              testID="checkin-code"
+              style={{ flex: 1, minHeight: 52, borderRadius: radius.md, backgroundColor: palette.white, paddingHorizontal: space[4], fontSize: 16, color: palette.night }}
+            />
+            <Pressable
+              onPress={() => submitCheckin(manualCode)}
+              disabled={!manualCode.trim() || submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Check in karein"
+              accessibilityState={{ disabled: !manualCode.trim() || submitting, busy: submitting }}
+              testID="checkin-submit"
+              style={{ minHeight: 52, minWidth: 84, paddingHorizontal: space[4], borderRadius: radius.md, backgroundColor: palette.mint, alignItems: "center", justifyContent: "center", opacity: !manualCode.trim() || submitting ? 0.6 : 1 }}
+            >
+              <Text variant="bodyBold" color={palette.night}>
+                {submitting ? "..." : "Check"}
+              </Text>
+            </Pressable>
+          </View>
+          <Text variant="caption" tone="onDarkMuted">
+            Player ki ticket screen par poora booking ID hota hai. Chhota code (KH-...) abhi check-in mein nahi chalta.
+          </Text>
           {error ? <Banner tone="danger" body={error} testID="checkin-error" /> : null}
         </View>
         <Button label="Venue ka QR dikhayein" variant="soft" size="md" block onPress={() => router.push("/(owner)/checkin-qr")} />
