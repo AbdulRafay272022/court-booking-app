@@ -102,20 +102,22 @@ export default function VenueSettingsScreen() {
     <Screen scroll={false} gutter={false} keyboard testID="venue-settings">
       <View style={{ paddingHorizontal: space[4], gap: space[3], paddingBottom: space[2] }}>
         <OwnerHeader title="Venue settings" onBack={ownerBack} />
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[8], gap: space[4] }} keyboardShouldPersistTaps="handled">
+        {/* Everything under the header scrolls (it used to be fixed and left ~20% of a 360x800 phone to scroll). */}
         {activeVenue ? (
-          <View testID="settings-hub-card" style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: radius.tile, padding: space[3] }}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text variant="bodyStrong">{activeVenue.name}</Text>
-              <Text variant="meta" tone="muted">{`${[activeVenue.area, activeVenue.city].filter(Boolean).join(", ")} · ${activeVenue.photo_urls?.length ?? 0} photos`}</Text>
-            </View>
-            <Pill size="sm" tone={status === "approved" ? "open" : status === "rejected" ? "danger" : "waiting"} label={status === "approved" ? "Live ✓" : status === "rejected" ? "Approve nahi" : "Review mein"} />
+          // OSettings hub board: the venue as a teal card (name, area · photos · status).
+          <View testID="settings-hub-card" style={{ backgroundColor: palette.teal, borderRadius: radius.card, padding: space[4], paddingTop: space[8], gap: 2 }}>
+            <Text variant="title" tone="hero">{activeVenue.name}</Text>
+            <Text variant="meta" tone="heroMuted">{`${[activeVenue.area, activeVenue.city].filter(Boolean).join(", ")} · ${activeVenue.photo_urls?.length ?? 0} photos · ${status === "approved" ? "Live ✓" : status === "rejected" ? "Approve nahi" : "Review mein"}`}</Text>
           </View>
         ) : null}
         {activeVenue?.missing_for_approval && activeVenue.missing_for_approval.length > 0 ? (
           // audit 2026-10-28 item 9: what the venue needs before the admin can approve it
           <Banner
             tone="danger"
-            title="Venue live hone se pehle ye cheezein zaroori hain"
+            title={status === "approved" ? "Ye cheezein abhi baqi hain" : "Venue live hone se pehle ye cheezein zaroori hain"}
             body={activeVenue.missing_for_approval.map((m) => `• ${venueMissingLabel(m, "ru")}`).join("\n")}
             testID="venue-missing"
           />
@@ -146,9 +148,6 @@ export default function VenueSettingsScreen() {
             { value: "courts", label: courts.length ? `Courts (${courts.length})` : "Courts" },
           ]}
         />
-      </View>
-
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[8], gap: space[4] }} keyboardShouldPersistTaps="handled">
         {!perms.settled ? (
           // wait for the permissions answer so a staff member never sees an editable form flash
           <Skeleton height={120} r={radius.card} />
