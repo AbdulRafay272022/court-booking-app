@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Image, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { Image, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable } from "./Pressable";
 import { LinearGradient } from "expo-linear-gradient";
 import { ChevronRight } from "lucide-react-native";
 import { initials as toInitials, palette, radius, size, space, tone as toneTokens, type Tone } from "@court-booking/ui-tokens";

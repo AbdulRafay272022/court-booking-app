@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { router, useIsFocused } from "expo-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { ChevronRight, MessageCircle } from "lucide-react-native";

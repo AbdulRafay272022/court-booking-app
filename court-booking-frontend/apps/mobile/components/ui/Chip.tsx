@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable } from "./Pressable";
 import { palette, radius, size, space } from "@court-booking/ui-tokens";
 import { Text } from "./Text";
 import { useRoleTheme } from "./theme";

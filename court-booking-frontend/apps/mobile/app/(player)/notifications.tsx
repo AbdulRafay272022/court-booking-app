@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { Platform, View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { router, useIsFocused } from "expo-router";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";

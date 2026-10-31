@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { Platform, View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { Image } from "expo-image";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";

@@ -1,4 +1,5 @@
-import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable } from "./Pressable";
 import { Hourglass, Lock, UserCheck } from "lucide-react-native";
 import { radius, slot as slotTokens, slotChipA11y, slotChipCue, slotChipPressable, type SlotChipState } from "@court-booking/ui-tokens";
 import { Text } from "./Text";

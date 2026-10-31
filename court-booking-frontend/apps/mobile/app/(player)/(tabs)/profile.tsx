@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";

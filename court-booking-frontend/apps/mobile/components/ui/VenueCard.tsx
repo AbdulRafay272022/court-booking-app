@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { AppState, FlatList, Pressable, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ViewToken } from "react-native";
+import { AppState, FlatList, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ViewToken } from "react-native";
+import { Pressable } from "./Pressable";
 import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
 import { Heart, List } from "lucide-react-native";

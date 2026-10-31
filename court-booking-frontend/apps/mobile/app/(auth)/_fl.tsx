@@ -4,7 +4,8 @@
  * (logic only). Promotion candidates for components/ui: AuthShell, OtpStatus, SelectSheetField.
  */
 import { useState, type ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronDown } from "lucide-react-native";
 import { palette, radius, size, space } from "@court-booking/ui-tokens";
