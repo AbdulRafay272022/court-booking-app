@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { AccessibilityInfo, Platform, useWindowDimensions } from "react-native";
 import * as Device from "expo-device";
 import { glassMode, role as roleThemes, type Role, type RoleTheme } from "@court-booking/ui-tokens";
+import { setErrorLang } from "@/lib/error-messages";
 
 /**
  * Floodlight theme context. The ROLE is chosen by route group, never per screen:
@@ -20,6 +21,8 @@ export function RoleProvider({ role, children }: { role: Role; children: ReactNo
 
 /** Roman Urdu is the default; EN for the language toggle. Only affects copy built into the components. */
 export function LangProvider({ lang, children }: { lang: Lang; children: ReactNode }) {
+  // error texts from friendlyErrorMessage follow the same language (they are built outside React)
+  setErrorLang(lang);
   return <LangContext.Provider value={lang}>{children}</LangContext.Provider>;
 }
 

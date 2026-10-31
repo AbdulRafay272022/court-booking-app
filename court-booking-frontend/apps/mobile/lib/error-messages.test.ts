@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ApiError } from "@court-booking/api-client";
 
-import { friendlyErrorMessage } from "./error-messages";
+import { ERROR_CODES, friendlyErrorMessage, hasBothLanguages } from "./error-messages";
 
 const CODES = [
   "HOLD_EXPIRED",
@@ -23,4 +23,11 @@ test("Round 2 error codes have their own message (never the server's text or the
     assert.notEqual(text, generic, code);
   }
   assert.match(friendlyErrorMessage(new ApiError("NOT_STAFF_PERMITTED", "x", 403)), /^Aap ke paas is kaam ki ijazat nahi/);
+});
+
+test("every error code has Roman Urdu (default) and English text", () => {
+  for (const code of ERROR_CODES) assert.ok(hasBothLanguages(code), code);
+  assert.equal(friendlyErrorMessage(new ApiError("USER_NOT_FOUND", "x", 404)), "Is number ka koi account nahi. Pehle sign up karein.");
+  assert.equal(friendlyErrorMessage(new ApiError("USER_NOT_FOUND", "x", 404), "en"), "No account found for this number. Please sign up.");
+  assert.equal(friendlyErrorMessage(new Error("boom")), "Kuch gadbad ho gayi. Dobara koshish karein.");
 });
