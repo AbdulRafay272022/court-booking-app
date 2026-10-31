@@ -126,7 +126,7 @@ export function BookingCard({
       <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${row.player_name ?? "Booking"}, ${row.short_code}`} style={{ padding: space[4], gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[3] }}>
           <Avatar name={row.player_name ?? "?"} size={44} tone={row.kind === "refund" ? "waiting" : "info"} uri={row.player_avatar_url} />
-          <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text variant="bodyStrong">
               {row.player_name ?? "Player"}
               {row.kind === "refund" ? " · refund" : ""}
@@ -135,7 +135,8 @@ export function BookingCard({
               {refundLine ?? `${formatTimeRange(row.starts_at, row.ends_at)} · ${durationLabel(row.duration_minutes)}`}
             </Text>
           </View>
-          <View style={{ alignItems: "flex-end", gap: space[1] }}>
+          {/* Capped so a long status ("Approval ke intezar") never squeezes the name to one letter per line. */}
+          <View style={{ alignItems: "flex-end", gap: space[1], maxWidth: "45%", flexShrink: 1 }}>
             {statusChip(row)}
             {row.checked_in ? <SmallChip label="Checked in" tone="open" /> : null}
             {isStatusPending(row) ? <StatusPendingChip /> : null}

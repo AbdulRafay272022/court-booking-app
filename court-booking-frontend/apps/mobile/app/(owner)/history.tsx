@@ -172,6 +172,7 @@ export default function HistoryScreen() {
     return (
       <Chip
         key={key}
+        solid
         label={STATUS_FILTERS.find((f) => f.key === key)?.label ?? key}
         selected={on}
         onPress={() => setStatuses(on ? [] : [key])}
@@ -209,11 +210,11 @@ export default function HistoryScreen() {
           trailing={<View style={{ paddingHorizontal: space[3] }}><Search size={18} color={palette.muted} /></View>}
         />
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-          <Chip label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
-          <Chip label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />
-          <Chip label="Is hafte" selected={preset === "hafta"} onPress={() => setPreset("hafta")} />
-          <Chip label="Is mahine" selected={preset === "mahina"} onPress={() => setPreset("mahina")} />
-          <Chip label="Custom" selected={preset === "custom"} onPress={() => setPreset("custom")} />
+          <Chip solid label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
+          <Chip solid label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />
+          <Chip solid label="Is hafte" selected={preset === "hafta"} onPress={() => setPreset("hafta")} />
+          <Chip solid label="Is mahine" selected={preset === "mahina"} onPress={() => setPreset("mahina")} />
+          <Chip solid label="Custom" selected={preset === "custom"} onPress={() => setPreset("custom")} />
         </View>
         {preset === "custom" ? (
           <View style={{ flexDirection: "row", gap: space[3], flexWrap: "wrap" }}>
@@ -226,15 +227,11 @@ export default function HistoryScreen() {
           </View>
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Jaldi filter">
-          <Chip label="Sab" selected={statuses.length === 0} onPress={() => setStatuses([])} />
+          <Chip solid label="Sab" selected={statuses.length === 0} onPress={() => setStatuses([])} />
           {["completed", "short_paid", "cancelled", "status_pending"].map(statusChip)}
         </View>
-        <SelectButton label="Courts" value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} disabled={allCourts.length === 0} />
-        <SelectButton
-          label="Status"
-          value={statuses.length === 0 ? "Sab status" : statuses.map((s) => STATUS_FILTERS.find((f) => f.key === s)?.label ?? s).join(", ")}
-          onPress={() => setSheet("status")}
-        />
+        {/* OPaisa History: search + status chips + date chips only; the courts picker appears when there is a choice. */}
+        {allCourts.length > 1 ? <SelectButton label="Courts" value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} /> : null}
 
         {first ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[3], backgroundColor: palette.white, borderRadius: radius.tile, padding: space[4] }}>

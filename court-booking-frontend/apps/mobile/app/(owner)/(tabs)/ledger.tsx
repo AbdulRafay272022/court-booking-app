@@ -173,14 +173,14 @@ export default function LedgerScreen() {
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Muddat">
             {(["7d", "30d", "month"] as const).map((k) => (
-              <Chip key={k} label={RANGE_LABEL[k]} selected={rangeKey === k} onPress={() => setRangeKey(k)} />
+              <Chip key={k} solid label={RANGE_LABEL[k]} selected={rangeKey === k} onPress={() => setRangeKey(k)} />
             ))}
           </View>
           {courts.length > 1 ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Court">
-              <Chip label="Sab courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
+              <Chip solid label="Sab courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
               {courts.map((c) => (
-                <Chip key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
+                <Chip key={c.id} solid label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
               ))}
             </View>
           ) : null}
@@ -224,7 +224,7 @@ export default function LedgerScreen() {
                         <Text variant="bodyStrong" tone={isCorrection ? "danger" : "primary"}>
                           {`${isCorrection ? "-" : ""}PKR ${formatPKR(Math.abs(entry.amount_pkr))}`}
                         </Text>
-                        {!isCorrection && mayCorrect ? <Button label="Theek karein" variant="soft" size="sm" onPress={() => setCorrecting(entry)} accessibilityLabel={`${entry.player ?? "Walk-in"} ki payment theek karein`} /> : null}
+                        {!isCorrection && mayCorrect ? <Button label="Theek karein" variant="quiet" size="sm" onPress={() => setCorrecting(entry)} accessibilityLabel={`${entry.player ?? "Walk-in"} ki payment theek karein`} /> : null}
                       </View>
                     </View>
                   );
@@ -254,7 +254,7 @@ function Tile({ label, value, testID }: { label: string; value: number; testID?:
       <Text variant="caption" weight="bold" tone="heroMuted">
         {label}
       </Text>
-      <Text variant="bodyBold" tone="hero">{`PKR ${formatPKR(value)}`}</Text>
+      <Text variant="bodyBold" tone="hero">{formatPKR(value)}</Text>
     </View>
   );
 }
