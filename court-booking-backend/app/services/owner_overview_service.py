@@ -971,12 +971,14 @@ class OwnerOverviewService:
                 "Only a confirmed booking can be marked completed",
             )
         if booking.status == BookingStatus.NO_SHOW:
+            from app.services.phase3_service import NOSHOW_REVERSAL_MESSAGE
+
             # audit fixes 2026-10-31: taking back a no-show asks the final price, the amount received and the method
             # (POST /owners/bookings/{id}/noshow-reverse); "Haan" here used to record the whole price as cash.
             raise AppError(
                 status.HTTP_409_CONFLICT,
                 ErrorCode.NOSHOW_REVERSAL_REQUIRED,
-                "Say the final price, the amount received and how it was paid to take back this no-show.",
+                NOSHOW_REVERSAL_MESSAGE,
             )
         now = datetime.now(timezone.utc)
         if now < booking.ends_at:

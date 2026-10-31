@@ -16,7 +16,7 @@ from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.services.duplicate_proof import used_on_bookings
 from app.schemas.staff_activity import StaffActivityOut
-from app.schemas.bank_check import BankCheckOut
+from app.schemas.bank_check import BankCheckOut, BankMissingDecideIn, BankMissingStateOut
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
 from app.schemas.owner_dashboard import ApprovalsQueuePageOut, GrowthOut, LedgerOut, PendingApprovalOut, TodayOut
@@ -475,3 +475,22 @@ async def owner_bank_check(
     from app.services.bank_check_service import bank_check
 
     return BankCheckOut(**await bank_check(db, owner, venue_id, date_))
+
+
+@router.post("/bank-check/{entry_id}/not-received", response_model=BankMissingStateOut)
+async def owner_bank_not_received(entry_id: uuid.UUID, db: DbSession, settings: AppSettings, owner: RequireStaffCapable) -> BankMissingStateOut:
+    """audit fixes 2026-10-31 (b): the owner says a balance transfer approved at the venue is not in the bank. The money stops
+    counting (a reversing ledger entry); it shows in red on "Staff ka kaam" under whoever approved it. No player message."""
+    from app.services.bank_missing_service import mark_not_received
+
+    return BankMissingStateOut(entry_id=entry_id, **await mark_not_received(db, settings, owner, entry_id))
+
+
+@router.post("/bank-check/{entry_id}/decide", response_model=BankMissingStateOut)
+async def owner_bank_not_received_decide(
+    entry_id: uuid.UUID, payload: BankMissingDecideIn, db: DbSession, settings: AppSettings, owner: RequireStaffCapable
+) -> BankMissingStateOut:
+    """staff = "Staff se wasool karein" (no player message); player = "Player se baqi maangein" (the short-payment flow)."""
+    from app.services.bank_missing_service import decide
+
+    return BankMissingStateOut(entry_id=entry_id, **await decide(db, settings, owner, entry_id, payload.decision))

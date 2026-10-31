@@ -80,6 +80,9 @@ def _empty_row(user: User | None, uid: uuid.UUID | None) -> dict:
         "transfers_pkr": 0,
         "refunds_paid_pkr": 0,
         "total_recorded_pkr": 0,
+        "bank_missing": 0,
+        "bank_missing_pkr": 0,
+        "bank_missing_open": 0,
     }
 
 
@@ -128,7 +131,15 @@ async def staff_activity(
         )
     ).scalars().all()
 
-    actor_ids = {a.actor_id for a in audits if a.actor_id} | {e.recorded_by for e in entries if e.recorded_by}
+    # audit fixes 2026-10-31 (b): transfers marked "bank mein nahi mila", under the person who approved the screenshot
+    from app.services.bank_missing_service import for_venue as bank_missing_for_venue
+
+    bank_missing = await bank_missing_for_venue(db, venue.id, t0, t1)
+    actor_ids = (
+        {a.actor_id for a in audits if a.actor_id}
+        | {e.recorded_by for e in entries if e.recorded_by}
+        | {m["approved_by_id"] for m in bank_missing if m["approved_by_id"]}
+    )
     users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(actor_ids)))).scalars().all()} if actor_ids else {}
     # player-actor rows (self check-in, or pre-fix rows that named the player) are not staff activity
     def counted(uid: uuid.UUID | None) -> bool:
@@ -184,6 +195,14 @@ async def staff_activity(
         elif e.method == PaymentMethod.BANK_TRANSFER_PROOF and e.amount_pkr > 0:
             r["transfers"] += 1
             r["transfers_pkr"] += e.amount_pkr
+    for m in bank_missing:
+        if not counted(m["approved_by_id"]):
+            continue
+        r = row(m["approved_by_id"])
+        r["bank_missing"] += 1
+        r["bank_missing_pkr"] += m["amount_pkr"]
+        if m["decision"] is None:
+            r["bank_missing_open"] += 1
     for r in rows.values():
         r["total_recorded_pkr"] = r["cash_pkr"] + r["transfers_pkr"]
 
@@ -225,4 +244,5 @@ async def staff_activity(
         "people": ordered,
         "totals": totals,
         "no_shows": no_show_out,
+        "bank_missing": bank_missing,
     }

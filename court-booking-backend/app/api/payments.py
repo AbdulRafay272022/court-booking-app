@@ -14,7 +14,7 @@ from app.schemas.payment_entry import PaymentEntryIn, PaymentEntryOut, PaymentEn
 from app.services.booking_service import BookingService
 from app.services.notification_service import NotificationService
 from app.services.payment_ledger_service import PaymentLedgerService
-from app.services.payment_service import PaymentService
+from app.services.payment_service import BALANCE_PROOF_STATUSES, PaymentService, is_balance_proof
 from app.services.venue_service import VenueService
 from app.utils.image import InvalidImageError, validate_image
 
@@ -106,14 +106,15 @@ async def submit_payment_proof(
     return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
 
 
-async def _after_money(db, settings, booking) -> None:
+async def _after_money(db, settings, booking, *, notify: bool = True) -> None:
     """audit 2026-10-28 Phase 3: money landed on a booking -- 50 points if it is now fully paid by transfer (flag
-    player_points), and a carried due is settled once the balance reaches 0. Best effort, never fails the approval."""
+    player_points), and a carried due is settled once the balance reaches 0. Best effort, never fails the approval.
+    `notify=False` (a balance screenshot approved at the venue): the same bookkeeping, no message to the player."""
     from app.services.phase3_service import maybe_award_transfer_points, sync_claim_after_payment
 
     try:
-        await maybe_award_transfer_points(db, settings, booking)
-        await sync_claim_after_payment(db, settings, booking)
+        await maybe_award_transfer_points(db, settings, booking, notify=notify)
+        await sync_claim_after_payment(db, settings, booking, notify=notify)
         await db.refresh(booking)
     except Exception:  # noqa: BLE001
         import structlog
@@ -172,6 +173,9 @@ async def approve_payment(
     payment_service.require_awaiting(payment, booking)
     await payment_service.require_duplicate_confirmed(payment, bool(payload and payload.confirm_duplicate))
     paid_before = int(round(float(booking.amount_paid or 0)))
+    # audit fixes 2026-10-31 (a): a balance / no-show-reversal screenshot is checked at the venue; whoever approves it owns it,
+    # and the player is not messaged about it (no receipt, no "confirmed", no points notice). An advance is unchanged.
+    at_venue = is_balance_proof(payment) and booking.status in BALANCE_PROOF_STATUSES
 
     payment = await payment_service.approve_payment(
         payment,
@@ -181,13 +185,14 @@ async def approve_payment(
         accept_mode=payload.accept_mode if payload else None,
     )
     await db.refresh(booking)
-    await _after_money(db, settings, booking)
-    await _receipt_whatsapp(db, settings, booking, int(round(float(booking.amount_paid or 0))) - paid_before)
+    await _after_money(db, settings, booking, notify=not at_venue)
+    if not at_venue:
+        await _receipt_whatsapp(db, settings, booking, int(round(float(booking.amount_paid or 0))) - paid_before)
     try:
         # audit fixes 2026-10-31: the transfer sent with a no-show reversal, approved as correct -> +10 (once, flag player_points)
         from app.services.phase3_service import award_noshow_transfer_points
 
-        await award_noshow_transfer_points(db, settings, owner, booking, payment)
+        await award_noshow_transfer_points(db, settings, owner, booking, payment, notify=not at_venue)
     except Exception:  # noqa: BLE001 -- the approval already committed
         import structlog
 
@@ -195,7 +200,7 @@ async def approve_payment(
 
     court = await db.get(Court, booking.court_id)
     player = await db.get(User, booking.player_id) if booking.player_id else None
-    if court is not None and player is not None:
+    if court is not None and player is not None and not at_venue:
         venue = await db.get(Venue, court.venue_id)
         await NotificationService(db, settings).notify_booking_confirmed(
             user=player,
@@ -228,8 +233,30 @@ async def reject_payment(
             status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR, "A reason is required to reject a payment"
         )
 
+    at_venue = is_balance_proof(payment) and booking.status in BALANCE_PROOF_STATUSES
     payment = await payment_service.reject_payment(payment, booking, owner, payload.reason)
     await db.refresh(booking)
+
+    if at_venue:
+        # audit fixes 2026-10-31 (c): a rejected balance / no-show-reversal screenshot is a short payment -- the amount is not
+        # counted and the normal "kam mila" flow starts (Sahi hai / Ghalat hai, +5 / -20, the due carried). With the reply flag
+        # off the player gets the plain rejection message as before.
+        from app.services.phase3_service import start_short_round
+        from app.utils.timezone import format_pkr
+
+        amount = int(round(float(payment.amount_claimed or payment.ocr_amount or 0)))
+        what = f"Transfer ka screenshot ({format_pkr(amount)})" if amount > 0 else "Transfer ka screenshot"
+        try:
+            asked = await start_short_round(
+                db, settings, booking, owner, note=f"{what} qabool nahi hua. Wajah: {payload.reason}.", plain_notice=False
+            )
+        except Exception:  # noqa: BLE001 -- the rejection already committed
+            import structlog
+
+            structlog.get_logger().warning("phase3.reject_short_round_failed", exc_info=True)
+            asked = False
+        if asked:
+            return PaymentSubmitResponse(payment=_payment_out(payment), booking=BookingOut.model_validate(booking))
 
     court = await db.get(Court, booking.court_id)
     player = await db.get(User, booking.player_id) if booking.player_id else None

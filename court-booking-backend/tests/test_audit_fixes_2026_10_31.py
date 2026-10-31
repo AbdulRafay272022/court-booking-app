@@ -214,7 +214,8 @@ async def test_main_aaya_tha_reverse_by_transfer_needs_a_screenshot_and_approval
     assert [p.reason for p in pts if p.reason == "noshow_transfer_ok"] == ["noshow_transfer_ok"]
     assert sum(p.delta for p in pts if p.reason == "noshow_transfer_ok") == 10
     assert await _audits(db_session_factory, "points.noshow_transfer_awarded")
-    assert await log_rows(db_session_factory, user_id=player.id, event_type="player_points_reward")
+    # audit fixes 2026-10-31 (a): approved at the venue -> the points are given without a message
+    assert not await log_rows(db_session_factory, user_id=player.id, event_type="player_points_reward")
     # once per booking
     async with db_session_factory() as s:
         from app.config import get_settings

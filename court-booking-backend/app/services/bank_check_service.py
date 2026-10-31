@@ -58,6 +58,9 @@ async def bank_check(db: AsyncSession, actor: User, venue_id: uuid.UUID | None, 
     ).all()
     user_ids = {e.recorded_by for e, _b, _c in rows if e.recorded_by} | {b.player_id for _e, b, _c in rows if b.player_id}
     users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()} if user_ids else {}
+    from app.services.bank_missing_service import is_balance_entry, states
+
+    marks = await states(db, [e.id for e, _b, _c in rows])
     items = []
     for entry, booking, court in rows:
         player = users.get(booking.player_id) if booking.player_id else None
@@ -74,6 +77,10 @@ async def bank_check(db: AsyncSession, actor: User, venue_id: uuid.UUID | None, 
                 "credited_at": entry.created_at,
                 "approved_by": (by.name or by.phone) if by else "auto",
                 "kind": "balance" if (entry.note or "").startswith("Balance") else "advance",
+                "can_mark": actor.role == UserRole.OWNER and is_balance_entry(entry) and entry.id not in marks,
+                "not_received": entry.id in marks,
+                "decision": marks[entry.id]["decision"] if entry.id in marks else None,
+                "approved_by_role": by.role.value if by else None,
             }
         )
-    return {"venue_id": venue.id, "date": day, "items": items, "total_pkr": sum(i["amount_pkr"] for i in items)}
+    return {"venue_id": venue.id, "date": day, "items": items, "total_pkr": sum(i["amount_pkr"] for i in items if not i["not_received"])}

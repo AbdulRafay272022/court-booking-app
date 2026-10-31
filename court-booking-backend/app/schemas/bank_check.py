@@ -3,6 +3,8 @@
 import uuid
 from datetime import date, datetime
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -17,6 +19,23 @@ class BankCheckItemOut(BaseModel):
     credited_at: datetime
     approved_by: str
     kind: str  # "advance" | "balance"
+    # audit fixes 2026-10-31 (b): a balance transfer the owner marked "bank mein nahi mila"
+    can_mark: bool = False
+    not_received: bool = False
+    decision: str | None = None  # staff | player, once the owner chose
+    approved_by_role: str | None = None
+
+
+class BankMissingDecideIn(BaseModel):
+    decision: Literal["staff", "player"]
+
+
+class BankMissingStateOut(BaseModel):
+    entry_id: uuid.UUID
+    not_received: bool = True
+    marked_at: datetime
+    decision: str | None = None
+    decided_at: datetime | None = None
 
 
 class BankCheckOut(BaseModel):

@@ -22,6 +22,10 @@ class StaffActivityRowOut(BaseModel):
     transfers_pkr: int
     refunds_paid_pkr: int
     total_recorded_pkr: int
+    # audit fixes 2026-10-31 (b): balance transfers this person approved that the owner marked "bank mein nahi mila"
+    bank_missing: int = 0
+    bank_missing_pkr: int = 0
+    bank_missing_open: int = 0  # still waiting for the owner's choice (shown red)
 
 
 class StaffActivityTotalsOut(BaseModel):
@@ -37,6 +41,24 @@ class StaffActivityTotalsOut(BaseModel):
     transfers_pkr: int
     refunds_paid_pkr: int
     total_recorded_pkr: int
+    bank_missing: int = 0
+    bank_missing_pkr: int = 0
+    bank_missing_open: int = 0
+
+
+class StaffBankMissingOut(BaseModel):
+    entry_id: uuid.UUID
+    booking_id: uuid.UUID
+    code: str
+    player_name: str | None
+    amount_pkr: int
+    credited_at: datetime
+    approved_by_id: uuid.UUID | None
+    approved_by_name: str | None
+    approved_by_role: str | None
+    marked_at: datetime
+    decision: str | None = None  # None = waiting (red) | staff | player
+    decided_at: datetime | None = None
 
 
 class StaffNoShowOut(BaseModel):
@@ -64,3 +86,4 @@ class StaffActivityOut(BaseModel):
     people: list[StaffActivityRowOut]
     totals: StaffActivityTotalsOut
     no_shows: list[StaffNoShowOut]
+    bank_missing: list[StaffBankMissingOut] = []

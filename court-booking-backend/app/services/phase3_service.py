@@ -51,6 +51,8 @@ REPLY_BONUS_WINDOW = timedelta(days=4)
 NOSHOW_TRANSFER_POINTS = 10
 NOSHOW_REVERSE_ORIGIN = "noshow_reverse"
 DUE_DONE_ORIGIN = "due_done"
+# what an old app build shows (it prints the server message) when its "Haan" on a no-show is refused
+NOSHOW_REVERSAL_MESSAGE = "No-show hatane ke liye web dashboard istemal karein (naya app update jald)"
 ARRIVAL_RADIUS_M = 200
 # a venue pin this close to a city centre is the wizard's fallback pin, not the real place (packages/types CITY_CENTRES)
 CITY_CENTRE_RADIUS_M = 300
@@ -150,8 +152,9 @@ async def add_points(db: AsyncSession, player_id: uuid.UUID, booking_id: uuid.UU
     return delta
 
 
-async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, booking: Booking) -> int:
-    """50 points once the whole booking is paid and every rupee came by transfer (no cash, no manual 'other' entry)."""
+async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, booking: Booking, *, notify: bool = True) -> int:
+    """50 points once the whole booking is paid and every rupee came by transfer (no cash, no manual 'other' entry).
+    `notify=False`: a balance screenshot approved at the venue -- the points are given, the player is not messaged."""
     if booking.player_id is None or not await flag_on(db, "player_points"):
         return 0
     if booking.status not in (BookingStatus.BOOKED, BookingStatus.COMPLETED) or float(booking.balance_due or 0) > 0:
@@ -161,7 +164,7 @@ async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, book
         return 0
     got = await add_points(db, booking.player_id, booking.id, TRANSFER_POINTS, "transfer_booking")
     await db.commit()
-    if got:
+    if got and notify:
         player = await db.get(User, booking.player_id)
         bal = await points_balance(db, booking.player_id)
         code = short_code(booking.id)
@@ -275,9 +278,13 @@ async def dues_active(db: AsyncSession) -> bool:
     return await flag_on(db, "short_payment_reply") or await flag_on(db, "player_dues")
 
 
-async def open_short_claim(db: AsyncSession, settings: Settings, booking: Booking) -> bool:
+async def open_short_claim(db: AsyncSession, settings: Settings, booking: Booking, *, fresh_round: bool = False,
+                           note: str | None = None) -> bool:
     """Called after a completion left money due. Opens (or refreshes) the claim; with short_payment_reply on, the player is
-    asked "Sahi hai / Ghalat hai" (returns True so the caller does not also send the plain notice)."""
+    asked "Sahi hai / Ghalat hai" (returns True so the caller does not also send the plain notice).
+    `fresh_round` (a rejected balance screenshot, a transfer the bank never got): an existing claim starts over -- a new
+    notice, a new 24 h, a new 4-day bonus window, reply and owner decision cleared. The +5 / -20 still happen at most once
+    per booking (point_entries' unique index). `note` goes first in the notice ("Transfer ... qabool nahi hua: <reason>")."""
     if not await dues_active(db):
         return False
     _court, venue = await _venue_of(db, booking)
@@ -302,13 +309,21 @@ async def open_short_claim(db: AsyncSession, settings: Settings, booking: Bookin
         claim.total_pkr, claim.paid_pkr, claim.due_pkr = total, paid, due
         claim.resolved_at, claim.resolution = None, None
         fresh = False
+        if fresh_round:
+            claim.status, claim.reply_deadline_at = "awaiting_reply", now + REPLY_WINDOW
+            claim.replied_at, claim.player_reason = None, None
+            claim.owner_decision, claim.decided_by, claim.decided_at = None, None, None
+            if claim.penalty_returned or not claim.penalty_applied:
+                claim.penalty_applied, claim.penalty_returned = 0, False
+            fresh = True
     await db.commit()
     if asking and fresh:
         player = await db.get(User, booking.player_id)
         code = short_code(booking.id)
+        lead = f"{note} " if note else ""
         await _notify(
             db, settings, player, "player_short_ask", "Booking ka hisaab check karein",
-            f"Booking {code}: Total {format_pkr(total)}, diye {format_pkr(paid)}, baqi {format_pkr(due)}. Sahi hai ya ghalat? "
+            f"Booking {code}: {lead}Total {format_pkr(total)}, diye {format_pkr(paid)}, baqi {format_pkr(due)}. Sahi hai ya ghalat? "
             f"24 ghante mein jawab na diya to 20 points katenge. 4 din ke andar jawab dene par 5 points milenge.",
             reference_id=booking.id, template="khelo_short_payment",
             params=[code, format_pkr(total), format_pkr(paid), format_pkr(due)],
@@ -328,8 +343,13 @@ def claim_out(claim: ShortPaymentClaim, booking: Booking | None = None) -> dict:
         "player_name": booking.player_name if booking is not None else None,
         "starts_at": booking.starts_at if booking is not None else None,
         "created_at": claim.created_at,
-        "bonus_until": claim.created_at + REPLY_BONUS_WINDOW if claim.created_at else None,
+        "bonus_until": notice_at(claim) + REPLY_BONUS_WINDOW if claim.reply_deadline_at else None,
     }
+
+
+def notice_at(claim: ShortPaymentClaim) -> datetime:
+    """When the player was (last) asked: the 24 h reply deadline is set from that moment (also on a fresh round)."""
+    return claim.reply_deadline_at - REPLY_WINDOW
 
 
 def can_reply_short(claim: ShortPaymentClaim) -> bool:
@@ -359,7 +379,7 @@ async def reply_short(db: AsyncSession, settings: Settings, player: User, claim_
     claim.status = "confirmed" if answer == "yes" else "disputed"
     claim.player_reason = reason if answer == "no" else None
     bonus = 0
-    if now <= claim.created_at + REPLY_BONUS_WINDOW:
+    if now <= notice_at(claim) + REPLY_BONUS_WINDOW:
         bonus = await add_points(db, player.id, claim.booking_id, REPLY_POINTS, "short_reply")
     await db.commit()
     await db.refresh(claim)
@@ -383,8 +403,9 @@ async def _actor_can_record(db: AsyncSession, settings: Settings, actor: User, b
     return await BookingService(db, settings).require_accessible_booking(booking_id, actor, permission="record_payments")
 
 
-async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClaim, how: str) -> None:
-    """Settle a due ("paid" / "waived") and give back the no-reply penalty if one was taken. Commits."""
+async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClaim, how: str, *, notify: bool = True) -> None:
+    """Settle a due ("paid" / "waived") and give back the no-reply penalty if one was taken. Commits. `notify=False`: settled by
+    a screenshot approved at the venue -- no message to the player."""
     if claim.resolved_at is not None:
         return
     claim.resolved_at = datetime.now(timezone.utc)
@@ -394,6 +415,8 @@ async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClai
         returned = await add_points(db, claim.player_id, claim.booking_id, claim.penalty_applied, "short_no_reply_returned")
         claim.penalty_returned = True
     await db.commit()
+    if not notify:
+        return
     player = await db.get(User, claim.player_id) if claim.player_id else None
     code = short_code(claim.booking_id)
     text = "clear ho gaya" if how == "paid" else "venue ne maaf kar diya"
@@ -580,9 +603,11 @@ async def reverse_noshow(db: AsyncSession, settings: Settings, actor: User, book
     return booking
 
 
-async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, actor: User, booking: Booking, payment) -> int:
+async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, actor: User, booking: Booking, payment, *,
+                                       notify: bool = True) -> int:
     """The owner approved, as correct, the transfer screenshot sent with a no-show reversal: +10 points, once per booking,
-    audited. Only with player_points on."""
+    audited. Only with player_points on. The approval at the venue sends no message (`notify=False`); the points show in the
+    player's points history."""
     from app.services.audit_service import AuditService
 
     raw = payment.ocr_raw if isinstance(payment.ocr_raw, dict) else {}
@@ -595,7 +620,7 @@ async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, act
             entity_id=booking.id, new_value={"points": got, "payment_id": str(payment.id)},
         )
     await db.commit()
-    if got:
+    if got and notify:
         player = await db.get(User, booking.player_id)
         bal = await points_balance(db, booking.player_id)
         code = short_code(booking.id)
@@ -607,11 +632,26 @@ async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, act
     return got
 
 
-async def sync_claim_after_payment(db: AsyncSession, settings: Settings, booking: Booking) -> None:
+async def sync_claim_after_payment(db: AsyncSession, settings: Settings, booking: Booking, *, notify: bool = True) -> None:
     """A later payment (e.g. an approved balance screenshot) that clears the balance settles the due too."""
     claim = await claim_for_booking(db, booking.id)
     if claim is not None and claim.resolved_at is None and float(booking.balance_due or 0) <= 0:
-        await _resolve(db, settings, claim, "paid")
+        await _resolve(db, settings, claim, "paid", notify=notify)
+
+
+async def start_short_round(db: AsyncSession, settings: Settings, booking: Booking, actor: User | None, *, note: str,
+                            plain_notice: bool = True) -> bool:
+    """audit fixes 2026-10-31 (b, c): money the venue counted on did not come (a rejected balance / no-show-reversal
+    screenshot, a transfer the bank never got). Exactly the short-payment flow: notice with total / paid / due and `note`,
+    "Sahi hai / Ghalat hai", +5 within 4 days, -20 after 24 h without a reply, "Ghalat hai" to the owner, the due carried to
+    the next booking. Returns True when the player was asked. With the reply flag off and `plain_notice`, the plain
+    "baqi hai" notice goes out instead."""
+    asked = await open_short_claim(db, settings, booking, fresh_round=True, note=note)
+    if not asked and plain_notice and actor is not None and float(booking.balance_due or 0) > 0:
+        from app.services.unsettled_notices import notify_unsettled
+
+        await notify_unsettled(db, settings, booking, actor, "short", short_pkr=int(round(float(booking.balance_due))))
+    return asked
 
 
 async def run_short_payment_job(db: AsyncSession, settings: Settings, now: datetime | None = None) -> dict:
@@ -630,7 +670,7 @@ async def run_short_payment_job(db: AsyncSession, settings: Settings, now: datet
             taken = 0
             if claim.player_id:
                 taken = -await add_points(db, claim.player_id, claim.booking_id, -NO_REPLY_PENALTY, "short_no_reply")
-            claim.penalty_applied = taken
+            claim.penalty_applied = max(claim.penalty_applied or 0, taken)
             await db.commit()
             penalised += 1
             player = await db.get(User, claim.player_id) if claim.player_id else None
@@ -759,9 +799,7 @@ async def decide_noshow(db: AsyncSession, settings: Settings, actor: User, reply
     if reply is None:
         raise _err(ErrorCode.NOT_FOUND, "Not found", status.HTTP_404_NOT_FOUND)
     if decision == "reverse":
-        raise _err(ErrorCode.NOSHOW_REVERSAL_REQUIRED,
-                   "Say the final price, the amount received and how it was paid to take back this no-show.",
-                   status.HTTP_409_CONFLICT)
+        raise _err(ErrorCode.NOSHOW_REVERSAL_REQUIRED, NOSHOW_REVERSAL_MESSAGE, status.HTTP_409_CONFLICT)
     service = BookingService(db, settings)
     try:
         booking = await service.require_accessible_booking(reply.booking_id, actor, permission="check_in")
