@@ -16,7 +16,7 @@ import { STATE_CHIP, isGrey, parsePkr, slotWhen } from "@/lib/round2-format";
 import { waitLabel } from "@/lib/owner-floodlight";
 import { BottomSheet, DangerButton, OutlineButton, PrimaryButton } from "@/components/overview/ui";
 import { BookingLinks } from "@/components/booking-links";
-import { ScreenshotThumb } from "@/components/screenshot-viewer";
+import { NoShotTile, ScreenshotThumb } from "@/components/screenshot-viewer";
 
 /** Client-side reject presets (the API takes free text, contract: POST /payments/{id}/reject {reason}). "Kuch aur" = type
  * your own. */
@@ -61,10 +61,10 @@ export function duplicateText(n: number): string {
 
 function DuplicateChip({ n }: { n: number }) {
   return (
-    <View testID="duplicate-chip" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: palette.dangerTint, borderRadius: radius.xs, paddingHorizontal: 10, paddingVertical: 7 }}>
+    <View testID="duplicate-chip" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: palette.dangerTint, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 }}>
       <TriangleAlert size={15} color={palette.danger} />
       <Text variant="meta" weight="bold" tone="danger" style={{ flexShrink: 1 }}>
-        {`Duplicate: ${duplicateText(n)}`}
+        {duplicateText(n)}
       </Text>
     </View>
   );
@@ -94,7 +94,8 @@ export function ApprovalCard({
   onAcknowledge: (moneyReceived: boolean) => void;
 }) {
   const grey = isGrey(item);
-  const dupN = grey ? null : duplicateChipCount(item.duplicate);
+  // the backend's flag decides (a flagged screenshot whose earlier use was never credited has count 0 and still warns)
+  const dupN = grey || !item.duplicate ? null : duplicateChipCount(item.duplicate) ?? 0;
   const hasShot = item.has_screenshot || !!item.proof_url;
   return (
     <View
@@ -124,8 +125,9 @@ export function ApprovalCard({
       {item.player_context ? <PlayerContext ctx={item.player_context} /> : null}
 
       {!grey ? (
-        <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
-          {hasShot ? <ScreenshotThumb compact paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : null}
+        // Approvals board: the screenshot tile on the left (tap = full size), the board's placeholder when there is none
+        <View style={{ flexDirection: "row", gap: space[3], alignItems: "stretch" }}>
+          {hasShot ? <ScreenshotThumb compact paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : <NoShotTile />}
           <View style={{ flex: 1, gap: space[2] }}>
             <AmountBoxes item={item} />
             {dupN != null ? <DuplicateChip n={dupN} /> : null}

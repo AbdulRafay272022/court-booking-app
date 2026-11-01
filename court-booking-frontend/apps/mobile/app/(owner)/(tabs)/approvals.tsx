@@ -233,8 +233,8 @@ export default function ApprovalsScreen() {
             : "Payments load ho rahi hain"}
         </Text>
       </View>
-      {query.data && closed > 0 ? (
-        // Approvals board: two tabs, "Baqi · N" (default) and "Cancel/expire · N".
+      {query.data ? (
+        // Approvals board: two tabs, always, "Baqi · N" (default) and "Cancel/expire · N".
         <SegmentedToggle
           tone="dark"
           testID="approvals-view"
@@ -267,14 +267,14 @@ export default function ApprovalsScreen() {
         />
       ) : null}
       {bulkable.length >= 2 && (show !== "closed") ? (
-        <View testID="bulk-card" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], paddingLeft: 14, boxShadow: shadow.card }}>
+        <View testID="bulk-card" style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], paddingLeft: 14, boxShadow: shadow.card }}>
           <View style={{ width: 40, height: 40, borderRadius: radius.sm, backgroundColor: palette.openTint, alignItems: "center", justifyContent: "center" }}>
             <CircleCheck size={20} color={palette.open} />
           </View>
-          <Text variant="body" style={{ flex: 1, minWidth: 150 }}>
+          <Text variant="body" style={{ flex: 1 }}>
             <Text variant="bodyBold">{`${bulkable.length} screenshots`}</Text> ka amount bilkul match hai
           </Text>
-          <Button label="Sab approve" size="sm" onPress={() => setBulk({ ids: bulkable.map((b) => b.payment_id), progress: null, error: null, busy: false })} testID="bulk-open" />
+          <Button label={bulkable.length === 2 ? "Dono approve" : `Sab ${bulkable.length} approve`} size="sm" onPress={() => setBulk({ ids: bulkable.map((b) => b.payment_id), progress: null, error: null, busy: false })} testID="bulk-open" />
         </View>
       ) : null}
       {loading ? (

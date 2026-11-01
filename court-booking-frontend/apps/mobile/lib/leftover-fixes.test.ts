@@ -72,8 +72,8 @@ test("duplicateChipCount: hidden for no signal or 0, the count otherwise", () =>
 });
 
 test("duplicateUsedText: singular / plural, and no '0 bookings'", () => {
-  assert.equal(duplicateUsedText(1), "Ye screenshot pehle bhi 1 booking par use hua hai");
-  assert.equal(duplicateUsedText(2), "Ye screenshot pehle bhi 2 bookings par use hua hai");
+  assert.equal(duplicateUsedText(1), "Ye screenshot pehle 1 booking par use ho chuka hai");
+  assert.equal(duplicateUsedText(2), "Ye screenshot pehle 2 bookings par use ho chuka hai");
   assert.doesNotMatch(duplicateUsedText(0), /\b0\b/);
 });
 

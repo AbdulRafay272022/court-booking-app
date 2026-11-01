@@ -164,7 +164,7 @@ export function duplicateChipCount(duplicate: { used_on_bookings?: number | null
  * never credited (count 0) still needs the confirm, so it gets a line without a number instead of "0 bookings". */
 export function duplicateUsedText(n: number): string {
   if (!(n > 0)) return "Ye screenshot pehle bhi kisi aur payment mein bheja gaya tha";
-  return `Ye screenshot pehle bhi ${n} ${n === 1 ? "booking" : "bookings"} par use hua hai`;
+  return `Ye screenshot pehle ${n} ${n === 1 ? "booking" : "bookings"} par use ho chuka hai`;
 }
 
 /** Stage 2: a refund whose screenshot was also credited on N OTHER bookings (OwnerRefund.duplicate_proof). */
