@@ -1,4 +1,4 @@
-import type { BookingStatusKey, MyPermissions, OwnerBookingRow, StaffPermissionKey } from "@court-booking/types";
+import { pktParts, type BookingStatusKey, type MyPermissions, type OwnerBookingRow, type StaffPermissionKey } from "@court-booking/types";
 
 import { palette } from "@court-booking/ui-tokens";
 
@@ -164,7 +164,7 @@ export function duplicateChipCount(duplicate: { used_on_bookings?: number | null
  * never credited (count 0) still needs the confirm, so it gets a line without a number instead of "0 bookings". */
 export function duplicateUsedText(n: number): string {
   if (!(n > 0)) return "Ye screenshot pehle bhi kisi aur payment mein bheja gaya tha";
-  return `Ye screenshot pehle bhi ${n} ${n === 1 ? "booking" : "bookings"} par use hua hai`;
+  return `Ye screenshot pehle ${n} ${n === 1 ? "booking" : "bookings"} par use ho chuka hai`;
 }
 
 /** Stage 2: a refund whose screenshot was also credited on N OTHER bookings (OwnerRefund.duplicate_proof). */
@@ -175,4 +175,53 @@ export function duplicateCreditText(n: number): string {
 /** Stage 2 (C.4): "N bookings ka status baqi" (singular for 1). */
 export function statusPendingLine(n: number): string {
   return `${n} ${n === 1 ? "booking" : "bookings"} ka status baqi`;
+}
+
+/** OPaisa History board: "6–7 PM", "8–9:30 PM", "11 PM–12 AM" (":00" dropped, one AM/PM when both ends share it). */
+export function compactTimeRange(start: string, end: string): string {
+  const part = (iso: string) => {
+    const p = pktParts(iso);
+    const h = p.hour % 12 === 0 ? 12 : p.hour % 12;
+    return { t: p.minute ? `${h}:${String(p.minute).padStart(2, "0")}` : String(h), m: p.hour < 12 ? "AM" : "PM" };
+  };
+  const s = part(start);
+  const e = part(end);
+  return s.m === e.m ? `${s.t}–${e.t} ${e.m}` : `${s.t} ${s.m}–${e.t} ${e.m}`;
+}
+
+/** The date tile on a History card: "SAT" over "24" (Pakistan day of the booking's start). */
+export function historyDateTile(start: string): { weekday: string; day: string } {
+  const p = pktParts(start);
+  return { weekday: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][p.weekday], day: String(p.day) };
+}
+
+/** The one status pill on a History card (board: Mukammal / Baqi / Cancelled / No-show). */
+export function historyStatus(row: Pick<OwnerBookingRow, "kind" | "status_key" | "completion" | "refund_status" | "status_pending">): { label: string; tone: "open" | "waiting" | "danger" | "neutral" | "info" } {
+  if (row.kind === "refund") return row.refund_status === "paid" ? { label: "Refund bheja", tone: "open" } : { label: "Refund baqi", tone: "waiting" };
+  if (row.kind === "cancelled" || row.status_key === "cancelled") return { label: "Cancelled", tone: "danger" };
+  if (row.status_key === "no_show") return { label: "No-show", tone: "neutral" };
+  if (row.completion?.result === "yes") return { label: "Mukammal", tone: "info" };
+  if (row.completion?.result === "no") return { label: "Baqi", tone: "waiting" };
+  if (row.status_pending === true) return { label: "Status baqi", tone: "waiting" };
+  return { label: rowStatusLabel(row), tone: "info" };
+}
+
+/** OStaffView "Aane wale players" row (minimal data: name, court, times, checked-in). No money: the staff endpoint has
+ * none on purpose. */
+export function arrivalRow(a: { court_name: string; starts_at: string; ends_at: string; checked_in: boolean }, nowMs: number = Date.now()): {
+  time: string;
+  meta: string;
+  status: string;
+  tone: "open" | "waiting" | "neutral";
+} {
+  const p = pktParts(a.starts_at);
+  const h = p.hour % 12 === 0 ? 12 : p.hour % 12;
+  const time = `${h}${p.minute ? `:${String(p.minute).padStart(2, "0")}` : ""} ${p.hour < 12 ? "AM" : "PM"}`;
+  const meta = `${a.court_name} · ${compactTimeRange(a.starts_at, a.ends_at)}`;
+  if (a.checked_in) return { time, meta, status: "✓ Aa gaya", tone: "open" };
+  const start = Date.parse(a.starts_at);
+  const end = Date.parse(a.ends_at);
+  if (nowMs < start) return { time, meta, status: "Aane wala", tone: "neutral" };
+  if (nowMs < end) return { time, meta, status: "Check-in baqi", tone: "waiting" };
+  return { time, meta, status: "Check-in nahi hua", tone: "waiting" };
 }

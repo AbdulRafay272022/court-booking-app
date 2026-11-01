@@ -8,8 +8,8 @@ import { unregisterPushNotifications } from "./push-notifications";
  * is a silent no-op. */
 export function confirmLogout() {
   confirmAction({
-    title: "Log out?",
-    message: "You'll need to verify your phone number again to log back in.",
+    title: "Log out karein?",
+    message: "Wapas aane ke liye mobile number aur password se login karna hoga.",
     confirmLabel: "Log out",
     destructive: true,
     onConfirm: () => void logoutNow(),

@@ -9,7 +9,7 @@ export interface CourtTabItem {
 
 /**
  * The horizontally scrollable "Court 1 / Court 2 / ... / + Court" strip shared by the venue-setup wizard and Venue
- * Settings (Courts section), OSettings board style: selected = role tint + 2px border + "✓". It only renders the strip:
+ * Settings (Courts section), OSettings board style: selected = solid role colour + "✓" pill, "+ Naya court" dashed. It only renders the strip:
  * the caller owns what each tab shows, and decides what "+ Court" and delete do.
  */
 export function CourtTabs({
@@ -17,7 +17,7 @@ export function CourtTabs({
   selectedKey,
   onSelect,
   onAdd,
-  addLabel = "+ Court",
+  addLabel = "+ Naya court",
   addDisabled,
 }: {
   tabs: CourtTabItem[];
@@ -43,15 +43,15 @@ export function CourtTabs({
               style={{
                 minHeight: size.tap,
                 paddingHorizontal: space[4],
-                borderRadius: radius.md,
+                borderRadius: radius.pill,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: selected ? t.selected.bg : palette.white,
-                borderWidth: selected ? 2 : 1.5,
-                borderColor: selected ? t.selected.border : palette.lineStrong,
+                backgroundColor: selected ? t.primary.bg : palette.white,
+                borderWidth: selected ? 0 : 1.5,
+                borderColor: palette.lineStrong,
               }}
             >
-              <Text variant="label" color={selected ? t.selected.fg : palette.night}>
+              <Text variant="bodyBold" color={selected ? t.primary.fg : palette.night}>
                 {`${selected ? "✓ " : ""}${tab.label}`}
               </Text>
             </Pressable>
@@ -60,12 +60,12 @@ export function CourtTabs({
         {onAdd ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add a court"
+            accessibilityLabel="Naya court add karein"
             disabled={addDisabled}
             onPress={onAdd}
-            style={{ minHeight: size.tap, paddingHorizontal: space[4], borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderStyle: "dashed", borderColor: palette.muted2, opacity: addDisabled ? 0.5 : 1 }}
+            style={{ minHeight: size.tap, paddingHorizontal: space[4], borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: palette.white, borderWidth: 1.5, borderStyle: "dashed", borderColor: t.primary.bg, opacity: addDisabled ? 0.5 : 1 }}
           >
-            <Text variant="label" tone="link">
+            <Text variant="bodyBold" tone="link">
               {addLabel}
             </Text>
           </Pressable>

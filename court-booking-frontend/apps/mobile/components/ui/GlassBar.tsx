@@ -2,8 +2,11 @@ import type { ReactNode } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { glass, radius, shadow, space } from "@court-booking/ui-tokens";
-import { useGlassMode } from "./theme";
+import { glass, radius, shadow, size, space } from "@court-booking/ui-tokens";
+import { useGlassMode, useRole } from "./theme";
+import { floatingBarBottom, floatingBarRoom } from "./floating-bar";
+
+export { floatingBarBottom, floatingBarRoom } from "./floating-bar";
 
 export interface GlassBarProps {
   children: ReactNode;
@@ -21,6 +24,13 @@ export interface GlassBarProps {
  * Glass only on floating chrome (System board). Uses expo-blur, and falls back to SOLID when reduce-transparency is on,
  * on web, and on low-end Android (rules/platform.ts glassMode). Never put money or body text on glass without `solid`.
  */
+/** Every tab screen's bottom padding (owner and player tab bars float over the content). */
+export function useTabBarRoom(): number {
+  const insets = useSafeAreaInsets();
+  const role = useRole();
+  return floatingBarRoom(insets.bottom, role === "owner" ? size.tabBarOwner : size.tabBar);
+}
+
 export function GlassBar({ children, tone = "light", floating = true, solid, style, testID }: GlassBarProps) {
   const mode = useGlassMode();
   const insets = useSafeAreaInsets();
@@ -34,7 +44,7 @@ export function GlassBar({ children, tone = "light", floating = true, solid, sty
     backgroundColor: useBlur ? g.bg : g.solid,
     boxShadow: shadow.raised,
   };
-  const pos: ViewStyle | null = floating ? { position: "absolute", left: space[4], right: space[4], bottom: Math.max(insets.bottom, space[3]) + space[2] } : null;
+  const pos: ViewStyle | null = floating ? { position: "absolute", left: space[4], right: space[4], bottom: floatingBarBottom(insets.bottom) } : null;
   return (
     <View testID={testID} style={[pos, frame, style]} accessibilityRole="toolbar">
       {useBlur ? <BlurView intensity={40} tint={tone === "light" ? "light" : "dark"} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: radius.pill }} /> : null}

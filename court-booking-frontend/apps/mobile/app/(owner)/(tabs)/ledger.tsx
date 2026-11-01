@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Download } from "lucide-react-native";
 import type { LedgerEntry } from "@court-booking/types";
 import { alpha, palette, radius, shadow, size, space, type Tone } from "@court-booking/ui-tokens";
-import { Banner, Button, Chip, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme } from "@/components/ui";
+import { Banner, Button, Chip, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme, useTabBarRoom } from "@/components/ui";
 
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { api } from "@/lib/api";
@@ -47,6 +47,7 @@ const METHOD_LABEL: Record<string, string> = { bank_transfer_proof: "Bank", cash
 /** OPaisa frame 1 (Ledger): every payment entry (GET /owners/ledger). The "Aaj" tile is `collected_today`, the SAME number
  * the Aaj hero shows. "Theek karein" reverses one entry (POST /payment-entries/{id}/reverse, flag split_payments). */
 export default function LedgerScreen() {
+  const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
@@ -132,7 +133,7 @@ export default function LedgerScreen() {
     <View style={{ flex: 1, backgroundColor: palette.ground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        contentContainerStyle={{ paddingBottom: tabRoom }}
         refreshControl={<RefreshControl refreshing={query.isRefetching && !query.isLoading} onRefresh={() => query.refetch()} tintColor={t.ring} colors={[t.ring]} />}
       >
         <HeroLayout hero={hero} testID="paisa-hero">
@@ -173,14 +174,14 @@ export default function LedgerScreen() {
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Muddat">
             {(["7d", "30d", "month"] as const).map((k) => (
-              <Chip key={k} label={RANGE_LABEL[k]} selected={rangeKey === k} onPress={() => setRangeKey(k)} />
+              <Chip key={k} solid label={RANGE_LABEL[k]} selected={rangeKey === k} onPress={() => setRangeKey(k)} />
             ))}
           </View>
           {courts.length > 1 ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Court">
-              <Chip label="Sab courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
+              <Chip solid label="Sab courts" selected={!courtId} onPress={() => setCourtId(undefined)} />
               {courts.map((c) => (
-                <Chip key={c.id} label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
+                <Chip key={c.id} solid label={courtLabel(c.name, c.sport)} selected={courtId === c.id} onPress={() => setCourtId(c.id)} />
               ))}
             </View>
           ) : null}
@@ -224,7 +225,7 @@ export default function LedgerScreen() {
                         <Text variant="bodyStrong" tone={isCorrection ? "danger" : "primary"}>
                           {`${isCorrection ? "-" : ""}PKR ${formatPKR(Math.abs(entry.amount_pkr))}`}
                         </Text>
-                        {!isCorrection && mayCorrect ? <Button label="Theek karein" variant="soft" size="sm" onPress={() => setCorrecting(entry)} accessibilityLabel={`${entry.player ?? "Walk-in"} ki payment theek karein`} /> : null}
+                        {!isCorrection && mayCorrect ? <Button label="Theek karein" variant="quiet" size="sm" onPress={() => setCorrecting(entry)} accessibilityLabel={`${entry.player ?? "Walk-in"} ki payment theek karein`} /> : null}
                       </View>
                     </View>
                   );
@@ -254,7 +255,7 @@ function Tile({ label, value, testID }: { label: string; value: number; testID?:
       <Text variant="caption" weight="bold" tone="heroMuted">
         {label}
       </Text>
-      <Text variant="bodyBold" tone="hero">{`PKR ${formatPKR(value)}`}</Text>
+      <Text variant="bodyBold" tone="hero">{formatPKR(value)}</Text>
     </View>
   );
 }

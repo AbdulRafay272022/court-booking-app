@@ -18,7 +18,7 @@ import { OwnerHeader, PaisaSwitch } from "./_fl";
 import { NoAccess } from "@/components/no-access";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
-import { BookingCard } from "@/components/overview/booking-card";
+import { HistoryCard } from "@/components/overview/booking-card";
 import { DateChooserSheet, MultiSelectSheet, courtsSummary } from "@/components/overview/pickers";
 import { OutlineButton, SelectButton } from "@/components/overview/ui";
 
@@ -172,6 +172,7 @@ export default function HistoryScreen() {
     return (
       <Chip
         key={key}
+        solid
         label={STATUS_FILTERS.find((f) => f.key === key)?.label ?? key}
         selected={on}
         onPress={() => setStatuses(on ? [] : [key])}
@@ -200,20 +201,21 @@ export default function HistoryScreen() {
         {exportError ? <Banner tone="danger" title="Export nahi hua" body={exportError} /> : null}
         <Input
           label="Search"
+          labelHidden
+          leading={<Search size={18} color={palette.body} />}
           value={text}
           onChangeText={setText}
           placeholder="Naam, phone ya booking ID"
           accessibilityLabel="Search"
           autoCapitalize="none"
           returnKeyType="search"
-          trailing={<View style={{ paddingHorizontal: space[3] }}><Search size={18} color={palette.muted} /></View>}
         />
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-          <Chip label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
-          <Chip label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />
-          <Chip label="Is hafte" selected={preset === "hafta"} onPress={() => setPreset("hafta")} />
-          <Chip label="Is mahine" selected={preset === "mahina"} onPress={() => setPreset("mahina")} />
-          <Chip label="Custom" selected={preset === "custom"} onPress={() => setPreset("custom")} />
+          <Chip solid label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
+          <Chip solid label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />
+          <Chip solid label="Is hafte" selected={preset === "hafta"} onPress={() => setPreset("hafta")} />
+          <Chip solid label="Is mahine" selected={preset === "mahina"} onPress={() => setPreset("mahina")} />
+          <Chip solid label="Custom" selected={preset === "custom"} onPress={() => setPreset("custom")} />
         </View>
         {preset === "custom" ? (
           <View style={{ flexDirection: "row", gap: space[3], flexWrap: "wrap" }}>
@@ -226,15 +228,11 @@ export default function HistoryScreen() {
           </View>
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel="Jaldi filter">
-          <Chip label="Sab" selected={statuses.length === 0} onPress={() => setStatuses([])} />
+          <Chip solid label="Sab" selected={statuses.length === 0} onPress={() => setStatuses([])} />
           {["completed", "short_paid", "cancelled", "status_pending"].map(statusChip)}
         </View>
-        <SelectButton label="Courts" value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} disabled={allCourts.length === 0} />
-        <SelectButton
-          label="Status"
-          value={statuses.length === 0 ? "Sab status" : statuses.map((s) => STATUS_FILTERS.find((f) => f.key === s)?.label ?? s).join(", ")}
-          onPress={() => setSheet("status")}
-        />
+        {/* OPaisa History: search + status chips + date chips only; the courts picker appears when there is a choice. */}
+        {allCourts.length > 1 ? <SelectButton label="Courts" value={courtsSummary(courtIds, allCourts)} onPress={() => setSheet("courts")} /> : null}
 
         {first ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[3], backgroundColor: palette.white, borderRadius: radius.tile, padding: space[4] }}>
@@ -257,7 +255,7 @@ export default function HistoryScreen() {
         ) : items.length === 0 && !(focusOnly && focusDetail.isFetching) ? (
           <EmptyState title="Koi booking nahi mili" body="Tareekh ya filter badal kar dekhein." icon={Search} />
         ) : (
-          <View style={{ gap: 14 }} onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
+          <View style={{ gap: 12 }} onLayout={(e) => (listY.current = e.nativeEvent.layout.y)}>
             {items.map((row) => (
               <View
                 key={`${row.booking_id}:${row.kind}:${row.status_key}`}
@@ -266,12 +264,8 @@ export default function HistoryScreen() {
                   if (!cardY.current.has(row.booking_id) || row.kind === "booked") cardY.current.set(row.booking_id, e.nativeEvent.layout.y);
                 }}
               >
-                <BookingCard
-                  row={row}
-                  highlighted={highlight === row.booking_id}
-                  onOpen={() => setDetailId(row.booking_id)}
-                  onOpenOriginal={() => row.original_booking_id && setDetailId(row.original_booking_id)}
-                />
+                {/* OPaisa History board: compact card; money + Haan/Nahi are in the detail sheet it opens. */}
+                <HistoryCard row={row} highlighted={highlight === row.booking_id} onOpen={() => setDetailId(row.original_booking_id ?? row.booking_id)} />
               </View>
             ))}
             {focusOnly && highlight ? null : query.hasNextPage ? (

@@ -14,6 +14,7 @@ import { Button, Checkbox as FlCheckbox, Chip, Pill as FlPill, Sheet, Text } fro
 export function BottomSheet({
   open = true,
   title,
+  eyebrow,
   subtitle,
   onClose,
   children,
@@ -24,6 +25,7 @@ export function BottomSheet({
    * how one sheet hands over to the next without two @gorhom modals stacking (the stack dismissed both on Expo web). */
   open?: boolean;
   title: string;
+  eyebrow?: string;
   subtitle?: string;
   onClose: () => void;
   children: ReactNode;
@@ -35,7 +37,7 @@ export function BottomSheet({
   // The DS Sheet re-provides the owner role / language / font scale inside the @gorhom portal itself (it used to be
   // wrapped here).
   return (
-    <Sheet open={open} onClose={onClose} title={title} subtitle={subtitle} footer={footer} testID={testID}>
+    <Sheet open={open} onClose={onClose} title={title} eyebrow={eyebrow} subtitle={subtitle} footer={footer} testID={testID}>
       {children}
     </Sheet>
   );
@@ -71,7 +73,9 @@ export function SelectButton({ label, value, onPress, disabled, compact }: { lab
           opacity: disabled ? 0.6 : 1,
         }}
       >
-        <Text variant="bodyStrong" style={{ flex: 1 }}>
+        {/* flexShrink, not flex: 1. With flex: 1 a compact button in a wrapping row measured its text at 0 width on Android
+            and grew one letter per line into a 630 px column (emulator audit 2026-10-31). */}
+        <Text variant="bodyStrong" style={{ flexShrink: 1, flexGrow: compact ? 0 : 1 }}>
           {value}
         </Text>
         <ChevronDown size={18} color={palette.night} />

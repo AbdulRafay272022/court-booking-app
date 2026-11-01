@@ -24,6 +24,7 @@ export * from "./Ticket";
 export * from "./GlassBar";
 export * from "./TabBar";
 export * from "./Layout";
+export * from "./Pressable";
 export * from "./Progress";
 export * from "./Controls";
 export * from "./AmenitiesSheet";

@@ -10,7 +10,7 @@ import { Avatar, Button, Text } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR, formatTimeRange } from "@/lib/format";
-import { PERM, canOfferNoShow, courtNumber, durationLabel, isStatusPending, rowStatusLabel, rowTone, statusChipLabel } from "@/lib/overview";
+import { PERM, canOfferNoShow, compactTimeRange, courtNumber, durationLabel, historyDateTile, historyStatus, isStatusPending, rowStatusLabel, rowTone, statusChipLabel } from "@/lib/overview";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { BottomSheet, SmallChip } from "./ui";
 import { CompletionSheet, NoShowSheet } from "@/components/completion-sheet";
@@ -126,7 +126,7 @@ export function BookingCard({
       <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${row.player_name ?? "Booking"}, ${row.short_code}`} style={{ padding: space[4], gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[3] }}>
           <Avatar name={row.player_name ?? "?"} size={44} tone={row.kind === "refund" ? "waiting" : "info"} uri={row.player_avatar_url} />
-          <View style={{ flex: 1, gap: 2 }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text variant="bodyStrong">
               {row.player_name ?? "Player"}
               {row.kind === "refund" ? " · refund" : ""}
@@ -135,7 +135,8 @@ export function BookingCard({
               {refundLine ?? `${formatTimeRange(row.starts_at, row.ends_at)} · ${durationLabel(row.duration_minutes)}`}
             </Text>
           </View>
-          <View style={{ alignItems: "flex-end", gap: space[1] }}>
+          {/* Capped so a long status ("Approval ke intezar") never squeezes the name to one letter per line. */}
+          <View style={{ alignItems: "flex-end", gap: space[1], maxWidth: "45%", flexShrink: 1 }}>
             {statusChip(row)}
             {row.checked_in ? <SmallChip label="Checked in" tone="open" /> : null}
             {isStatusPending(row) ? <StatusPendingChip /> : null}
@@ -276,3 +277,53 @@ export function BookingCard({
   );
 }
 
+
+/**
+ * OPaisa History board card: date tile (SAT / 24), player name, one muted line "Court 1 · 6–7 PM · KH-...", one status
+ * pill. Money and the Haan/Nahi actions live in the booking detail sheet the card opens.
+ */
+export function HistoryCard({ row, highlighted, onOpen }: { row: OwnerBookingRow; highlighted?: boolean; onOpen: () => void }) {
+  const tile = historyDateTile(row.starts_at);
+  const st = historyStatus(row);
+  const name = `${row.player_name ?? "Player"}${row.source === "walkin" ? " (walk-in)" : ""}`;
+  const meta = [row.court_name, compactTimeRange(row.starts_at, row.ends_at), row.short_code].join(" · ");
+  return (
+    <Pressable
+      onPress={onOpen}
+      testID={`history-card-${row.booking_id}-${row.kind}`}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${meta}, ${st.label}`}
+      style={{
+        backgroundColor: palette.white,
+        borderRadius: 18,
+        borderWidth: highlighted ? 2.5 : 0,
+        borderColor: palette.teal,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: space[3],
+      }}
+    >
+      <View style={{ width: 50, height: 56, borderRadius: 14, backgroundColor: palette.tealTint, alignItems: "center", justifyContent: "center" }}>
+        <Text variant="bodyStrong" style={{ color: palette.tealDeep, fontSize: 10, lineHeight: 13 }}>
+          {tile.weekday}
+        </Text>
+        <Text variant="bodyStrong" style={{ color: palette.tealDeep, fontSize: 18, lineHeight: 22 }}>
+          {tile.day}
+        </Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text variant="bodyStrong" numberOfLines={1}>
+          {name}
+        </Text>
+        <Text variant="caption" tone="muted">
+          {meta}
+        </Text>
+      </View>
+      <View style={{ alignSelf: "flex-start", maxWidth: "40%" }}>
+        <SmallChip label={st.label} tone={st.tone} />
+      </View>
+    </Pressable>
+  );
+}

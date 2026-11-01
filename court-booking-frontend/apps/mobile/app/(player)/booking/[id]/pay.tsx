@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { Platform, View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { Image } from "expo-image";
 import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -97,7 +98,7 @@ export default function PayScreen() {
 
   // Not an open hold any more (screenshot sent, booked, cancelled, rejected): the Status screen tells the honest story.
   useEffect(() => {
-    if (booking && booking.status !== "held") router.replace({ pathname: "/(player)/booking/[id]/done", params: { id } });
+    if (booking && booking.status !== "held") router.replace({ pathname: "/(player)/booking/[id]/done", params: booking.status === "booked" ? { id, celebrate: "1" } : { id } });
   }, [booking?.status, id]);
 
   async function pickImage(fromCamera: boolean) {
@@ -243,7 +244,8 @@ export default function PayScreen() {
             />
           }
         />
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space[4], flexWrap: "wrap", justifyContent: "center" }}>
+        {/* Pay board: the ring centred, then the big amount and the slot under it. */}
+        <View style={{ alignItems: "center", gap: space[3] }}>
           <CountdownRing
             expiresAt={booking.held_until}
             totalMs={windowMs(booking.created_at, booking.held_until)}
@@ -251,14 +253,14 @@ export default function PayScreen() {
             diameter={140}
             testID="pay-countdown"
           />
-          <View style={{ flex: 1, minWidth: 150, gap: 4 }}>
-            <Text variant="h2" tone="hero" testID="pay-amount">
+          <View style={{ alignItems: "center", gap: 2 }}>
+            <Text variant="display" tone="hero" align="center" testID="pay-amount">
               {amount}
             </Text>
-            <Text variant="meta" tone="heroMuted">
+            <Text variant="meta" tone="heroMuted" align="center">
               {[venueName, courtName].filter(Boolean).join(" · ")}
             </Text>
-            <Text variant="meta" tone="heroMuted">
+            <Text variant="meta" tone="heroMuted" align="center">
               {`${formatDate(booking.starts_at, new Date(), lang)} · ${formatTimeRange(booking.starts_at, booking.ends_at, lang)}`}
             </Text>
           </View>

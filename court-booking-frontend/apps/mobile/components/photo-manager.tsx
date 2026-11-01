@@ -38,7 +38,7 @@ async function pickAndResize(fromCamera: boolean, remainingSlots: number): Promi
     ? await ImagePicker.requestCameraPermissionsAsync()
     : await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert("Permission needed", "Allow photo access to add photos.");
+    Alert.alert("Ijazat chahiye", "Photos add karne ke liye photos ki ijazat dein.");
     return null;
   }
   const res = fromCamera
@@ -52,19 +52,19 @@ async function pickAndResize(fromCamera: boolean, remainingSlots: number): Promi
     const name = asset.fileName ?? "photo";
     const mime = (asset.mimeType ?? "").toLowerCase();
     if (mime && !ALLOWED_MIME.includes(mime)) {
-      out.push({ uri: null, name, error: "Only JPEG, PNG or WebP photos are allowed." });
+      out.push({ uri: null, name, error: "Sirf JPEG, PNG ya WebP photos chal sakti hain." });
       continue;
     }
     try {
       const resized = await manipulateAsync(asset.uri, [{ resize: { width: 1600 } }], { compress: 0.8, format: SaveFormat.JPEG });
       const size = (await (await fetch(resized.uri)).blob()).size;
       if (size > MAX_BYTES) {
-        out.push({ uri: null, name, error: "Larger than 5 MB even after resizing." });
+        out.push({ uri: null, name, error: "Chhota karne ke baad bhi 5 MB se bari hai." });
         continue;
       }
       out.push({ uri: resized.uri, name });
     } catch {
-      out.push({ uri: null, name, error: "Couldn't read this photo." });
+      out.push({ uri: null, name, error: "Ye photo parhi nahi ja saki." });
     }
   }
   return out;
@@ -110,12 +110,12 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
       }
       if (failures.length > 0) {
         Alert.alert(
-          added > 0 ? `${added} added, ${failures.length} failed` : "Couldn't add photo",
+          added > 0 ? `${added} add hui, ${failures.length} nahi huin` : "Photo add nahi hui",
           failures.join("\n"),
         );
       }
     } catch (e) {
-      Alert.alert("Couldn't add photo", friendlyErrorMessage(e));
+      Alert.alert("Photo add nahi hui", friendlyErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -126,7 +126,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
     try {
       await onReorder(keys);
     } catch (e) {
-      Alert.alert("Couldn't update photos", friendlyErrorMessage(e));
+      Alert.alert("Photos update nahi huin", friendlyErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -148,7 +148,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
       </View>
 
       {photoUrls.length === 0 ? (
-        <Text variant="meta" tone="subtle">{readOnly ? "No photos yet." : "No photos yet. Add a few so players can see the place."}</Text>
+        <Text variant="meta" tone="subtle">{readOnly ? "Abhi koi photo nahi." : "Abhi koi photo nahi. Kuch photos add karein taake players jagah dekh sakein."}</Text>
       ) : (
         <View className="flex-row flex-wrap gap-2.5">
           {photoUrls.map((url, i) => (
@@ -166,7 +166,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
               <>
               <View className="flex-row items-center justify-between">
                 <Pressable
-                  accessibilityLabel={`Move photo ${i + 1} left`}
+                  accessibilityLabel={`Photo ${i + 1} baayen karein`}
                   disabled={i === 0 || busy}
                   onPress={() => mutate(swap(i, i - 1))}
                   className="px-1.5 py-1 rounded bg-owner-bg"
@@ -176,7 +176,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                 </Pressable>
                 {i !== 0 ? (
                   <Pressable
-                    accessibilityLabel={`Set photo ${i + 1} as cover`}
+                    accessibilityLabel={`Photo ${i + 1} ko cover banayein`}
                     disabled={busy}
                     onPress={() => mutate([photoKeys[i], ...photoKeys.filter((_, j) => j !== i)])}
                     className="px-1.5 py-1 rounded bg-owner-bg"
@@ -185,7 +185,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                   </Pressable>
                 ) : null}
                 <Pressable
-                  accessibilityLabel={`Move photo ${i + 1} right`}
+                  accessibilityLabel={`Photo ${i + 1} daayen karein`}
                   disabled={i === photoUrls.length - 1 || busy}
                   onPress={() => mutate(swap(i, i + 1))}
                   className="px-1.5 py-1 rounded bg-owner-bg"
@@ -195,12 +195,12 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
                 </Pressable>
               </View>
               <Pressable
-                accessibilityLabel={`Delete photo ${i + 1}`}
+                accessibilityLabel={`Photo ${i + 1} hatayein`}
                 disabled={busy}
                 onPress={() => mutate(photoKeys.filter((_, j) => j !== i))}
                 className="items-center py-1 rounded bg-owner-bg"
               >
-                <Text variant="caption" weight="bold" style={{ color: palette.danger }}>Delete</Text>
+                <Text variant="caption" weight="bold" style={{ color: palette.danger }}>Hatayein</Text>
               </Pressable>
               </>
               )}
@@ -212,16 +212,16 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
       {readOnly ? null : (
       <View className="flex-row gap-2.5">
         <Pressable
-          accessibilityLabel="Add photo from gallery"
+          accessibilityLabel="Gallery se photo add karein"
           disabled={atLimit || busy}
           onPress={() => add(false)}
           className="flex-1 h-11 rounded-[10px] border border-owner-border items-center justify-center flex-row gap-2"
           style={{ opacity: atLimit || busy ? 0.5 : 1 }}
         >
-          {busy ? <ActivityIndicator color={palette.teal} size="small" /> : <Text variant="meta" weight="bold">＋ Gallery (select several)</Text>}
+          {busy ? <ActivityIndicator color={palette.teal} size="small" /> : <Text variant="meta" weight="bold">＋ Gallery (kai photos chunein)</Text>}
         </Pressable>
         <Pressable
-          accessibilityLabel="Add photo from camera"
+          accessibilityLabel="Camera se photo add karein"
           disabled={atLimit || busy}
           onPress={() => add(true)}
           className="flex-1 h-11 rounded-[10px] border border-owner-border items-center justify-center"
@@ -232,7 +232,7 @@ export function PhotoManager({ title, photoUrls, photoKeys, max, onUpload, onReo
       </View>
       )}
       {atLimit && !readOnly ? (
-        <Text variant="caption" tone="subtle">Limit reached ({max}). Delete one to add another.</Text>
+        <Text variant="caption" tone="subtle">Had poori ({max}). Nayi add karne ke liye ek hatayein.</Text>
       ) : null}
     </View>
   );

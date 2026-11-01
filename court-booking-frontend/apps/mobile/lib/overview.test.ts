@@ -60,3 +60,36 @@ test("duplicateCreditText: singular / plural", () => {
   assert.equal(duplicateCreditText(1), "Ye screenshot 1 aur booking par bhi credit hua");
   assert.equal(duplicateCreditText(3), "Ye screenshot 3 aur bookings par bhi credit hua");
 });
+
+import { compactTimeRange, historyDateTile, historyStatus } from "./overview";
+
+test("compactTimeRange: board style short ranges in Pakistan time", () => {
+  assert.equal(compactTimeRange("2026-10-24T13:00:00Z", "2026-10-24T14:00:00Z"), "6–7 PM");
+  assert.equal(compactTimeRange("2026-10-24T15:00:00Z", "2026-10-24T16:30:00Z"), "8–9:30 PM");
+  assert.equal(compactTimeRange("2026-10-24T18:00:00Z", "2026-10-24T19:00:00Z"), "11 PM–12 AM");
+});
+
+test("historyDateTile: weekday + day of the Pakistan date", () => {
+  assert.deepEqual(historyDateTile("2026-10-24T13:00:00Z"), { weekday: "SAT", day: "24" });
+  assert.deepEqual(historyDateTile("2026-10-24T20:00:00Z"), { weekday: "SUN", day: "25" });
+});
+
+test("historyStatus: board pills", () => {
+  const base = { kind: "booked", status_key: "booked", completion: null, refund_status: null, status_pending: false } as unknown as Parameters<typeof historyStatus>[0];
+  assert.equal(historyStatus({ ...base, completion: { result: "yes" } } as typeof base).label, "Mukammal");
+  assert.equal(historyStatus({ ...base, completion: { result: "no" } } as typeof base).label, "Baqi");
+  assert.equal(historyStatus({ ...base, kind: "cancelled", status_key: "cancelled" } as typeof base).label, "Cancelled");
+  assert.equal(historyStatus({ ...base, status_key: "no_show" } as typeof base).label, "No-show");
+  assert.equal(historyStatus({ ...base, status_pending: true } as typeof base).label, "Status baqi");
+});
+
+test("arrivalRow: time tile, court + range, status without money", async () => {
+  const { arrivalRow } = await import("./overview");
+  const a = { court_name: "Court 1", starts_at: "2026-11-01T14:00:00Z", ends_at: "2026-11-01T15:00:00Z", checked_in: false };
+  const before = Date.parse("2026-11-01T12:00:00Z");
+  assert.deepEqual(arrivalRow(a, before), { time: "7 PM", meta: "Court 1 · 7–8 PM", status: "Aane wala", tone: "neutral" });
+  assert.equal(arrivalRow({ ...a, checked_in: true }, before).status, "✓ Aa gaya");
+  assert.equal(arrivalRow(a, Date.parse("2026-11-01T14:30:00Z")).status, "Check-in baqi");
+  assert.equal(arrivalRow(a, Date.parse("2026-11-01T16:00:00Z")).status, "Check-in nahi hua");
+  assert.equal(arrivalRow({ ...a, starts_at: "2026-11-01T13:30:00Z" }, before).time, "6:30 PM");
+});

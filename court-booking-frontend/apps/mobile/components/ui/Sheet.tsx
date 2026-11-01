@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { View } from "react-native";
+import { BackHandler, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BottomSheetBackdrop,
@@ -22,6 +22,8 @@ export interface SheetProps {
   /** Called after the sheet is dismissed (backdrop tap, swipe down, close button, Android back). */
   onClose: () => void;
   title?: string;
+  /** Small caps label above the title (OSheets "BOOKING ID"). */
+  eyebrow?: string;
   subtitle?: string;
   /** Area under the content (e.g. the confirm button), separated by a divider. */
   footer?: ReactNode;
@@ -36,7 +38,7 @@ export interface SheetProps {
  * Sizes to its content (dynamic sizing) up to the screen height; content scrolls. Works on Expo web.
  * Radius 30 (System board), scrim night 50%, close button "Band karein" 44pt. Respects reduce-motion.
  */
-export function Sheet({ open, onClose, title, subtitle, footer, children, hideClose, testID }: SheetProps) {
+export function Sheet({ open, onClose, title, eyebrow, subtitle, footer, children, hideClose, testID }: SheetProps) {
   const ref = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -64,6 +66,17 @@ export function Sheet({ open, onClose, title, subtitle, footer, children, hideCl
     if (action === "present") ref.current?.present();
     else if (action === "dismiss") ref.current?.dismiss();
   }, [open, life]);
+
+  // Android Back closes the open sheet instead of leaving the screen (or the app, on a tab). BottomSheetModal does not
+  // listen to Back itself; the newest listener runs first, so with stacked sheets only the top one closes.
+  useEffect(() => {
+    if (!open || Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      ref.current?.dismiss();
+      return true;
+    });
+    return () => sub.remove();
+  }, [open]);
 
   // Unmounted while open: close at once (no ~1 s close animation over the next screen) and never call the gone owner.
   useLayoutEffect(() => {
@@ -113,6 +126,11 @@ export function Sheet({ open, onClose, title, subtitle, footer, children, hideCl
         {title || !hideClose ? (
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[3] }}>
             <View style={{ flex: 1, gap: 2 }}>
+              {eyebrow ? (
+                <Text variant="eyebrow" tone="muted">
+                  {eyebrow.toUpperCase()}
+                </Text>
+              ) : null}
               {title ? (
                 <Text variant="h3" accessibilityRole="header">
                   {title}

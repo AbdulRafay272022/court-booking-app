@@ -15,6 +15,9 @@ import {
   settleAction,
   showWalkinFab,
   spanLabel,
+  hrLabel,
+  freeHoursLabel,
+  dayRangeLabel,
   timelineKind,
   timelineModel,
   waitLabel,
@@ -31,7 +34,7 @@ test("ownerBarTabs: owner gets Aaj, Approvals, Paisa (ledger), Aur", () => {
 });
 
 test("ownerBarTabs: staff only see permitted cells; Paisa falls back to Refunds; Aur always", () => {
-  assert.deepEqual(ownerBarTabs(staffWith("check_in", "walkin")).map((t) => t.key), ["aur"]);
+  assert.deepEqual(ownerBarTabs(staffWith("check_in", "walkin")).map((t) => t.key), ["aaj", "aur"]);
   assert.deepEqual(ownerBarTabs(staffWith("mark_refunds")).map((t) => `${t.key}:${t.route}`), ["paisa:refunds", "aur:more"]);
   assert.deepEqual(ownerBarTabs(staffWith("view_ledger")).map((t) => t.key), ["aaj", "approvals", "paisa", "aur"]);
   assert.deepEqual(ownerBarTabs(staffWith("approve_payments")).map((t) => t.key), ["aur"]);
@@ -222,4 +225,67 @@ test("owner screens + owner components: no hex / rgba colour literal", () => {
     });
   }
   assert.deepEqual(bad, []);
+});
+
+test("Aaj board short durations: '1 hr' / '1.5 hr' gaps, free hours in the hero chip", () => {
+  assert.equal(hrLabel(30), "30 min");
+  assert.equal(hrLabel(60), "1 hr");
+  assert.equal(hrLabel(90), "1.5 hr");
+  assert.equal(freeHoursLabel(1), "30 min khaali");
+  assert.equal(freeHoursLabel(2), "1 ghanta khaali");
+  assert.equal(freeHoursLabel(10), "5 ghante khaali");
+  assert.equal(freeHoursLabel(13), "6.5 ghante khaali");
+});
+
+test("Aaj 'Courts ka din' range is the short opening window", () => {
+  assert.equal(dayRangeLabel("2026-10-24T12:00:00Z", "2026-10-24T18:00:00Z"), "5 PM – 11 PM");
+  assert.equal(dayRangeLabel("2026-10-24T03:30:00Z", "2026-10-24T20:00:00Z"), "8:30 AM – 1 AM");
+});
+
+test("timelineScale: 72 px an hour, long empty stretches drawn as one hour", async () => {
+  const { timelineScale, TIMELINE_PX_HOUR } = await import("./owner-floodlight");
+  const hours = Array.from({ length: 13 }, (_, i) => ({ ms: i * 3600_000, offset: i * 60 }));
+  const block = (start: number, end: number) => ({ kind: "booked" as const, row: {} as never, start, end });
+  // 12 hours; bookings 0-60 and 600-720 on court A; 9 empty hours between
+  const s = timelineScale({ minutes: 720, hours, columns: [{ courtId: "a", name: "A", blocks: [block(0, 60), block(600, 720)], gaps: [] }] });
+  assert.equal(TIMELINE_PX_HOUR, 72);
+  assert.deepEqual(s.collapsed, [{ start: 60, end: 600 }]);
+  assert.equal(s.y(60), 72);
+  assert.equal(s.y(600), 144);
+  assert.equal(s.height, 144 + 144);
+  assert.ok(!s.hours.some((h) => h.offset > 60 && h.offset < 600));
+  // a 2-hour gap stays linear
+  const t = timelineScale({ minutes: 240, hours: hours.slice(0, 5), columns: [{ courtId: "a", name: "A", blocks: [block(0, 60), block(180, 240)], gaps: [] }] });
+  assert.deepEqual(t.collapsed, []);
+  assert.equal(t.height, 4 * 72);
+});
+
+test("approvalAmounts: match only when the numbers on screen are equal; old dues shown as a sum", async () => {
+  const { approvalAmounts } = await import("./owner-floodlight");
+  const due = (n: number) => ({ due_pkr: n }) as never;
+  const ctx = (n: number) => ({ dues: [due(n)], no_shows: 0, total_bookings: 3 });
+  assert.deepEqual(approvalAmounts({ expected_amount: 1000, ocr_amount: 1000, player_context: null }), {
+    needText: "PKR 1,000", need: 1000, readText: "PKR 1,000 ✓", verdict: "match", withDues: false,
+  });
+  const d = approvalAmounts({ expected_amount: 1000, ocr_amount: 2000, player_context: ctx(1000) });
+  assert.equal(d.needText, "1,000 + purana baqi 1,000 = 2,000");
+  assert.equal(d.verdict, "match");
+  assert.equal(d.need, 2000);
+  // differs from both: never "match", even if the backend said so
+  const x = approvalAmounts({ expected_amount: 1000, ocr_amount: 1500, player_context: ctx(1000) });
+  assert.equal(x.verdict, "diff");
+  assert.equal(x.needText, "PKR 1,000");
+  assert.equal(x.readText, "PKR 1,500");
+  assert.equal(approvalAmounts({ expected_amount: 1000, ocr_amount: null, player_context: ctx(500) }).verdict, "unread");
+  assert.equal(approvalAmounts({ expected_amount: 1000, ocr_amount: 2000, player_context: null }).verdict, "diff");
+});
+
+test("bulkApprovable: only exact matches of the booking's own amount (no dues sums, duplicates or overpayments)", async () => {
+  const { bulkApprovable } = await import("./owner-floodlight");
+  const base = { state: "awaiting", ocr_verdict: "match", duplicate: null, overpayment: null, player_context: null } as const;
+  const a = { ...base, payment_id: "a", expected_amount: 1000, ocr_amount: 1000 } as never;
+  const b = { ...base, payment_id: "b", expected_amount: 1000, ocr_amount: 2000, player_context: { dues: [{ due_pkr: 1000 }], no_shows: 0, total_bookings: 1 } } as never;
+  const c = { ...base, payment_id: "c", ocr_verdict: "mismatch", expected_amount: 1000, ocr_amount: 1000 } as never;
+  assert.deepEqual(bulkApprovable([a, b, c], false).map((x: { payment_id: string }) => x.payment_id), ["a", "c"]);
+  assert.deepEqual(bulkApprovable([a], true), []);
 });

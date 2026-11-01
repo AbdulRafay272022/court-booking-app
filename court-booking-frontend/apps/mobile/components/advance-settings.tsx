@@ -1,8 +1,8 @@
-import { palette } from "@court-booking/ui-tokens";
+import { palette, radius, space } from "@court-booking/ui-tokens";
 import { Text } from "@/components/ui";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { DEFAULT_ADVANCE_PERCENTAGE, advanceDefaultHintText, isFeatureOn, type AdvanceExplain } from "@court-booking/types";
+import { DEFAULT_ADVANCE_PERCENTAGE, advanceDefaultHintText, formatPkrAmount, isFeatureOn, type AdvanceExplain } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { DefaultHint } from "./default-hint";
@@ -29,8 +29,8 @@ export * from "./advance-settings-logic";
 
 const HELP: Record<AdvanceTypeDraft, string> = {
   "": "Default: har price rate ka apna advance % lagta hai. Aam tor par 100%, yani player slot pakka karne ke liye poori raqam abhi deta hai.",
-  fixed: "Fixed amount: har booking par ek tay raqam (PKR) abhi, baqi venue par. Lambi booking par ye raqam usi hisaab se barhti hai.",
-  percent: "Percentage: booking ke total ka itna % abhi, baqi venue par.",
+  fixed: "Fixed PKR: har booking par ek tay raqam (PKR) abhi, baqi venue par. Lambi booking par ye raqam usi hisaab se barhti hai.",
+  percent: "Percent: booking ke total ka itna % abhi, baqi venue par.",
 };
 
 /** Stage 2: is the split_payments flag on? Off = every new booking is paid in full up front (backend kill switch), so the
@@ -46,6 +46,7 @@ export function AdvanceSettings({
   price,
   explain,
   defaultPercentage = DEFAULT_ADVANCE_PERCENTAGE,
+  layout = "form",
 }: {
   value: AdvanceDraft;
   onChange: (patch: Partial<AdvanceDraft>) => void;
@@ -54,20 +55,73 @@ export function AdvanceSettings({
   explain?: AdvanceExplain | null;
   /** The pricing rule's own advance % used by "Default" (the wizard always creates rules with 100). */
   defaultPercentage?: number;
+  /** "board" (Venue Settings, OSettings board): three big choices in a row and one short line. */
+  layout?: "form" | "board";
 }) {
   const pct = explain?.default_rule.percentage ?? defaultPercentage;
   const example = advanceExampleLine(value, price, pct);
   const problem = advanceDraftProblem(value);
   const digits = (v: string) => v.replace(/\D/g, "");
   const splitOn = useSplitPaymentsOn();
+  const board = layout === "board";
+  const n = Number(value.advanceValue);
+  const shortLine =
+    value.advanceType === "percent" && value.advanceValue && !problem
+      ? `Player abhi ${n}% bhejega, baqi venue par.`
+      : value.advanceType === "fixed" && value.advanceValue && !problem
+        ? `Player abhi ${formatPkrAmount(n)} bhejega, baqi venue par.`
+        : value.advanceType === ""
+          ? pct >= 100
+            ? "Player abhi poori raqam bhejega."
+            : `Player abhi ${pct}% bhejega, baqi venue par.`
+          : "Raqam likhein.";
+  const Card = board ? BoardCard : SectionCard;
   return (
-    <SectionCard>
-      <SectionLabel>Advance payment</SectionLabel>
+    <Card>
+      {board ? (
+        <>
+          <Text variant="bodyStrong" accessibilityRole="header">Advance</Text>
+          <View style={{ flexDirection: "row", gap: 6 }} accessibilityRole="radiogroup">
+            {(
+              [
+                { key: "", label: "Default" },
+                { key: "percent", label: "Percent" },
+                { key: "fixed", label: "Fixed PKR" },
+              ] as const
+            ).map((o) => {
+              const on = value.advanceType === o.key;
+              return (
+                <Pressable
+                  key={o.key || "default"}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: on }}
+                  onPress={() => onChange({ advanceType: o.key })}
+                  style={{
+                    flex: 1,
+                    height: 48,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: on ? palette.tealTint : palette.ground,
+                    borderWidth: on ? 2 : 0,
+                    borderColor: palette.teal,
+                  }}
+                >
+                  <Text variant="bodyBold">{`${on ? "✓ " : ""}${o.label}`}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text testID="advance-short" variant="caption" tone="muted">{shortLine}</Text>
+        </>
+      ) : (
+        <>
+      <SectionLabel>Advance</SectionLabel>
       <FieldLabel>Slot pakka karne ke liye player abhi kitna dega?</FieldLabel>
       <View className="flex-row flex-wrap gap-2">
-        <Chip label="Default (from pricing)" selected={value.advanceType === ""} onPress={() => onChange({ advanceType: "" })} />
-        <Chip label="Fixed amount" selected={value.advanceType === "fixed"} onPress={() => onChange({ advanceType: "fixed" })} />
-        <Chip label="Percentage" selected={value.advanceType === "percent"} onPress={() => onChange({ advanceType: "percent" })} />
+        <Chip label="Default (qeemat se)" selected={value.advanceType === ""} onPress={() => onChange({ advanceType: "" })} />
+        <Chip label="Fixed PKR" selected={value.advanceType === "fixed"} onPress={() => onChange({ advanceType: "fixed" })} />
+        <Chip label="Percent (%)" selected={value.advanceType === "percent"} onPress={() => onChange({ advanceType: "percent" })} />
       </View>
       <DefaultHint
         settingKey="advance"
@@ -79,6 +133,8 @@ export function AdvanceSettings({
       <Text testID="advance-help" variant="caption" tone="subtle">
         {HELP[value.advanceType]}
       </Text>
+        </>
+      )}
       {value.advanceType === "fixed" ? (
         <TextField
           label="Advance ki raqam (PKR)"
@@ -110,9 +166,11 @@ export function AdvanceSettings({
           placeholder="Khali chorein to koi had nahi"
           mono
         />
-        <Text variant="caption" tone="subtle">
-          Advance is se kam kabhi nahi hoga (lekin booking ke total se zyada bhi nahi).
-        </Text>
+        {board ? null : (
+          <Text variant="caption" tone="subtle">
+            Advance is se kam kabhi nahi hoga (lekin booking ke total se zyada bhi nahi).
+          </Text>
+        )}
         <DefaultHint
           settingKey="advance_minimum"
           value={value.advanceMinimum.trim() ? Number(value.advanceMinimum) : null}
@@ -120,16 +178,23 @@ export function AdvanceSettings({
           testID="default-advance-minimum"
         />
       </View>
-      {example ? (
+      {example && !board ? (
         <View className="rounded-[10px] px-3 py-2.5" style={{ backgroundColor: palette.tealTint }}>
           <Text testID="advance-example" variant="meta" weight="bold">
             {example}
           </Text>
         </View>
       ) : null}
-      <Text testID="advance-default" variant="caption" tone="muted">
-        {advanceDefaultLine(price, pct, explain)}
-      </Text>
-    </SectionCard>
+      {board ? null : (
+        <Text testID="advance-default" variant="caption" tone="muted">
+          {advanceDefaultLine(price, pct, explain)}
+        </Text>
+      )}
+    </Card>
   );
+}
+
+/** OSettings board card: white, 22 radius, 16 padding. */
+function BoardCard({ children }: { children: React.ReactNode }) {
+  return <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: 12 }}>{children}</View>;
 }

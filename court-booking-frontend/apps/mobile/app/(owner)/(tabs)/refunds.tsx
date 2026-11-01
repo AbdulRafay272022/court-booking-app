@@ -6,7 +6,7 @@ import { TriangleAlert } from "lucide-react-native";
 import { refundBreakdown, type OwnerRefund } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
-import { Banner, Button, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme } from "@/components/ui";
+import { Banner, Button, EmptyState, ErrorState, Pill, Skeleton, Text, useRoleTheme, useTabBarRoom } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -39,6 +39,7 @@ const REFUND_REASON_RU: Record<string, string> = {
 };
 
 export default function RefundsScreen() {
+  const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
@@ -96,7 +97,7 @@ export default function RefundsScreen() {
     <View style={{ flex: 1, backgroundColor: palette.ground }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        contentContainerStyle={{ paddingBottom: tabRoom }}
         refreshControl={allowed ? <RefreshControl refreshing={query.isRefetching && !query.isLoading} onRefresh={() => query.refetch()} tintColor={t.ring} colors={[t.ring]} /> : undefined}
       >
         <HeroLayout hero={hero} testID="refunds-hero">
@@ -134,7 +135,7 @@ export default function RefundsScreen() {
                   >
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text variant="bodyStrong">{refund.player_name ?? refund.player_phone ?? "Player"}</Text>
-                      <Text variant="meta" tone="muted">{`${courtText(refund)} · ${formatWhen(refund.starts_at)}`}</Text>
+                      <Text variant="meta" tone="muted">{`${courtText(refund)} · ${formatWhen(refund.starts_at)} · KH-${refund.booking_id.replace(/-/g, "").slice(0, 8).toUpperCase()}`}</Text>
                     </View>
                     <View style={{ alignItems: "flex-end", gap: space[1] }}>
                       <Text variant="title">{`PKR ${formatPKR(b.remaining)}`}</Text>
@@ -144,10 +145,13 @@ export default function RefundsScreen() {
                       ) : null}
                     </View>
                   </Pressable>
+                  {/* OPaisa board: the reason sits in a grey box under the name line. */}
                   {refund.reason ? (
-                    <Text variant="meta" tone="body">
-                      {`Wajah: ${REFUND_REASON_RU[refund.reason] ?? refund.reason.replace(/_/g, " ")}`}
-                    </Text>
+                    <View style={{ backgroundColor: palette.ground, borderRadius: radius.md, paddingHorizontal: space[3], paddingVertical: 10 }}>
+                      <Text variant="meta" tone="body">
+                        {`Wajah: ${REFUND_REASON_RU[refund.reason] ?? refund.reason.replace(/_/g, " ")}`}
+                      </Text>
+                    </View>
                   ) : null}
                   {refund.player_note ? (
                     <Text variant="meta" tone="body" testID="refund-player-note">

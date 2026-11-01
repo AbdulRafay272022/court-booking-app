@@ -68,13 +68,13 @@ function MoneyTiles({ total, paid, due }: { total: number; paid: number; due: nu
     { label: "Baqi", value: formatPKR(due), warn: due > 0 },
   ];
   return (
-    <View testID="detail-money" style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+    <View testID="detail-money" style={{ flexDirection: "row", gap: space[2] }}>
       {tiles.map((t) => (
-        <View key={t.label} style={{ flexGrow: 1, flexBasis: 90, backgroundColor: t.warn ? palette.waitingTint : palette.ground, borderRadius: radius.input, paddingHorizontal: space[3], paddingVertical: 10, gap: 2 }}>
+        <View key={t.label} style={{ flex: 1, minWidth: 0, backgroundColor: t.warn ? palette.waitingTint : palette.ground, borderRadius: radius.input, paddingHorizontal: space[3], paddingVertical: 10, gap: 2 }}>
           <Text variant="caption" tone={t.warn ? "waiting" : "muted"}>
             {t.label}
           </Text>
-          <Text variant="bodyStrong" tone={t.warn ? "waiting" : "primary"}>{`PKR ${t.value}`}</Text>
+          <Text variant="title" tone={t.warn ? "waiting" : "primary"}>{t.value}</Text>
         </View>
       ))}
     </View>
@@ -135,8 +135,8 @@ export function BookingDetailSheet({
     {followShown ? null : (
     <BottomSheet
       open={follow === null}
+      eyebrow="Booking ID"
       title={d ? d.row.short_code : "Booking"}
-      subtitle="Booking ID"
       onClose={() => (followRef.current ? setFollowShown(true) : onClose())}
       testID="booking-detail-sheet"
     >
@@ -257,7 +257,8 @@ function DetailBody({
   // The backend allows "Nahi aaye" for check_in OR record_payments (stage2-contract section 5).
   const mayNoShow = (can(PERM.checkIn) || can(PERM.recordPayments)) && canOfferNoShow(r, completion);
   const action = settleAction({ ...r, completion }, { canRecord: can(PERM.recordPayments), splitPayments: flags.on("split_payments") });
-  const ocrMatch = d.ocr_verdict === "match";
+  // "Amount match" only when the screenshot number really equals the advance shown below (never on the word alone)
+  const ocrMatch = d.ocr_verdict === "match" && (d.ocr_amount == null || Math.round(d.ocr_amount) === Math.round(d.advance_required));
 
   return (
     <View style={{ gap: space[3] }}>
@@ -276,9 +277,9 @@ function DetailBody({
           accessibilityRole="button"
           accessibilityLabel={copied === "ok" ? "Poora ID copy ho gaya" : "Poora ID copy karein"}
           testID="detail-copy-id"
-          style={{ minHeight: size.tap, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: space[3], borderRadius: radius.pill, borderWidth: 1.5, borderColor: palette.lineStrong, backgroundColor: palette.white }}
+          style={{ minHeight: size.tap, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: palette.mist }}
         >
-          {copied === "ok" ? <Check size={15} color={palette.teal} strokeWidth={2.8} /> : <Copy size={15} color={palette.night} />}
+          {copied === "ok" ? <Check size={15} color={palette.teal} strokeWidth={2.8} /> : null}
           <Text variant="label">{copied === "ok" ? "Copy ho gaya" : copied === "fail" ? "Copy nahi hua" : "ID copy"}</Text>
         </Pressable>
       </View>
@@ -295,10 +296,10 @@ function DetailBody({
         <KeyValue label="Player" value={r.player_name ?? "-"} />
         {r.player_phone ? <KeyValue label="Phone" value={r.player_phone} /> : null}
         <KeyValue label="Court" value={r.court_name} />
-        <KeyValue label="Slot" value={formatWhenRange(r.starts_at, r.ends_at)} />
+        <KeyValue label="Slot" value={formatWhenRange(r.starts_at, r.ends_at, new Date(), "ru")} />
         <KeyValue label="Muddat" value={`${durationLabel(r.duration_minutes)}${slots}`} />
-        <KeyValue label="Booking kab hui" value={formatWhen(d.booked_at)} />
-        <KeyValue label={CHANNEL_HEADING.ru} value={bookingChannelLabel(r.source, d.channel_detail, "ru") ?? SOURCE_LABEL[r.source] ?? r.source} last={!d.hold_expires_at} />
+        <KeyValue label="Booking kab hui" value={formatWhen(d.booked_at, new Date(), "ru")} />
+        <KeyValue label="Zariya" value={bookingChannelLabel(r.source, d.channel_detail, "ru") ?? SOURCE_LABEL[r.source] ?? r.source} last={!d.hold_expires_at} />
         {d.hold_expires_at ? <KeyValue label="Hold khatam" value={formatWhen(d.hold_expires_at)} last /> : null}
       </KeyValueBlock>
 

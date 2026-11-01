@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View, type 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { palette, size, space } from "@court-booking/ui-tokens";
 import { useRoleTheme } from "./theme";
+import { floatingBarRoom } from "./floating-bar";
 
 export interface ScreenProps {
   children: ReactNode;
@@ -48,10 +49,11 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const t = useRoleTheme();
   const bg = background === "night" ? palette.night : background === "white" ? palette.white : palette.ground;
-  const barRoom = floatingBar === "tabs" ? size.tabBarOwner + 22 + space[4] : floatingBar === "bar" ? 52 + 34 + space[4] : 0;
+  // tabs: bar height + its offset above the home indicator + gap (the same rule as useTabBarRoom)
+  const tabRoom = floatingBarRoom(insets.bottom, t.role === "owner" ? size.tabBarOwner : size.tabBar);
   const pad: ViewStyle = {
     paddingTop: edgeToEdgeTop ? 0 : insets.top + space[3],
-    paddingBottom: Math.max(insets.bottom, space[4]) + barRoom,
+    paddingBottom: floatingBar === "tabs" ? tabRoom : Math.max(insets.bottom, space[4]) + (floatingBar === "bar" ? 52 + 34 + space[4] : 0),
     paddingHorizontal: gutter ? t.gutter : 0,
     gap: space[4],
   };
@@ -74,7 +76,7 @@ export function Screen({
   return (
     <View style={{ flex: 1, backgroundColor: bg }}>
       {keyboard ? (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           {body}
         </KeyboardAvoidingView>
       ) : (

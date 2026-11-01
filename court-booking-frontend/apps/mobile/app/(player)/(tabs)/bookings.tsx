@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { router, useIsFocused } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Star } from "lucide-react-native";
@@ -9,8 +10,9 @@ import { palette, radius, size, space, statusPill } from "@court-booking/ui-toke
 import { Banner, Button, Card, Chip, EmptyState, ErrorState, Input, Screen, SegmentedToggle, Sheet, SkeletonCard, StatusPill, Text, useCopy, useLang, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { bookingAction, shownStatus } from "@/lib/player-flow";
-import { DateTile, PlayerOfflineBanner, asList, useBookingPlace } from "../_components";
+import { bookingAction, bookingMoneyLine, showsRefundLine, shownStatus } from "@/lib/player-flow";
+import { ticketTimeRange } from "@/lib/booking-done";
+import { DateTile, PlayerOfflineBanner, asList, openDirections, sportLabel, useBookingPlace } from "../_components";
 
 type Tab = "upcoming" | "past";
 type Filter = "all" | StatusGroup;
@@ -79,7 +81,7 @@ export default function PlayerBookingsScreen() {
       {list.length > 0 ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }} accessibilityLabel={copy("Status se chhanein", "Filter by status")}>
           {filters.map((f) => (
-            <Chip key={f.key} label={`${f.label} · ${counts[f.key]}`} selected={filter === f.key} onPress={() => setFilter(f.key)} testID={`bookings-filter-${f.key}`} />
+            <Chip key={f.key} solid label={`${f.label} · ${counts[f.key]}`} selected={filter === f.key} onPress={() => setFilter(f.key)} testID={`bookings-filter-${f.key}`} />
           ))}
         </View>
       ) : null}
@@ -128,18 +130,8 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
   const lang = useLang();
   const place = useBookingPlace(booking);
   const action = bookingAction(booking);
-  const open = () =>
-    action === "pay"
-      ? router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } })
-      : router.push({ pathname: "/(player)/booking/[id]/done", params: { id: booking.id } });
-  const label =
-    action === "pay"
-      ? copy("Pay karein", "Pay now")
-      : action === "status"
-        ? copy("Status dekhein", "See status")
-        : action === "ticket"
-          ? copy("Ticket / QR", "Ticket / QR")
-          : copy("Tafseel", "Details");
+  const details = () => router.push({ pathname: "/(player)/booking/[id]/done", params: { id: booking.id } });
+  const open = () => (action === "pay" ? router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: booking.id } }) : details());
   const canRate = booking.status === "completed" && (review == null || Date.now() - Date.parse(review.created_at) <= SEVEN_DAYS_MS);
   return (
     <Card padding={4} radiusSize="tile" style={{ gap: space[3] }} testID={`booking-row-${booking.status}`}>
@@ -152,12 +144,13 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
         <DateTile iso={booking.starts_at} variant={booking.status === "booked" ? "orange" : "soft"} month />
         <View style={{ flex: 1, gap: 4 }}>
           <StatusPill booking={shownStatus(booking)} size="sm" />
-          <Text variant="bodyStrong">{place.venue?.name ?? (place.loading ? " " : copy("Venue", "Venue"))}</Text>
-          <Text variant="meta" tone="muted">
-            {[place.court?.name, formatTimeRange(booking.starts_at, booking.ends_at, lang)].filter(Boolean).join(" · ")}
+          {/* PBookings board: "Demo Arena · Court 1" then "7:00 – 8:00 PM · Padel · PKR 2,000 diye" */}
+          <Text variant="bodyStrong">{[place.venue?.name ?? (place.loading ? " " : copy("Venue", "Venue")), place.court?.name].filter(Boolean).join(" · ")}</Text>
+          <Text variant="meta" tone="muted" testID="booking-money-line">
+            {[ticketTimeRange(booking.starts_at, booking.ends_at, lang), place.court ? sportLabel(place.court.sport) : null, bookingMoneyLine(booking, Date.now(), lang)].filter(Boolean).join(" · ")}
           </Text>
-          {place.venue ? (
-            // audit 2026-10-28 item 14: every booking says its refund rule in one line
+          {place.venue && showsRefundLine(booking) ? (
+            // audit 2026-10-28 item 14: a booking that can still be cancelled says its refund rule (never an expired or cancelled one)
             <Text variant="meta" tone="muted" testID="booking-refund-line">
               {refundPolicyShort(place.venue, lang)}
             </Text>
@@ -165,7 +158,18 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
         </View>
       </Pressable>
       <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }}>
-        <Button label={label} size="sm" variant={action === "pay" ? "primary" : "soft"} onPress={open} testID={`booking-action-${action}`} />
+        {/* PBookings board: Pakki = QR dikhao / Raasta / Tafseel, check ho rahi = Chat / Tafseel, pay baqi = Abhi pay karein / Tafseel. */}
+        {action === "pay" ? (
+          <Button label={copy("Abhi pay karein", "Pay now")} size="sm" variant="primary" onPress={open} testID="booking-action-pay" />
+        ) : null}
+        {action === "ticket" ? (
+          <Button label={copy("QR dikhao", "Show QR")} size="sm" variant="secondary" onPress={() => router.push({ pathname: "/(player)/booking/[id]/checkin", params: { id: booking.id } })} testID="booking-action-ticket" />
+        ) : null}
+        {action === "ticket" && place.venue ? <Button label={copy("Raasta", "Directions")} size="sm" variant="soft" onPress={() => openDirections(place.venue!)} testID="booking-action-directions" /> : null}
+        {action === "status" ? (
+          <Button label={copy("Chat", "Chat")} size="sm" variant="soft" onPress={() => router.push({ pathname: "/(player)/booking/[id]/chat", params: { id: booking.id } })} testID="booking-action-chat" />
+        ) : null}
+        <Button label={copy("Tafseel", "Details")} size="sm" variant="soft" onPress={details} testID={`booking-action-${action === "pay" || action === "ticket" || action === "status" ? "details" : action}`} />
         {booking.status === "completed" && review ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: size.tap }} accessibilityLabel={copy(`Aap ki rating ${review.rating} mein se 5`, `Your rating ${review.rating} of 5`)}>
             <Star size={14} color={palette.orange} fill={palette.orange} />

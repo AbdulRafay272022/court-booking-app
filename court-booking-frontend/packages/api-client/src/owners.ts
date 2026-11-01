@@ -1,5 +1,6 @@
 import type {
   StaffActivity,
+  StaffArrivals,
   BankCheck,
   BankMissingDecision,
   BankMissingState,
@@ -159,6 +160,9 @@ export function createOwnersApi(client: ApiClient) {
       client.request<StaffActivity>(
         `/owners/staff-activity?${new URLSearchParams({ venue_id: venueId, ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) }).toString()}`,
       ),
+
+    /** Staff "Aane wale players": today's players at the venue (check_in permission; minimal fields). */
+    arrivals: (venueId?: string) => client.request<StaffArrivals>(`/owners/arrivals${venueId ? `?venue_id=${encodeURIComponent(venueId)}` : ""}`),
 
     /** Stage 2: CNIC (never returns the number, only a masked form). */
     identity: () => client.request<OwnerIdentity>("/owners/identity"),

@@ -7,7 +7,7 @@ import { CircleCheck } from "lucide-react-native";
 import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
-import { Banner, Button, EmptyState, ErrorState, SegmentedToggle, SkeletonCard, Text } from "@/components/ui";
+import { Banner, Button, EmptyState, ErrorState, SegmentedToggle, SkeletonCard, Text, useTabBarRoom } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -31,6 +31,7 @@ type View3 = "all" | "awaiting" | "closed";
  * card; a card whose booking the player cancelled turns grey in place with "Theek hai". Teal hero, "Chahiye vs Screenshot"
  * cards, the duplicate warning and the separate duplicate confirm (Stage 2 B.a). Bulk approve is N single calls (B8). */
 export default function ApprovalsScreen() {
+  const tabRoom = useTabBarRoom();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
   const filterDate = routeParams.date || undefined;
@@ -45,7 +46,7 @@ export default function ApprovalsScreen() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [show, setShow] = useState<View3>("all");
+  const [show, setShow] = useState<View3>("awaiting");
   // Stage 2 (B.b): staff without the approve permission see the note up front (GET /owners/me/permissions); a 403
   // NOT_STAFF_PERMITTED (older backend, or a permission removed meanwhile) still swaps the buttons for the same note.
   const [noPermission, setNoPermission] = useState(false);
@@ -226,27 +227,21 @@ export default function ApprovalsScreen() {
         <Text variant="h1" tone="hero" accessibilityRole="header">
           Approvals
         </Text>
-        <Text testID="approvals-count" variant="bodyBold" tone="hero">
-          {query.data ? `${awaiting} approvals baqi` : "Approvals"}
+        <Text testID="approvals-count" variant="body" tone="hero">
+          {query.data
+            ? `${awaiting} ${awaiting === 1 ? "payment" : "payments"} check karni hain${awaiting > 0 && oldest !== null ? ` · sab se purani ${waitLabel(oldest)}` : ""}`
+            : "Payments load ho rahi hain"}
         </Text>
-        {query.data && awaiting > 0 && oldest !== null ? (
-          <Text variant="body" tone="heroMuted">{`Sab se purani ${waitLabel(oldest)} se wait kar rahi hai`}</Text>
-        ) : null}
-        {query.data && closed > 0 ? (
-          <Text testID="approvals-count-closed" variant="meta" tone="heroMuted">
-            {`(${closed} cancel/expire hue, Theek hai dabayein)`}
-          </Text>
-        ) : null}
       </View>
-      {query.data && closed > 0 && awaiting > 0 ? (
+      {query.data ? (
+        // Approvals board: two tabs, always, "Baqi · N" (default) and "Cancel/expire · N".
         <SegmentedToggle
           tone="dark"
           testID="approvals-view"
           accessibilityLabel="Kaun se dikhayein"
-          value={show}
+          value={show === "closed" ? "closed" : "awaiting"}
           onChange={setShow}
           options={[
-            { value: "all", label: "Sab" },
             { value: "awaiting", label: "Baqi", count: awaiting },
             { value: "closed", label: "Cancel/expire", count: closed },
           ]}
@@ -272,14 +267,14 @@ export default function ApprovalsScreen() {
         />
       ) : null}
       {bulkable.length >= 2 && (show !== "closed") ? (
-        <View testID="bulk-card" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], paddingLeft: 14, boxShadow: shadow.card }}>
+        <View testID="bulk-card" style={{ flexDirection: "row", alignItems: "center", gap: space[3], backgroundColor: palette.white, borderRadius: 22, padding: space[3], paddingLeft: 14, boxShadow: shadow.card }}>
           <View style={{ width: 40, height: 40, borderRadius: radius.sm, backgroundColor: palette.openTint, alignItems: "center", justifyContent: "center" }}>
             <CircleCheck size={20} color={palette.open} />
           </View>
-          <Text variant="body" style={{ flex: 1, minWidth: 150 }}>
+          <Text variant="body" style={{ flex: 1 }}>
             <Text variant="bodyBold">{`${bulkable.length} screenshots`}</Text> ka amount bilkul match hai
           </Text>
-          <Button label="Sab approve" size="sm" onPress={() => setBulk({ ids: bulkable.map((b) => b.payment_id), progress: null, error: null, busy: false })} testID="bulk-open" />
+          <Button label={bulkable.length === 2 ? "Dono approve" : `Sab ${bulkable.length} approve`} size="sm" onPress={() => setBulk({ ids: bulkable.map((b) => b.payment_id), progress: null, error: null, busy: false })} testID="bulk-open" />
         </View>
       ) : null}
       {loading ? (
@@ -301,7 +296,7 @@ export default function ApprovalsScreen() {
         data={loading || (query.isError && !query.data) ? [] : shown}
         keyExtractor={(it) => it.payment_id}
         ListHeaderComponent={top}
-        contentContainerStyle={{ paddingBottom: size.tabBarOwner + 64 }}
+        contentContainerStyle={{ paddingBottom: tabRoom }}
         renderItem={({ item: it }) => (
           <View style={{ paddingHorizontal: space[4], paddingTop: space[3] }}>
             <ApprovalCard

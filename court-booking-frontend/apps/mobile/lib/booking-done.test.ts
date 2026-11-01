@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { BookingStatus } from "@court-booking/types";
 
-import { doneCopy, donePollMs } from "./booking-done";
+import { bookingShortCode, calendarLink, doneCopy, donePollMs, doneView, ticketTimeRange } from "./booking-done";
 
 const ALL: BookingStatus[] = ["held", "payment_submitted", "booked", "completed", "no_show", "cancelled"];
 
@@ -42,4 +42,30 @@ test("donePollMs: polls only while the venue or the player still has to act", ()
   assert.equal(donePollMs("held"), 5000);
   for (const s of ["booked", "completed", "no_show", "cancelled"] as const) assert.equal(donePollMs(s), false);
   assert.equal(donePollMs(undefined), false);
+});
+
+test("bookingShortCode matches the backend short_code", () => {
+  assert.equal(bookingShortCode("3b9a41d7-1111-2222-3333-444455556666"), "KH-3B9A41D7");
+});
+
+test("doneView: already pakki opens the ticket; turning pakki on screen (or celebrate) shows the celebration", () => {
+  assert.equal(doneView("booked", "booked", false), "ticket");
+  assert.equal(doneView("completed", "completed", false), "ticket");
+  assert.equal(doneView("payment_submitted", "booked", false), "status");
+  assert.equal(doneView("booked", "booked", true), "status");
+  assert.equal(doneView("held", "held", false), "status");
+  assert.equal(doneView("booked", "cancelled", false), "status");
+});
+
+test("calendarLink: UTC stamps and encoded title", () => {
+  const url = calendarLink("Padel · Demo Arena", "2026-10-24T14:00:00Z", "2026-10-24T15:00:00Z", "Clifton");
+  assert.match(url, /dates=20261024T140000Z\/20261024T150000Z/);
+  assert.match(url, /text=Padel%20%C2%B7%20Demo%20Arena/);
+  assert.match(url, /location=Clifton/);
+});
+
+test("ticketTimeRange: one AM/PM when shared, both when not", () => {
+  assert.equal(ticketTimeRange("2026-10-24T14:00:00Z", "2026-10-24T15:00:00Z"), "7:00 – 8:00 PM");
+  assert.equal(ticketTimeRange("2026-10-24T06:00:00Z", "2026-10-24T08:00:00Z"), "11:00 AM – 1:00 PM");
+  assert.equal(ticketTimeRange("2026-10-24T18:00:00Z", "2026-10-24T19:00:00Z"), "11:00 PM – 12:00 AM");
 });

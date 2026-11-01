@@ -59,7 +59,7 @@ export function TimeField12({
       <Pressable
         onPress={() => setOpen(!open)}
         accessibilityRole="button"
-        accessibilityLabel={`${label || "Time"}: ${parsed ? formatTime24As12(value) : "not set"}`}
+        accessibilityLabel={`${label || "Waqt"}: ${parsed ? formatTime24As12(value) : "nahi chuna"}`}
         className="justify-center"
         style={{
           height: 48,
@@ -71,7 +71,7 @@ export function TimeField12({
         }}
       >
         <Text variant="body" style={{ fontSize: 15, color: parsed ? palette.night : palette.muted2 }}>
-          {parsed ? formatTime24As12(value) : optional ? "Any time" : "Set time"}
+          {parsed ? formatTime24As12(value) : optional ? "Koi bhi waqt" : "Waqt chunein"}
         </Text>
       </Pressable>
       {open ? (
@@ -90,8 +90,8 @@ export function TimeField12({
             {(["AM", "PM"] as Meridiem[]).map((mer) => (
               <Pill key={mer} label={mer} selected={parsed?.meridiem === mer} onPress={() => set({ meridiem: mer })} minWidth={64} />
             ))}
-            {optional && parsed ? <Pill label="Clear" selected={false} onPress={() => onChange("")} minWidth={64} /> : null}
-            <Pill label="Done" selected={false} onPress={() => setOpen(false)} minWidth={64} />
+            {optional && parsed ? <Pill label="Hatayein" selected={false} onPress={() => onChange("")} minWidth={64} /> : null}
+            <Pill label="Theek hai" selected={false} onPress={() => setOpen(false)} minWidth={64} />
           </View>
         </View>
       ) : null}
@@ -102,7 +102,7 @@ export function TimeField12({
 /** Pick a Pakistan calendar day from today onward as human chips ("Today", "Tomorrow", "Thu 24 Sep").
  * `value` is "YYYY-MM-DD" (or "" when nothing is chosen yet). */
 export function DayPicker({ label, value, onChange, days = 21 }: { label: string; value: string; onChange: (next: string) => void; days?: number }) {
-  const options = pktDayTabs(days);
+  const options = pktDayTabs(days, new Date(), "ru");
   return (
     <View className="gap-2">
       {label ? <Text variant="meta" tone="muted" weight="bold">{label}</Text> : null}
@@ -110,7 +110,7 @@ export function DayPicker({ label, value, onChange, days = 21 }: { label: string
         {options.map((d, i) => (
           <Pill
             key={d.date}
-            label={i === 0 ? "Today" : i === 1 ? "Tomorrow" : `${d.weekday} ${d.day} ${d.month}`}
+            label={i === 0 ? "Aaj" : i === 1 ? "Kal" : `${d.weekday} ${d.day} ${d.month}`}
             selected={d.date === value}
             onPress={() => onChange(d.date)}
             minWidth={72}

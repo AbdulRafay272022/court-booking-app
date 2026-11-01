@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CircleHelp, FileText, Languages, LogOut, Pencil, ShieldCheck } from "lucide-react-native";
 import { CITY_OPTIONS, formatDate, formatTime, pointsReasonLabel, type WaitlistEntry } from "@court-booking/types";
-import { palette, radius, space } from "@court-booking/ui-tokens";
+import { alpha, palette, radius, space } from "@court-booking/ui-tokens";
 
 import { Avatar, Button, Card, IconButton, ListRow, Screen, Sheet, Text, useCopy, useLang, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -74,9 +75,10 @@ export default function PlayerProfileScreen() {
         </View>
         <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }}>
           {stats.map((s) => (
-            <View key={s.l} style={{ flexGrow: 1, flexBasis: 80, borderRadius: radius.input, backgroundColor: palette.ground, paddingVertical: space[3], paddingHorizontal: space[3], gap: 2 }} accessibilityLabel={`${s.l}: ${s.n}`}>
-              <Text variant="h3">{String(s.n)}</Text>
-              <Text variant="caption" weight="bold" tone="muted">
+            // PAccount board: dark glass stat tiles on the night card, white number + soft label.
+            <View key={s.l} style={{ flexGrow: 1, flexBasis: 80, borderRadius: radius.input, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, paddingVertical: space[3], paddingHorizontal: space[3], gap: 2 }} accessibilityLabel={`${s.l}: ${s.n}`}>
+              <Text variant="h3" tone="onDark">{String(s.n)}</Text>
+              <Text variant="caption" weight="bold" tone="onDarkMuted">
                 {s.l}
               </Text>
             </View>

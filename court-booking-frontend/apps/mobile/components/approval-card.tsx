@@ -13,41 +13,40 @@ import { formatPKR } from "@/lib/format";
 import { duplicateChipCount, duplicateUsedText } from "@/lib/overview";
 import { refundAmountFor } from "@/lib/refund-confirm";
 import { STATE_CHIP, isGrey, parsePkr, slotWhen } from "@/lib/round2-format";
-import { waitLabel } from "@/lib/owner-floodlight";
+import { approvalAmounts, waitLabel } from "@/lib/owner-floodlight";
 import { BottomSheet, DangerButton, OutlineButton, PrimaryButton } from "@/components/overview/ui";
 import { BookingLinks } from "@/components/booking-links";
-import { ScreenshotThumb } from "@/components/screenshot-viewer";
+import { NoShotTile, ScreenshotThumb } from "@/components/screenshot-viewer";
 
 /** Client-side reject presets (the API takes free text, contract: POST /payments/{id}/reject {reason}). "Kuch aur" = type
  * your own. */
 export const REJECT_REASONS = ["Amount match nahi karta", "Screenshot parha nahi ja raha", "Duplicate lagta hai", "Kuch aur"];
 
 /**
- * Approvals board: "Chahiye" (what this booking needs now) next to "Screenshot mein" (what OCR read), each a text box, so
- * a match / difference / unread screenshot is told by words + a tick, never by colour alone.
+ * Approvals board: "Chahiye" (what this booking needs now) next to "Screenshot mein" (what OCR read), each a text box.
+ * The word and the tick come from the two numbers on screen (approvalAmounts), never from the backend's verdict alone, so
+ * "Match" is never shown next to two different numbers. When the screenshot also paid the player's old dues, "Chahiye"
+ * spells the sum out ("1,000 + purana baqi 1,000 = 2,000").
  */
 function AmountBoxes({ item }: { item: ApprovalQueueItem }) {
-  const v = item.ocr_verdict;
-  const read =
-    item.ocr_amount != null
-      ? `PKR ${formatPKR(item.ocr_amount)}${v === "match" ? " ✓" : ""}`
-      : "Parha nahi gaya";
-  const word = v === "match" ? "Match" : v === "mismatch" ? "Farq hai" : "Khud dekhein";
-  const box = v === "match" ? { bg: palette.openTint, fg: palette.open } : v === "mismatch" ? { bg: palette.dangerTint, fg: palette.danger } : { bg: palette.waitingTint, fg: palette.waiting };
+  const a = approvalAmounts(item);
+  const box = a.verdict === "match" ? { bg: palette.openTint, fg: palette.open } : a.verdict === "diff" ? { bg: palette.dangerTint, fg: palette.danger } : { bg: palette.waitingTint, fg: palette.waiting };
+  const word = a.verdict === "match" ? "Match" : a.verdict === "diff" ? "Farq hai" : "Khud dekhein";
+  const wide = a.withDues ? "100%" : 96;
   return (
-    <View testID="amount-chip" accessible accessibilityLabel={`Chahiye PKR ${formatPKR(item.expected_amount)}. Screenshot mein ${read}. ${word}`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-      <View style={{ flexGrow: 1, flexBasis: 96, backgroundColor: palette.ground, borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: space[2], gap: 2 }}>
+    <View testID="amount-chip" accessible accessibilityLabel={`Chahiye ${a.needText}. Screenshot mein ${a.readText}. ${word}`} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+      <View style={{ flexGrow: 1, flexBasis: wide, backgroundColor: palette.ground, borderRadius: 12, paddingHorizontal: 10, paddingVertical: space[2], gap: 2 }}>
         <Text variant="caption" weight="bold" tone="muted">
           Chahiye
         </Text>
-        <Text variant="bodyStrong">{`PKR ${formatPKR(item.expected_amount)}`}</Text>
+        <Text variant="bodyBold" style={{ fontSize: 15 }} testID="amount-need">{a.needText}</Text>
       </View>
-      <View style={{ flexGrow: 1, flexBasis: 96, backgroundColor: box.bg, borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: space[2], gap: 2 }}>
+      <View style={{ flexGrow: 1, flexBasis: wide, backgroundColor: box.bg, borderRadius: 12, paddingHorizontal: 10, paddingVertical: space[2], gap: 2 }}>
         <Text variant="caption" weight="bold" color={box.fg}>
-          {`Screenshot mein · ${word}`}
+          {a.verdict === "diff" ? "Screenshot mein · Farq hai" : "Screenshot mein"}
         </Text>
-        <Text variant="bodyStrong" color={box.fg}>
-          {read}
+        <Text variant="bodyBold" style={{ fontSize: 15 }} color={box.fg} testID="amount-read">
+          {a.readText}
         </Text>
       </View>
     </View>
@@ -61,10 +60,10 @@ export function duplicateText(n: number): string {
 
 function DuplicateChip({ n }: { n: number }) {
   return (
-    <View testID="duplicate-chip" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: palette.dangerTint, borderRadius: radius.xs, paddingHorizontal: 10, paddingVertical: 7 }}>
+    <View testID="duplicate-chip" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: palette.dangerTint, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 }}>
       <TriangleAlert size={15} color={palette.danger} />
       <Text variant="meta" weight="bold" tone="danger" style={{ flexShrink: 1 }}>
-        {`Duplicate: ${duplicateText(n)}`}
+        {duplicateText(n)}
       </Text>
     </View>
   );
@@ -94,7 +93,8 @@ export function ApprovalCard({
   onAcknowledge: (moneyReceived: boolean) => void;
 }) {
   const grey = isGrey(item);
-  const dupN = grey ? null : duplicateChipCount(item.duplicate);
+  // the backend's flag decides (a flagged screenshot whose earlier use was never credited has count 0 and still warns)
+  const dupN = grey || !item.duplicate ? null : duplicateChipCount(item.duplicate) ?? 0;
   const hasShot = item.has_screenshot || !!item.proof_url;
   return (
     <View
@@ -109,11 +109,9 @@ export function ApprovalCard({
         <Avatar name={item.player_name ?? "?"} size={44} tone={grey ? "neutral" : "info"} uri={item.player_avatar_url} />
         <View style={{ flex: 1, gap: 1 }}>
           <Text variant="bodyStrong">{item.player_name ?? "Player"}</Text>
-          <Text variant="meta" tone="muted">
-            {courtText}
-          </Text>
-          <Text testID="approval-when" variant="meta" weight="bold">
-            {slotWhen(item.starts_at, item.ends_at)}
+          {/* Approvals board: one muted line "Court 1 · Mon 26 Oct · 5:30–7:30 PM". */}
+          <Text testID="approval-when" variant="meta" tone="muted">
+            {`${courtText} · ${slotWhen(item.starts_at, item.ends_at)}`}
           </Text>
         </View>
         {!grey ? (
@@ -126,8 +124,9 @@ export function ApprovalCard({
       {item.player_context ? <PlayerContext ctx={item.player_context} /> : null}
 
       {!grey ? (
-        <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
-          {hasShot ? <ScreenshotThumb compact paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : null}
+        // Approvals board: the screenshot tile on the left (tap = full size), the board's placeholder when there is none
+        <View style={{ flexDirection: "row", gap: space[3], alignItems: "stretch" }}>
+          {hasShot ? <ScreenshotThumb compact paymentId={item.payment_id} url={item.proof_url} alt={`${item.player_name ?? "Player"} ka screenshot`} /> : <NoShotTile />}
           <View style={{ flex: 1, gap: space[2] }}>
             <AmountBoxes item={item} />
             {dupN != null ? <DuplicateChip n={dupN} /> : null}
@@ -364,9 +363,10 @@ export function RejectSheet({
       subtitle={`${item.player_name ?? "Player"} · ${slotWhen(item.starts_at, item.ends_at)} · PKR ${formatPKR(item.expected_amount)}`}
       onClose={onClose}
       footer={
-        <View style={{ flexDirection: "row", gap: space[3] }}>
-          <OutlineButton flex label="Wapas" onPress={onClose} />
-          <DangerButton flex label={busy ? "Reject ho raha hai" : "Reject karein"} disabled={!reason || busy} onPress={() => reason && onConfirm(reason)} />
+        // OSheets reject: the red action first, full width, "Wapas" under it as a quiet grey button.
+        <View style={{ gap: space[2] }}>
+          <DangerButton label={busy ? "Reject ho raha hai" : "Reject karein"} disabled={!reason || busy} onPress={() => reason && onConfirm(reason)} />
+          <Button label="Wapas" variant="quiet" size="md" block onPress={onClose} />
         </View>
       }
     >

@@ -68,3 +68,20 @@ export interface StaffActivity {
   no_shows: StaffNoShow[];
   bank_missing?: StaffBankMissing[];
 }
+
+/** GET /owners/arrivals (OStaffView "Aane wale players"): today's players at one venue for a check-in staff member.
+ * Minimal on purpose (owner decision 2026-11-01): no phone, money, screenshots, booking ids or other days. */
+export interface StaffArrival {
+  player_name: string;
+  court_name: string;
+  starts_at: string;
+  ends_at: string;
+  checked_in: boolean;
+}
+
+export interface StaffArrivals {
+  venue_id: string;
+  /** Pakistan calendar day, "YYYY-MM-DD". */
+  date: string;
+  items: StaffArrival[];
+}

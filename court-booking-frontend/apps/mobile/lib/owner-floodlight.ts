@@ -1,4 +1,4 @@
-import type { ApprovalQueueItem, LedgerSummary, OwnerBookingRow, StaffPermissionKey } from "@court-booking/types";
+import { formatTime, type ApprovalQueueItem, type LedgerSummary, type OwnerBookingRow, type StaffPermissionKey } from "@court-booking/types";
 
 /**
  * Pure rules for the Floodlight owner screens (boards OwnerToday, Approvals, OPaisa, OStaffView). No React / RN imports,
@@ -31,6 +31,9 @@ export function ownerBarTabs(can: Can): OwnerBarTab[] {
   if (can("view_ledger")) {
     out.push({ key: "aaj", route: "today", label: "Aaj" });
     out.push({ key: "approvals", route: "approvals", label: "Approvals" });
+  } else if (can("check_in") || can("walkin")) {
+    // OStaffView board: check-in / walk-in staff get their own Aaj (two big actions), never the money board.
+    out.push({ key: "aaj", route: "today", label: "Aaj" });
   }
   if (can("view_ledger")) out.push({ key: "paisa", route: "ledger", label: "Paisa" });
   else if (can("mark_refunds")) out.push({ key: "paisa", route: "refunds", label: "Paisa" });
@@ -111,15 +114,12 @@ export function waitLabel(minutes: number): string {
  */
 export function bulkApprovable(items: ApprovalQueueItem[], locked: boolean): ApprovalQueueItem[] {
   if (locked) return [];
-  return items.filter(
-    (it) =>
-      it.state === "awaiting" &&
-      it.ocr_verdict === "match" &&
-      it.ocr_amount != null &&
-      Math.round(it.ocr_amount) === Math.round(it.expected_amount) &&
-      !it.duplicate &&
-      !it.overpayment,
-  );
+  // exact matches only: the screenshot number equals the booking's own amount (a sum with old dues is approved by hand)
+  return items.filter((it) => {
+    if (it.state !== "awaiting" || it.duplicate || it.overpayment) return false;
+    const a = approvalAmounts(it);
+    return a.verdict === "match" && !a.withDues;
+  });
 }
 
 /** The amount sent with a bulk approve: what the single-card sheet would pre-fill (checks.paid_amount), else nothing. */
@@ -255,6 +255,27 @@ export function spanLabel(minutes: number): string {
   return h === 1 ? "1 ghanta" : `${Number.isInteger(h) ? h : h.toFixed(1)} ghante`;
 }
 
+/** OwnerToday board: a free gap or free time as "1 hr" / "1.5 hr" / "30 min" (the board's short form). */
+export function hrLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = minutes / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} hr`;
+}
+
+/** "Courts ka din" header: the day's opening window, short ("5 PM – 11 PM", "8:30 AM – 1 AM"). */
+export function dayRangeLabel(startAt: string, endAt: string): string {
+  const short = (iso: string) => formatTime(iso).replace(":00", "");
+  return `${short(startAt)} – ${short(endAt)}`;
+}
+
+/** Hero chip: free time ahead today in hours ("5 ghante khaali"); the overview counts free 30-minute grid slots. */
+export function freeHoursLabel(freeSlots: number, slotMinutes = 30): string {
+  const minutes = freeSlots * slotMinutes;
+  if (minutes < 60) return `${minutes} min khaali`;
+  const h = minutes / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} ${h === 1 ? "ghanta" : "ghante"} khaali`;
+}
+
 /* ---------------- Feature flags ---------------- */
 
 /** A flag gate for entry points: unknown (loading, error, older backend without the key) counts as ON, the server still
@@ -311,4 +332,86 @@ export function growthGrid(slots: { court_id: string; day_of_week: number; hour:
   }
   const hours = [...new Set(slots.filter((s) => s.day_of_week >= 0 && s.day_of_week <= 6).map((s) => s.hour))].sort((a, b) => a - b);
   return { hours, cell: (d, h) => map.get(`${d}-${h}`) ?? null };
+}
+
+/** OwnerToday board: 72 px per hour (5 PM to 11 PM fits one screen). */
+export const TIMELINE_PX_HOUR = 72;
+
+export interface TimelineScale {
+  /** Minutes from the window start -> px from the top. */
+  y: (min: number) => number;
+  height: number;
+  /** Stretches with no booking on any court that are drawn short (one hour tall). */
+  collapsed: { start: number; end: number }[];
+  /** Hour ticks still drawn (none strictly inside a collapsed stretch). */
+  hours: { ms: number; offset: number }[];
+}
+
+/**
+ * Vertical scale for the courts timeline. A stretch longer than `maxEmptyMin` where NO court has a booking is drawn as
+ * one hour (`collapsedMin`) instead of its real length, so a quiet afternoon does not push the evening off the screen
+ * (OwnerToday board: long "khaali" blocks are short). Everything else is linear at `pxHour`.
+ */
+export function timelineScale(model: Pick<TimelineModel, "minutes" | "hours" | "columns">, pxHour = TIMELINE_PX_HOUR, maxEmptyMin = 120, collapsedMin = 60): TimelineScale {
+  const busy = model.columns.flatMap((c) => c.blocks.map((b) => [b.start, b.end] as const)).sort((a, b) => a[0] - b[0]);
+  const free: { start: number; end: number }[] = [];
+  let cursor = 0;
+  for (const [s, e] of busy) {
+    if (s > cursor) free.push({ start: cursor, end: s });
+    cursor = Math.max(cursor, e);
+  }
+  if (cursor < model.minutes) free.push({ start: cursor, end: model.minutes });
+  const collapsed = free.filter((f) => f.end - f.start > maxEmptyMin);
+  // visual minutes for a real minute offset
+  const vmin = (min: number) => {
+    let v = min;
+    for (const c of collapsed) {
+      if (min <= c.start) break;
+      const inside = Math.min(min, c.end) - c.start;
+      const len = c.end - c.start;
+      v -= inside - (inside / len) * collapsedMin;
+    }
+    return v;
+  };
+  const y = (min: number) => (vmin(min) / 60) * pxHour;
+  return {
+    y,
+    height: y(model.minutes),
+    collapsed,
+    hours: model.hours.filter((h) => !collapsed.some((c) => h.offset > c.start && h.offset < c.end)),
+  };
+}
+
+/* ---------------- Approvals: "Chahiye" vs "Screenshot mein" ---------------- */
+
+export interface ApprovalAmounts {
+  /** What the "Chahiye" box says: "PKR 1,000", or "1,000 + purana baqi 1,000 = 2,000" when the screenshot covers old dues too. */
+  needText: string;
+  /** The number the screenshot is compared with (advance, or advance + old dues). */
+  need: number;
+  /** "Screenshot mein" value: "PKR 2,000 ✓", "PKR 1,500", "Parha nahi gaya". */
+  readText: string;
+  /** Told only from the two numbers on screen (never from the backend's word alone). */
+  verdict: "match" | "diff" | "unread";
+  /** True when the match counts the player's old dues. */
+  withDues: boolean;
+}
+
+const pkr = (n: number) => Math.round(n).toLocaleString("en-US");
+
+/**
+ * Approvals card amounts. The screenshot is a match only when its number equals the number shown under "Chahiye": the
+ * booking's own amount, or that plus the player's open dues at this venue ("purana baqi", flag player_dues) when the
+ * screenshot paid both. "Match" is never shown when the two numbers on screen differ.
+ */
+export function approvalAmounts(it: Pick<ApprovalQueueItem, "expected_amount" | "ocr_amount" | "player_context">): ApprovalAmounts {
+  const own = Math.round(it.expected_amount);
+  const dues = Math.round((it.player_context?.dues ?? []).reduce((s, d) => s + Math.max(0, d.due_pkr), 0));
+  const read = it.ocr_amount != null ? Math.round(it.ocr_amount) : null;
+  if (read === null) return { needText: `PKR ${pkr(own)}`, need: own, readText: "Parha nahi gaya", verdict: "unread", withDues: false };
+  if (read === own) return { needText: `PKR ${pkr(own)}`, need: own, readText: `PKR ${pkr(read)} ✓`, verdict: "match", withDues: false };
+  if (dues > 0 && read === own + dues) {
+    return { needText: `${pkr(own)} + purana baqi ${pkr(dues)} = ${pkr(own + dues)}`, need: own + dues, readText: `PKR ${pkr(read)} ✓`, verdict: "match", withDues: true };
+  }
+  return { needText: `PKR ${pkr(own)}`, need: own, readText: `PKR ${pkr(read)}`, verdict: "diff", withDues: false };
 }

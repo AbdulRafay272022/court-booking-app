@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { AppState, FlatList, Pressable, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ViewToken } from "react-native";
+import { AppState, FlatList, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ViewToken } from "react-native";
+import { Pressable } from "./Pressable";
 import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
 import { Heart, List } from "lucide-react-native";
@@ -338,9 +339,10 @@ export function VenueCard({ venue, onPress, saved, onToggleSave, visible = false
                 accessibilityRole="button"
                 accessibilityLabel={copy(`${tm.label} khaali, book karein`, `${tm.label} available, book`)}
                 onPress={tm.onPress}
-                style={{ minHeight: 44, minWidth: 76, paddingHorizontal: space[3], borderRadius: radius.sm, backgroundColor: t.selected.bg, borderWidth: 1.5, borderColor: t.selected.border, alignItems: "center", justifyContent: "center" }}
+                // Main / VenueCard boards: a free time is the "open" green tint (openTint / open text), no border.
+                style={{ minHeight: 44, minWidth: 76, paddingHorizontal: 14, borderRadius: 12, backgroundColor: palette.openTint, alignItems: "center", justifyContent: "center" }}
               >
-                <Text variant="bodyBold" color={t.selected.fg}>
+                <Text variant="bodyBold" color={palette.open}>
                   {tm.label}
                 </Text>
               </Pressable>

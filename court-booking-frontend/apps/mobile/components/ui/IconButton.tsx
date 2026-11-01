@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
-import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable } from "./Pressable";
 import { alpha, palette, radius, size } from "@court-booking/ui-tokens";
 import { useRole, useRoleTheme } from "./theme";
 import { haptic } from "./haptics";

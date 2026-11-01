@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, View } from "react-native";
+import { FlatList, View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useIsFocused } from "expo-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -7,7 +8,7 @@ import { Bell, CircleDot, Feather, Goal, LayoutGrid, MapPin, QrCode, Search, Tro
 import { CITY_OPTIONS, SPORT_OPTIONS, formatDateString, formatDuration, formatTime, formatTime24As12, formatTimeRange, nextBooking, pktDateString, startsInText, type Booking, type VenueSummary } from "@court-booking/types";
 import { alpha, initials, palette, radius, shadow, size, space, statusPill, venueCardData } from "@court-booking/ui-tokens";
 
-import { Avatar, Banner, Button, Card, EmptyState, Hero, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability, type IconComponent } from "@/components/ui";
+import { Avatar, Banner, Button, Card, EmptyState, Hero, IconButton, SkeletonCard, Text, VenueCard, useCopy, useLang, useRoleTheme, useVenueCardViewability, type IconComponent, useTabBarRoom } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
@@ -31,6 +32,7 @@ const TIMES_FOR = 3;
  * today with real open times, "Phir se khelo" from real past bookings, empty states otherwise. Pull to refresh.
  */
 export default function PlayerHomeScreen() {
+  const tabRoom = useTabBarRoom();
   const copy = useCopy();
   const lang = useLang();
   const t = useRoleTheme();
@@ -160,7 +162,8 @@ export default function PlayerHomeScreen() {
           </Pressable>
         </View>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {/* Main board: the sport tiles and "Aur" share ONE row (5 equal tiles; a 60 basis wrapped "Aur" onto its own line). */}
+        <View style={{ flexDirection: "row", gap: 6 }}>
           {TILES.map((tile) => (
             <SportTile key={tile.sport} label={tile.sport} icon={tile.icon} onPress={() => search({ ...draft, sport: tile.sport })} />
           ))}
@@ -225,7 +228,7 @@ export default function PlayerHomeScreen() {
           void pastQ.refetch();
           void tonightQ.refetch();
         }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + size.tabBar + space[8], gap: space[4] }}
+        contentContainerStyle={{ paddingBottom: tabRoom, gap: space[4] }}
         ListHeaderComponent={header}
         ListFooterComponent={footer}
         ListEmptyComponent={
@@ -298,7 +301,7 @@ function SportTile({ label, icon: Icon, onPress }: { label: string; icon: IconCo
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => ({ flexGrow: 1, flexBasis: 60, minHeight: 74, borderRadius: radius.button, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 4, opacity: pressed ? 0.8 : 1 })}
+      style={({ pressed }) => ({ flex: 1, minWidth: 0, minHeight: 74, borderRadius: radius.button, backgroundColor: alpha.glassDark, borderWidth: 1, borderColor: alpha.glassDarkBorder, alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 4, opacity: pressed ? 0.8 : 1 })}
     >
       <Icon size={24} color={palette.white} strokeWidth={1.9} />
       <Text variant="caption" weight="black" tone="onDark" align="center">

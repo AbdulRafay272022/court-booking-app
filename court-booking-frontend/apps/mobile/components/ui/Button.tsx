@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { ActivityIndicator, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable } from "./Pressable";
 import { buttonVariant, radius, size, space } from "@court-booking/ui-tokens";
 import { Text } from "./Text";
 import { useRoleTheme } from "./theme";
 import { haptic, type HapticKind } from "./haptics";
 
-export type ButtonVariant = "primary" | "secondary" | "soft" | "danger" | "dangerSolid";
+export type ButtonVariant = "primary" | "secondary" | "quiet" | "soft" | "danger" | "dangerSolid";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps {

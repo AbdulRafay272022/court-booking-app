@@ -29,3 +29,13 @@ docs/mobile-audit/p0-after/
 
 # Audit screenshots (docs/full-audit-2026-10-28.md); kept local only
 docs/audit-screens/
+# App UI audit 2026-10-31: screenshots and raw check results stay local; only the report (index.md) may be committed
+docs/ui-audit-app-2026-10-31/*
+!docs/ui-audit-app-2026-10-31/index.md
+# Device (emulator) UI audit 2026-10-31: screenshots stay local; only the report (index.md) may be committed
+docs/ui-audit-device-2026-10-31/*
+!docs/ui-audit-device-2026-10-31/index.md
+
+# Design vs app comparison (renders, emulator shots, side-by-side images) stays local
+docs/design-vs-app/*
+!docs/design-vs-app/index.md

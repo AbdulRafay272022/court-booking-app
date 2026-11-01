@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Text } from "@/components/ui";
 import { View } from "react-native";
-import { Banner, Screen } from "@/components/ui";
+import { Banner, Button, Screen } from "@/components/ui";
+import { confirmLogout } from "@/lib/logout";
 import { palette, radius, space } from "@court-booking/ui-tokens";
 import { router } from "expo-router";
 import * as Location from "expo-location";
@@ -28,7 +29,7 @@ export default function VenueRegisterScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setLocationError("Location permission denied — tap \"Use city centre for now\" below and refine the pin from Venue Settings once you're approved.");
+        setLocationError("Location ki ijazat nahi mili. Neeche \"Abhi shehar ka centre lein\" dabayein; approve hone ke baad Venue settings se pin theek karein.");
         return;
       }
       const position = await Location.getCurrentPositionAsync({});
@@ -46,7 +47,7 @@ export default function VenueRegisterScreen() {
         if (place.district && !store.area) store.setField("area", place.district);
       }
     } catch {
-      setLocationError("Couldn't get your location — tap \"Use city centre for now\" below and refine the pin from Venue Settings once you're approved.");
+      setLocationError("Location nahi mili. Neeche \"Abhi shehar ka centre lein\" dabayein; approve hone ke baad Venue settings se pin theek karein.");
     } finally {
       setLocating(false);
     }
@@ -102,18 +103,18 @@ export default function VenueRegisterScreen() {
       <WizardSteps current={0} />
         <View className="gap-1.5">
           <Text variant="h2">
-            Tell us about your venue
+            Apna venue list karein
           </Text>
           <Text variant="body" tone="muted">
-            This is what players will see. You can change any of it later.
+            Players yehi dekhenge. Sab kuch baad mein badal sakte hain.
           </Text>
         </View>
 
         <SectionCard>
-          <SectionLabel>The basics</SectionLabel>
+          <SectionLabel>Venue</SectionLabel>
 
           <TextField
-            label="Venue name"
+            label="Venue ka naam"
             value={store.name}
             onChangeText={(v) => store.setField("name", v)}
             placeholder="Padel Republic"
@@ -125,22 +126,22 @@ export default function VenueRegisterScreen() {
               <Text variant="body" className="flex-1">{user?.phone}</Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.xs, backgroundColor: palette.openTint }}>
                 <CheckIcon size={11} color={palette.open} strokeWidth={3} />
-                <Text variant="caption" tone="open" weight="bold">VERIFIED</Text>
+                <Text variant="caption" tone="open" weight="bold">VERIFIED ✓</Text>
               </View>
             </View>
           </View>
 
           <TextField
-            label="WhatsApp for bookings (if different)"
+            label="Venue WhatsApp (agar alag ho)"
             value={store.whatsapp}
             onChangeText={(v) => store.setField("whatsapp", v)}
-            placeholder="Same as above"
+            placeholder="Upar wala hi"
             keyboardType="phone-pad"
             mono
           />
 
           <View className="gap-2">
-            <Text variant="meta" tone="muted" weight="bold">Sports you offer</Text>
+            <Text variant="meta" tone="muted" weight="bold">Kaun se khel?</Text>
             <View className="flex-row flex-wrap gap-2">
               {SPORT_OPTIONS.map((sport) => (
                 <Chip
@@ -156,14 +157,14 @@ export default function VenueRegisterScreen() {
           <AmenityPicker value={store.amenities} onToggle={store.toggleAmenity} options={AMENITY_OPTIONS} />
 
           <TextField
-            label="Street address"
+            label="Poora address"
             value={store.address}
             onChangeText={(v) => store.setField("address", v)}
             placeholder="Khayaban-e-Shahbaz, DHA Phase 6"
           />
 
           <TextField
-            label="Area"
+            label="Ilaqa"
             value={store.area}
             onChangeText={(v) => store.setField("area", v)}
             placeholder="DHA Phase 6"
@@ -171,10 +172,10 @@ export default function VenueRegisterScreen() {
 
           <View className="gap-2">
             <Text variant="meta" tone="muted" weight="bold">
-              Pin your location so players can find the gate
+              Map par jagah: pin lagayein taake players gate tak pohanchein
             </Text>
             <SecondaryButton
-              label={locating ? "Locating…" : store.latitude && !usingCityCentre ? "Update my location" : "Use my current location"}
+              label={locating ? "Location dhoond rahe hain…" : store.latitude && !usingCityCentre ? "Location dobara lein" : "Meri location lo"}
               onPress={handleUseLocation}
             />
             {store.latitude !== null && store.longitude !== null ? (
@@ -195,20 +196,20 @@ export default function VenueRegisterScreen() {
                 variant="meta" weight="bold" tone="link"
                 style={{ textDecorationLine: "underline", minHeight: 44, paddingVertical: 12 }}
               >
-                Use city centre for now — refine from Venue Settings
+                Abhi shehar ka centre lein (baad mein Venue settings se theek karein)
               </Text>
             ) : null}
           </View>
         </SectionCard>
 
         <SectionCard>
-          <SectionLabel>Where players send payment</SectionLabel>
+          <SectionLabel>Players paisa kahan bhejein</SectionLabel>
           <Text variant="caption" tone="subtle">
-            Players pay you directly. Khelo never holds your money — we only check that the
-            screenshot matches what's owed. You can add this later if you'd rather skip it for now.
+            Players seedha aap ko paisa bhejte hain. Khelo paisa nahi rakhta; hum sirf dekhte hain ke screenshot ki raqam
+            sahi hai. Abhi chhorna ho to baad mein add kar sakte hain.
           </Text>
           <TextField
-            label="Bank name"
+            label="Bank ka naam"
             value={store.bankName}
             onChangeText={(v) => store.setField("bankName", v)}
             placeholder="Meezan Bank"
@@ -225,7 +226,7 @@ export default function VenueRegisterScreen() {
             label="Account number"
             value={store.accountNumber}
             onChangeText={(v) => store.setField("accountNumber", v)}
-            placeholder="03445551234 or 12345678901234"
+            placeholder="03445551234 ya 12345678901234"
             keyboardType="number-pad"
             mono
             error={bankTouched && store.accountNumber ? bankErrors.number : null}
@@ -269,12 +270,14 @@ export default function VenueRegisterScreen() {
           />
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[3] }}>
-          <SecondaryButton label="Save and finish later" onPress={handleSaveAndExit} />
-          <PrimaryButton label="Next: courts & pricing" onPress={handleNext} disabled={!isValid} />
+          <SecondaryButton label="Save karein, baad mein poora karein" onPress={handleSaveAndExit} />
+          <PrimaryButton label="Aage: Courts" onPress={handleNext} disabled={!isValid} />
         </View>
         <Text variant="caption" tone="muted" align="center">
           Draft khud save hota hai
         </Text>
+        {/* A new owner had no way out of the wizard (no venue yet means no Aur tab): keep a quiet Log out here. */}
+        <Button label="Log out" variant="quiet" size="sm" onPress={confirmLogout} style={{ alignSelf: "center" }} testID="wizard-logout" />
     </Screen>
   );
 }

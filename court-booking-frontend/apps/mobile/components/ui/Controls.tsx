@@ -161,9 +161,10 @@ export function RadioGroup<V extends string>({
               paddingHorizontal: 14,
               paddingVertical: space[2],
               borderRadius: radius.md,
-              backgroundColor: on ? (danger ? palette.dangerTint : t.selected.bg) : palette.ground,
-              borderWidth: 2,
-              borderColor: on ? (danger ? palette.danger : t.selected.border) : "transparent",
+              // OSheets reject: idle = white with a 1 px line, chosen = tint + 2 px role (or danger) border.
+              backgroundColor: on ? (danger ? palette.dangerTint : t.selected.bg) : palette.white,
+              borderWidth: on ? 2 : 1,
+              borderColor: on ? (danger ? palette.danger : t.selected.border) : palette.line,
             }}
           >
             <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: on ? 6 : 2, borderColor: on ? onColor : palette.muted2, backgroundColor: palette.white }} />

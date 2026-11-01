@@ -44,34 +44,67 @@ function useProofUrl(paymentId: string, initialUrl?: string | null) {
 
 /** Inline screenshot: max ~160 px high, contain, rounded, caption "Bara karke dekhein". Tapping opens the full-screen viewer. */
 export function ScreenshotThumb({ paymentId, url: initialUrl, alt = "Payment screenshot", compact }: { paymentId: string; url?: string | null; alt?: string; compact?: boolean }) {
-  // compact = the Approvals board tile (88 high, 76 wide) next to the amounts; the full-screen viewer is the same.
+  // compact = the Approvals board tile (70 wide, 88 high, 14 radius, expand badge, no caption) next to the amounts.
   const h = compact ? 88 : 160;
   const [open, setOpen] = useState(false);
   const proof = useProofUrl(paymentId, initialUrl);
+  const shown = !!proof.url && !proof.failed;
   return (
-    <View style={{ gap: 6, width: compact ? 76 : undefined }}>
+    <View style={{ gap: 6, width: compact ? 70 : undefined, alignSelf: compact ? "stretch" : undefined }}>
       <Pressable
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={`${alt}: bara karke dekhein`}
         testID="screenshot-thumb"
-        style={{ height: h, borderRadius: radius.md, overflow: "hidden", backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" }}
+        style={{ ...(compact ? { minHeight: h, flex: 1 } : { height: h }), borderRadius: compact ? 14 : radius.md, overflow: "hidden", backgroundColor: palette.mist, alignItems: "center", justifyContent: "center" }}
       >
-        {proof.url && !proof.failed ? (
-          <Image source={{ uri: proof.url }} onError={proof.onError} resizeMode="contain" accessibilityLabel={alt} style={{ width: "100%", height: h }} />
+        {shown ? (
+          <Image source={{ uri: proof.url! }} onError={proof.onError} resizeMode={compact ? "cover" : "contain"} accessibilityLabel={alt} style={{ width: "100%", height: compact ? "100%" : h }} />
         ) : proof.loading ? (
           <ActivityIndicator color={palette.teal} />
+        ) : compact ? (
+          <ShotLines />
         ) : (
-          <Text variant="caption" tone="muted" align="center">{compact ? "Load nahi hua" : "Screenshot load nahi hua. Dabayein."}</Text>
+          <Text variant="caption" tone="muted" align="center">Screenshot load nahi hua. Dabayein.</Text>
         )}
-        <View pointerEvents="none" style={{ position: "absolute", right: 6, bottom: 6, width: 30, height: 30, borderRadius: radius.xs, backgroundColor: alpha.onPhoto, alignItems: "center", justifyContent: "center" }}>
-          <Maximize2 size={16} color={palette.white} />
+        <View
+          pointerEvents="none"
+          style={{ position: "absolute", right: compact ? 5 : 6, bottom: compact ? 5 : 6, width: compact ? 26 : 30, height: compact ? 26 : 30, borderRadius: compact ? 8 : radius.xs, backgroundColor: alpha.onPhoto, alignItems: "center", justifyContent: "center" }}
+        >
+          <Maximize2 size={compact ? 14 : 16} color={palette.white} />
         </View>
       </Pressable>
-      <Text variant={compact ? "caption" : "meta"} weight="bold" tone="link">
-        Bara karke dekhein
-      </Text>
+      {compact ? null : (
+        <Text variant="meta" weight="bold" tone="link">
+          Bara karke dekhein
+        </Text>
+      )}
       {open ? <ScreenshotViewer paymentId={paymentId} initialUrl={proof.url ?? initialUrl} onClose={() => setOpen(false)} /> : null}
+    </View>
+  );
+}
+
+/** Approvals board placeholder: the grey tile with three short bars (a drawn "receipt"). */
+function ShotLines() {
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: 9, right: 9, top: 11, gap: 5 }}>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.lineStrong, width: "70%" }} />
+      <View style={{ height: 10, borderRadius: 3, backgroundColor: palette.muted2 }} />
+      <View style={{ height: 5, borderRadius: 3, backgroundColor: palette.line }} />
+    </View>
+  );
+}
+
+/** The board tile when the player sent no screenshot at all: same placeholder, nothing to open. */
+export function NoShotTile() {
+  return (
+    <View
+      testID="screenshot-none"
+      accessible
+      accessibilityLabel="Screenshot nahi bheja"
+      style={{ width: 70, minHeight: 88, alignSelf: "stretch", borderRadius: 14, backgroundColor: palette.mist, overflow: "hidden" }}
+    >
+      <ShotLines />
     </View>
   );
 }

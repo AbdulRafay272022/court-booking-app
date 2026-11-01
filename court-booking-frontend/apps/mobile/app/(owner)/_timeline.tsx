@@ -5,10 +5,10 @@ import type { OwnerBookingRow } from "@court-booking/types";
 import { Text, useRoleTheme } from "@/components/ui";
 
 import { formatPKR, formatTime, formatTimeRange } from "@/lib/format";
-import { spanLabel, timelineModel, type TimelineBlock, type TimelineGap, type TimelineKind } from "@/lib/owner-floodlight";
+import { TIMELINE_PX_HOUR, hrLabel, timelineModel, timelineScale, type TimelineBlock, type TimelineGap, type TimelineKind } from "@/lib/owner-floodlight";
 
-/** px per hour: a 30-minute booking is 48 tall, so every block is a >= 44 pt target. */
-const PX_HOUR = 96;
+/** OwnerToday board: 72 px per hour. A 30-minute block is 32 tall, so blocks get a hitSlop to stay >= 44 pt to tap. */
+const PX_HOUR = TIMELINE_PX_HOUR;
 const LABEL_W = 52;
 const MIN_COL = 116;
 
@@ -65,14 +65,16 @@ export function CourtsTimeline({
   // Today opens an hour before "now" (a toggle shows the earlier hours); another day shows the whole day.
   const clip = wholeDay ? null : nowMs - 3600_000;
   const model = useMemo(() => timelineModel(rows, courts, operatingDay, nowMs, 30, clip), [rows, courts, operatingDay, nowMs, clip]);
-  if (!model) return null;
-  const height = (model.minutes / 60) * PX_HOUR;
-  const y = (min: number) => (min / 60) * PX_HOUR;
+  const scale = useMemo(() => (model ? timelineScale(model, PX_HOUR) : null), [model]);
+  if (!model || !scale) return null;
+  // long stretches with no booking on any court are drawn one hour tall (board), so the evening fits one screen
+  const { height, y } = scale;
   const cols = model.columns;
   const grid = (
     <View style={{ flexDirection: "row", gap: space[2], minWidth: LABEL_W + cols.length * (MIN_COL + space[2]) }}>
       <View style={{ width: LABEL_W, height }}>
-        {model.hours.map((h, i) => (
+        {/* the window's closing hour has no label (board: 5 PM ... 10 PM for a day that ends at 11 PM) */}
+        {scale.hours.filter((h) => h.offset < model.minutes).map((h, i) => (
           <Text key={h.ms} variant="caption" weight="bold" tone="muted" align="right" style={{ position: "absolute", right: space[2], top: i === 0 ? 0 : y(h.offset) - 8 }}>
             {hourLabel(h.ms)}
           </Text>
@@ -80,20 +82,21 @@ export function CourtsTimeline({
       </View>
       {cols.map((c) => (
         <View key={c.courtId} style={{ flex: 1, minWidth: MIN_COL, height }}>
-          {model.hours.map((h) => (
+          {scale.hours.map((h) => (
             <View key={h.ms} style={{ position: "absolute", left: 0, right: 0, top: y(h.offset), height: 1, backgroundColor: palette.ground }} />
           ))}
           {c.gaps.map((g) => (
-            <Gap key={`g-${g.start}`} gap={g} top={y(g.start) + 2} h={y(g.end - g.start) - 4} onAdd={onAdd && g.future ? () => onAdd(c.courtId, new Date(Math.max(g.startMs, Math.ceil(nowMs / 1800_000) * 1800_000)).toISOString()) : undefined} />
+            <Gap key={`g-${g.start}`} gap={g} top={y(g.start) + 2} h={y(g.end) - y(g.start) - 4} onAdd={onAdd && g.future ? () => onAdd(c.courtId, new Date(Math.max(g.startMs, Math.ceil(nowMs / 1800_000) * 1800_000)).toISOString()) : undefined} />
           ))}
           {c.blocks.map((b) => {
             const look = blockLook(b.kind);
-            const h = y(b.end - b.start) - 4;
+            const h = y(b.end) - y(b.start) - 4;
             return (
               <Pressable
                 key={b.row.booking_id}
                 testID={`tl-block-${b.row.booking_id}`}
                 onPress={() => onOpen(b.row.booking_id)}
+                hitSlop={h < 44 ? { top: (44 - h) / 2, bottom: (44 - h) / 2 } : undefined}
                 accessibilityRole="button"
                 accessibilityLabel={`${b.row.player_name ?? "Player"}, ${c.name}, ${formatTimeRange(b.row.starts_at, b.row.ends_at)}, ${KIND_LABEL[b.kind]}, ${blockMeta(b)}`}
                 style={{
@@ -116,7 +119,7 @@ export function CourtsTimeline({
                 <Text variant="label" color={look.fg} strike={b.kind === "noshow"}>
                   {b.row.player_name ?? "Player"}
                 </Text>
-                {h >= 70 ? (
+                {h >= 50 ? (
                   <Text variant="caption" color={look.fg}>
                     {blockMeta(b)}
                   </Text>
@@ -169,7 +172,7 @@ export function CourtsTimeline({
         <Legend label="Booked" bg={palette.teal} />
         <Legend label="Check baqi" bg={palette.waitingTint} border={palette.amber} />
         <Legend label="Walk-in" bg={palette.tealTint} />
-        <Legend label="Koi booking nahi" bg={palette.white} border={palette.muted2} dashed />
+        <Legend label="Khaali" bg={palette.white} border={palette.muted2} dashed />
       </View>
     </View>
   );
@@ -191,13 +194,13 @@ function Gap({ gap, top, h, onAdd }: { gap: TimelineGap; top: number; h: number;
   const style = { position: "absolute" as const, left: 0, right: 0, top, height: h, borderRadius: radius.sm, borderWidth: 1, borderStyle: "dashed" as const, borderColor: palette.muted2, alignItems: "center" as const, justifyContent: "center" as const, paddingHorizontal: 4 };
   if (!onAdd) return gap.future ? <View style={[style, { opacity: 0.55 }]} accessibilityElementsHidden importantForAccessibility="no" /> : null;
   return (
-    <Pressable onPress={onAdd} accessibilityRole="button" accessibilityLabel={`Walk-in add karein, ${spanLabel(mins)} mein koi booking nahi`} style={style}>
+    <Pressable onPress={onAdd} accessibilityRole="button" accessibilityLabel={`Walk-in add karein, ${hrLabel(mins)} khaali`} style={style}>
       <Text variant="label" tone="body" align="center">
         + Add
       </Text>
-      {h >= 70 ? (
+      {h >= 50 ? (
         <Text variant="caption" tone="muted" align="center">
-          {`${spanLabel(mins)} koi booking nahi`}
+          {`${hrLabel(mins)} khaali`}
         </Text>
       ) : null}
     </Pressable>

@@ -16,6 +16,8 @@ from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.services.duplicate_proof import used_on_bookings
 from app.schemas.staff_activity import StaffActivityOut
+from app.schemas.arrivals import ArrivalsOut
+from app.services.arrivals_service import todays_arrivals
 from app.schemas.bank_check import BankCheckOut, BankMissingDecideIn, BankMissingStateOut
 from app.schemas.admin import OwnerDigestOut, OwnerRefundOut
 from app.schemas.booking import BookingOut
@@ -141,6 +143,13 @@ async def owner_today(
     eff_owner, eff_venue = await resolve_owner_context(db, owner, venue_id, "view_ledger")
     service = OwnerDashboardService(db, settings)
     return await service.today(eff_owner, target_date=date_, venue_id=eff_venue)
+
+
+@router.get("/arrivals", response_model=ArrivalsOut)
+async def owner_arrivals(db: DbSession, actor: RequireStaffCapable, venue_id: uuid.UUID | None = None) -> ArrivalsOut:
+    """OStaffView "Aane wale players": today's players at one venue for a staff member with check_in (owners/admins
+    may read their own venue too). Name, court, start/end, checked-in only -- no phone, money, screenshots or other days."""
+    return await todays_arrivals(db, actor, venue_id)
 
 
 @router.get("/pending-approvals", response_model=list[PendingApprovalOut])

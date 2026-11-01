@@ -4,8 +4,10 @@
  * (logic only). Promotion candidates for components/ui: AuthShell, OtpStatus, SelectSheetField.
  */
 import { useState, type ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
+import { Pressable } from "@/components/ui/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LightStatusBar } from "@/components/ui/StatusBarStyle";
 import { ChevronDown } from "lucide-react-native";
 import { palette, radius, size, space } from "@court-booking/ui-tokens";
 
@@ -35,6 +37,7 @@ export function AuthShell({
   if (hero) {
     return (
       <Screen keyboard gutter={false} edgeToEdgeTop testID={testID}>
+        <LightStatusBar />
         <Hero topInset={insets.top} roundedBottom>
           <Logo size={40} onDark />
           <View style={{ gap: space[2] }}>

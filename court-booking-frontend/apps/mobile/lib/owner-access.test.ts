@@ -24,7 +24,9 @@ test("firstAllowedTabRoute: staff land on the first tab they may open", () => {
   assert.equal(firstAllowedTabRoute(owner), "today");
   assert.equal(firstAllowedTabRoute(staffWith("view_ledger")), "today");
   assert.equal(firstAllowedTabRoute(staffWith("mark_refunds")), "refunds");
-  assert.equal(firstAllowedTabRoute(staffWith("check_in")), "more");
+  assert.equal(firstAllowedTabRoute(staffWith("check_in")), "today");
+  assert.equal(firstAllowedTabRoute(staffWith("walkin")), "today");
+  assert.equal(firstAllowedTabRoute(staffWith("record_payments")), "more");
 });
 
 test("moreItemAllowed: owners get everything; staff get what their keys allow", () => {

@@ -9,7 +9,8 @@
     "mobile": "npm run start --workspace=@court-booking/mobile",
     "web": "npm run dev --workspace=@court-booking/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check:time-inputs": "node scripts/check-no-native-time-inputs.mjs"
+    "check:time-inputs": "node scripts/check-no-native-time-inputs.mjs",
+    "check:pressable": "node scripts/check-pressable-style.mjs"
   },
   "engines": {
     "node": ">=20"
