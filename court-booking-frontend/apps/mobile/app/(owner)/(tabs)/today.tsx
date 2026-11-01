@@ -6,7 +6,7 @@ import { Bell, ChevronDown, ChevronLeft, ChevronRight, Clock, Plus, ScanLine } f
 import type { OwnerBookingRow, OwnerOverview } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { alpha, initials, palette, radius, shadow, size, space } from "@court-booking/ui-tokens";
-import { Badge, Banner, Button, Chip, ErrorState, IconButton, Skeleton, SkeletonCard, Text, useRoleTheme, useTabBarRoom } from "@/components/ui";
+import { Badge, Banner, Button, Chip, ErrorState, IconButton, Pill, Skeleton, SkeletonCard, Text, useRoleTheme, useTabBarRoom } from "@/components/ui";
 
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { addDays, formatDayHeader, formatPKR, pktDateString } from "@/lib/format";
@@ -15,7 +15,7 @@ import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useAuthStore } from "@/lib/auth-store";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
-import { courtShort, dateTitle, historyParams, statusPendingLine } from "@/lib/overview";
+import { arrivalRow, courtShort, dateTitle, historyParams, statusPendingLine } from "@/lib/overview";
 import { allDatesRange } from "@/lib/round2-format";
 import { dayRangeLabel, freeHoursLabel, heroCollected, oldestWaitMinutes, waitLabel } from "@/lib/owner-floodlight";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
@@ -138,7 +138,7 @@ export default function OwnerTodayScreen() {
 
   if (perms.settled && !allowed) {
     // OStaffView board: a check-in / walk-in staff member gets their own Aaj (venue + name, today, the two big actions).
-    if (isStaffUser && (perms.can("check_in") || perms.can("walkin"))) return <StaffAaj venueName={activeVenue?.name} />;
+    if (isStaffUser && (perms.can("check_in") || perms.can("walkin"))) return <StaffAaj venueName={activeVenue?.name} venueId={activeVenueId} canCheckIn={perms.can("check_in")} />;
     return <NoAccess what="Aaj" withBack={false} />;
   }
 
@@ -620,8 +620,18 @@ function StaffActions() {
  * the line that money and settings are the owner's. The board's "Aane wale players" list needs a booking list a
  * check-in-only account may read; every such endpoint needs view_ledger today, so it is not shown.
  */
-function StaffAaj({ venueName }: { venueName?: string }) {
+function StaffAaj({ venueName, venueId, canCheckIn }: { venueName?: string; venueId?: string; canCheckIn: boolean }) {
   const tabRoom = useTabBarRoom();
+  const focused = useIsFocused();
+  // OStaffView "Aane wale players": GET /owners/arrivals (check_in staff, today only, name / court / times / checked-in).
+  const arrivals = useQuery({
+    queryKey: ["owner-arrivals", venueId],
+    queryFn: () => api.owners.arrivals(venueId),
+    enabled: canCheckIn,
+    refetchInterval: 60_000,
+    subscribed: focused,
+  });
+  const nowMs = Date.now();
   const name = useAuthStore((s) => s.user?.name);
   const eyebrow = [venueName, name ? `Staff: ${name.split(" ")[0]}` : "Staff"].filter(Boolean).join(" · ");
   return (
@@ -635,6 +645,45 @@ function StaffAaj({ venueName }: { venueName?: string }) {
         }
       >
         <StaffActions />
+        {canCheckIn ? (
+          <View style={{ gap: 10 }} testID="staff-arrivals">
+            <Text variant="bodyStrong" accessibilityRole="header" style={{ paddingTop: 6, paddingHorizontal: space[1] }}>
+              Aane wale players
+            </Text>
+            {arrivals.isLoading ? (
+              <SkeletonCard />
+            ) : arrivals.isError ? (
+              <ErrorState message={friendlyErrorMessage(arrivals.error)} onRetry={() => arrivals.refetch()} />
+            ) : (arrivals.data?.items ?? []).length === 0 ? (
+              <Text variant="body" tone="muted" style={{ paddingHorizontal: space[1] }}>
+                Aaj abhi koi pakki booking nahi.
+              </Text>
+            ) : (
+              arrivals.data!.items.map((a, i) => {
+                const row = arrivalRow(a, nowMs);
+                return (
+                  <View
+                    key={`${a.starts_at}-${a.court_name}-${i}`}
+                    accessible
+                    accessibilityLabel={`${a.player_name}, ${row.meta}, ${row.status}`}
+                    style={{ backgroundColor: palette.white, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
+                  >
+                    <View style={{ width: 56, height: 44, borderRadius: 12, backgroundColor: palette.tealTint, alignItems: "center", justifyContent: "center" }}>
+                      <Text variant="label" color={palette.tealDeep}>{row.time}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text variant="bodyBold" style={{ fontSize: 15 }} numberOfLines={1}>{a.player_name}</Text>
+                      <Text variant="caption" tone="muted" numberOfLines={1}>{row.meta}</Text>
+                    </View>
+                    <View style={{ alignSelf: "center" }}>
+                      <Pill size="sm" label={row.status} tone={row.tone} />
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        ) : null}
         <Text variant="caption" tone="muted" style={{ paddingHorizontal: space[1] }}>
           Paisa aur settings sirf owner dekh sakta hai. Zyada access ke liye owner se kahein.
         </Text>

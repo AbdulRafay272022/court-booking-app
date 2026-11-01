@@ -82,3 +82,14 @@ test("historyStatus: board pills", () => {
   assert.equal(historyStatus({ ...base, status_key: "no_show" } as typeof base).label, "No-show");
   assert.equal(historyStatus({ ...base, status_pending: true } as typeof base).label, "Status baqi");
 });
+
+test("arrivalRow: time tile, court + range, status without money", async () => {
+  const { arrivalRow } = await import("./overview");
+  const a = { court_name: "Court 1", starts_at: "2026-11-01T14:00:00Z", ends_at: "2026-11-01T15:00:00Z", checked_in: false };
+  const before = Date.parse("2026-11-01T12:00:00Z");
+  assert.deepEqual(arrivalRow(a, before), { time: "7 PM", meta: "Court 1 · 7–8 PM", status: "Aane wala", tone: "neutral" });
+  assert.equal(arrivalRow({ ...a, checked_in: true }, before).status, "✓ Aa gaya");
+  assert.equal(arrivalRow(a, Date.parse("2026-11-01T14:30:00Z")).status, "Check-in baqi");
+  assert.equal(arrivalRow(a, Date.parse("2026-11-01T16:00:00Z")).status, "Check-in nahi hua");
+  assert.equal(arrivalRow({ ...a, starts_at: "2026-11-01T13:30:00Z" }, before).time, "6:30 PM");
+});

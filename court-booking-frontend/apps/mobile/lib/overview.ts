@@ -205,3 +205,23 @@ export function historyStatus(row: Pick<OwnerBookingRow, "kind" | "status_key" |
   if (row.status_pending === true) return { label: "Status baqi", tone: "waiting" };
   return { label: rowStatusLabel(row), tone: "info" };
 }
+
+/** OStaffView "Aane wale players" row (minimal data: name, court, times, checked-in). No money: the staff endpoint has
+ * none on purpose. */
+export function arrivalRow(a: { court_name: string; starts_at: string; ends_at: string; checked_in: boolean }, nowMs: number = Date.now()): {
+  time: string;
+  meta: string;
+  status: string;
+  tone: "open" | "waiting" | "neutral";
+} {
+  const p = pktParts(a.starts_at);
+  const h = p.hour % 12 === 0 ? 12 : p.hour % 12;
+  const time = `${h}${p.minute ? `:${String(p.minute).padStart(2, "0")}` : ""} ${p.hour < 12 ? "AM" : "PM"}`;
+  const meta = `${a.court_name} · ${compactTimeRange(a.starts_at, a.ends_at)}`;
+  if (a.checked_in) return { time, meta, status: "✓ Aa gaya", tone: "open" };
+  const start = Date.parse(a.starts_at);
+  const end = Date.parse(a.ends_at);
+  if (nowMs < start) return { time, meta, status: "Aane wala", tone: "neutral" };
+  if (nowMs < end) return { time, meta, status: "Check-in baqi", tone: "waiting" };
+  return { time, meta, status: "Check-in nahi hua", tone: "waiting" };
+}
