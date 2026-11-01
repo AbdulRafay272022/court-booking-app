@@ -15,7 +15,7 @@ import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useAuthStore } from "@/lib/auth-store";
 import { useVenueSetupStore } from "@/lib/venue-setup-store";
-import { arrivalRow, courtShort, dateTitle, historyParams, statusPendingLine } from "@/lib/overview";
+import { arrivalRow, dateTitle, historyParams, statusPendingLine } from "@/lib/overview";
 import { allDatesRange } from "@/lib/round2-format";
 import { dayRangeLabel, freeHoursLabel, heroCollected, oldestWaitMinutes, waitLabel } from "@/lib/owner-floodlight";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
@@ -28,7 +28,7 @@ import { useOwnerBadges } from "@/components/owner-tab-bar";
 import { BookingCard } from "@/components/overview/booking-card";
 import { DateChooserSheet, MultiSelectSheet, courtsSummary } from "@/components/overview/pickers";
 import { SlotsSheet } from "@/components/overview/slots-sheet";
-import { BottomSheet, Pill as FilterPill, SelectButton, SmallChip } from "@/components/overview/ui";
+import { BottomSheet, Pill as FilterPill, SelectButton } from "@/components/overview/ui";
 import { VenueStatusBanner } from "../_dashboard-components";
 import { HeroChip, HeroLayout } from "../_fl";
 import { CourtsTimeline } from "../_timeline";
@@ -47,7 +47,7 @@ export default function OwnerTodayScreen() {
   const today = pktDateString();
   const [date, setDate] = useState(today);
   const [courtIds, setCourtIds] = useState<string[]>([]);
-  const [sheet, setSheet] = useState<null | "date" | "courts" | "slots" | "free" | "booked-courts" | "venue">(null);
+  const [sheet, setSheet] = useState<null | "date" | "courts" | "free" | "venue">(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -125,11 +125,6 @@ export default function OwnerTodayScreen() {
     setTimeout(() => setHighlight(null), 2400);
   }
 
-  const courtsByBooked = data ? [...data.slots.by_court].sort((a, b) => b.booked - a.booked) : [];
-  // Round 2 (A7): pending for ANY date; an older backend without pending_all falls back to this day's numbers.
-  const pendingAll = data?.pending_all
-    ? { ...data.pending_all, allDays: true }
-    : { count: data?.bookings.pending.count ?? 0, awaiting_approval: data?.bookings.pending.awaiting_approval ?? 0, awaiting_payment: data?.bookings.pending.awaiting_payment ?? 0, allDays: false };
   const slotCourts = (courtIds.length ? allCourts.filter((c) => courtIds.includes(c.id)) : allCourts).map((c) => ({ id: c.id, name: c.name }));
   const timelineCourts = slotCourts;
   const sports = [...new Set(allCourts.map((c) => c.sport).filter(Boolean))].join(", ");
@@ -373,91 +368,7 @@ export default function OwnerTodayScreen() {
               <Text variant="caption" tone="muted">
                 Kisi bhi card ya timeline block par dabayein: poori detail neeche se khulti hai.
               </Text>
-
-              <Text variant="title" accessibilityRole="header" style={{ marginTop: space[2] }}>
-                Din ka hisaab
-              </Text>
-              {/* Round 2 (A7) top row: Total slots, then Pending bookings (any date). */}
-              <View testID="total-slots-card" style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[3], boxShadow: shadow.card }}>
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], flexWrap: "wrap" }}>
-                  <Text variant="bodyBold" tone="muted">
-                    Total slots
-                  </Text>
-                  <Chip label="Sab slots dekho" onPress={() => setSheet("slots")} />
-                </View>
-                <Text variant="display">{String(data.slots.total)}</Text>
-                <View style={{ flexDirection: "row", height: 10, borderRadius: radius.pill, overflow: "hidden", backgroundColor: palette.tealHalf }} accessibilityLabel="Slots split">
-                  {(["booked", "pending", "blocked"] as const).map((k) =>
-                    data.slots[k] > 0 && data.slots.total > 0 ? <View key={k} style={{ flex: data.slots[k], backgroundColor: k === "booked" ? palette.teal : k === "pending" ? palette.amber : palette.muted2 }} /> : null,
-                  )}
-                  {data.slots.free > 0 && data.slots.total > 0 ? <View style={{ flex: data.slots.free }} /> : null}
-                </View>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-                  <LegendButton label={`Booked ${data.slots.booked}`} swatch={palette.teal} onPress={() => goHistory("booked")} />
-                  <LegendButton
-                    label={`Pending ${data.slots.pending}`}
-                    sub="Is din ke slots"
-                    swatch={palette.amber}
-                    onPress={() => router.push({ pathname: "/(owner)/(tabs)/approvals", params: { date, ...(courtIds.length ? { courts: courtIds.join(",") } : {}) } })}
-                  />
-                  <LegendButton label={`Blocked ${data.slots.blocked}`} swatch={palette.muted2} onPress={() => setSheet("slots")} />
-                  <LegendButton label={`Free ${data.slots.free}`} swatch={palette.tealHalf} onPress={() => setSheet("free")} />
-                </View>
-                <Text variant="meta" tone="muted">{`Khali: ${data.slots.free_upcoming} aane wale - ${data.slots.free_past} guzre hue`}</Text>
-                {courtsByBooked.length > 0 ? (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                    {courtsByBooked.slice(0, 2).map((c) => (
-                      <SmallChip key={c.court_id} label={`${courtShort(c.court_name)}: ${c.booked}/${c.total} booked`} tone="neutral" />
-                    ))}
-                    {courtsByBooked.length > 2 ? <SmallChip label={`+${courtsByBooked.length - 2} aur`} tone="info" onPress={() => setSheet("booked-courts")} /> : null}
-                  </View>
-                ) : null}
-              </View>
-
-              <View testID="pending-all-card" style={{ backgroundColor: palette.waitingTint, borderRadius: radius.card, overflow: "hidden" }}>
-                <Pressable
-                  onPress={() => router.push({ pathname: "/(owner)/(tabs)/approvals", params: courtIds.length ? { courts: courtIds.join(",") } : {} })}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Pending bookings ${pendingAll.count}`}
-                  style={{ padding: space[4], gap: space[1] }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] }}>
-                    <Text variant="bodyBold" tone="waiting">
-                      Pending bookings
-                    </Text>
-                    <Text variant="caption" weight="bold" tone="waiting">
-                      {pendingAll.allDays ? "Sab dino ki" : "Is din ki"}
-                    </Text>
-                  </View>
-                  <Text variant="h2">{String(pendingAll.count)}</Text>
-                  <Text variant="meta" weight="bold" tone="waiting" style={{ textDecorationLine: "underline" }}>
-                    {`Approval (${pendingAll.awaiting_approval})`}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    const r = allDatesRange();
-                    router.push({ pathname: "/(owner)/history", params: historyParams(r.from, courtIds, "held", { to: r.to }) });
-                  }}
-                  accessibilityRole="button"
-                  style={{ minHeight: size.tap, paddingHorizontal: space[4], paddingBottom: space[2], justifyContent: "center" }}
-                >
-                  <Text variant="meta" weight="bold" tone="waiting" style={{ textDecorationLine: "underline" }}>
-                    {`Payment ke intezar (${pendingAll.awaiting_payment})`}
-                  </Text>
-                </Pressable>
-              </View>
-
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[3] }}>
-                <KpiCard label="Bookings" value={String(data.bookings.count)} sub={`${data.slots.booked} slots mein`} onPress={() => goHistory("booked")} />
-                <KpiCard label="Cancelled" value={String(data.bookings.cancelled)} onPress={() => goHistory("cancelled")} />
-                <KpiCard label="Refunds" value={String(data.bookings.refunds.count)} sub={`PKR ${formatPKR(data.bookings.refunds.amount)}`} onPress={() => goHistory("refund")} />
-                <KpiCard label="Collected" value={`PKR ${formatPKR(data.money.collected)}`} small sub="Is din ki bookings par" onPress={() => goHistory("booked")} />
-                <KpiCard label="Due" value={`PKR ${formatPKR(data.money.due)}`} small sub={data.money.due_bookings > 0 ? `${data.money.due_bookings} bookings` : undefined} onPress={() => goHistory("booked")} />
-              </View>
-              <Text variant="caption" tone="muted">
-                &quot;Aaj aaya&quot; (upar) = is din ledger mein aaya paisa, Paisa tab jaisa. &quot;Collected&quot; = is din ki bookings par ab tak mila (kisi bhi din aaya ho).
-              </Text>
+              {/* OwnerToday board: the screen ends with the bookings (the day's money and counts live in the Paisa tab). */}
             </>
           ) : null}
         </HeroLayout>
@@ -520,77 +431,13 @@ export default function OwnerTodayScreen() {
           }}
         />
       ) : null}
-      {sheet === "slots" || sheet === "free" ? <SlotsSheet date={date} courts={slotCourts} onlyFree={sheet === "free"} onClose={() => setSheet(null)} /> : null}
-      {sheet === "booked-courts" && data ? (
-        <BottomSheet title="Booked slots, court ke hisaab se" subtitle={formatDayHeader(date)} onClose={() => setSheet(null)}>
-          {[...data.slots.by_court]
-            .sort((a, b) => b.booked - a.booked)
-            .map((c) => (
-              <Pressable
-                key={c.court_id}
-                onPress={() => {
-                  setSheet(null);
-                  goHistory("booked", [c.court_id]);
-                }}
-                accessibilityRole="button"
-                style={{ minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[3], borderBottomWidth: 1, borderBottomColor: palette.divider }}
-              >
-                <Text variant="bodyBold">{c.court_name}</Text>
-                <Text variant="bodyStrong">{`${c.booked} / ${c.total}`}</Text>
-              </Pressable>
-            ))}
-        </BottomSheet>
-      ) : null}
+      {sheet === "free" ? <SlotsSheet date={date} courts={slotCourts} onlyFree={sheet === "free"} onClose={() => setSheet(null)} /> : null}
       {detailId ? <BookingDetailSheet bookingId={detailId} onClose={() => setDetailId(null)} onOpenBooking={(id) => setDetailId(id)} /> : null}
     </View>
   );
 }
 
 const VENUE_STATUS: Record<string, string> = { pending: "Review mein", changes_requested: "Tabdeeli chahiye", rejected: "Approve nahi hui" };
-
-function KpiCard({ label, value, sub, small, onPress }: { label: string; value: string; sub?: string; small?: boolean; onPress: () => void }) {
-  // Two per row (the fifth spans the row): flexBasis keeps the wrap grid even on a 320 pt phone.
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{ flexBasis: "45%", flexGrow: 1, backgroundColor: palette.white, borderRadius: radius.tile, padding: space[4], gap: 6 }}
-    >
-      <Text variant="meta" weight="bold" tone="muted">
-        {label}
-      </Text>
-      <Text variant={small ? "title" : "h2"}>{value}</Text>
-      {sub ? (
-        <Text variant="caption" tone="muted">
-          {sub}
-        </Text>
-      ) : null}
-    </Pressable>
-  );
-}
-
-/** A legend entry that is also a 44 pt button (swatch + text, so colour is never the only signal). */
-function LegendButton({ label, sub, swatch, onPress }: { label: string; sub?: string; swatch: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={sub ? `${label}, ${sub}` : label}
-      style={{ minHeight: size.tap, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: space[3], paddingVertical: 6, borderRadius: radius.sm, borderWidth: 1.5, borderColor: palette.lineStrong, backgroundColor: palette.white }}
-    >
-      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: swatch }} />
-      <View>
-        <Text variant="label">{label}</Text>
-        {sub ? (
-          <Text variant="caption" tone="muted">
-            {sub}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
 
 
 /** OStaffView board: the two big staff actions (teal Check-in scan, white Walk-in), each only with its permission. */
