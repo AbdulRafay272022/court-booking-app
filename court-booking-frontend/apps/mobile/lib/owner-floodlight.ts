@@ -114,15 +114,12 @@ export function waitLabel(minutes: number): string {
  */
 export function bulkApprovable(items: ApprovalQueueItem[], locked: boolean): ApprovalQueueItem[] {
   if (locked) return [];
-  return items.filter(
-    (it) =>
-      it.state === "awaiting" &&
-      it.ocr_verdict === "match" &&
-      it.ocr_amount != null &&
-      Math.round(it.ocr_amount) === Math.round(it.expected_amount) &&
-      !it.duplicate &&
-      !it.overpayment,
-  );
+  // exact matches only: the screenshot number equals the booking's own amount (a sum with old dues is approved by hand)
+  return items.filter((it) => {
+    if (it.state !== "awaiting" || it.duplicate || it.overpayment) return false;
+    const a = approvalAmounts(it);
+    return a.verdict === "match" && !a.withDues;
+  });
 }
 
 /** The amount sent with a bulk approve: what the single-card sheet would pre-fill (checks.paid_amount), else nothing. */
@@ -383,4 +380,38 @@ export function timelineScale(model: Pick<TimelineModel, "minutes" | "hours" | "
     collapsed,
     hours: model.hours.filter((h) => !collapsed.some((c) => h.offset > c.start && h.offset < c.end)),
   };
+}
+
+/* ---------------- Approvals: "Chahiye" vs "Screenshot mein" ---------------- */
+
+export interface ApprovalAmounts {
+  /** What the "Chahiye" box says: "PKR 1,000", or "1,000 + purana baqi 1,000 = 2,000" when the screenshot covers old dues too. */
+  needText: string;
+  /** The number the screenshot is compared with (advance, or advance + old dues). */
+  need: number;
+  /** "Screenshot mein" value: "PKR 2,000 ✓", "PKR 1,500", "Parha nahi gaya". */
+  readText: string;
+  /** Told only from the two numbers on screen (never from the backend's word alone). */
+  verdict: "match" | "diff" | "unread";
+  /** True when the match counts the player's old dues. */
+  withDues: boolean;
+}
+
+const pkr = (n: number) => Math.round(n).toLocaleString("en-US");
+
+/**
+ * Approvals card amounts. The screenshot is a match only when its number equals the number shown under "Chahiye": the
+ * booking's own amount, or that plus the player's open dues at this venue ("purana baqi", flag player_dues) when the
+ * screenshot paid both. "Match" is never shown when the two numbers on screen differ.
+ */
+export function approvalAmounts(it: Pick<ApprovalQueueItem, "expected_amount" | "ocr_amount" | "player_context">): ApprovalAmounts {
+  const own = Math.round(it.expected_amount);
+  const dues = Math.round((it.player_context?.dues ?? []).reduce((s, d) => s + Math.max(0, d.due_pkr), 0));
+  const read = it.ocr_amount != null ? Math.round(it.ocr_amount) : null;
+  if (read === null) return { needText: `PKR ${pkr(own)}`, need: own, readText: "Parha nahi gaya", verdict: "unread", withDues: false };
+  if (read === own) return { needText: `PKR ${pkr(own)}`, need: own, readText: `PKR ${pkr(read)} ✓`, verdict: "match", withDues: false };
+  if (dues > 0 && read === own + dues) {
+    return { needText: `${pkr(own)} + purana baqi ${pkr(dues)} = ${pkr(own + dues)}`, need: own + dues, readText: `PKR ${pkr(read)} ✓`, verdict: "match", withDues: true };
+  }
+  return { needText: `PKR ${pkr(own)}`, need: own, readText: `PKR ${pkr(read)}`, verdict: "diff", withDues: false };
 }

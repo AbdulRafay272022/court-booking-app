@@ -259,3 +259,33 @@ test("timelineScale: 72 px an hour, long empty stretches drawn as one hour", asy
   assert.deepEqual(t.collapsed, []);
   assert.equal(t.height, 4 * 72);
 });
+
+test("approvalAmounts: match only when the numbers on screen are equal; old dues shown as a sum", async () => {
+  const { approvalAmounts } = await import("./owner-floodlight");
+  const due = (n: number) => ({ due_pkr: n }) as never;
+  const ctx = (n: number) => ({ dues: [due(n)], no_shows: 0, total_bookings: 3 });
+  assert.deepEqual(approvalAmounts({ expected_amount: 1000, ocr_amount: 1000, player_context: null }), {
+    needText: "PKR 1,000", need: 1000, readText: "PKR 1,000 ✓", verdict: "match", withDues: false,
+  });
+  const d = approvalAmounts({ expected_amount: 1000, ocr_amount: 2000, player_context: ctx(1000) });
+  assert.equal(d.needText, "1,000 + purana baqi 1,000 = 2,000");
+  assert.equal(d.verdict, "match");
+  assert.equal(d.need, 2000);
+  // differs from both: never "match", even if the backend said so
+  const x = approvalAmounts({ expected_amount: 1000, ocr_amount: 1500, player_context: ctx(1000) });
+  assert.equal(x.verdict, "diff");
+  assert.equal(x.needText, "PKR 1,000");
+  assert.equal(x.readText, "PKR 1,500");
+  assert.equal(approvalAmounts({ expected_amount: 1000, ocr_amount: null, player_context: ctx(500) }).verdict, "unread");
+  assert.equal(approvalAmounts({ expected_amount: 1000, ocr_amount: 2000, player_context: null }).verdict, "diff");
+});
+
+test("bulkApprovable: only exact matches of the booking's own amount (no dues sums, duplicates or overpayments)", async () => {
+  const { bulkApprovable } = await import("./owner-floodlight");
+  const base = { state: "awaiting", ocr_verdict: "match", duplicate: null, overpayment: null, player_context: null } as const;
+  const a = { ...base, payment_id: "a", expected_amount: 1000, ocr_amount: 1000 } as never;
+  const b = { ...base, payment_id: "b", expected_amount: 1000, ocr_amount: 2000, player_context: { dues: [{ due_pkr: 1000 }], no_shows: 0, total_bookings: 1 } } as never;
+  const c = { ...base, payment_id: "c", ocr_verdict: "mismatch", expected_amount: 1000, ocr_amount: 1000 } as never;
+  assert.deepEqual(bulkApprovable([a, b, c], false).map((x: { payment_id: string }) => x.payment_id), ["a", "c"]);
+  assert.deepEqual(bulkApprovable([a], true), []);
+});

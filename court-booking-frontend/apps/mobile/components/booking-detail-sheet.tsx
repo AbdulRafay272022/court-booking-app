@@ -257,7 +257,8 @@ function DetailBody({
   // The backend allows "Nahi aaye" for check_in OR record_payments (stage2-contract section 5).
   const mayNoShow = (can(PERM.checkIn) || can(PERM.recordPayments)) && canOfferNoShow(r, completion);
   const action = settleAction({ ...r, completion }, { canRecord: can(PERM.recordPayments), splitPayments: flags.on("split_payments") });
-  const ocrMatch = d.ocr_verdict === "match";
+  // "Amount match" only when the screenshot number really equals the advance shown below (never on the word alone)
+  const ocrMatch = d.ocr_verdict === "match" && (d.ocr_amount == null || Math.round(d.ocr_amount) === Math.round(d.advance_required));
 
   return (
     <View style={{ gap: space[3] }}>
