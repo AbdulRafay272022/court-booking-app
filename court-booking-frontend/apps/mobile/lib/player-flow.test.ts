@@ -207,3 +207,20 @@ test("shownStatus: an expired hold reads as expired, everything else is the back
   assert.equal(live.status, "held");
   assert.equal(shownStatus({ status: "booked", held_until: null, cancelled_by: null, cancellation_reason: null }, NOW).status, "booked");
 });
+
+test("bookingMoneyLine / showsRefundLine: board money line, no refund line on expired or cancelled", async () => {
+  const { bookingMoneyLine, showsRefundLine } = await import("./player-flow");
+  const now = Date.parse("2026-11-01T12:00:00Z");
+  const base = { cancelled_by: null, cancellation_reason: null, held_until: null, amount_paid: 0, advance_amount: 2000, ends_at: "2026-11-02T12:00:00Z" } as const;
+  assert.equal(bookingMoneyLine({ ...base, status: "booked", amount_paid: 2000 }, now), "PKR 2,000 diye");
+  assert.equal(bookingMoneyLine({ ...base, status: "payment_submitted" }, now), "PKR 2,000 bheje");
+  assert.equal(bookingMoneyLine({ ...base, status: "held", held_until: "2026-11-01T12:10:30Z" }, now), "Hold 11 min baqi");
+  const expired = { ...base, status: "held" as const, held_until: "2026-11-01T11:00:00Z" };
+  assert.equal(bookingMoneyLine(expired, now), "Koi paisa nahi diya");
+  assert.equal(showsRefundLine(expired, now), false);
+  const cancelled = { ...base, status: "cancelled" as const, amount_paid: 2000 };
+  assert.equal(bookingMoneyLine(cancelled, now), "PKR 2,000 diye");
+  assert.equal(showsRefundLine(cancelled, now), false);
+  assert.equal(showsRefundLine({ ...base, status: "booked" }, now), true);
+  assert.equal(showsRefundLine({ ...base, status: "booked", ends_at: "2026-11-01T11:00:00Z" }, now), false);
+});

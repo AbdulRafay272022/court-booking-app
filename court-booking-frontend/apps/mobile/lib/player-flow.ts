@@ -334,3 +334,28 @@ export function moneyBreakdown(b: Pick<Booking, "price" | "advance_amount" | "am
 } {
   return { total: b.price, advance: b.advance_amount, paid: b.amount_paid, due: b.balance_due };
 }
+
+/** PBookings board card money line: "PKR 2,000 diye" (pakki / khatam / cancelled), "PKR 4,000 bheje" (venue checking),
+ * "Hold 11 min baqi" (pay baqi). Never a refund line: a hold that ran out or a cancelled booking only says what was paid. */
+export function bookingMoneyLine(
+  b: Pick<Booking, "status" | "held_until" | "amount_paid" | "advance_amount" | "cancelled_by" | "cancellation_reason">,
+  now: number = Date.now(),
+  lang: Lang = "ru",
+): string {
+  const pkr = (n: number) => `PKR ${Math.round(n).toLocaleString("en-US")}`;
+  const shown = shownStatus(b, now);
+  if (shown.status === "held" && b.held_until) {
+    const mins = Math.max(1, Math.ceil((Date.parse(b.held_until) - now) / 60_000));
+    return pick(lang, `Hold ${mins} min baqi`, `Hold ${mins} min left`);
+  }
+  if (shown.status === "payment_submitted") return pick(lang, `${pkr(b.advance_amount)} bheje`, `${pkr(b.advance_amount)} sent`);
+  const paid = Number(b.amount_paid ?? 0);
+  if (paid > 0) return pick(lang, `${pkr(paid)} diye`, `${pkr(paid)} paid`);
+  return pick(lang, "Koi paisa nahi diya", "Nothing paid");
+}
+
+/** The refund rule line belongs only on a booking that can still be cancelled (not ended, cancelled or expired). */
+export function showsRefundLine(b: Pick<Booking, "status" | "held_until" | "cancelled_by" | "cancellation_reason" | "ends_at">, now: number = Date.now()): boolean {
+  const s = shownStatus(b, now).status;
+  return (s === "held" || s === "payment_submitted" || s === "booked") && Date.parse(b.ends_at) > now;
+}

@@ -10,8 +10,9 @@ import { palette, radius, size, space, statusPill } from "@court-booking/ui-toke
 import { Banner, Button, Card, Chip, EmptyState, ErrorState, Input, Screen, SegmentedToggle, Sheet, SkeletonCard, StatusPill, Text, useCopy, useLang, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
-import { bookingAction, shownStatus } from "@/lib/player-flow";
-import { DateTile, PlayerOfflineBanner, asList, openDirections, useBookingPlace } from "../_components";
+import { bookingAction, bookingMoneyLine, showsRefundLine, shownStatus } from "@/lib/player-flow";
+import { ticketTimeRange } from "@/lib/booking-done";
+import { DateTile, PlayerOfflineBanner, asList, openDirections, sportLabel, useBookingPlace } from "../_components";
 
 type Tab = "upcoming" | "past";
 type Filter = "all" | StatusGroup;
@@ -143,12 +144,13 @@ function BookingRow({ booking, review, onRate }: { booking: Booking; review: Rev
         <DateTile iso={booking.starts_at} variant={booking.status === "booked" ? "orange" : "soft"} month />
         <View style={{ flex: 1, gap: 4 }}>
           <StatusPill booking={shownStatus(booking)} size="sm" />
-          <Text variant="bodyStrong">{place.venue?.name ?? (place.loading ? " " : copy("Venue", "Venue"))}</Text>
-          <Text variant="meta" tone="muted">
-            {[place.court?.name, formatTimeRange(booking.starts_at, booking.ends_at, lang)].filter(Boolean).join(" · ")}
+          {/* PBookings board: "Demo Arena · Court 1" then "7:00 – 8:00 PM · Padel · PKR 2,000 diye" */}
+          <Text variant="bodyStrong">{[place.venue?.name ?? (place.loading ? " " : copy("Venue", "Venue")), place.court?.name].filter(Boolean).join(" · ")}</Text>
+          <Text variant="meta" tone="muted" testID="booking-money-line">
+            {[ticketTimeRange(booking.starts_at, booking.ends_at, lang), place.court ? sportLabel(place.court.sport) : null, bookingMoneyLine(booking, Date.now(), lang)].filter(Boolean).join(" · ")}
           </Text>
-          {place.venue ? (
-            // audit 2026-10-28 item 14: every booking says its refund rule in one line
+          {place.venue && showsRefundLine(booking) ? (
+            // audit 2026-10-28 item 14: a booking that can still be cancelled says its refund rule (never an expired or cancelled one)
             <Text variant="meta" tone="muted" testID="booking-refund-line">
               {refundPolicyShort(place.venue, lang)}
             </Text>
