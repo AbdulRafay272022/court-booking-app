@@ -307,8 +307,21 @@ Where data is missing, the app's empty state is compared with the design's empty
 
 Second round (2026-11-01) closed items 1-6 of the first list; see the screen tables above. What is left:
 
-1. **OStaffView "Aane wale players"** needs a backend endpoint a check-in-only account may read (today's arrivals). Every booking list needs `view_ledger` now. Owner decision.
+1. ~~OStaffView "Aane wale players"~~ done (owner said yes, minimal): backend `GET /owners/arrivals` (9d3877a: check_in staff, own venue, today only; name / court / start-end / checked-in, no phone, money, screenshots or other days) and the staff list (3783028). The board's money line ("Paid", "Baqi 1,250") is left out on purpose.
 2. ~~PBookings separate ticket screen~~ done (adee39f).
 3. ~~OSettings court-line art, English forms and courts layout~~ done (248e3f2, 1dfdda6).
 4. ~~Session-unreachable screen English~~ done (cc3759d).
 5. **Data-only gaps** (screenshot thumbs, two courts, reviews, growth) show the empty state. They are not code differences.
+
+## Fifth round (owner review of the after/ images, 2026-11-01)
+
+| Item | Commit |
+|---|---|
+| OwnerToday timeline: board hour (72 px), stretches > 2 h with no booking on any court drawn one hour tall | c5cf05a |
+| Every owner + player tab screen: bottom room = tab bar + home indicator (useTabBarRoom, guarded by a test) | 323643a |
+| Approvals: board screenshot tile + placeholder, duplicate warning on the backend flag (count 0 too), both tabs always, "Dono approve" bar with confirm | 1844e60 |
+| Approvals amounts: "Chahiye 1,000 + purana baqi 1,000 = 2,000"; "Match" only when the numbers on screen agree; bulk = exact matches only | cdbd3b5 |
+| PBookings cards: board money line ("PKR 2,000 diye"); no refund line on Hold khatam / cancelled / ended | c8262cb |
+| Staff "Aane wale players" endpoint + list | 9d3877a, 3783028 |
+
+Re-taken: OwnerToday, Approvals, PBookings-tab, OStaffView-staff. Scratch data added for the Approvals shots (cb_ui_audit only): three pending payments (Ali Raza, Hamza Khan, Fresh Player with a duplicate flag).
