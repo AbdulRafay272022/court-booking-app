@@ -15,8 +15,15 @@ audit trail -- the actual Cloud API call sends structured `{{n}}` component
 params, not this string.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Callable
+
+# Meta rejects a template body parameter that is empty, or that contains a newline / tab or more than 4
+# consecutive spaces (error 132018 / 131008). Production 2026-10-29..11-04: the owner digest went out as a
+# multi-line {{1}} of generic_notification. clean_param() is applied to EVERY param in build_components().
+EMPTY_PARAM = "-"
+LINE_JOIN = " | "
 
 
 @dataclass(frozen=True)
@@ -143,10 +150,20 @@ TEMPLATES: dict[str, WhatsAppTemplate] = {
 }
 
 
+def clean_param(value: object) -> str:
+    """One Meta-safe template parameter: line breaks become " | ", tabs and runs of spaces become one space,
+    and an empty value becomes EMPTY_PARAM (Meta refuses an empty parameter)."""
+    text = "" if value is None else str(value)
+    lines = [ln.strip() for ln in re.split(r"[\r\n]+", text)]
+    text = LINE_JOIN.join(ln for ln in lines if ln)
+    text = re.sub(r"[ \t\u00a0]+", " ", text).strip()
+    return text or EMPTY_PARAM
+
+
 def build_components(params: list[str], button_payloads: list[str] | None = None) -> list[dict]:
     """WhatsApp Cloud API component format for a template's body params, plus (audit Phase 3 item 8) the payload of each
     quick-reply button, in button order: a tap comes back to the webhook as `button.payload`."""
-    out = [{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}] if params else []
+    out = [{"type": "body", "parameters": [{"type": "text", "text": clean_param(p)} for p in params]}] if params else []
     for i, payload in enumerate(button_payloads or []):
         out.append({"type": "button", "sub_type": "quick_reply", "index": str(i), "parameters": [{"type": "payload", "payload": payload[:256]}]})
     return out

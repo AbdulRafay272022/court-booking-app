@@ -22,7 +22,7 @@ from app.services.feature_flag_service import flag_on
 from app.services.sms_service import SMSService
 from app.services.whatsapp_service import WhatsAppService, describe_send_failure
 from app.utils.timezone import format_date_relative, format_pkr, format_time, format_time_range, format_when, format_when_range
-from app.services.whatsapp_templates import TEMPLATES
+from app.services.whatsapp_templates import LINE_JOIN, TEMPLATES
 
 logger = structlog.get_logger(__name__)
 
@@ -105,6 +105,33 @@ class NotificationService:
             )
         )
         await self.db.commit()
+
+    async def _log_whatsapp_failure(
+        self,
+        *,
+        user_id: uuid.UUID,
+        event_type: str,
+        exc: BaseException,
+        reference_id: uuid.UUID | None = None,
+        cost_category: str = "utility",
+        template_name: str | None = None,
+        payload: dict | None = None,
+    ) -> None:
+        """A `failed` WhatsApp row carrying Meta's error code, for the sends that do not go through
+        `_whatsapp_smart_best_effort` (which already records its own failures). Never raises: the caller
+        decides what happens next. A failed log write is rolled back so the caller's session stays usable."""
+        outcome, code = describe_send_failure(exc)
+        logger.warning("notification.whatsapp_failed", event_type=event_type, outcome=outcome, meta_error_code=code)
+        try:
+            await self._log(
+                user_id=user_id, channel="whatsapp", event_type=event_type, reference_id=reference_id,
+                cost_category=cost_category, template_name=template_name, status_value="failed",
+                error_message=f"{outcome}; meta_error_code={code}; {type(exc).__name__}: {str(exc)[:200]}",
+                payload=payload,
+            )
+        except Exception:  # noqa: BLE001
+            await self.db.rollback()
+            logger.warning("notification.whatsapp_failure_log_failed", event_type=event_type, exc_info=True)
 
     async def has_sent(self, user_id: uuid.UUID, event_type: str, reference_id: uuid.UUID) -> bool:
         result = await self.db.execute(
@@ -401,7 +428,8 @@ class NotificationService:
             "booking_confirmed",
             "Booking confirmed",
             f"Your booking for {court_name} on {_when(starts_at, ends_at)} is confirmed. See you on court!",
-            template_params=[court_name, venue_name, date_text, time_text, f"{amount_paid:,.0f}" if amount_paid else ""],
+            # {{5}} is never empty (Meta refuses an empty parameter): nothing paid yet = "0".
+            template_params=[court_name, venue_name, date_text, time_text, f"{amount_paid:,.0f}" if amount_paid else "0"],
             reference_id=reference_id,
         )
 
@@ -728,18 +756,30 @@ class NotificationService:
         Part B): digest_job.py used to call whatsapp.send_text directly, skipping the
         24h-window check. Since the digest is outbound-initiated (not a reply to
         anything), most owners won't have an open window on a given morning, so an
-        unguarded send_text degrades to an uncaught RetryError -- and with no
-        registered "owner_daily_digest" template, send_smart falls back to the
-        generic one-param template outside the window, same as any other
-        unregistered event_type."""
+        unguarded send_text degrades to an uncaught RetryError. There is no dedicated
+        digest template: outside the window it is sent as generic_notification.
+
+        Inside the 24h window the multi-line `body` goes out as free text. Outside it, generic_notification's
+        {{1}} gets the same lines joined with " | " (Meta refuses a newline in a template parameter: the digest
+        failed every morning 2026-10-29..11-04). A failed send is logged as a `failed` row with Meta's error code,
+        then re-raised so digest_job still counts this owner as failed."""
         last_inbound = await self.last_inbound_whatsapp_at(owner.phone)
-        _result, template_used = await self.whatsapp.send_smart(
-            owner.phone,
-            body,
-            last_inbound_at=last_inbound,
-            template_name="owner_daily_digest",
-            template_params=[body],
-        )
+        one_line = LINE_JOIN.join(ln.strip().removeprefix("- ") for ln in body.splitlines() if ln.strip())
+        try:
+            _result, template_used = await self.whatsapp.send_smart(
+                owner.phone,
+                body,
+                last_inbound_at=last_inbound,
+                # Named directly: send_smart's automatic fallback for an unregistered name sends the raw body
+                # and would ignore template_params.
+                template_name="generic_notification",
+                template_params=[one_line],
+            )
+        except Exception as exc:
+            await self._log_whatsapp_failure(
+                user_id=owner.id, event_type="owner_daily_digest", exc=exc, cost_category="utility", payload=payload
+            )
+            raise
         await self._log(
             user_id=owner.id,
             channel="whatsapp",
@@ -924,7 +964,14 @@ class NotificationService:
 
         payload = {"title": title, "venue_name": venue.name}
         await self._send_push_tier(user, "tournament_announcement", title, body, reference_id=venue.id, payload=payload)
-        await self.whatsapp.send_text(user.phone, body)
+        try:
+            await self.whatsapp.send_text(user.phone, body)
+        except Exception as exc:
+            await self._log_whatsapp_failure(
+                user_id=user.id, event_type="tournament_announcement", exc=exc, reference_id=venue.id,
+                cost_category="marketing", payload=payload,
+            )
+            raise
         await self._log(
             user_id=user.id,
             channel="whatsapp",
