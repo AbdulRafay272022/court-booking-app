@@ -140,10 +140,13 @@ class AuthService:
             logger.error("auth_service.otp_send_failed", phone=phone, purpose=purpose.value, error=str(exc))
             await self.db.delete(otp)
             await self.db.commit()
+            # fix/nov-7: the template send AND the free-text fallback both failed. The one thing the person can do is open the
+            # 24h window themselves: send "Hi" to the business WhatsApp number, then ask for the code again.
             raise AppError(
                 status.HTTP_502_BAD_GATEWAY,
                 ErrorCode.OTP_DELIVERY_FAILED,
-                "Couldn't send the verification code right now. Please try again in a moment.",
+                "Couldn't send the code on WhatsApp. Pehle WhatsApp par Hi bhejein, phir dobara code mangwayein.",
+                details={"send_hi_first": True},
             ) from exc
 
     async def otp_status(self, phone: str) -> datetime | None:

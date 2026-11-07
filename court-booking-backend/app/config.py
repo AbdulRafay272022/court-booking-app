@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     PASSWORD_RESET_IP_MAX_ATTEMPTS: int = 5
     PASSWORD_RESET_PHONE_SOFT_CAP: int = 20
     PASSWORD_RESET_CODE_ATTEMPTS_MAX: int = 20
+    # fix/nov-7: MUST equal the "code expires in" minutes set on the Meta authentication template (WHATSAPP_OTP_TEMPLATE),
+    # which shows that number to the user; the server refuses the code after the same time.
     OTP_EXPIRE_MINUTES: int = 5
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RATE_LIMIT_WINDOW_MINUTES: int = 15
@@ -158,6 +160,10 @@ class Settings(BaseSettings):
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v20.0"
     WHATSAPP_API_TOKEN: str = ""
     WHATSAPP_PHONE_NUMBER_ID: str = ""
+    # fix/nov-7: the approved Meta AUTHENTICATION template for login / signup codes (language en, one body param = the code,
+    # a copy-code button whose param is the same code). Blank = the old free-form text only.
+    WHATSAPP_OTP_TEMPLATE: str = "khelo_otp"
+    WHATSAPP_OTP_TEMPLATE_LANGUAGE: str = "en"
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = ""
     # Meta app secret used to verify the X-Hub-Signature-256 HMAC on every
     # inbound POST /webhooks/whatsapp -- distinct from

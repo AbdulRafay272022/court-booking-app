@@ -149,23 +149,42 @@ class WhatsAppService:
         }
         return await self._send(payload)
 
+    def otp_template_components(self, code: str) -> list[dict]:
+        """Components of the Meta AUTHENTICATION template: the code is the body's one parameter AND the copy-code button's
+        parameter (Meta's copy-code button is sent as a `url` button, index 0, whose text is the code)."""
+        return [
+            {"type": "body", "parameters": [{"type": "text", "text": code}]},
+            {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": code}]},
+        ]
+
     async def send_otp(self, to_phone_number: str, code: str) -> dict:
-        """TEMPORARY -- free-form text instead of the `whatsapp_otp`
-        authentication template, because Meta Business Verification (which
-        Authentication templates require) isn't done yet.
+        """fix/nov-7: the business is verified and the authentication template `khelo_otp` (en, copy-code button) is approved,
+        so a code goes out as THAT template -- it reaches anyone, with no open 24h window needed.
 
-        The catch: free text only delivers inside the recipient's open 24h
-        customer-service window, i.e. they must have messaged the business
-        number first. Otherwise Meta rejects it (error 131047, HTTP 400),
-        `_send` raises, and `AuthService.request_otp` turns that into
-        OTP_DELIVERY_FAILED. For now testers open the window manually.
+        Only when the template send fails (template paused / renamed, a Meta outage) is the old free-form text tried; free text
+        only delivers inside the recipient's open 24h window (they messaged the business number first, "Hi"). When that fails
+        too, the error goes up and `AuthService.request_otp` answers OTP_DELIVERY_FAILED, whose message tells the person to send
+        "Hi" on WhatsApp first and try again. Every attempt is logged with its Meta error code."""
+        template = self.settings.WHATSAPP_OTP_TEMPLATE
+        if template:
+            try:
+                return await self.send_template(
+                    to_phone_number, template, self.settings.WHATSAPP_OTP_TEMPLATE_LANGUAGE, self.otp_template_components(code)
+                )
+            except Exception as exc:  # noqa: BLE001 -- fall back to free text, then let the caller report it
+                outcome, meta_code = describe_send_failure(exc)
+                logger.warning(
+                    "whatsapp.otp.template_failed",
+                    to=mask_phone(to_phone_number),
+                    template=template,
+                    outcome=outcome,
+                    meta_error_code=meta_code,
+                    error=type(exc).__name__,
+                )
+        return await self._send_otp_text(to_phone_number, code)
 
-        REVERT once an Authentication template is approved: replace the two
-        lines below with
-            return await self.send_registered_template(to_phone_number, "whatsapp_otp", [code])
-        (the original behavior -- WhatsApp requires an approved template for
-        OTPs to a recipient with no open window, which is most real users on
-        their very first contact). Also drop the CLAUDE.md/README notes."""
+    async def _send_otp_text(self, to_phone_number: str, code: str) -> dict:
+        """The free-form fallback (only inside an open 24h window)."""
         body = (
             f"{code} is your verification code. For your security, do not share this code. "
             f"It expires in {self.settings.OTP_EXPIRE_MINUTES} minutes."

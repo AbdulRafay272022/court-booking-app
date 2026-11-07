@@ -1193,47 +1193,16 @@ async def test_password_hashing_roundtrip_and_failure_modes():
     assert await hash_password("a-decent-password") != hashed, "salted: same input, different hash"
 
 
-# ------------------------------------------- TEMPORARY free-form OTP delivery
-# WhatsAppService.send_otp sends type "text" instead of the `whatsapp_otp`
-# template until Meta Business Verification / an Authentication template exist.
-# Revert these two tests together with send_otp (see its docstring / CLAUDE.md).
+# ------------------------------------------- OTP delivery: the khelo_otp authentication template (fix/nov-7)
+# The owner set "code expires in 5 minutes" on the khelo_otp template on Meta (confirmed 2026-11-08).
+KHELO_OTP_TEMPLATE_EXPIRY_MINUTES = 5
+# WhatsAppService.send_otp sends the approved authentication template `khelo_otp` (en): the code is the body's one
+# parameter and the copy-code button's parameter. Only when that fails is the old free-form text tried (it needs an open
+# 24h window); when both fail the answer is OTP_DELIVERY_FAILED telling the person to send "Hi" on WhatsApp first.
 
 
-async def test_otp_send_uses_freeform_text_not_template(client, monkeypatch):
-    sent = []
-
-    async def fake_send(self, payload):
-        sent.append(payload)
-        return {"messages": [{"id": "wamid.local"}]}
-
-    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._send", fake_send)
-    phone = "+923001170001"
-
-    resp = await client.post("/api/v1/auth/signup", json=signup_body(phone))
-    assert resp.status_code == 201
-
-    assert len(sent) == 1
-    payload = sent[0]
-    assert payload["type"] == "text"
-    assert "template" not in payload
-    assert payload["to"] == phone.lstrip("+")
-    body = payload["text"]["body"]
-    assert "do not share this code" in body
-    assert f"{get_settings().OTP_EXPIRE_MINUTES} minutes" in body
-
-    # Generation/hashing is untouched: the code that went out over WhatsApp
-    # is the one verify-signup-otp accepts.
-    code = re.match(r"(\d{6}) is your verification code", body).group(1)
-    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": code})
-    assert verify.status_code == 200, verify.text
-
-
-async def test_otp_send_with_no_open_window_fails_cleanly(client, db_session, monkeypatch):
-    """No open 24h window -> Meta answers HTTP 400 / error 131047. That must
-    come out as OTP_DELIVERY_FAILED (finding #6's existing handling), not a
-    raw 500, and must not leave an OTP row consuming a rate-limit slot. Mocked
-    at the httpx layer (not `_send`) so the real raise_for_status + retry path
-    is exercised."""
+def _graph_stub(monkeypatch, answer):
+    """Route every Graph API call through `answer(payload) -> httpx.Response`; returns the list of payloads sent."""
     from app.services.whatsapp_service import WhatsAppService
 
     monkeypatch.setattr(get_settings(), "WHATSAPP_API_TOKEN", "test-token")
@@ -1241,33 +1210,89 @@ async def test_otp_send_with_no_open_window_fails_cleanly(client, db_session, mo
     async def no_sleep(_seconds):
         return None
 
-    # `_send` retries 3x with exponential backoff; skip the real waiting.
-    monkeypatch.setattr(WhatsAppService._send.retry, "sleep", no_sleep)
-
-    graph_calls = []
+    monkeypatch.setattr(WhatsAppService._send.retry, "sleep", no_sleep)  # `_send` retries 3x with backoff
+    calls = []
     real_post = httpx.AsyncClient.post
 
     async def fake_post(self, url, *args, **kwargs):
         if "graph.facebook.com" not in str(url):
             return await real_post(self, url, *args, **kwargs)  # the test client's own requests
-        graph_calls.append(kwargs["json"])
-        return httpx.Response(
-            400,
-            json={"error": {"message": "(#131047) Re-engagement message", "type": "OAuthException", "code": 131047}},
-            request=httpx.Request("POST", str(url)),
-        )
+        calls.append(kwargs["json"])
+        return answer(kwargs["json"], httpx.Request("POST", str(url)))
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    return calls
+
+
+def _ok(_payload, request):
+    return httpx.Response(200, json={"messages": [{"id": "wamid.local"}]}, request=request)
+
+
+def _meta_error(code, status_code=400):
+    def answer(_payload, request):
+        return httpx.Response(status_code, json={"error": {"message": f"(#{code})", "type": "OAuthException", "code": code}}, request=request)
+
+    return answer
+
+
+async def test_otp_goes_out_as_the_khelo_otp_template_with_a_copy_code_button(client, monkeypatch):
+    calls = _graph_stub(monkeypatch, _ok)
+    phone = "+923001170001"
+
+    resp = await client.post("/api/v1/auth/signup", json=signup_body(phone))
+    assert resp.status_code == 201, resp.text
+
+    assert len(calls) == 1
+    payload = calls[0]
+    assert payload["type"] == "template" and payload["to"] == phone.lstrip("+")
+    assert payload["template"]["name"] == "khelo_otp"
+    assert payload["template"]["language"] == {"code": "en"}
+    body, button = payload["template"]["components"]
+    code = body["parameters"][0]["text"]
+    assert re.fullmatch(r"\d{6}", code)
+    assert button == {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": code}]}
+
+    # the code in the template is the one verify-signup-otp accepts, within the same expiry the template states
+    verify = await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": code})
+    assert verify.status_code == 200, verify.text
+
+
+async def test_a_failed_template_falls_back_to_free_text(client, monkeypatch):
+    """Template refused (e.g. paused, 132001) -> the free-form text is tried; inside an open window it arrives."""
+    calls = _graph_stub(monkeypatch, lambda payload, request: (_meta_error(132001, 404) if payload["type"] == "template" else _ok)(payload, request))
+    phone = "+923001170003"
+
+    resp = await client.post("/api/v1/auth/signup", json=signup_body(phone))
+    assert resp.status_code == 201, resp.text
+    assert [c["type"] for c in calls] == ["template", "text"]
+    body = calls[-1]["text"]["body"]
+    assert f"{get_settings().OTP_EXPIRE_MINUTES} minutes" in body
+    code = re.match(r"(\d{6}) is your verification code", body).group(1)
+    assert (await client.post("/api/v1/auth/verify-signup-otp", json={"phone": phone, "otp": code})).status_code == 200
+
+
+async def test_when_template_and_text_both_fail_the_answer_says_send_hi_first(client, db_session, monkeypatch):
+    """Template refused AND no open 24h window (131047): OTP_DELIVERY_FAILED with the "pehle WhatsApp par Hi bhejein"
+    hint, not a raw 500, and no OTP row left consuming a rate-limit slot."""
+    calls = _graph_stub(monkeypatch, lambda payload, request: (_meta_error(132001, 404) if payload["type"] == "template" else _meta_error(131047))(payload, request))
     phone = "+923001170002"
 
     resp = await client.post("/api/v1/auth/signup", json=signup_body(phone))
 
-    assert graph_calls, "the free-form send should actually have been attempted"
-    assert graph_calls[0]["type"] == "text"
+    assert {c["type"] for c in calls} == {"template", "text"}
     assert resp.status_code == 502
-    assert resp.json()["error"]["code"] == "OTP_DELIVERY_FAILED"
+    err = resp.json()["error"]
+    assert err["code"] == "OTP_DELIVERY_FAILED"
+    assert "Hi bhejein" in err["message"] and err["details"] == {"send_hi_first": True}
     rows = (await db_session.execute(select(OtpRequest).where(OtpRequest.phone == phone))).scalars().all()
     assert rows == []
+
+
+def test_backend_otp_expiry_matches_the_template():
+    """The khelo_otp template on Meta states the expiry to the user; the server must refuse the code at the same time."""
+    settings = get_settings()
+    assert settings.WHATSAPP_OTP_TEMPLATE == "khelo_otp"
+    assert settings.OTP_EXPIRE_MINUTES == KHELO_OTP_TEMPLATE_EXPIRY_MINUTES
 
 
 # ------------------------------------------------ password-less account that was never verified (WhatsApp guest)

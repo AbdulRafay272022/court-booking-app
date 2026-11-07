@@ -3,7 +3,7 @@ export const ruErrors = {
   "errors.code.INVALID_OTP": "Yeh code sahi nahi hai. WhatsApp check karo aur dobara try karo.",
   "errors.code.OTP_EXPIRED": "Yeh code expire ho gaya hai. Naya code mangwao.",
   "errors.code.OTP_RATE_LIMITED": "Bohat zyada koshishein ho gayin. Kuch minute ruko aur dobara try karo.",
-  "errors.code.OTP_DELIVERY_FAILED": "Abhi code nahi bheja ja saka. Thori der baad dobara try karo.",
+  "errors.code.OTP_DELIVERY_FAILED": "WhatsApp par code nahi bhej sake. Pehle Khelo ke WhatsApp number (+92 334 5634571) par \"Hi\" bhejo, phir dobara code mangwao.",
   "errors.code.INVALID_CREDENTIALS": "Phone number ya password galat hai.",
   "errors.code.LOGIN_RATE_LIMITED": "Bohat zyada galat koshishein. Kuch minute ruko, ya password reset karo.",
   "errors.code.PHONE_REVERIFICATION_REQUIRED": "Aage barhne ke liye apna phone number verify karo.",

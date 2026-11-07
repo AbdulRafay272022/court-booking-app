@@ -3,7 +3,7 @@ export const enErrors = {
   "errors.code.INVALID_OTP": "That code isn't right. Check WhatsApp and try again.",
   "errors.code.OTP_EXPIRED": "This code has expired. Request a new one.",
   "errors.code.OTP_RATE_LIMITED": "Too many attempts. Please wait a few minutes and try again.",
-  "errors.code.OTP_DELIVERY_FAILED": "We couldn't send the code right now. Please try again in a moment.",
+  "errors.code.OTP_DELIVERY_FAILED": "We couldn't send the code on WhatsApp. Send \"Hi\" to Khelo on WhatsApp (+92 334 5634571) first, then ask for the code again.",
   "errors.code.INVALID_CREDENTIALS": "Invalid phone number or password.",
   "errors.code.LOGIN_RATE_LIMITED": "Too many failed attempts. Wait a few minutes, or reset your password.",
   "errors.code.PHONE_REVERIFICATION_REQUIRED": "Please verify your phone number to continue.",

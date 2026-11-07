@@ -35,7 +35,7 @@ class WhatsAppTemplate:
 
 
 def _otp(p: list[str]) -> str:
-    return f"Your verification code is {p[0]}. Valid for 5 minutes."
+    return f"{p[0]} is your verification code. For your security, do not share this code. This code expires in 5 minutes."
 
 
 def _booking_confirmed(p: list[str]) -> str:
@@ -124,7 +124,7 @@ def _khelo_booking_reminder(p: list[str]) -> str:
 TEMPLATES: dict[str, WhatsAppTemplate] = {
     t.name: t
     for t in (
-        WhatsAppTemplate("whatsapp_otp", "authentication", 1, _otp),
+        WhatsAppTemplate("khelo_otp", "authentication", 1, _otp),  # sent by WhatsAppService.send_otp (copy-code button)
         WhatsAppTemplate("booking_confirmed", "utility", 5, _booking_confirmed),
         WhatsAppTemplate("payment_rejected", "utility", 2, _payment_rejected),
         WhatsAppTemplate("payment_submitted_owner", "utility", 5, _payment_submitted_owner),
