@@ -5,7 +5,7 @@ import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CalendarPlus, Check, Clock3, MessageCircle, Navigation, Phone, QrCode, ScanLine, Share2, X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink, type BookingStatus } from "@court-booking/types";
+import { bookingHeader, formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink, type BookingStatus } from "@court-booking/types";
 import { formatPkr, isConfirmed, journeySteps, palette, radius, space } from "@court-booking/ui-tokens";
 
 import {
@@ -70,6 +70,13 @@ export default function BookingStatusScreen() {
     enabled: !!booking,
     subscribed: focused,
   });
+  // fix/nov-8: same query (and cache) as BookingExtrasCard; it says whether "Main aaya tha" is open (noshow_reply flag).
+  const extrasQuery = useQuery({
+    queryKey: ["booking-extras", id],
+    queryFn: () => api.phase3.extras(id),
+    enabled: booking?.status === "no_show",
+    subscribed: focused,
+  });
   const [refundBusy, setRefundBusy] = useState(false);
   const balancePay = useQuery({
     queryKey: ["payment-instructions", id, booking?.status],
@@ -121,6 +128,9 @@ export default function BookingStatusScreen() {
   const shown = shownStatus(booking, now);
   const heldExpired = booking.status === "held" && shown.status === "cancelled";
   const c = doneCopy(shown.status, shown.cancelled_by, lang);
+  // fix/nov-8: the QR area per status (QR only for a booked slot still ahead; no placeholder on a past/ended booking) and
+  // "Aap aaye the? Batayein" under a no-show while the player may still reply.
+  const header = bookingHeader({ ...shown, ends_at: booking.ends_at }, { now, canReplyNoShow: extrasQuery.data?.arrival.can_reply_noshow === true, lang });
   const booked = isConfirmed(booking.status);
   const payments = paymentsQuery.data ?? [];
   const proof = [...payments].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
@@ -253,6 +263,11 @@ export default function BookingStatusScreen() {
           <Text variant="h1" tone="hero" align="center" accessibilityRole="header" testID="status-title">
             {c.title}
           </Text>
+          {header.askNoShow ? (
+            <Text variant="bodyStrong" tone="hero" align="center" testID="status-ask-noshow">
+              {`${header.askNoShow} ↓`}
+            </Text>
+          ) : null}
           <Text variant="bodyL" tone="heroMuted" align="center">
             {booking.status === "payment_submitted" && place.venue ? copy(`${place.venue.name} abhi check kar raha hai. Tab tak ye slot kisi aur ko nahi milega.`, `${place.venue.name} is checking it now. Until then nobody else can take this slot.`) : c.subtitle}
           </Text>
@@ -263,9 +278,11 @@ export default function BookingStatusScreen() {
 
       <View style={{ paddingHorizontal: ticketView ? space[4] : space[5], gap: ticketView ? 14 : space[4] }}>
         <PlayerOfflineBanner />
+        {booking.status === "no_show" && booking.player_id ? <BookingExtrasCard bookingId={id} /> : null}
         {ticketView ? (
           <Ticket
             dark
+            qr={header.qr}
             testID="status-ticket"
             bookingId={booking.id}
             booking={booking}
@@ -294,6 +311,7 @@ export default function BookingStatusScreen() {
         ) : booked ? (
           <Ticket
             testID="status-ticket"
+            qr={header.qr}
             bookingId={booking.id}
             booking={booking}
             venueName={venueName}
@@ -418,7 +436,7 @@ export default function BookingStatusScreen() {
           </Card>
         ) : null}
 
-        {booking.player_id ? <BookingExtrasCard bookingId={id} /> : null}
+        {booking.player_id && booking.status !== "no_show" ? <BookingExtrasCard bookingId={id} /> : null}
 
         {detail ? (
           <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-payment-lines">

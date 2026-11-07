@@ -215,9 +215,12 @@ export function Timeline({ steps }: { steps: { label: string; sub?: string; stat
 
 /* ---------------- Ticket ---------------- */
 
-export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle, qrBody }: { bookingId: string; booking: StatusInput; venueName: string; eyebrow?: string; fields: { label: string; value: string }[]; qrTitle?: string; qrBody?: string }) {
+/** `qr`: "show" = the check-in QR, "placeholder" = "QR pakki booking par milega", "none" = no QR area (completed, no-show,
+ * cancelled, past). Defaults to show/placeholder by status; the booking page passes `bookingHeader(...).qr` (fix/nov-8). */
+export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle, qrBody, qr }: { bookingId: string; booking: StatusInput; venueName: string; eyebrow?: string; fields: { label: string; value: string }[]; qrTitle?: string; qrBody?: string; qr?: "show" | "placeholder" | "none" }) {
   const copy = useFlCopy();
-  const ok = isConfirmed(booking.status);
+  const mode = qr ?? (isConfirmed(booking.status) ? "show" : "placeholder");
+  const ok = mode === "show";
   return (
     <div data-testid="ticket" className="overflow-hidden rounded-fl-card-l bg-fl-white shadow-fl-ticket">
       <div className="flex flex-col gap-3.5 p-5">
@@ -237,6 +240,8 @@ export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle
           ))}
         </dl>
       </div>
+      {mode === "none" ? null : (
+      <>
       <div aria-hidden className="relative flex h-[22px] items-center">
         <span className="absolute -left-[11px] h-[22px] w-[22px] rounded-full bg-fl-ground" />
         <span className="mx-[18px] flex-1 border-t-2 border-dashed border-fl-line" />
@@ -255,6 +260,8 @@ export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle
           </span>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

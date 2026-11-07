@@ -9,7 +9,7 @@ import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { isConfirmed, journeySteps } from "@court-booking/ui-tokens";
-import { paymentLineLabel, timelineLabel, whatsappLink } from "@court-booking/types";
+import { bookingHeader, paymentLineLabel, timelineLabel, whatsappLink } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
@@ -37,6 +37,12 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
       return s === "held" || s === "payment_submitted" ? 4000 : false;
     },
   });
+  // fix/nov-8: same query (and cache) as BookingExtrasCard; it says whether "Main aaya tha" is open (noshow_reply flag).
+  const extrasQuery = useQuery({
+    queryKey: ["booking-extras", id],
+    queryFn: () => api.phase3.extras(id),
+    enabled: detailQuery.data?.booking.status === "no_show",
+  });
   const bookingQuery = detailQuery;
   const detail = detailQuery.data;
   const booking = detail?.booking;
@@ -58,6 +64,9 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   }
 
   const confirmed = isConfirmed(booking.status);
+  // fix/nov-8: one header + QR area per status (booked / completed / no_show / cancelled / still waiting).
+  const header = bookingHeader(booking, { canReplyNoShow: extrasQuery.data?.arrival.can_reply_noshow === true, lang: lang === "ru" ? "ru" : "en" });
+  const waiting = header.kind === "waiting";
   const d = detail!;
   const venueName = d.venue.name;
   const court = courtLabel(d.court.name, d.court.sport);
@@ -73,26 +82,34 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   const tel = d.venue.phone ? `tel:${d.venue.phone.replace(/[^\d+]/g, "")}` : null;
 
   return (
-    <main className="flex min-h-screen flex-col items-center gap-6 bg-fl-night px-4 pb-10 pt-12 font-fl-body sm:px-6" data-testid={confirmed ? "status-booked-page" : "status-pending-page"}>
-      {confirmed ? (
+    <main
+      className="flex min-h-screen flex-col items-center gap-6 bg-fl-night px-4 pb-10 pt-12 font-fl-body sm:px-6"
+      data-testid={confirmed ? "status-booked-page" : waiting ? "status-pending-page" : `status-${header.kind}-page`}
+    >
+      {header.kind === "booked" || header.kind === "completed" ? (
         <>
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-fl-mint text-fl-night" aria-hidden>
             <Check size={30} strokeWidth={3} />
           </div>
           <div className="flex flex-col items-center gap-1.5 text-center">
-            <h1 className="font-fl-display text-3xl font-extrabold tracking-tight text-fl-white">{t("play.done.title")}</h1>
-            <p className="text-[15px] text-fl-on-dark-muted">{t("play.done.confirmedBy")}</p>
+            <h1 className="font-fl-display text-3xl font-extrabold tracking-tight text-fl-white" data-testid="status-title">{header.title}</h1>
+            <p className="text-[15px] text-fl-on-dark-muted">{header.body}</p>
           </div>
         </>
       ) : (
         <div className="flex flex-col items-center gap-2 text-center">
-          <h1 className="font-fl-display text-3xl font-extrabold tracking-tight text-fl-white">{t("play.done.notYetTitle")}</h1>
-          <p className="max-w-md text-[15px] text-fl-on-dark-muted">{t("play.done.notYetBody")}</p>
+          <h1 className="font-fl-display text-3xl font-extrabold tracking-tight text-fl-white" data-testid="status-title">{header.title}</h1>
+          <p className="max-w-md text-[15px] text-fl-on-dark-muted">{header.body}</p>
+          {header.askNoShow ? (
+            <a href="#noshow-reply" className="mt-1 rounded-full bg-fl-white px-4 py-2 text-[14px] font-extrabold text-fl-night" data-testid="status-ask-noshow">
+              {header.askNoShow}
+            </a>
+          ) : null}
         </div>
       )}
 
       <div className="flex w-full max-w-md flex-col gap-4">
-        <Ticket bookingId={booking.id} booking={booking} venueName={venueName} eyebrow={t("play.done.ticketEyebrow")} fields={fields} />
+        <Ticket bookingId={booking.id} booking={booking} venueName={venueName} eyebrow={t("play.done.ticketEyebrow")} fields={fields} qr={header.qr} />
 
         <MoneyRows
           rows={[
@@ -188,11 +205,11 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
           </p>
         </section>
 
-        {confirmed ? (
+        {header.qr === "show" ? (
           <Button label={t("play.done.checkin")} block variant="secondary" onClick={() => router.push(`/booking/${id}/checkin`)} />
         ) : null}
 
-        {!confirmed ? (
+        {waiting || header.kind === "cancelled" ? (
           <div className="flex flex-col gap-4 rounded-fl-card bg-fl-white p-5" data-testid="status-journey">
             <StatusPill booking={booking} />
             <Timeline steps={journeySteps(booking, lang)} />

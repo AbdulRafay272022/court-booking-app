@@ -69,3 +69,11 @@ test("ticketTimeRange: one AM/PM when shared, both when not", () => {
   assert.equal(ticketTimeRange("2026-10-24T06:00:00Z", "2026-10-24T08:00:00Z"), "11:00 AM – 1:00 PM");
   assert.equal(ticketTimeRange("2026-10-24T18:00:00Z", "2026-10-24T19:00:00Z"), "11:00 PM – 12:00 AM");
 });
+
+test("fix/nov-8: completed and no-show have their own Roman Urdu headers (never the waiting copy)", () => {
+  assert.equal(doneCopy("completed", null, "ru").title, "Khel ho gaya");
+  assert.equal(doneCopy("no_show", null, "ru").title, "No-show mark hui");
+  for (const s of ["booked", "completed", "no_show", "cancelled"] as const) {
+    assert.doesNotMatch(doneCopy(s, "owner", "ru").title, /pakki nahi|Payment/);
+  }
+});

@@ -4,6 +4,7 @@ export * from "./court";
 export * from "./availability";
 export * from "./booking";
 export * from "./booking-detail";
+export * from "./booking-header";
 export * from "./booking-dashboard";
 export * from "./payment";
 export * from "./payment-entry";

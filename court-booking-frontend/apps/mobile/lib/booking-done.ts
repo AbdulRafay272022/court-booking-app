@@ -68,7 +68,7 @@ function doneCopyRu(status: BookingStatus, cancelledBy: CancelledBy | null): Don
     case "booked":
       return { title: "Court aap ka hai!", subtitle: "Venue ne payment approve kar di.", tone: "confirmed", icon: "check", ...toBookings };
     case "completed":
-      return { title: "Game ho gaya", subtitle: "Ye booking mukammal hai. Khelne ka shukriya!", tone: "confirmed", icon: "check", ...toBookings };
+      return { title: "Khel ho gaya", subtitle: "Ye booking mukammal ho gayi. Khelne ka shukriya!", tone: "confirmed", icon: "check", ...toBookings };
     case "payment_submitted":
       return {
         title: "Payment bhej di",
@@ -87,7 +87,7 @@ function doneCopyRu(status: BookingStatus, cancelledBy: CancelledBy | null): Don
         actionLabel: "Screenshot lagayein",
       };
     case "no_show":
-      return { title: "No-show mark hua", subtitle: "Venue ne is booking ko no-show mark kiya.", tone: "ended", icon: "x", ...toBookings };
+      return { title: "No-show mark hui", subtitle: "Venue ne is booking ko no-show mark kiya.", tone: "ended", icon: "x", ...toBookings };
     case "cancelled":
       return {
         title: cancelledBy === "system" ? "Waqt khatam ho gaya" : cancelledBy === "owner" ? "Venue ne booking nahi li" : "Booking cancel ho gayi",

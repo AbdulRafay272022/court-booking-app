@@ -95,7 +95,7 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
       ) : null}
       {arrival.arrival ? <p className="text-[14px] text-fl-night" data-testid="arrival-verdict">{t(`play.p3.verdict.${arrival.arrival.verdict}`)}</p> : null}
       {arrival.can_reply_noshow ? (
-        <div className="flex flex-col gap-2" data-testid="noshow-reply">
+        <div id="noshow-reply" className="flex scroll-mt-6 flex-col gap-2" data-testid="noshow-reply">
           <p className="text-[14px] text-fl-night">{t("play.p3.noshowAsk")}</p>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2} placeholder={t("play.p3.noshowNote")} className="rounded-xl border border-fl-line p-3 text-[14px]" />
           <Btn busy={busy === "noshow"} onClick={() => run("noshow", () => api.phase3.noshowReply(bookingId, note.trim()), t("play.p3.toldVenue"))}>{t("play.p3.mainAayaTha")}</Btn>

@@ -34,12 +34,16 @@ export interface TicketProps {
   /** Page background colour behind the ticket (for the punched notches). Default ground. */
   pageColor?: string;
   testID?: string;
+  /** fix/nov-8: "show" = the QR, "placeholder" = "QR pakki booking par milega", "none" = no QR area (completed, no-show,
+   * cancelled, past). Defaults to show/placeholder by status; the booking screen passes `bookingHeader(...).qr`. */
+  qr?: "show" | "placeholder" | "none";
 }
 
 /** Status board booked ticket: header, fields, dashed tear line with notches, QR (react-native-qrcode-svg). */
-export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle, qrBody, footer, dark, subtitle, pageColor = palette.ground, testID }: TicketProps) {
+export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle, qrBody, footer, dark, subtitle, pageColor = palette.ground, testID, qr }: TicketProps) {
   const copy = useCopy();
-  const ok = isConfirmed(booking.status);
+  const mode = qr ?? (isConfirmed(booking.status) ? "show" : "placeholder");
+  const ok = mode === "show";
   const glowId = `ticket-glow-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <View testID={testID ?? "ticket"} style={{ backgroundColor: palette.white, borderRadius: radius.cardL, boxShadow: shadow.ticket, overflow: "hidden" }}>
@@ -93,6 +97,8 @@ export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle
           ))}
         </View>
       </View>
+      {mode === "none" ? null : (
+      <>
       <View style={{ height: 22, justifyContent: "center" }} accessibilityElementsHidden importantForAccessibility="no">
         <View style={{ position: "absolute", left: -11, width: 22, height: 22, borderRadius: 11, backgroundColor: pageColor }} />
         <View style={{ marginHorizontal: 18, borderTopWidth: 2, borderStyle: "dashed", borderColor: palette.line }} />
@@ -118,6 +124,8 @@ export function Ticket({ bookingId, booking, venueName, eyebrow, fields, qrTitle
           </Text>
         </View>
       </View>
+      </>
+      )}
       {footer ? <View style={{ paddingHorizontal: space[5], paddingBottom: space[5] }}>{footer}</View> : null}
     </View>
   );
