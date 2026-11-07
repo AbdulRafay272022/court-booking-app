@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "797909183660",
-    "project_id": "maidan-31556",
-    "storage_bucket": "maidan-31556.firebasestorage.app"
+    "project_number": "1015657340825",
+    "project_id": "court-booking-app-b04be",
+    "storage_bucket": "court-booking-app-b04be.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:797909183660:android:526056190c7fbaf05d8309",
+        "mobilesdk_app_id": "1:1015657340825:android:5057c4f7b643d2f0e67d08",
         "android_client_info": {
-          "package_name": "com.maidan.app"
+          "package_name": "com.aftrsolutions.khelo"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCoPcutdem4IVSLEMSrOABSygT5GRqt14Q"
+          "current_key": "AIzaSyAJ0k8JlCstuRY0AWQZN2IPXMIHWhNM5PM"
         }
       ],
       "services": {

@@ -18,13 +18,12 @@ Source: `docs/floodlight-contract.md` (B1-B8 table) aur `docs/floodlight-progres
 | MAP | Venue ka map ("Naqsha") aur owner ke liye "Pin khud lagao". Abhi map nahi dikhta, sirf address + "Directions" link hai. | Backend: nahi (`latitude`/`longitude` pehle se hain). Native: `react-native-maps` + Google Maps API key, yani **naya EAS build** (OTA update se nahi aa sakta). | **Baad mein**, lekin agle native build ke sath. Agar EAS build abhi hona hai to ye module usi mein daal dena behtar hai, taake doosra build na karna pare. |
 | NAME | **DONE: Khelo, com.aftrsolutions.khelo** (2026-10-25, branch `rename-khelo`). slug `khelo`, schemes `khelo://` + purana `maidan://`. EAS project ab **`@abdulrafay879/khelo`** hai, `abdulrafay879` account pe (projectId `e166063a-198d-4bf8-9e12-299a98cd8b18`); purana `maidan-app` project use nahi hota. Details: `docs/rename-khelo.md`. | Backend: sirf `APNS_BUNDLE_ID` ki default value. Migration: nahi. | Baqi kaam: Firebase mein `com.aftrsolutions.khelo` ki Android app add karke nayi `google-services.json` lani hai (iske baghair Android build fail hoga). `maidan.*` storage keys jaan boojh kar nahi badlin. |
 
-## ⚠️ Push notifications blocked
+## ✅ Push notifications: Firebase ready (2026-11-08, branch fix/nov-7)
 
-"Push notifications blocked: Firebase project maidan-31556 ka access team member ke paas hai. com.aftrsolutions.khelo Android app add karwani hai + mujhe Owner access. Store release se pehle zaroori."
-
-- Abhi ke liye (2026-10-25): `apps/mobile/app.config.js` **sirf development build** (`APP_VARIANT=development`) se `googleServicesFile` hata deta hai. Is liye dev build mein push nahi aayega; app crash nahi karti, kyunke token ka error pakda jata hai.
-- **Preview aur production** builds abhi bhi `google-services.json` use karti hain. Is file mein `com.aftrsolutions.khelo` nahi hai, is liye **nayi file aane tak preview/production Android build fail hogi**.
-- File aane par: nayi `google-services.json` `apps/mobile/` mein rakhein aur `app.config.js` delete karein (ya us commit ko `git revert` karein). Phir naya build banayein.
+- Naya Firebase project (`court-booking-app-b04be`, "Khelo") mein Android app `com.aftrsolutions.khelo`. Uski `google-services.json` `apps/mobile/` mein hai (public config, repo mein commit; build ke liye upload hoti hai).
+- FCM V1 service-account key Expo pe upload ho chuki hai (`@abdulrafay879/khelo`, Android -> Push Notifications FCM V1). Key repo mein kabhi nahi aayi; `.gitignore` aur `.easignore` dono `*adminsdk*.json` rokte hain.
+- Dev-only "no Firebase" switch (commit 567b80d, `apps/mobile/app.config.js`) revert ho gaya: ab har build (development, preview, production) Firebase ke saath banti hai.
+- Backend ka `FCM_SERVICE_ACCOUNT_KEY` (production SSM) bhi isi naye project ki key honi chahiye, warna server push nahi bhej payega. Ye production config hai, founder khud set kare.
 
 ## ⚠️ EAS upload incident (2026-10-25): `.env` files Expo pe chali gayi thin
 
