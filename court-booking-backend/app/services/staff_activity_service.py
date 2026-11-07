@@ -5,6 +5,11 @@ Built only from what is already recorded -- no new table, no migration:
   booking.no_show, booking.checked_in, booking.walkin, refund.marked_paid;
 - `payment_entries.recorded_by`: cash recorded (cash_at_venue) and transfers credited (bank_transfer_proof, the approver).
 
+"Bookings banayi" (bookings_created, fix/nov-7) = bookings this person created with Add booking / walk-in: the actor of the
+booking's `booking.walkin` audit row (every owner/staff-created booking goes through POST /bookings/walkin, whatever its
+`source`). A walk-in / phone booking at this venue created in the range that has NO such row (rows that predate the audit,
+or data written straight to the DB) can only have come from the venue's owner, so it is counted under the owner.
+
 Everything is scoped to ONE venue (audit rows / entries whose booking is on one of its courts) and a Pakistan date range on
 when the action happened. The owner's own actions are listed as a row too, so the totals add up.
 
@@ -24,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError, ErrorCode
 from app.models.audit import AuditLog
-from app.models.booking import Booking
+from app.models.booking import Booking, BookingSource
 from app.models.court import Court
 from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import User, UserRole
@@ -68,6 +73,7 @@ def _empty_row(user: User | None, uid: uuid.UUID | None) -> dict:
         "user_id": uid,
         "name": (user.name if user else None) or (user.phone if user else None),
         "role": user.role.value if user else "unknown",
+        "bookings_created": 0,
         "bookings_marked": 0,
         "no_shows": 0,
         "check_ins": 0,
@@ -182,8 +188,28 @@ async def staff_activity(
             r["check_ins"] += 1
         elif a.action == "booking.walkin":
             r["walkins"] += 1
+            r["bookings_created"] += 1
         elif a.action == "refund.marked_paid":
             r["refunds_paid_pkr"] += int(round(float((a.new_value or {}).get("this_payment") or 0)))
+
+    # walk-in / phone bookings created in the range with no `booking.walkin` row: only the owner could have made them
+    attributed = {a.entity_id for a in audits if a.action == "booking.walkin"}
+    unattributed = (
+        await db.execute(
+            select(Booking.id).where(
+                Booking.id.in_(venue_bookings),
+                Booking.source.in_((BookingSource.WALKIN, BookingSource.PHONE)),
+                Booking.created_at >= t0,
+                Booking.created_at < t1,
+            )
+        )
+    ).scalars().all()
+    missing = [b for b in unattributed if b not in attributed]
+    if missing:
+        owner_user = users.get(venue.owner_id) or await db.get(User, venue.owner_id)
+        if owner_user is not None:
+            users[owner_user.id] = owner_user
+            row(owner_user.id)["bookings_created"] += len(missing)
 
     for e in entries:
         if not counted(e.recorded_by):

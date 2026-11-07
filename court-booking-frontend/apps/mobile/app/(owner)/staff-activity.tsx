@@ -55,6 +55,8 @@ export default function StaffActivityScreen() {
             <Text variant="title">Kul</Text>
             <Text variant="body">{`Darj paisa: ${formatPkr(data.totals.total_recorded_pkr)} (cash ${formatPkr(data.totals.cash_pkr)}, transfer ${formatPkr(data.totals.transfers_pkr)})`}</Text>
             <Text variant="body">{`Nahi aaye: ${data.totals.no_shows} · Kam mila: ${data.totals.short_payments}`}</Text>
+            <Text variant="body">{`Bookings banayi: ${data.totals.bookings_created ?? data.totals.walkins} · Mukammal ki: ${data.totals.bookings_marked}`}</Text>
+            <Text variant="meta" tone="muted">Bookings banayi = Add booking ya walk-in se banayi. Mukammal ki = khel ke baad Haan ya Nahi mark kiya.</Text>
           </View>
         </>
       )}
@@ -140,13 +142,13 @@ function PersonCard({ p }: { p: StaffActivityRow }) {
       testID={red ? "sact-person-red" : "sact-person"}
     >
       <Text variant="title">{`${p.name ?? "?"} ${p.role === "owner" ? "(owner)" : "(staff)"}`}</Text>
-      {line("Bookings mark", String(p.bookings_marked))}
-      {line("Nahi aaye (no-show)", String(p.no_shows))}
-      {line("Check-in", String(p.check_ins))}
-      {line("Walk-in", String(p.walkins))}
+      {line("Bookings banayi", String(p.bookings_created ?? p.walkins))}
+      {line("Mukammal ki", String(p.bookings_marked))}
+      {line("Nahi aaye", String(p.no_shows))}
+      {line("Check-in kiye", String(p.check_ins))}
       {line("Kam mila", p.short_payments > 0 ? `${p.short_payments} (${formatPkr(p.short_amount_pkr)})` : "0")}
-      {line("Cash", formatPkr(p.cash_pkr))}
-      {line("Transfer", formatPkr(p.transfers_pkr))}
+      {line("Cash liya", formatPkr(p.cash_pkr))}
+      {line("Transfer liya", formatPkr(p.transfers_pkr))}
       {line("Refund diye", formatPkr(p.refunds_paid_pkr))}
       {line("Kul darj", formatPkr(p.total_recorded_pkr))}
       {p.bank_missing ? (

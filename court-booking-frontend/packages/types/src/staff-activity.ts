@@ -1,5 +1,7 @@
 /** Audit 2026-10-28 item 16: GET /owners/staff-activity and GET /admin/staff-activity (app/schemas/staff_activity.py). */
 export interface StaffActivityCounts {
+  /** fix/nov-7: bookings this person created (Add booking / walk-in). Absent from an older backend. */
+  bookings_created?: number;
   bookings_marked: number;
   no_shows: number;
   check_ins: number;

@@ -10,6 +10,8 @@ class StaffActivityRowOut(BaseModel):
     user_id: uuid.UUID | None
     name: str | None
     role: str
+    # fix/nov-7: bookings this person CREATED (Add booking / walk-in, the `booking.walkin` audit row's actor)
+    bookings_created: int = 0
     bookings_marked: int
     no_shows: int
     check_ins: int
@@ -29,6 +31,7 @@ class StaffActivityRowOut(BaseModel):
 
 
 class StaffActivityTotalsOut(BaseModel):
+    bookings_created: int = 0
     bookings_marked: int
     no_shows: int
     check_ins: int

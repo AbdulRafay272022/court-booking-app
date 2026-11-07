@@ -117,10 +117,10 @@ export function StaffActivityView({
               <thead className="bg-owner-bg text-left text-[12px] uppercase tracking-wide text-owner-ink-faint">
                 <tr>
                   <th className="px-3 py-2">{t("odash.sact.col.person")}</th>
-                  <th className="px-3 py-2">{t("odash.sact.col.marked")}</th>
+                  <ColHead label={t("odash.sact.col.created")} tip={t("odash.sact.col.createdTip")} testId="sact-col-created" />
+                  <ColHead label={t("odash.sact.col.marked")} tip={t("odash.sact.col.markedTip")} testId="sact-col-marked" />
                   <th className="px-3 py-2">{t("odash.sact.col.noShows")}</th>
                   <th className="px-3 py-2">{t("odash.sact.col.checkIns")}</th>
-                  <th className="px-3 py-2">{t("odash.sact.col.walkins")}</th>
                   <th className="px-3 py-2">{t("odash.sact.col.short")}</th>
                   <th className="px-3 py-2">{t("odash.sact.col.cash")}</th>
                   <th className="px-3 py-2">{t("odash.sact.col.transfers")}</th>
@@ -146,10 +146,10 @@ export function StaffActivityView({
                       <td className="px-3 py-2 font-semibold text-owner-ink">
                         {p.name ?? "?"} <span className="text-[12px] font-normal text-owner-ink-faint">{p.role === "owner" ? t("odash.sact.owner") : t("odash.sact.staff")}</span>
                       </td>
+                      <td className="px-3 py-2" data-testid="sact-created">{p.bookings_created ?? p.walkins}</td>
                       <td className="px-3 py-2">{p.bookings_marked}</td>
                       <td className="px-3 py-2">{p.no_shows}</td>
                       <td className="px-3 py-2">{p.check_ins}</td>
-                      <td className="px-3 py-2">{p.walkins}</td>
                       <td className="px-3 py-2">
                         {p.short_payments}
                         {p.short_amount_pkr > 0 ? <span className="block text-[12px] text-owner-danger">{pkr(p.short_amount_pkr)}</span> : null}
@@ -168,10 +168,10 @@ export function StaffActivityView({
               <tfoot className="border-t-2 border-owner-border font-bold">
                 <tr>
                   <td className="px-3 py-2">{t("odash.sact.totals")}</td>
+                  <td className="px-3 py-2">{query.data.totals.bookings_created ?? query.data.totals.walkins}</td>
                   <td className="px-3 py-2">{query.data.totals.bookings_marked}</td>
                   <td className="px-3 py-2">{query.data.totals.no_shows}</td>
                   <td className="px-3 py-2">{query.data.totals.check_ins}</td>
-                  <td className="px-3 py-2">{query.data.totals.walkins}</td>
                   <td className="px-3 py-2">{query.data.totals.short_payments}</td>
                   <td className="px-3 py-2">{pkr(query.data.totals.cash_pkr)}</td>
                   <td className="px-3 py-2">{pkr(query.data.totals.transfers_pkr)}</td>
@@ -287,6 +287,33 @@ export function StaffActivityView({
         </>
       )}
     </div>
+  );
+}
+
+/** A column heading with a short explanation: shown on hover (title) and on keyboard focus / tap (the "?" button). */
+function ColHead({ label, tip, testId }: { label: string; tip: string; testId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <th className="relative px-3 py-2" title={tip} data-testid={testId}>
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        {label}
+        <button
+          type="button"
+          aria-label={tip}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          onBlur={() => setOpen(false)}
+          className="inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-owner-border text-[11px] font-bold normal-case text-owner-ink-muted"
+        >
+          ?
+        </button>
+      </span>
+      {open ? (
+        <span role="tooltip" className="absolute left-2 top-full z-10 mt-1 w-56 rounded-lg bg-owner-ink px-3 py-2 text-[12px] font-normal normal-case tracking-normal text-white shadow-lg">
+          {tip}
+        </span>
+      ) : null}
+    </th>
   );
 }
 
