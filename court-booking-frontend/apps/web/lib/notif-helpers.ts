@@ -97,9 +97,9 @@ export function routeForEvent(eventType: string, role: NotifRole): string | null
     case "payment_submitted":
       return ownerSide ? "/dashboard/owner/approvals" : null;
     case "refund_owed":
-      return ownerSide ? "/dashboard/owner/refunds" : null;
+      return ownerSide ? "/dashboard/owner/paisa?tab=wapas" : null;
     case "refund_paid":
-      return ownerSide ? "/dashboard/owner/refunds" : role === "player" ? "/bookings" : null;
+      return ownerSide ? "/dashboard/owner/paisa?tab=wapas" : role === "player" ? "/bookings" : null;
     case "booking_confirmed":
     case "booking_cancelled":
     case "booking_reminder":
@@ -131,7 +131,7 @@ export function feedRoute(item: Pick<NotificationFeedItem, "link" | "params">, r
     case "approvals":
       return owner ? "/dashboard/owner/approvals" : null;
     case "refunds":
-      return owner ? "/dashboard/owner/refunds" : role === "player" ? "/bookings" : null;
+      return owner ? "/dashboard/owner/paisa?tab=wapas" : role === "player" ? "/bookings" : null;
     case "booking":
       if (!owner) return role === "player" ? "/bookings" : null;
       if (link.booking_id && item.params?.starts_at) return historyHref(link.booking_id, item.params.starts_at);

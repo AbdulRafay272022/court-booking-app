@@ -147,6 +147,9 @@ export interface LedgerEntry {
   amount_pkr: number;
   running_total: number;
   booking_status: string;
+  /** fix/nov-7: on a correction, the booking's total paid just before / after it ("Raqam theek ki gayi: 3,000 -> 1,000"). */
+  paid_before_pkr?: number | null;
+  paid_after_pkr?: number | null;
 }
 
 export interface LedgerSummary {

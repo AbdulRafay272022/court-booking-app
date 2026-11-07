@@ -436,3 +436,28 @@ async def test_walkin_records_a_payment_entry(
     assert len(entries) == 1
     assert entries[0]["method"] == "cash_at_venue"
     assert entries[0]["amount_pkr"] == 3500
+
+
+async def test_the_ledger_shows_a_corrections_old_and_new_total_paid(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    """fix/nov-7 (the "Paisa" page): a correction row carries the booking's total paid before -> after it."""
+    from app.utils.timezone import pkt_today
+
+    owner = await make_user("+923070000050", role=UserRole.OWNER)
+    player = await make_user("+923070000051", role=UserRole.PLAYER)
+    venue = await make_venue(owner)
+    court = await _open_court(make_court, make_schedule, make_pricing_rule, venue)
+    booking = await _booked(db_session_factory, court, player, price=3500, advance_amount=400)
+    headers = await make_auth_headers(owner)
+    first = await client.post(f"/api/v1/bookings/{booking.id}/payment-entries", headers=headers, json={"amount_pkr": 1000, "method": "cash_at_venue"})
+    second = await client.post(f"/api/v1/bookings/{booking.id}/payment-entries", headers=headers, json={"amount_pkr": 2000, "method": "bank_transfer_proof"})
+    assert first.status_code == 201 and second.status_code == 201
+    rev = await client.post(f"/api/v1/payment-entries/{second.json()['entry']['id']}/reverse", headers=headers, json={"reason": "galat"})
+    assert rev.status_code == 200, rev.text
+
+    today = pkt_today().isoformat()
+    entries = (await client.get("/api/v1/owners/ledger", headers=headers, params={"start_date": today, "end_date": today})).json()["entries"]
+    by_type = {e["entry_type"]: e for e in entries if e["booking_id"] == str(booking.id) and e["amount_pkr"] != 1000}
+    assert by_type["correction"]["paid_before_pkr"] == 3000 and by_type["correction"]["paid_after_pkr"] == 1000
+    assert by_type["payment"]["paid_before_pkr"] is None

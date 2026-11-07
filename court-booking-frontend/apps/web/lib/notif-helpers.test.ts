@@ -42,7 +42,7 @@ test("links depend on the role", () => {
   assert.equal(routeForEvent("payment_submitted", "owner"), "/dashboard/owner/approvals");
   assert.equal(routeForEvent("payment_submitted_sms", "staff"), "/dashboard/owner/approvals");
   assert.equal(routeForEvent("payment_submitted", "player"), null);
-  assert.equal(routeForEvent("refund_owed", "owner"), "/dashboard/owner/refunds");
+  assert.equal(routeForEvent("refund_owed", "owner"), "/dashboard/owner/paisa?tab=wapas");
   assert.equal(routeForEvent("refund_paid", "player"), "/bookings");
   assert.equal(routeForEvent("booking_confirmed", "player"), "/bookings");
   assert.equal(routeForEvent("booking_cancelled", "owner"), "/dashboard/bookings");

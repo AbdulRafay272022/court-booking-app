@@ -49,6 +49,7 @@ export const ROUTE_NEEDS: { prefix: string; needs: StaffPermission[] | "owner" }
   { prefix: "/dashboard/owner/approvals", needs: ["view_ledger", "approve_payments"] },
   { prefix: "/dashboard/owner/walkin", needs: ["walkin"] },
   { prefix: "/dashboard/bookings", needs: ["view_ledger"] },
+  { prefix: "/dashboard/owner/paisa", needs: ["view_ledger", "mark_refunds"] },
   { prefix: "/dashboard/owner/ledger", needs: ["view_ledger"] },
   { prefix: "/dashboard/owner/bank-check", needs: ["view_ledger"] },
   { prefix: "/dashboard/owner/dues", needs: ["view_ledger"] },

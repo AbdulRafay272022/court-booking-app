@@ -72,10 +72,8 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/owner/approvals", label: t("odash.nav.approvals"), count: approvalsCount },
     { href: "/dashboard/owner/walkin", label: t("notif.nav.walkin") },
     { href: "/dashboard/bookings", label: t("notif.nav.bookings") },
-    { href: "/dashboard/owner/ledger", label: t("odash.nav.ledger") },
-    { href: "/dashboard/owner/bank-check", label: t("odash.bank.nav") },
-    { href: "/dashboard/owner/dues", label: t("odash.p3.duesNav") },
-    ...(refundsOn ? [{ href: "/dashboard/owner/refunds", label: t("odash.nav.refunds"), count: refundsCount }] : []),
+    // fix/nov-7: Ledger, Bank check, Dues and Refunds are the tabs of one Paisa page
+    { href: "/dashboard/owner/paisa", label: t("odash.nav.paisa"), count: refundsOn ? refundsCount : 0 },
     ...(isOn("growth_suggestions") ? [{ href: "/dashboard/owner/growth", label: t("odash.nav.growth") }] : []),
     ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: t("odash.nav.reviews") }] : []),
     { href: "/dashboard/owner/settings", label: t("odash.nav.settings") },

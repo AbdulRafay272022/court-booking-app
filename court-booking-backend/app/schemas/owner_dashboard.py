@@ -134,6 +134,10 @@ class LedgerEntryOut(BaseModel):
     amount_pkr: int
     running_total: int
     booking_status: str
+    # fix/nov-7 (the "Paisa" page): on a correction, the booking's total paid just before and just after this entry, so the
+    # owner reads "Raqam theek ki gayi: PKR 3,000 -> PKR 1,000". None on payments and refunds.
+    paid_before_pkr: int | None = None
+    paid_after_pkr: int | None = None
 
 
 class LedgerSummaryOut(BaseModel):

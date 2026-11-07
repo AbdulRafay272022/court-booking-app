@@ -25,7 +25,7 @@ export function MoneyHealthCard({ venueId }: { venueId: string }) {
     <section className="flex flex-col gap-3 rounded-2xl border border-owner-border bg-owner-surface p-4" data-testid="money-health">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-bold">{t("odash.p3.mh.title")}</h2>
-        <Link href="/dashboard/owner/dues" className="text-sm font-bold text-owner-accent hover:underline">
+        <Link href="/dashboard/owner/paisa?tab=baqi" className="text-sm font-bold text-owner-accent hover:underline">
           {t("odash.p3.mh.open")}
         </Link>
       </div>

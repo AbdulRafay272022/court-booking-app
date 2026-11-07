@@ -31,7 +31,7 @@ export function menuEntriesFor(role: UserRole): MenuEntry[] {
     case "owner":
       return [
         { href: "/dashboard/owner/today", labelKey: "header.pm.dashboard" },
-        { href: "/dashboard/owner/ledger", labelKey: "header.pm.bookings" },
+        { href: "/dashboard/owner/paisa", labelKey: "header.pm.bookings" },
         { href: "/dashboard/owner/settings", labelKey: "header.pm.venues" },
         { href: "/account?tab=settings", labelKey: "header.pm.settings" },
       ];

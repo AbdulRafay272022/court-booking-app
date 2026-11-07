@@ -3,6 +3,7 @@ export const ruOdashShell = {
   "odash.nav.today": "Aaj",
   "odash.nav.approvals": "Payment check",
   "odash.nav.ledger": "Hisaab",
+  "odash.nav.paisa": "Paisa",
   "odash.nav.refunds": "Refunds dene hain",
   "odash.nav.growth": "Tarakki",
   "odash.nav.reviews": "Reviews",

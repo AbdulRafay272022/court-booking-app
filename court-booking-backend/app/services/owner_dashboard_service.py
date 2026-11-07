@@ -619,6 +619,25 @@ class OwnerDashboardService:
         rows = result.all()
 
         ledger_accounts = await self._account_names({b.player_id for _, b in rows if b.player_id is not None})
+        # a correction shows the booking's total paid before -> after it: walk each corrected booking's WHOLE entry history
+        # (entries before the selected range count too)
+        corrected = {
+            b.id for e, b in rows if e.reverses_entry_id is not None or (e.note or "").startswith("Booking completed")
+        }
+        paid_around: dict[uuid.UUID, tuple[int, int]] = {}
+        if corrected:
+            history = (
+                await self.db.execute(
+                    select(PaymentEntry)
+                    .where(PaymentEntry.booking_id.in_(corrected))
+                    .order_by(PaymentEntry.booking_id, PaymentEntry.created_at.asc(), PaymentEntry.id)
+                )
+            ).scalars().all()
+            totals: dict[uuid.UUID, int] = defaultdict(int)
+            for h in history:
+                before = totals[h.booking_id]
+                totals[h.booking_id] = before + h.amount_pkr
+                paid_around[h.id] = (before, before + h.amount_pkr)
         entries: list[LedgerEntryOut] = []
         running = 0
         by_court: dict[str, int] = defaultdict(int)
@@ -654,6 +673,8 @@ class OwnerDashboardService:
                     amount_pkr=entry.amount_pkr,
                     running_total=running,
                     booking_status=booking.status.value,
+                    paid_before_pkr=paid_around[entry.id][0] if entry_type == "correction" and entry.id in paid_around else None,
+                    paid_after_pkr=paid_around[entry.id][1] if entry_type == "correction" and entry.id in paid_around else None,
                 )
             )
 

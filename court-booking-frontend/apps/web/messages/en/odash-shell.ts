@@ -5,6 +5,7 @@ export const enOdashShell: Record<keyof typeof ruOdashShell, string> = {
   "odash.nav.today": "Today",
   "odash.nav.approvals": "Approvals",
   "odash.nav.ledger": "Ledger",
+  "odash.nav.paisa": "Paisa",
   "odash.nav.refunds": "Refunds to pay",
   "odash.nav.growth": "Growth",
   "odash.nav.reviews": "Reviews",
