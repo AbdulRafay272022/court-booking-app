@@ -12,6 +12,7 @@ import {
   courtSetupProblem,
   formatPkrAmount,
   hiddenRates,
+  rateClashes,
   formatDuration,
   formatTime24As12,
   hoursKind,
@@ -49,6 +50,9 @@ export function CourtSetupFields({
   const problem = courtSetupProblem(value);
   const hoursProblem = problem && !/price/i.test(problem) ? problem : null;
   const hidden = hiddenRates(value);
+  const clashes = rateClashes(value);
+  const ORDER_HELP =
+    "Do rule ek hi waqt par lagein to ye lagega: din aur waqt dono wala, phir chhota waqt, phir zyada qeemat, phir list mein neeche wala. Har 30 minute ka hissa us rule ka hai jis ke waqt mein wo shuru hota hai.";
   // an EXISTING court (Venue Settings) runs on the backend default (60); a new court starts from the wizard prefill (90)
   const slotKey = slotChangeNote ? "court_slot_minutes" : "slot_minutes";
   const board = layout === "board";
@@ -225,11 +229,15 @@ export function CourtSetupFields({
                       <Text variant="caption" weight="bold" tone="waiting">{hiddenRateText(hidden[rule.id])}</Text>
                     </View>
                   ) : null}
+                  {(clashes[rule.id] ?? []).map((c) => (
+                    <Text key={c.otherId} variant="caption" weight="bold" tone="waiting" testID="rate-clash">{c.message}</Text>
+                  ))}
                 </Pressable>
                 {open ? <View style={{ padding: 12, paddingTop: 0, gap: 12 }}>{editor(rule)}</View> : null}
               </View>
             );
           })}
+          {value.pricingRules.length > 1 ? <Text variant="caption" tone="muted">{ORDER_HELP}</Text> : null}
         </View>
       ) : (
       <SectionCard>
@@ -242,8 +250,12 @@ export function CourtSetupFields({
           <View key={rule.id} className="border border-owner-border rounded-[10px] p-3.5 gap-3">
             {editor(rule)}
             {hidden[rule.id] ? <Text variant="caption" tone="danger" weight="bold">{hiddenRateText(hidden[rule.id])}</Text> : null}
+            {(clashes[rule.id] ?? []).map((c) => (
+              <Text key={c.otherId} variant="caption" tone="waiting" weight="bold" testID="rate-clash">{c.message}</Text>
+            ))}
           </View>
         ))}
+        <Text variant="caption" tone="subtle">{ORDER_HELP}</Text>
         <Pressable
           onPress={() => onChange({ pricingRules: [...value.pricingRules, makePricingRule("Peak raat")] })}
           className="min-h-10 px-3 rounded-lg border border-owner-border items-start justify-center self-start"

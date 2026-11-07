@@ -123,6 +123,22 @@ export function durationChoices(slots: Slot[], index: number, minSlots = 1, maxM
   return choices;
 }
 
+/**
+ * fix/nov-7: the span an OPEN row of a day list stands for. The row shows the price of the court's minimum booking from that
+ * cell, so its times must be that booking's (a 60-minute minimum from 5:30 is "5:30 se 6:30 PM"), not the 30-minute cell's
+ * own "5:30 se 6:00 PM". Null when the minimum does not fit from this cell.
+ */
+export function minimumBookingSpan(
+  slots: Slot[],
+  index: number,
+  minSlots = 1,
+): { starts_at: string; ends_at: string; after_midnight?: boolean } | null {
+  const first = durationChoices(slots, index, minSlots)[0];
+  if (!first) return null;
+  const slot = slots[index];
+  return { starts_at: slot.starts_at, ends_at: first.endsAt, after_midnight: slot.after_midnight };
+}
+
 /** The plain-language cancellation policy of a VENUE (Section 32 Part 4: one policy per venue). */
 export function cancellationPolicyText(
   venue: { cancellation_allowed: boolean; cancellation_cutoff_hours: number | null } | null | undefined,

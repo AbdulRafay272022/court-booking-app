@@ -5,7 +5,7 @@ import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Hourglass, MessageCircle, Paperclip, Send } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { chatActionLabel, formatDate, formatDuration, formatTime, formatTimeRange, type ChatAction } from "@court-booking/types";
+import { chatActionLabel, formatBookingSpan, formatDate, formatDuration, formatTime, type ChatAction } from "@court-booking/types";
 import { countdown, fontFamily, formatPkr, palette, radius, shadow, size, space, type as typeScale } from "@court-booking/ui-tokens";
 
 import { Avatar, Banner, Button, Chip, IconButton, Skeleton, Text, useCopy, useFontScale, useLang, useRoleTheme } from "@/components/ui";
@@ -223,7 +223,7 @@ export default function BookingChatScreen() {
               <View style={{ flex: 1, minWidth: 140, gap: 2 }}>
                 {ctxCourt ? <Text variant="bodyBold">{ctxCourt}</Text> : null}
                 <Text variant="meta" tone="muted">
-                  {[ctxEnd ? formatTimeRange(ctxStart, ctxEnd, lang) : formatTime(ctxStart), minutes ? formatDuration(minutes, lang) : null].filter(Boolean).join(" · ")}
+                  {[ctxEnd ? formatBookingSpan(ctxStart, ctxEnd, lang) : formatTime(ctxStart), minutes ? formatDuration(minutes, lang) : null].filter(Boolean).join(" · ")}
                 </Text>
               </View>
               {ctxPrice != null && Number.isFinite(ctxPrice) ? <Text variant="bodyStrong">{formatPkr(ctxPrice)}</Text> : null}

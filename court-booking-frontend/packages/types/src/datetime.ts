@@ -156,6 +156,21 @@ export function formatTimeRange(start: Instant, end: Instant, lang: TextLang = "
   return `${formatTime(start)} ${WORDS[lang].to} ${endText}`;
 }
 
+/** A booking's span, short: "5:30 se 6:30 PM" / "5:30 to 6:30 PM" (one AM/PM when both ends share it); "11:30 AM se 12:30 PM"
+ * when they differ; a span that runs into a later day keeps the long `formatTimeRange` form so the day is named. With
+ * `afterMidnight` (a slot of an overnight court's after-midnight part) the start's weekday leads: "Fri 1:00 se 2:00 AM". */
+export function formatBookingSpan(start: Instant, end: Instant, lang: TextLang = "en", afterMidnight = false): string {
+  const s = pktParts(start);
+  const e = pktParts(end);
+  const nextDay = e.day !== s.day || e.month !== s.month || e.year !== s.year;
+  const lead = afterMidnight ? `${WEEKDAY_SHORT[lang][s.weekday]} ` : "";
+  if (nextDay && !(e.hour === 0 && e.minute === 0)) return lead + formatTimeRange(start, end, lang);
+  const st = formatTime(start);
+  const et = formatTime(end);
+  const sameHalf = st.slice(-2) === et.slice(-2) && !nextDay;
+  return `${lead}${sameHalf ? st.slice(0, -3) : st} ${WORDS[lang].to} ${et}`;
+}
+
 /** How a slot's times read in a schedule day's list. A slot AFTER MIDNIGHT (`after_midnight`) belongs to the day it
  * opened but sits on the next calendar day, so it says so: "Fri 1:00 AM to 2:00 AM". */
 export function formatSlotTimes(slot: { starts_at: Instant; ends_at: Instant; after_midnight?: boolean }, lang: TextLang = "en"): string {

@@ -253,10 +253,14 @@ test("hiddenRates flags a rate that another rate always replaces (Court 2 as it 
     r("a", "Premium", [5], "18:00", "23:59", "8000"), r("b", "Peak", [4, 6], "18:00", "23:00", "7000"),
     r("c", "Weekends", [4, 5, 6], null, null, "6500"), r("d", "All day", [0, 1, 2, 3], null, null, "5000"),
   ] }), {});
-  // two equally specific, overlapping rates: the one lower in the list wins, the other is hidden
-  const hidden = hiddenRates({ pricingRules: [r("x", "Evenings", null, "18:00", "23:00", "4000"), r("y", "Also evenings", null, "18:00", "23:00", "5000")] });
+  // two equally specific, overlapping rates at the SAME price: the one lower in the list wins, the other is hidden
+  const hidden = hiddenRates({ pricingRules: [r("x", "Evenings", null, "18:00", "23:00", "5000"), r("y", "Also evenings", null, "18:00", "23:00", "5000")] });
   assert.deepEqual(Object.keys(hidden), ["x"]);
   assert.match(hidden.x.message, /hidden by "Also evenings" below it/);
+  // fix/nov-7: the same window at a higher price wins whatever the list order, so moving it would not help
+  const peak = hiddenRates({ pricingRules: [r("y", "Also evenings", null, "18:00", "23:00", "5000"), r("x", "Evenings", null, "18:00", "23:00", "4000")] });
+  assert.deepEqual(Object.keys(peak), ["x"]);
+  assert.match(peak.x.message, /never used: "Also evenings"/);
   // a narrower rate completely covering a broader-but-smaller one hides it, and the message says moving it will not help
   const narrower = hiddenRates({ pricingRules: [r("p", "Sat 7 PM", [5], "19:00", "20:00", "9000"), r("q", "Saturday evening", [5], "19:00", "20:00", "9500"), r("z", "All day", null, null, null, "3000")] });
   assert.ok(narrower.p && !narrower.q && !narrower.z);

@@ -4,7 +4,7 @@ import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Heart, Info, MapPin, MessageCircle, Navigation, Share2, Star } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { amenityLabel, formatDate, refundPolicyShort, formatDuration, formatTime, formatTimeRange, minSlotsFor, monthOf, pktDateString, type Court, type Review, type Venue } from "@court-booking/types";
+import { amenityLabel, formatBookingSpan, formatDate, refundPolicyShort, formatDuration, formatTime, formatTimeRange, minSlotsFor, monthOf, pktDateString, type Court, type Review, type Venue } from "@court-booking/types";
 import { formatPkr, palette, radius, slot as slotLook, space } from "@court-booking/ui-tokens";
 
 import {
@@ -160,7 +160,7 @@ function VenueBody({ venue, sportParam, lang }: { venue: Venue; sportParam: stri
   const fromPrice = openPrices.length ? Math.min(...openPrices) : null;
   const wa = venueWhatsApp(venue);
   const durationLabel = formatDuration(slotCount * 30, lang);
-  const whenLabel = model.startsAt && model.endsAt ? `${formatDate(model.startsAt, new Date(), lang)} · ${formatTimeRange(model.startsAt, model.endsAt, lang)}` : null;
+  const whenLabel = model.startsAt && model.endsAt ? `${formatDate(model.startsAt, new Date(), lang)} · ${formatBookingSpan(model.startsAt, model.endsAt, lang)}` : null;
 
   function chooseCourt(id: string) {
     setCourtId(id);

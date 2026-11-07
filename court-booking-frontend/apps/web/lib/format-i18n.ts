@@ -17,6 +17,7 @@ import {
   formatMonth,
   formatSlotLabel,
   formatSlotTimes,
+  formatBookingSpan,
   formatTime,
   formatTime24As12,
   formatTimeRange,
@@ -56,6 +57,8 @@ export interface Fmt {
   /** "7:30 PM to 9:00 PM, Wed 23 Sep". */
   slotLabel(start: Instant, end: Instant): string;
   slotTimes(slot: { starts_at: Instant; ends_at: Instant; after_midnight?: boolean }): string;
+  /** "5:30 se 6:30 PM": a booking's span with one AM/PM when both ends share it (fix/nov-7). */
+  bookingSpan(span: { starts_at: Instant; ends_at: Instant; after_midnight?: boolean }): string;
   timeRange(start: Instant, end: Instant): string;
   /** "7:00 PM" for an instant (digits and AM/PM are the same in both languages). */
   time(instant: Instant): string;
@@ -162,6 +165,7 @@ export function makeFmt(lang: Lang): Fmt {
     whenRange: (a, b) => formatWhenRange(a, b, now(), lang),
     slotLabel: (a, b) => formatSlotLabel(a, b, now(), lang),
     slotTimes: (s) => formatSlotTimes(s, lang),
+    bookingSpan: (s) => formatBookingSpan(s.starts_at, s.ends_at, lang, !!s.after_midnight),
     timeRange: (a, b) => formatTimeRange(a, b, lang),
     time: (i) => formatTime(i),
     time24: (v) => formatTime24As12(v),

@@ -245,8 +245,10 @@ def test_rule_windows_the_ways_an_owner_can_write_them():
     assert rule_matches_window(None, None, m(3), m(4))
     # "until 00:00" means until midnight
     assert rule_matches_window(None, time(0, 0), m(23), m(24)) and not rule_matches_window(None, time(0, 0), m(24), m(25))
-    # an ordinary same-day window behaves exactly as before
-    assert rule_matches_window(time(18, 0), time(23, 0), m(18), m(19)) and not rule_matches_window(time(18, 0), time(23, 0), m(22, 30), m(23, 30))
+    # an ordinary same-day window, half-open [18:00, 23:00): a cell takes it when the cell STARTS inside (fix/nov-7)
+    assert rule_matches_window(time(18, 0), time(23, 0), m(18), m(18, 30))
+    assert rule_matches_window(time(18, 0), time(23, 0), m(22, 30), m(23))
+    assert not rule_matches_window(time(18, 0), time(23, 0), m(23), m(23, 30))
 
 
 # ---- which day owns an instant ---------------------------------------------------------------------------

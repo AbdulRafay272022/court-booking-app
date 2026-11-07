@@ -8,6 +8,7 @@ import {
   WEEKEND_NUMBERS,
   courtSetupProblem,
   hiddenRates,
+  rateClashes,
   formatTime24As12,
   hoursKind,
   makePricingRule,
@@ -47,6 +48,7 @@ export function CourtSetupFields({
   const problem = courtSetupProblem(value);
   const hoursProblem = problem && !/price/i.test(problem) ? problem : null;
   const hidden = hiddenRates(value);
+  const clashes = rateClashes(value);
 
   function updateRule(id: string, patch: Partial<PricingRuleDraft>) {
     onChange({ pricingRules: value.pricingRules.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
@@ -181,8 +183,14 @@ export function CourtSetupFields({
                 {fmt.validation(hidden[rule.id].message)}
               </p>
             ) : null}
+            {(clashes[rule.id] ?? []).map((c) => (
+              <p key={c.otherId} data-testid="rate-clash" className="text-[12.5px] font-semibold text-amber-800">
+                {c.message}
+              </p>
+            ))}
           </div>
         ))}
+        <p className="text-[12.5px] text-owner-ink-muted">{t("setup.pricing.orderHelp")}</p>
         <button
           type="button"
           onClick={() => onChange({ pricingRules: [...value.pricingRules, makePricingRule("Peak hours")] })}

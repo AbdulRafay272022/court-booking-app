@@ -75,6 +75,7 @@ export const ruSetup = {
   "setup.pricing.from": "Se (optional)",
   "setup.pricing.to": "Tak (optional)",
   "setup.pricing.add": "+ Peak ya weekend rate add karein",
+  "setup.pricing.orderHelp": "Do rule ek hi waqt par lagein to ye lagega: din aur waqt dono wala, phir chhota waqt, phir zyada qeemat, phir list mein neeche wala. Har 30 minute ka hissa us rule ka hai jis ke waqt mein wo shuru hota hai.",
   "setup.days.label": "Ye price kin dino par lagti hai",
   "setup.days.every": "Har din",
   "setup.days.weekdays": "Peer se Jumma",

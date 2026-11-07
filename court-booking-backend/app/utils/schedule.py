@@ -56,7 +56,11 @@ def minutes_from_midnight(t: time) -> int:
 def rule_matches_window(
     start_time: time | None, end_time: time | None, slot_start_min: int, slot_end_min: int
 ) -> bool:
-    """Does a pricing rule's time window contain the slot [slot_start_min, slot_end_min)?
+    """Does a pricing rule's time window apply to the grid cell that STARTS at `slot_start_min`?
+
+    fix/nov-7: a window is HALF-OPEN [start, end) and a 30-minute cell takes the rule's price when the cell STARTS inside
+    it (`slot_end_min` is not looked at). Peak 15:00-18:00: the 14:30 cell is not peak, 15:00 is, 17:30 is, 18:00 is not.
+    18:00-00:00: 23:30 is inside, 00:00 is not. A booking that crosses a boundary is priced cell by cell (quote_range).
 
     Minutes count from midnight of the OPENING day, so a slot after midnight has minutes >= 1440. A rule window may cross
     midnight (22:00 to 02:00) and may sit entirely after midnight (01:00 to 03:00 on an overnight court): it is tried as
@@ -72,11 +76,42 @@ def rule_matches_window(
             # "until 18:00" / "until 00:00" (midnight): from the start of the schedule day, NOT shifted a day forward
             # (shifting would make "until 18:00" also cover 19:00 on a same-day court).
             windows = [(0, re_ or DAY_MINUTES)]
-            return any(ws <= slot_start_min and slot_end_min <= we for ws, we in windows)
+            return any(ws <= slot_start_min < we for ws, we in windows)
         if re_ <= rs:
             re_ += DAY_MINUTES  # crosses midnight
         windows = [(rs, re_), (rs + DAY_MINUTES, re_ + DAY_MINUTES)]
-    return any(ws <= slot_start_min and slot_end_min <= we for ws, we in windows)
+    return any(ws <= slot_start_min < we for ws, we in windows)
+
+
+def rule_window_minutes(start_time: time | None, end_time: time | None) -> int:
+    """How many minutes of a day a rule's window covers (no window = the whole day; "from 18:00" = to midnight)."""
+    if start_time is None and end_time is None:
+        return DAY_MINUTES
+    rs = minutes_from_midnight(start_time) if start_time is not None else 0
+    if end_time is None:
+        return DAY_MINUTES - rs
+    re_ = minutes_from_midnight(end_time)
+    if start_time is None:
+        return re_ or DAY_MINUTES
+    return re_ - rs if re_ > rs else re_ + DAY_MINUTES - rs
+
+
+def rule_rank(rule) -> tuple:
+    """THE order in which overlapping price rules win (fix/nov-7; the web and app mirror it in
+    packages/types/src/court-setup.ts `ruleRank`). Highest first:
+      1. more specific: days AND a time window > days only or a window only > an all-day, every-day rate;
+      2. narrower: fewer minutes a week covered (days x window length), so "Peak 3-6 PM" beats "Evening 3-9 PM";
+      3. the peak: the higher price_per_slot;
+      4. the owner's list order: the higher saved priority (the rule lower in the list).
+    """
+    days = len(set(rule.day_of_week)) if rule.day_of_week else 7
+    coverage = min(days, 7) * rule_window_minutes(rule.start_time, rule.end_time)
+    return (
+        rule_specificity(rule.day_of_week, rule.start_time, rule.end_time),
+        -coverage,
+        float(rule.price_per_slot),
+        rule.priority,
+    )
 
 
 def overlap_error(templates: Mapping[int, _Template], day_names: tuple[str, ...]) -> str | None:

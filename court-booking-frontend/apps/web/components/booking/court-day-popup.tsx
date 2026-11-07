@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, durationChoices, minSlotsFor, mondayFirstWeekdayOf, monthOf, pktDateString, upcomingSlots, weekOf } from "@court-booking/types";
+import { addDays, durationChoices, minimumBookingSpan, minSlotsFor, mondayFirstWeekdayOf, monthOf, pktDateString, upcomingSlots, weekOf } from "@court-booking/types";
 import type { DaySummaryState } from "@court-booking/types";
 
 import { api } from "@/lib/api";
@@ -279,7 +279,10 @@ export function CourtDayPopup({
                     if (!spec) return null;
                     const cue = slotChipCue(spec.state);
                     const Icon = cue.icon === "lock" ? Lock : cue.icon === "hourglass" ? Hourglass : cue.icon === "user" ? UserCheck : null;
-                    const time = fmt.slotTimes(slot);
+                    // an open row is priced for the court's minimum booking, so it reads as that booking: a 1-hour minimum
+                    // from 5:30 is "5:30 se 6:30 PM", never the 30-minute cell's own "5:30 se 6:00 PM" next to "1 ghanta"
+                    const span = spec.state === "open" ? minimumBookingSpan(slots, index, minSlots) : null;
+                    const time = span ? fmt.bookingSpan(span) : fmt.slotTimes(slot);
                     const label = spec.statusLabel ?? (spec.labelKey ? t(spec.labelKey) : "");
                     const dividerBefore = slot.after_midnight && !slots[index - 1]?.after_midnight;
                     const waitlistKey = `${courtId}|${slot.starts_at}`;

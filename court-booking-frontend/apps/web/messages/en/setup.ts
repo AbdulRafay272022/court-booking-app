@@ -75,6 +75,7 @@ export const enSetup = {
   "setup.pricing.from": "From (optional)",
   "setup.pricing.to": "To (optional)",
   "setup.pricing.add": "+ Add a peak or weekend rate",
+  "setup.pricing.orderHelp": "When two rates cover the same time, this one is charged: the one with days and times, then the shorter window, then the higher price, then the one lower in the list. Each 30 minutes takes the rate whose window it starts in.",
   "setup.days.label": "Days this price applies to",
   "setup.days.every": "Every day",
   "setup.days.weekdays": "Weekdays",

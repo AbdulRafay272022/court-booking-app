@@ -175,8 +175,13 @@ function specificity(r: PricingRuleDraft): number {
   return (namesDays ? 1 : 0) + (r.startTime || r.endTime ? 1 : 0);
 }
 
-/** Does the rate's time window contain the slot [s, e) (minutes from the schedule day's midnight)? Mirrors the backend's rule_matches_window. */
-function windowContains(r: PricingRuleDraft, s: number, e: number): boolean {
+/**
+ * Does the rate apply to the 30-minute cell that STARTS at minute `s` of the schedule day (>= 1440 after midnight)? Mirrors the
+ * backend's rule_matches_window (fix/nov-7): a window is HALF-OPEN [start, end) and a cell belongs to it when the cell STARTS
+ * inside. Peak 3 PM-6 PM: 2:30 no, 3:00 yes, 5:30 yes, 6:00 no. 6 PM-12 AM: 11:30 PM yes, 12:00 AM no. A window may cross
+ * midnight (10 PM-2 AM) and is also tried one day later, for the after-midnight part of an overnight court.
+ */
+export function windowStartsInside(r: Pick<PricingRuleDraft, "startTime" | "endTime">, s: number): boolean {
   if (!r.startTime && !r.endTime) return true;
   const rs = r.startTime ? toMinutes(r.startTime) : 0;
   let windows: Array<[number, number]>;
@@ -190,7 +195,47 @@ function windowContains(r: PricingRuleDraft, s: number, e: number): boolean {
       windows = [[rs, re], [rs + DAY_MIN, re + DAY_MIN]];
     }
   }
-  return windows.some(([ws, we]) => ws <= s && e <= we);
+  return windows.some(([ws, we]) => ws <= s && s < we);
+}
+
+/** Minutes of a day the rate's window covers (no window = the whole day; "from 6 PM" = to midnight). */
+function windowMinutes(r: PricingRuleDraft): number {
+  if (!r.startTime && !r.endTime) return DAY_MIN;
+  const rs = r.startTime ? toMinutes(r.startTime) : 0;
+  if (!r.endTime) return DAY_MIN - rs;
+  const re = toMinutes(r.endTime);
+  if (!r.startTime) return re || DAY_MIN;
+  return re > rs ? re - rs : re + DAY_MIN - rs;
+}
+
+/**
+ * THE order overlapping rates win in (mirrors the backend's utils.schedule.rule_rank; bigger wins):
+ *   1. more specific: days AND a time window > days only or a window only > an all-day, every-day rate;
+ *   2. narrower: fewer minutes a week covered (days x window length), so "Peak 3-6 PM" beats "Evening 3-9 PM";
+ *   3. the peak: the higher price;
+ *   4. the owner's list order: the rate LOWER in the list.
+ * `listIndex` is the rate's position among the PRICED rates (that is the priority saved for it).
+ */
+export function ruleRank(r: PricingRuleDraft, listIndex: number): [number, number, number, number] {
+  const days = r.dayOfWeek && r.dayOfWeek.length > 0 ? Math.min(new Set(r.dayOfWeek).size, 7) : 7;
+  return [specificity(r), -(days * windowMinutes(r)), Number(r.pricePerSlot) || 0, listIndex];
+}
+
+function compareRank(a: readonly number[], b: readonly number[]): number {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return 0;
+}
+
+function appliesOn(r: PricingRuleDraft, dow: number): boolean {
+  return !r.dayOfWeek || r.dayOfWeek.length === 0 || r.dayOfWeek.includes(dow);
+}
+
+/** The priced rate charged for the cell starting at minute `startMin` of a schedule day that opens on weekday `dow` (Mon = 0), or null. */
+export function rateForCell(rules: readonly PricingRuleDraft[], dow: number, startMin: number): PricingRuleDraft | null {
+  const priced = rules.filter((r) => Number(r.pricePerSlot) > 0).map((r, i) => ({ r, rank: ruleRank(r, i) }));
+  const matching = priced.filter((x) => appliesOn(x.r, dow) && windowStartsInside(x.r, startMin));
+  if (matching.length === 0) return null;
+  return matching.reduce((best, x) => (compareRank(x.rank, best.rank) > 0 ? x : best)).r;
 }
 
 export interface HiddenRate {
@@ -208,14 +253,13 @@ export interface HiddenRate {
  * "this rate is hidden" warning in the wizard and Venue Settings.
  */
 export function hiddenRates(setup: Pick<CourtSetup, "pricingRules">): Record<string, HiddenRate> {
-  const priced = setup.pricingRules.filter((r) => Number(r.pricePerSlot) > 0).map((r, priority) => ({ r, priority }));
-  const rank = (x: { r: PricingRuleDraft; priority: number }) => specificity(x.r) * 1000 + x.priority;
-  const ordered = [...priced].sort((a, b) => rank(b) - rank(a));
+  const priced = setup.pricingRules.filter((r) => Number(r.pricePerSlot) > 0).map((r, priority) => ({ r, priority, rank: ruleRank(r, priority) }));
+  const ordered = [...priced].sort((a, b) => compareRank(b.rank, a.rank));
   const everWins = new Set<string>();
   const coveredBy = new Map<string, string>(); // rate id -> the rate that won where it matched
   for (let dow = 0; dow < 7; dow++) {
     for (let s = 0; s < 2 * DAY_MIN; s += 30) {
-      const matching = ordered.filter((x) => (!x.r.dayOfWeek || x.r.dayOfWeek.length === 0 || x.r.dayOfWeek.includes(dow)) && windowContains(x.r, s, s + 30));
+      const matching = ordered.filter((x) => appliesOn(x.r, dow) && windowStartsInside(x.r, s));
       if (matching.length === 0) continue;
       const winner = matching[0];
       everWins.add(winner.r.id);
@@ -226,8 +270,10 @@ export function hiddenRates(setup: Pick<CourtSetup, "pricingRules">): Record<str
   const out: Record<string, HiddenRate> = {};
   for (const { r } of priced) {
     if (everWins.has(r.id) || !coveredBy.has(r.id)) continue;
-    const hider = byId.get(coveredBy.get(r.id)!)!.r;
-    const byNarrower = specificity(hider) > specificity(r);
+    const hiderX = byId.get(coveredBy.get(r.id)!)!;
+    const hider = hiderX.r;
+    // moving the rate in the list only helps when the list order is what decides (everything before it is equal)
+    const byNarrower = compareRank(hiderX.rank.slice(0, 3), byId.get(r.id)!.rank.slice(0, 3)) !== 0;
     const hn = hider.name || "another rate";
     out[r.id] = {
       byName: hn,
@@ -236,6 +282,55 @@ export function hiddenRates(setup: Pick<CourtSetup, "pricingRules">): Record<str
         ? `This rate is never used: "${hn}" is narrower and covers all of it. Change this rate's days or times.`
         : `This rate is hidden by "${hn}" below it, so players are never charged it. Move it below "${hn}", or change its days or times.`,
     };
+  }
+  return out;
+}
+
+// ---- rates that overlap ---------------------------------------------------------------------------------------
+
+export interface RateClash {
+  /** The other rate it overlaps with. */
+  otherId: string;
+  /** The rate charged where the two overlap (always the other one: a clash is reported on the rate that loses). */
+  winnerName: string;
+  /** "Ye do rule takra rahe hain, <name> lagega." */
+  message: string;
+}
+
+/** The Roman Urdu warning shown under a rate that overlaps another and loses there. */
+export function rateClashText(winnerName: string): string {
+  const name = winnerName.trim();
+  return `Ye do rule takra rahe hain, ${name ? `"${name}"` : "doosra rule"} lagega.`;
+}
+
+/**
+ * Pairs of priced rates that apply to the SAME cell somewhere in the week (fix/nov-7), reported on the rate that loses there
+ * (see `ruleRank` for who wins). The every-day, all-day base rate is not reported: it is meant to be the rate "for all other
+ * times". A rate that `hiddenRates` reports (never charged at all) gets that stronger message instead, so it is skipped here.
+ */
+export function rateClashes(setup: Pick<CourtSetup, "pricingRules">): Record<string, RateClash[]> {
+  const priced = setup.pricingRules.filter((r) => Number(r.pricePerSlot) > 0).map((r, i) => ({ r, rank: ruleRank(r, i) }));
+  const hidden = hiddenRates(setup);
+  const out: Record<string, RateClash[]> = {};
+  for (let a = 0; a < priced.length; a++) {
+    for (let b = a + 1; b < priced.length; b++) {
+      const A = priced[a];
+      const B = priced[b];
+      let overlap = false;
+      for (let dow = 0; dow < 7 && !overlap; dow++) {
+        if (!appliesOn(A.r, dow) || !appliesOn(B.r, dow)) continue;
+        for (let s = 0; s < 2 * DAY_MIN; s += 30) {
+          if (windowStartsInside(A.r, s) && windowStartsInside(B.r, s)) {
+            overlap = true;
+            break;
+          }
+        }
+      }
+      if (!overlap) continue;
+      const [winner, loser] = compareRank(A.rank, B.rank) >= 0 ? [A, B] : [B, A];
+      if (specificity(loser.r) === 0 || hidden[loser.r.id]) continue;
+      (out[loser.r.id] ??= []).push({ otherId: winner.r.id, winnerName: winner.r.name, message: rateClashText(winner.r.name) });
+    }
   }
   return out;
 }
