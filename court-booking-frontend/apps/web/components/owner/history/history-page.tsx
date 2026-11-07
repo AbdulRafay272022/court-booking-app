@@ -217,6 +217,11 @@ export function HistoryPage() {
               </button>
             ) : null}
           </div>
+          {data?.search_all_dates && state.q ? (
+            <p data-testid="hist-all-dates" className="text-[13px] font-semibold text-owner-ink-muted">
+              {t("hist.f.allDates")}
+            </p>
+          ) : null}
         </div>
       </section>
 

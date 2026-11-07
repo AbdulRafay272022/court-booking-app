@@ -9,6 +9,7 @@ export const ruHist = {
   "hist.f.status": "Halat",
   "hist.f.search": "Talash",
   "hist.f.searchPh": "Naam, phone ya booking ID",
+  "hist.f.allDates": "Phone / booking ID: sab tareekhon mein dhoondha",
   "hist.f.clear": "Filters hataein",
   "hist.f.clearSelection": "Sab dikhayein (filter hatayein)",
   "hist.preset.today": "Aaj",

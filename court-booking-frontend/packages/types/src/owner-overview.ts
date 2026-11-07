@@ -126,6 +126,8 @@ export interface OwnerBookingsPage {
   page: number;
   page_size: number;
   totals: { count: number; total: number; collected: number; due: number };
+  /** The search was a phone or a booking ID, so every date was searched (the date range was ignored). */
+  search_all_dates?: boolean;
 }
 
 export interface BookingTimelineEvent {

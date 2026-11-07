@@ -135,6 +135,8 @@ class OwnerBookingsPageOut(BaseModel):
     page: int
     page_size: int
     totals: HistoryTotalsOut
+    # fix/nov-7: the search was a phone or a booking ID, so every date was searched (the date range was ignored).
+    search_all_dates: bool = False
 
 
 class BookingTimelineEventOut(BaseModel):

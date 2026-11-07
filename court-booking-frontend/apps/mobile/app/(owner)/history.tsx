@@ -210,6 +210,11 @@ export default function HistoryScreen() {
           autoCapitalize="none"
           returnKeyType="search"
         />
+        {first?.search_all_dates && q ? (
+          <Text testID="history-all-dates" variant="caption" tone="muted">
+            Phone / booking ID: sab tareekhon mein dhoondha
+          </Text>
+        ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
           <Chip solid label="Aaj" selected={preset === "aaj"} onPress={() => setPreset("aaj")} />
           <Chip solid label="Kal" selected={preset === "kal"} onPress={() => setPreset("kal")} />

@@ -187,6 +187,56 @@ def _escape_like(term: str) -> str:
     return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# ---- search (fix/nov-7 item 1) ------------------------------------------------------------------------------------
+# The box says "Name, phone or booking ID". A phone is compared on its NATIONAL digits on both sides, so 0300 1234567,
+# +92 300 1234567, 923001234567 and 300-1234567 all find a booking whatever format the row stored (older walk-ins were
+# saved as typed). A booking ID is the short code KH-XXXXXXXX (first 8 hex of the uuid) or the full uuid / a prefix.
+# A phone (7+ digits) or a booking code is looked up across ALL dates: it names one person / one booking, and the
+# page's default range (today) would otherwise hide it.
+PHONE_MIN_DIGITS = 4
+PHONE_ANY_DATE_DIGITS = 7
+
+
+def national_phone_digits(term: str) -> str | None:
+    """The digits of a phone-looking search term with the country code / trunk 0 removed, or None."""
+    if not re.fullmatch(r"\+?[\d\s\-().]+", term.strip()):
+        return None
+    digits = re.sub(r"\D", "", term)
+    if digits.startswith("0092"):
+        digits = digits[4:]
+    elif digits.startswith("92") and len(digits) >= 11:
+        digits = digits[2:]
+    digits = digits.lstrip("0")
+    return digits if len(digits) >= PHONE_MIN_DIGITS else None
+
+
+def booking_code_hex(term: str) -> str | None:
+    """Hex of a booking-ID search term (KH-XXXXXXXX, a full uuid with or without dashes, or a prefix), or None."""
+    t = term.strip().lower()
+    code = re.sub(r"^kh-?", "", t).replace("-", "")
+    return code if re.fullmatch(r"[0-9a-f]{3,32}", code) else None
+
+
+def search_spans_all_dates(term: str | None) -> bool:
+    """A phone (7+ digits) or an unmistakable booking code ignores the date range."""
+    if not term or not term.strip():
+        return False
+    phone = national_phone_digits(term)
+    if phone and len(phone) >= PHONE_ANY_DATE_DIGITS:
+        return True
+    t = term.strip().lower()
+    code = booking_code_hex(term)
+    if code is None:
+        return False
+    return t.startswith("kh") or (len(code) >= 8 and bool(re.search(r"\d", code)))
+
+
+def _national_phone_expr(column):
+    """SQL twin of national_phone_digits for a stored phone: digits only, then the leading 0092 / 92 / 0 dropped."""
+    digits = func.regexp_replace(column, r"\D", "", "g")
+    return func.regexp_replace(digits, r"^(0092|92(?=\d{10})|0+)", "")
+
+
 @dataclass
 class HistoryFilter:
     date_from: date
@@ -273,20 +323,16 @@ class OwnerOverviewService:
     def _search_clause(self, q: str):
         term = q.strip()
         like = "%" + _escape_like(term) + "%"
-        conds = [
-            Booking.player_name.ilike(like, escape="\\"),
-            self.player.name.ilike(like, escape="\\"),
-            Booking.player_phone.ilike(like, escape="\\"),
-            self.player.phone.ilike(like, escape="\\"),
-        ]
-        digits = re.sub(r"[\s\-()]", "", term)
-        if re.fullmatch(r"\+?\d{4,}", digits):
-            tail = digits.lstrip("+").lstrip("0")
-            if tail:
-                conds.append(Booking.player_phone.like("%" + tail + "%"))
-                conds.append(self.player.phone.like("%" + tail + "%"))
-        code = re.sub(r"^kh-?", "", term.lower()).replace("-", "")
-        if re.fullmatch(r"[0-9a-f]{3,32}", code):
+        conds = [Booking.player_name.ilike(like, escape="\\"), self.player.name.ilike(like, escape="\\")]
+        phone = national_phone_digits(term)
+        if phone:
+            conds.append(_national_phone_expr(Booking.player_phone).like("%" + phone + "%"))
+            conds.append(_national_phone_expr(self.player.phone).like("%" + phone + "%"))
+        else:
+            conds.append(Booking.player_phone.ilike(like, escape="\\"))
+            conds.append(self.player.phone.ilike(like, escape="\\"))
+        code = booking_code_hex(term)
+        if code:
             conds.append(func.replace(cast(Booking.id, String), "-", "").like(code + "%"))
         return or_(*conds)
 
@@ -632,6 +678,8 @@ class OwnerOverviewService:
             where = [Booking.court_id.in_([c.id for c in courts]), Booking.id == f.booking_id]
         elif f.date_to < f.date_from:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "date_to must be >= date_from")
+        elif search_spans_all_dates(f.q):
+            where = [Booking.court_id.in_([c.id for c in courts])]
         else:
             where = self._day_where(f.date_from, f.date_to, [c.id for c in courts])
         if f.q and f.q.strip():
@@ -702,6 +750,7 @@ class OwnerOverviewService:
             page=page,
             page_size=page_size,
             totals=HistoryTotalsOut(count=t[0], total=float(t[1]), collected=float(t[2]), due=float(t[3])),
+            search_all_dates=f.booking_id is None and search_spans_all_dates(f.q),
         )
 
     async def history_csv(self, actor: User, venue_id: uuid.UUID | None, f: HistoryFilter) -> str:

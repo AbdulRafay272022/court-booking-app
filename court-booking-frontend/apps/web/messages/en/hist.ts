@@ -11,6 +11,7 @@ export const enHist: Record<keyof typeof ruHist, string> = {
   "hist.f.status": "Status",
   "hist.f.search": "Search",
   "hist.f.searchPh": "Name, phone or booking ID",
+  "hist.f.allDates": "Phone / booking ID: searched across all dates",
   "hist.f.clear": "Clear filters",
   "hist.f.clearSelection": "Show all (clear filter)",
   "hist.preset.today": "Today",
