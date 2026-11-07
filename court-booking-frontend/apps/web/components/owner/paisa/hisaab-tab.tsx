@@ -120,8 +120,8 @@ export function HisaabTab() {
       ) : (
         <div className="flex flex-col gap-4" data-testid="paisa-days">
           {days.map((d) => (
-            <section key={d.day} aria-label={d.label} className="overflow-hidden rounded-xl border border-owner-border bg-owner-surface">
-              <header className="flex items-baseline justify-between gap-3 border-b border-owner-border-light bg-owner-bg px-4 py-2.5">
+            <section key={d.day} aria-label={d.label} className="rounded-xl border border-owner-border bg-owner-surface">
+              <header className="flex items-baseline justify-between gap-3 rounded-t-xl border-b border-owner-border-light bg-owner-bg px-4 py-2.5">
                 <h3 className="text-[14px] font-bold text-owner-ink" data-testid="paisa-day">{d.label}</h3>
                 <span className="text-[13px] font-semibold tabular-nums text-owner-ink-muted">Kul {pkr(d.total)}</span>
               </header>
@@ -130,24 +130,23 @@ export function HisaabTab() {
                   const change = correctionChange(entry, pkr);
                   const out = entry.amount_pkr < 0;
                   return (
-                    <li key={entry.entry_id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3" data-testid={entry.entry_type === "correction" ? "paisa-row-correction" : "paisa-row"}>
-                      <span className="w-[4.5rem] shrink-0 text-[13px] tabular-nums text-owner-ink-faint">{fmt.time(entry.recorded_at)}</span>
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-[14px] font-semibold">{entry.player ?? "Walk-in"}</span>
-                        <span className="truncate text-[12.5px] text-owner-ink-muted">
-                          {courtLabel(entry.court, entry.court_sport ?? sports.byName(entry.court))} · {fmt.bookingStatus(entry.booking_status)}
+                    <li key={entry.entry_id} className="flex items-center gap-3 px-4 py-3" data-testid={entry.entry_type === "correction" ? "paisa-row-correction" : "paisa-row"}>
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="truncate text-[14.5px] font-semibold">{entry.player ?? "Walk-in"}</span>
+                        <span className="text-[12.5px] text-owner-ink-muted">
+                          <span className="tabular-nums">{fmt.time(entry.recorded_at)}</span> · {courtLabel(entry.court, entry.court_sport ?? sports.byName(entry.court))} · {fmt.bookingStatus(entry.booking_status)}
                         </span>
-                      </span>
-                      <span className="flex flex-col items-end">
-                        <span className={`text-[12px] font-bold ${entry.entry_type === "correction" ? "text-owner-warn-dark" : "text-owner-ink-muted"}`}>{entryKind(entry)}</span>
-                        {change ? <span className="text-[12.5px] tabular-nums text-owner-ink-muted" data-testid="paisa-change">{change}</span> : null}
-                        {entry.entry_type === "refund" && entry.note ? <span className="text-[12px] text-owner-ink-faint">{entry.note}</span> : null}
-                      </span>
-                      <span className={`w-28 text-right text-[15px] font-bold tabular-nums ${out ? "text-owner-danger" : "text-owner-ink"}`}>
+                        <span className="flex flex-wrap items-baseline gap-x-2 text-[12.5px]">
+                          <span className={`font-bold ${entry.entry_type === "correction" ? "text-owner-warn-dark" : entry.entry_type === "refund" ? "text-owner-danger" : "text-owner-ink-muted"}`}>{entryKind(entry)}</span>
+                          {change ? <span className="tabular-nums text-owner-ink-muted" data-testid="paisa-change">{change}</span> : null}
+                          {entry.entry_type === "refund" && entry.note ? <span className="text-owner-ink-faint">{entry.note}</span> : null}
+                        </span>
+                      </div>
+                      <span className={`shrink-0 text-right text-[15px] font-bold tabular-nums ${out ? "text-owner-danger" : "text-owner-ink"}`}>
                         {out ? "−" : "+"}
                         {pkr(Math.abs(entry.amount_pkr))}
                       </span>
-                      <span className="w-10 text-right">
+                      <span className="w-9 shrink-0 text-right">
                         {entry.entry_type === "payment" && entry.amount_pkr > 0 ? <RowMenu onFix={() => setCorrecting(entry)} /> : null}
                       </span>
                     </li>

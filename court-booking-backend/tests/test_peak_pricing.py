@@ -143,7 +143,9 @@ def test_court_2_as_saved_in_production_now_prices_its_peak_hours():
     assert _price(COURT_2, 6, 19) == 7000       # Sunday 7 PM
     assert _price(COURT_2, 4, 12) == 6500       # Friday noon: Weekends
     assert _price(COURT_2, 0, 19) == 5000       # Monday 7 PM: All day
-    assert _price(COURT_2, 5, 23, 30) == 6500   # Saturday 11:30 PM: Premium ends 11:59 PM, so the Weekends rate (unchanged)
+    # fix/nov-7: a cell takes the rate whose window it STARTS in; 11:30 PM starts inside Premium's 6:00-11:59 PM, so Premium
+    # (it used to be the Weekends rate, because the 30-minute cell ran past 11:59)
+    assert _price(COURT_2, 5, 23, 30) == 8000
 
 
 def test_save_order_no_longer_decides_between_a_narrow_and_a_broad_rule():
