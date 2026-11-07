@@ -118,20 +118,25 @@ export type NotifRole = "owner" | "player";
 /** Where a tap on a notification goes (Expo Router href object), or null when it has no destination. */
 export type NotifTarget = { pathname: string; params?: Record<string, string> } | null;
 
+/** fix/nov-8: an item about ONE booking opens THAT booking -- the player's booking screen, or for the owner the screen
+ * that acts on it with its detail sheet open (`open=1`): Approvals for a payment, Refunds for a refund, else History. */
 export function notificationTarget(item: Pick<NotificationFeedItem, "link" | "params">, role: NotifRole): NotifTarget {
   const kind = item.link?.kind ?? "none";
+  const bookingId = item.link && "booking_id" in item.link && item.link.booking_id ? String(item.link.booking_id) : null;
   if (role === "player") {
-    if (kind === "booking" || kind === "bookings") return { pathname: "/(player)/(tabs)/bookings" };
+    if (kind === "booking" || kind === "bookings" || kind === "refunds") {
+      return bookingId ? { pathname: "/(player)/booking/[id]/done", params: { id: bookingId } } : { pathname: "/(player)/(tabs)/bookings" };
+    }
     return null;
   }
   switch (kind) {
     case "approvals":
-      return { pathname: "/(owner)/(tabs)/approvals" };
+      return bookingId ? { pathname: "/(owner)/(tabs)/approvals", params: { booking: bookingId, open: "1" } } : { pathname: "/(owner)/(tabs)/approvals" };
     case "refunds":
-      return { pathname: "/(owner)/(tabs)/refunds" };
+      return bookingId ? { pathname: "/(owner)/(tabs)/refunds", params: { booking: bookingId, open: "1" } } : { pathname: "/(owner)/(tabs)/refunds" };
     case "booking": {
       if (!item.link.booking_id) return { pathname: "/(owner)/history" };
-      const params: Record<string, string> = { booking: item.link.booking_id };
+      const params: Record<string, string> = { booking: item.link.booking_id, open: "1" };
       if (item.params?.starts_at) {
         const day = pktDateString(new Date(item.params.starts_at));
         params.from = day;
@@ -148,4 +153,38 @@ export function notificationTarget(item: Pick<NotificationFeedItem, "link" | "pa
     default:
       return null;
   }
+}
+
+const PUSH_APPROVALS = new Set(["payment_submitted", "late_payment_proof", "payment_final_warning", "owner_player_cancelled", "owner_payment_auto_cancelled"]);
+const PUSH_REFUNDS = new Set(["refund_owed", "owner_refund_requested"]);
+const PUSH_OWNER_BOOKING = new Set(["owner_new_booking", "owner_staff_action", "owner_noshow_reply", "owner_short_dispute"]);
+const PUSH_PLAYER_BOOKING = new Set([
+  "booking_confirmed", "booking_cancelled", "booking_reminder", "payment_rejected", "refund_paid", "hold_expiring", "court_deactivated",
+  "player_no_show", "player_short", "player_refund_requested", "player_points_reward", "player_points_deducted", "player_short_ask",
+  "player_short_decision", "player_due_resolved", "player_noshow_decision",
+]);
+
+/**
+ * fix/nov-8: where a tap on an app push goes (FCM/APNs `data`: event_type + reference_id). Same rule as the bell above, the
+ * backend's web push (`web_push.url_for_event`) and the web bell: a push about one booking opens that booking.
+ */
+export function pushTarget(data: Record<string, unknown> | undefined): NotifTarget {
+  if (!data) return null;
+  const event = String(data.event_type ?? "");
+  const ref = data.reference_id ? String(data.reference_id) : null;
+  if (PUSH_APPROVALS.has(event) || event.startsWith("payment_reminder")) {
+    return ref ? { pathname: "/(owner)/(tabs)/approvals", params: { booking: ref, open: "1" } } : { pathname: "/(owner)/(tabs)/approvals" };
+  }
+  if (PUSH_REFUNDS.has(event)) {
+    return ref ? { pathname: "/(owner)/(tabs)/refunds", params: { booking: ref, open: "1" } } : { pathname: "/(owner)/(tabs)/refunds" };
+  }
+  if (PUSH_OWNER_BOOKING.has(event)) {
+    return ref ? { pathname: "/(owner)/history", params: { booking: ref, open: "1" } } : { pathname: "/(owner)/history" };
+  }
+  if (PUSH_PLAYER_BOOKING.has(event)) {
+    return ref ? { pathname: "/(player)/booking/[id]/done", params: { id: ref } } : { pathname: "/(player)/(tabs)/bookings" };
+  }
+  if (event === "owner_daily_digest") return { pathname: "/(owner)/(tabs)/today" };
+  if (event === "slot_reopened" || event === "waitlist_slot_available") return { pathname: "/(player)/search" };
+  return null;
 }

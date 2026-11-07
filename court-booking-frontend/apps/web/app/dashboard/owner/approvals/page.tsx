@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useLinkedDetail } from "@/lib/linked-booking";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@court-booking/api-client";
 import { approvalsHeaderCounts, type ApprovalQueueItem, type ApprovalState, type ApproveAcceptMode } from "@court-booking/types";
@@ -92,7 +93,8 @@ export default function OwnerApprovalsPage() {
   const [overrides, setOverrides] = useState<Record<string, ApprovalState>>({});
   const [snapshot, setSnapshot] = useState<string[] | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // fix/nov-8: a notification links here with ?booking=<id>&open=1 and that booking's detail opens at once.
+  const [detailId, setDetailId] = useLinkedDetail(useSearchParams());
   const [live, setLive] = useState<Live>(null);
   // A staff member without the approve permission gets 403 NOT_STAFF_PERMITTED (the client cannot know the permissions in
   // advance: no endpoint returns them to staff). After the first refusal the action buttons are replaced by a clear note.

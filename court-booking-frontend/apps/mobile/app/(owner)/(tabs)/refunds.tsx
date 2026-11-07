@@ -17,6 +17,7 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { NoAccess } from "@/components/no-access";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
+import { useLinkedDetail } from "@/lib/linked-booking";
 import { BookingLinks } from "@/components/booking-links";
 import { RefundSheet } from "@/components/refund-sheet";
 import { HeroLayout, PaisaSwitch } from "../_fl";
@@ -42,12 +43,13 @@ export default function RefundsScreen() {
   const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
-  const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
+  const routeParams = useLocalSearchParams<{ date?: string; courts?: string; booking?: string; open?: string }>();
   const filterDate = routeParams.date || undefined;
   const filterCourts = routeParams.courts ? routeParams.courts.split(",").filter(Boolean) : [];
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // fix/nov-8: a notification opens this screen with booking + open=1: that booking's detail sheet opens at once.
+  const [detailId, setDetailId] = useLinkedDetail(routeParams);
   // Stage 2 (B.b): staff without the refunds permission get the no-permission state up front (no request, no buttons).
   const perms = useMyPermissions();
   const allowed = perms.can(PERM.refunds);

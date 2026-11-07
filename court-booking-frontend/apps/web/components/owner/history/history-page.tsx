@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
@@ -14,6 +14,8 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
 import { BookingRowsSkeleton, BookingRowsTable } from "@/components/owner/booking-table/booking-rows-table";
 import { BookingDetail } from "@/components/owner/booking-detail";
+import { linkedBookingId, useLinkedDetail } from "@/lib/linked-booking";
+import { historyHref } from "@/lib/queue-filter";
 import { useCompletionFlow, useNoShowFlow } from "@/components/owner/completion-dialog";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { DateFilter } from "./date-filter";
@@ -71,11 +73,23 @@ export function HistoryPage() {
     return state.courts.filter((id) => ids.has(id));
   }, [courts, state.courts]);
 
-  // Round 2 (A2): `?booking=` only highlights (and narrows the list to) that booking; the popup opens from a row click alone.
+  // Round 2 (A2): `?booking=` highlights (and narrows the list to) that booking. fix/nov-8: with `&open=1` (a notification:
+  // bell or web push) its detail popup opens at once too; a link without a date is moved to the booking's own day.
   const focusId = state.booking;
   const reqPage = focusId ? 1 : state.page;
   const reqSize = focusId ? 100 : state.size;
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useLinkedDetail(search);
+  const linkedId = linkedBookingId((k) => search.get(k));
+  const undated = !!linkedId && !search.get("from");
+  const linkedDetail = useQuery({
+    queryKey: ["owner-booking-detail", linkedId],
+    queryFn: () => api.owners.bookingDetail(linkedId!),
+    enabled: undated,
+  });
+  const linkedStart = undated ? linkedDetail.data?.row.starts_at : undefined;
+  useEffect(() => {
+    if (linkedId && linkedStart) router.replace(`${historyHref(linkedId, linkedStart)}&open=1`, { scroll: false });
+  }, [linkedId, linkedStart, router]);
   const filtersKey = [activeVenueId, state.from, state.to, validCourts.join(","), state.status.join(","), state.q, reqPage, reqSize, formatSort(state.sort)];
   const filterArgs = {
     venueId: activeVenueId,

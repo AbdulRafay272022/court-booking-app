@@ -6,6 +6,7 @@ import { courtLabel } from "@/components/court-label";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useLinkedDetail } from "@/lib/linked-booking";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@court-booking/api-client";
 import { isPlausibleRefundReference, refundAmountError, refundBreakdown, type RefundBreakdown } from "@court-booking/types";
@@ -79,7 +80,8 @@ export function RefundsTab() {
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // fix/nov-8: a notification links here with ?booking=<id>&open=1 and that booking's detail opens at once.
+  const [detailId, setDetailId] = useLinkedDetail(useSearchParams());
   const filter = parseQueueFilter(useSearchParams());
   const since = useSeenSince("refunds", activeVenueId);
   // Stage 2 (B.b): a staff member without "mark_refunds" sees the no-permission state at once (the list needs it too).

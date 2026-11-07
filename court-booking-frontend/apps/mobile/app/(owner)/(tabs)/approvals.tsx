@@ -21,6 +21,7 @@ import { bulkApprovable, bulkApproveAmount, oldestWaitMinutes, waitLabel } from 
 import { courtLabel, sportForCourtName } from "@/components/court-label";
 import { NoAccess } from "@/components/no-access";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
+import { useLinkedDetail } from "@/lib/linked-booking";
 import { ApprovalCard, ApproveSheet, BulkApproveSheet, DuplicateConfirmSheet, RefundConfirmSheet, RejectSheet } from "@/components/approval-card";
 import { HeroLayout } from "../_fl";
 
@@ -33,7 +34,7 @@ type View3 = "all" | "awaiting" | "closed";
 export default function ApprovalsScreen() {
   const tabRoom = useTabBarRoom();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
-  const routeParams = useLocalSearchParams<{ date?: string; courts?: string }>();
+  const routeParams = useLocalSearchParams<{ date?: string; courts?: string; booking?: string; open?: string }>();
   const filterDate = routeParams.date || undefined;
   const filterCourts = routeParams.courts ? routeParams.courts.split(",").filter(Boolean) : [];
   const queryClient = useQueryClient();
@@ -44,7 +45,8 @@ export default function ApprovalsScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sheet, setSheet] = useState<{ kind: "approve" | "reject" | "refund"; id: string } | null>(null);
   const [sheetError, setSheetError] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // fix/nov-8: a notification opens this screen with booking + open=1: that booking's detail sheet opens at once.
+  const [detailId, setDetailId] = useLinkedDetail(routeParams);
   const [notice, setNotice] = useState<string | null>(null);
   const [show, setShow] = useState<View3>("awaiting");
   // Stage 2 (B.b): staff without the approve permission see the note up front (GET /owners/me/permissions); a 403

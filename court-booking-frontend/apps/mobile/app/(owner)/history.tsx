@@ -18,6 +18,7 @@ import { OwnerHeader, PaisaSwitch } from "./_fl";
 import { NoAccess } from "@/components/no-access";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { BookingDetailSheet } from "@/components/booking-detail-sheet";
+import { useLinkedDetail } from "@/lib/linked-booking";
 import { HistoryCard } from "@/components/overview/booking-card";
 import { DateChooserSheet, MultiSelectSheet, courtsSummary } from "@/components/overview/pickers";
 import { OutlineButton, SelectButton } from "@/components/overview/ui";
@@ -51,7 +52,7 @@ const PAGE_SIZE = 20;
 
 /** Bookings history: date range (presets + custom), courts, statuses, search; paginated card list with a totals strip. */
 export default function HistoryScreen() {
-  const params = useLocalSearchParams<{ from?: string; to?: string; courts?: string; status?: string; q?: string; booking?: string }>();
+  const params = useLocalSearchParams<{ from?: string; to?: string; courts?: string; status?: string; q?: string; booking?: string; open?: string }>();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const perms = useMyPermissions();
   const today = pktDateString();
@@ -62,8 +63,8 @@ export default function HistoryScreen() {
   const [text, setText] = useState(params.q ?? "");
   const [q, setQ] = useState(params.q ?? "");
   const [sheet, setSheet] = useState<null | "from" | "to" | "courts" | "status">(null);
-  // A2: a `booking` param scrolls to and highlights that card; it never opens a popup here.
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // A2: a `booking` param scrolls to and highlights that card. fix/nov-8: with open=1 (a notification) its detail sheet opens too.
+  const [detailId, setDetailId] = useLinkedDetail(params);
   const [highlight, setHighlight] = useState<string | null>(params.booking ?? null);
   const [focusOnly, setFocusOnly] = useState<boolean>(!!params.booking);
   const scrollRef = useRef<ScrollView>(null);

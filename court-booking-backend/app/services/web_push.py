@@ -24,7 +24,7 @@ import os
 import time
 from dataclasses import dataclass
 from enum import Enum
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 import structlog
@@ -62,7 +62,7 @@ EVENT_URLS: dict[str, str] = {
     "owner_player_cancelled": "/dashboard/owner/approvals",
     "payment_final_warning": "/dashboard/owner/approvals",
     "owner_payment_auto_cancelled": "/dashboard/owner/approvals",
-    "refund_owed": "/dashboard/owner/refunds",
+    "refund_owed": "/dashboard/owner/paisa?tab=wapas",
     "booking_confirmed": "/bookings",
     "booking_cancelled": "/bookings",
     "booking_reminder": "/bookings",
@@ -100,7 +100,25 @@ def b64url_encode(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def url_for_event(event_type: str) -> str:
+def url_for_event(event_type: str, reference_id: str | None = None) -> str:
+    """Where a click on the web push goes. fix/nov-8: a push about ONE booking opens THAT booking: the player's booking
+    page, or for the owner the page that acts on it with its detail popup open (`booking=<id>&open=1`): Approvals for a
+    payment, Paisa > Wapas dena for a refund, otherwise Bookings history (which moves itself to the booking's day). The
+    web bell (apps/web lib/notif-helpers.ts `feedRoute`) and the app push (apps/mobile lib/notif-helpers.ts `pushTarget`)
+    follow the same rule."""
+    from app.services.notification_feed import classify  # local: notification_feed is the one event table
+
+    _kind, _family, ref_type, link_kind = classify(event_type)
+    if reference_id and ref_type == "booking":
+        ref = quote(str(reference_id), safe="")
+        if link_kind == "approvals":
+            return f"/dashboard/owner/approvals?booking={ref}&open=1"
+        if link_kind == "refunds":
+            return f"/dashboard/owner/paisa?tab=wapas&booking={ref}&open=1"
+        if link_kind == "booking":
+            if event_type.startswith("owner_"):
+                return f"/dashboard/bookings?booking={ref}&open=1"
+            return f"/booking/{ref}/done"
     if event_type.startswith("payment_reminder"):
         return "/dashboard/owner/approvals"
     return EVENT_URLS.get(event_type, "/")
@@ -212,7 +230,7 @@ def build_payload(event_type: str, title: str, body: str, reference_id: str | No
     data = {
         "title": title,
         "body": body,
-        "url": url_for_event(event_type),
+        "url": url_for_event(event_type, reference_id),
         "tag": f"{event_type}:{reference_id}" if reference_id else event_type,
         "event_type": event_type,
     }

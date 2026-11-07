@@ -123,21 +123,28 @@ export function routeForEvent(eventType: string, role: NotifRole): string | null
 
 const ownerSideRole = (role: NotifRole) => role === "owner" || role === "staff" || role === "admin";
 
-/** Where tapping a feed item goes (null = plain text). Booking links open History on that booking's day with it highlighted. */
+/** Where tapping a feed item goes (null = plain text). fix/nov-8: an item about ONE booking opens THAT booking -- the
+ * player's booking page, or for the owner the page that acts on it with its detail popup open (`&open=1`): Approvals for a
+ * payment, Paisa > Wapas dena for a refund, otherwise History on the booking's own day. */
 export function feedRoute(item: Pick<NotificationFeedItem, "link" | "params">, role: NotifRole): string | null {
   const owner = ownerSideRole(role);
   const link = item.link ?? { kind: "none" };
+  const id = "booking_id" in link && link.booking_id ? encodeURIComponent(link.booking_id) : null;
+  if (role === "player") {
+    if (link.kind === "booking" || link.kind === "refunds" || link.kind === "bookings") return id ? `/booking/${id}/done` : "/bookings";
+    return null;
+  }
   switch (link.kind) {
     case "approvals":
-      return owner ? "/dashboard/owner/approvals" : null;
+      return owner ? (id ? `/dashboard/owner/approvals?booking=${id}&open=1` : "/dashboard/owner/approvals") : null;
     case "refunds":
-      return owner ? "/dashboard/owner/paisa?tab=wapas" : role === "player" ? "/bookings" : null;
+      return owner ? (id ? `/dashboard/owner/paisa?tab=wapas&booking=${id}&open=1` : "/dashboard/owner/paisa?tab=wapas") : null;
     case "booking":
-      if (!owner) return role === "player" ? "/bookings" : null;
-      if (link.booking_id && item.params?.starts_at) return historyHref(link.booking_id, item.params.starts_at);
-      return link.booking_id ? `/dashboard/bookings?booking=${encodeURIComponent(link.booking_id)}` : "/dashboard/bookings";
+      if (!owner) return null;
+      if (link.booking_id && item.params?.starts_at) return `${historyHref(link.booking_id, item.params.starts_at)}&open=1`;
+      return id ? `/dashboard/bookings?booking=${id}&open=1` : "/dashboard/bookings";
     case "bookings":
-      return owner ? "/dashboard/bookings" : role === "player" ? "/bookings" : null;
+      return owner ? "/dashboard/bookings" : null;
     case "overview":
     case "venue_status":
       return owner ? "/dashboard/owner/today" : null;

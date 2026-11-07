@@ -58,9 +58,10 @@ test("feed links: approvals/refunds/booking for owners, close-then-navigate targ
   assert.equal(feedRoute({ link: { kind: "approvals" }, params: {} }, "player"), null);
   assert.equal(
     feedRoute({ link: { kind: "booking", booking_id: "b1" }, params: { starts_at: "2026-10-17T16:00:00Z" } }, "staff"),
-    "/dashboard/bookings?booking=b1&from=2026-10-17&to=2026-10-17",
+    "/dashboard/bookings?booking=b1&from=2026-10-17&to=2026-10-17&open=1",
   );
-  assert.equal(feedRoute({ link: { kind: "booking", booking_id: "b1" }, params: {} }, "player"), "/bookings");
+  assert.equal(feedRoute({ link: { kind: "booking", booking_id: "b1" }, params: {} }, "player"), "/booking/b1/done");
+  assert.equal(feedRoute({ link: { kind: "booking" }, params: {} }, "player"), "/bookings");
   assert.equal(feedRoute({ link: { kind: "none" }, params: {} }, "owner"), null);
 });
 
@@ -100,4 +101,13 @@ test("group by Pakistan day: today, yesterday, older", () => {
     now,
   );
   assert.deepEqual(g.map((x) => [x.kind, x.items.length]), [["today", 2], ["yesterday", 1], ["date", 1]]);
+});
+
+test("fix/nov-8: every notification about one booking opens that exact booking", () => {
+  const B = "c710ec77-af12-47f1-8aeb-1930dfba27fa";
+  assert.equal(feedRoute({ link: { kind: "approvals", booking_id: B }, params: {} }, "owner"), `/dashboard/owner/approvals?booking=${B}&open=1`);
+  assert.equal(feedRoute({ link: { kind: "refunds", booking_id: B }, params: {} }, "owner"), `/dashboard/owner/paisa?tab=wapas&booking=${B}&open=1`);
+  assert.equal(feedRoute({ link: { kind: "booking", booking_id: B }, params: {} }, "owner"), `/dashboard/bookings?booking=${B}&open=1`);
+  assert.equal(feedRoute({ link: { kind: "refunds", booking_id: B }, params: {} }, "player"), `/booking/${B}/done`);
+  assert.equal(feedRoute({ link: { kind: "booking", booking_id: B }, params: {} }, "player"), `/booking/${B}/done`);
 });

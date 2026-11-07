@@ -49,6 +49,7 @@ import {
 
 import { REFRESH_CHECK_INTERVAL_MS, restoreSession, shouldRefreshSoon } from "@court-booking/api-client";
 import { api } from "@/lib/api";
+import { pushTarget } from "@/lib/notif-helpers";
 import { queryClient } from "@/lib/query-client";
 import { useAuthStore } from "@/lib/auth-store";
 import { registerForPushNotifications } from "@/lib/push-notifications";
@@ -76,24 +77,10 @@ Notifications.setNotificationHandler({
  * backend attaches `{event_type, reference_id?}` as the FCM `data` payload
  * (NotificationService._send_push_tier). Events with no route here (or no
  * `reference_id` where one is needed) just open the app on whatever it was showing. */
+/** fix/nov-8: a tap on a push opens the exact booking it is about (lib/notif-helpers.ts `pushTarget`). */
 function routeForNotification(data: Record<string, unknown> | undefined): void {
-  if (!data) return;
-  const eventType = String(data.event_type ?? "");
-  const referenceId = data.reference_id ? String(data.reference_id) : undefined;
-
-  if (eventType === "payment_submitted" || eventType === "late_payment_proof") {
-    router.push("/(owner)/(tabs)/approvals");
-  } else if ((eventType === "booking_confirmed" || eventType === "payment_rejected") && referenceId) {
-    router.push({ pathname: "/(player)/booking/[id]/pay", params: { id: referenceId } });
-  } else if ((eventType === "player_no_show" || eventType === "player_short") && referenceId) {
-    // audit 2026-10-28 item 18: the player's booking, with its money lines and the venue's WhatsApp
-    router.push({ pathname: "/(player)/booking/[id]/done", params: { id: referenceId } });
-  } else if (eventType === "owner_staff_action") {
-    // audit 2026-10-28 item 17: what the staff member did, per person
-    router.push("/(owner)/staff-activity" as never);
-  } else if (eventType.includes("slot") || eventType === "waitlist_slot_available") {
-    router.push("/(player)/search");
-  }
+  const target = pushTarget(data);
+  if (target) router.push(target as never);
 }
 
 function RootLayout() {
