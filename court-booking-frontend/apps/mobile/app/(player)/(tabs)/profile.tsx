@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CircleHelp, FileText, Languages, LogOut, Pencil, ShieldCheck } from "lucide-react-native";
 import { CITY_OPTIONS, formatDate, formatTime, pointsReasonLabel, venuePointsLine, type WaitlistEntry } from "@court-booking/types";
-import { alpha, palette, radius, space } from "@court-booking/ui-tokens";
+import { alpha, palette, radius, space, venueCardData } from "@court-booking/ui-tokens";
 
-import { Avatar, Button, Card, IconButton, ListRow, Screen, Sheet, Text, useCopy, useLang, useToast } from "@/components/ui";
+import { Avatar, Button, Card, IconButton, ListRow, Screen, Sheet, Text, VenueCard, useCopy, useLang, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -18,7 +18,7 @@ import { SUPPORT_WHATSAPP_NUMBER, openSupportWhatsApp } from "@/lib/support";
 import { useFavorites } from "@/lib/use-favorites";
 import { useUnreadNotifications } from "@/lib/use-unread-notifications";
 import { openPrivacy, openTerms } from "@/lib/web-links";
-import { PlayerOfflineBanner, sportLabel } from "../_components";
+import { PlayerOfflineBanner, useFavoriteToggle } from "../_components";
 
 /** PAccount board frame 1: profile card, stats ONLY from the real counters on /auth/me, saved venues, menu, Logout. */
 export default function PlayerProfileScreen() {
@@ -30,6 +30,7 @@ export default function PlayerProfileScreen() {
   const setLang = usePlayerLang((s) => s.setLang);
   const bell = useUnreadNotifications();
   const fav = useFavorites();
+  const favToggle = useFavoriteToggle();
   const waitlistQuery = useQuery({ queryKey: ["waitlist-mine"], queryFn: () => api.waitlist.mine() });
   const activeEntries = (waitlistQuery.data ?? []).filter((e) => e.is_active);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -98,27 +99,20 @@ export default function PlayerProfileScreen() {
               {copy("Kisi bhi venue par dil dabayein, wo yahan aa jayega.", "Tap the heart on any venue to keep it here.")}
             </Text>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }} testID="profile-saved">
+            // fix/nov-9 item 7: the SAME card (component, width, price placement) as Find a court, one under another
+            <View style={{ gap: space[3] }} testID="profile-saved">
               {fav.venues.map((v) => (
-                <Pressable
+                <VenueCard
                   key={v.id}
+                  venue={venueCardData(v)}
+                  visible
+                  saved={favToggle.isSaved(v.id)}
+                  onToggleSave={favToggle.enabled ? () => favToggle.toggle(v.id) : undefined}
                   onPress={() => router.push({ pathname: "/(player)/venue/[slug]", params: { slug: v.slug } })}
-                  accessibilityRole="button"
-                  accessibilityLabel={v.name}
-                  style={({ pressed }) => ({ width: 160, minHeight: 96, borderRadius: radius.tile, backgroundColor: palette.white, overflow: "hidden", opacity: pressed ? 0.85 : 1 })}
-                >
-                  {v.photo_urls?.[0] ? <Image source={{ uri: v.photo_urls[0] }} style={{ width: 160, height: 56 }} contentFit="cover" /> : <View style={{ height: 56, backgroundColor: palette.teal }} />}
-                  <View style={{ padding: space[2], gap: 1 }}>
-                    {v.sports[0] ? (
-                      <Text variant="caption" tone="muted">
-                        {sportLabel(v.sports[0])}
-                      </Text>
-                    ) : null}
-                    <Text variant="bodyBold">{v.name}</Text>
-                  </View>
-                </Pressable>
+                  testID="profile-saved-venue"
+                />
               ))}
-            </ScrollView>
+            </View>
           )}
         </View>
       ) : null}

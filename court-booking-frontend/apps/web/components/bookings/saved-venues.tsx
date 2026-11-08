@@ -5,9 +5,12 @@ import { VenueCard } from "@/components/discovery/venue-card";
 import { useT } from "@/components/i18n/lang-provider";
 import { useFavorites } from "@/lib/use-favorites";
 
+/** The Find a court results grid (app/search/page.tsx). */
+const SEARCH_GRID = "grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-[22px]";
+
 /** The player's saved venues, as a row of the same cards /search shows. Sits next to the same shared list the hearts use,
- * so un-saving here (or on a search card) updates both. `grid` lays them out as a wrapping grid (Account > Saved) instead of a scrolling row. */
-export function SavedVenues({ grid = false, showHeading = true }: { grid?: boolean; showHeading?: boolean }) {
+ * so un-saving here (or on a search card) updates both. fix/nov-9: always the search grid (same card size); `grid` is kept for old callers. */
+export function SavedVenues({ showHeading = true }: { grid?: boolean; showHeading?: boolean }) {
   const t = useT();
   const { enabled, loading, venues, isError } = useFavorites();
   if (!enabled) return null;
@@ -31,9 +34,9 @@ export function SavedVenues({ grid = false, showHeading = true }: { grid?: boole
       </div>
 
       {loading ? (
-        <div className={grid ? "grid gap-4 sm:grid-cols-2" : "flex gap-4 overflow-hidden"} aria-hidden="true">
+        <div className={SEARCH_GRID} aria-hidden="true">
           {[0, 1].map((i) => (
-            <div key={i} className={`h-[300px] animate-pulse rounded-3xl bg-fl-mist ${grid ? "" : "w-[280px] shrink-0"}`} />
+            <div key={i} className="h-[300px] animate-pulse rounded-3xl bg-fl-mist" />
           ))}
         </div>
       ) : isError && venues.length === 0 ? (
@@ -45,9 +48,10 @@ export function SavedVenues({ grid = false, showHeading = true }: { grid?: boole
           {t("bookings.saved.empty")}
         </p>
       ) : (
-        <ul className={grid ? "grid gap-4 sm:grid-cols-2" : "-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-3"} aria-label={t("bookings.saved.listAria")}>
+        // fix/nov-9 item 7: the same card at the same size as Find a court (its grid), on My bookings and in the account hub
+        <ul className={SEARCH_GRID} aria-label={t("bookings.saved.listAria")}>
           {venues.map((v, i) => (
-            <li key={v.id} className={`flex flex-col ${grid ? "" : "w-[280px] shrink-0 snap-start"}`} data-testid="saved-venue">
+            <li key={v.id} className="flex flex-col" data-testid="saved-venue">
               <VenueCard venue={v} href={`/venues/${v.slug}`} eager={i < 2} />
             </li>
           ))}
