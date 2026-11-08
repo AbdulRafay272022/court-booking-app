@@ -271,6 +271,22 @@ class AvailabilityService:
                         after_midnight=after_midnight,
                     )
                 )
+            elif price <= 0:
+                # fix/nov-9 (item 4): an open hour that no price rule covers can't be booked (quote_range refuses it with
+                # INVALID_SLOT_TIME "No pricing rule covers this slot"), so it must not be listed as open. Production:
+                # Court Site Padel 2 opened 6 AM on Sunday while its rates start at 10 AM; 6:30 AM showed "Open" and the
+                # hold said "That time isn't available anymore". It is shown as unavailable instead.
+                slots.append(
+                    SlotOut(
+                        starts_at=slot_start_dt,
+                        ends_at=slot_end_dt,
+                        status="blocked",
+                        price=0.0,
+                        advance_amount=0.0,
+                        reason=None,  # no venue text to show; the chip reads "Unavailable"
+                        after_midnight=after_midnight,
+                    )
+                )
             else:
                 slots.append(
                     SlotOut(
