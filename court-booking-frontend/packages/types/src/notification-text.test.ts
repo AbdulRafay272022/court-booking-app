@@ -124,3 +124,16 @@ test("Stage 2 params: daily digest count, revenue and status-pending line", () =
   // status_pending 0 / missing -> no line
   assert.equal(notificationText(item({ kind: "daily_summary", params: { count: 2, status_pending: 0 } }), "en", NOW).context, "2 bookings today");
 });
+
+test("fix/nov-9: the money question states Total, paid and due, and offers the answer while open", async () => {
+  const { openShortAsk } = await import("./notification-text");
+  const item = {
+    id: "1", event_type: "player_short_ask", kind: "other" as const, created_at: "2026-11-08T10:00:00Z",
+    params: { court_name: "Futsal 1", total_pkr: 2000, paid_pkr: 1500, due_pkr: 500, claim_id: "c1", claim_status: "awaiting_reply" },
+    link: { kind: "booking" as const, booking_id: "b1" }, deliveries: [],
+  };
+  assert.equal(notificationText(item, "ru").context, "Futsal 1 - Total PKR 2,000 · Aap ne diye PKR 1,500 · Baqi PKR 500. Sahi hai ya ghalat?");
+  assert.equal(notificationText(item, "en").context, "Futsal 1 - Total PKR 2,000 · You paid PKR 1,500 · Due PKR 500. Is that right?");
+  assert.equal(openShortAsk(item), "c1");
+  assert.equal(openShortAsk({ ...item, params: { ...item.params, claim_status: "confirmed" } }), null);
+});

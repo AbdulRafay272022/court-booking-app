@@ -389,3 +389,16 @@ async def test_money_health_counts_dues_disputes_and_points_for_staff_and_admin(
     a = (await client.get("/api/v1/admin/money-health", headers=admin)).json()
     assert any(r["venue_id"] == str(venue.id) and r["short_disputes_waiting"] == 1 for r in a["venues"])
     assert (await client.get("/api/v1/admin/money-health", headers=oh)).status_code == 403
+
+
+async def test_nov9_the_bell_item_for_the_money_question_states_the_numbers(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers):
+    """fix/nov-9 item 3: 'Booking ka hisaab check karein' in the list carries Total / diye / baqi and the open claim."""
+    await set_flag(db_session_factory, "short_payment_reply")
+    *_r, player, b, _oh, ph = await _short_booking(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, "+923003110191")
+    claim = await _claim(db_session_factory, b.id)
+    feed = (await client.get("/api/v1/users/me/notifications/feed", headers=ph)).json()["items"]
+    item = next(i for i in feed if i["event_type"] == "player_short_ask")
+    p = item["params"]
+    assert (p["total_pkr"], p["paid_pkr"], p["due_pkr"]) == (claim.total_pkr, claim.paid_pkr, claim.due_pkr)
+    assert p["due_pkr"] > 0 and p["claim_id"] == str(claim.id) and p["claim_status"] == "awaiting_reply"
+    assert item["link"] == {"kind": "booking", "booking_id": str(b.id)}

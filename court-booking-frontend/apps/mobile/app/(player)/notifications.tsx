@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { router, useIsFocused } from "expo-router";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import * as Notifications from "expo-notifications";
 import { BellOff, BellRing } from "lucide-react-native";
-import { notificationText, type NotificationFeedItem, type NotificationFeedPage } from "@court-booking/types";
+import { notificationText, openShortAsk, type NotificationFeedItem, type NotificationFeedPage } from "@court-booking/types";
 import { palette, radius, size, space } from "@court-booking/ui-tokens";
 
 import { Banner, Button, EmptyState, ErrorState, Header, Screen, Skeleton, Text, useCopy, useLang, useRoleTheme } from "@/components/ui";
@@ -133,7 +134,10 @@ export default function PlayerNotificationsScreen() {
                 {g.title}
               </Text>
               {g.items.map((it) => (
-                <NotifRow key={it.id} item={it} unread={isUnread(it)} lang={lang} onPress={notificationTarget(it, "player") ? () => router.replace(notificationTarget(it, "player") as never) : undefined} />
+                <View key={it.id} style={{ gap: space[2] }}>
+                  <NotifRow item={it} unread={isUnread(it)} lang={lang} onPress={notificationTarget(it, "player") ? () => router.replace(notificationTarget(it, "player") as never) : undefined} />
+                  <ShortAskActions item={it} lang={lang} />
+                </View>
               ))}
             </View>
           ))}
@@ -143,6 +147,54 @@ export default function PlayerNotificationsScreen() {
         </View>
       )}
     </Screen>
+  );
+}
+
+/** fix/nov-9 item 3: answer "Booking ka hisaab check karein" in the list; "Ghalat hai" needs a reason, so it opens the booking. */
+function ShortAskActions({ item, lang }: { item: NotificationFeedItem; lang: "ru" | "en" }) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const claimId = openShortAsk(item);
+  if (done) {
+    return (
+      <Text variant="meta" testID="short-ask-done" style={{ paddingHorizontal: 14 }}>
+        {done}
+      </Text>
+    );
+  }
+  if (!claimId) return null;
+  const bookingId = item.link?.booking_id;
+  return (
+    <View style={{ flexDirection: "row", gap: space[2], paddingHorizontal: 14 }} testID="short-ask-actions">
+      <Button
+        label={lang === "en" ? "That's right" : "Sahi hai"}
+        size="sm"
+        loading={busy}
+        onPress={async () => {
+          setBusy(true);
+          try {
+            await api.phase3.replyShort(claimId, "yes");
+            setDone(lang === "en" ? "Thanks! Your answer went to the venue." : "Shukriya! Jawab venue ko chala gaya.");
+            void queryClient.invalidateQueries({ queryKey: ["notif-feed-list"] });
+          } catch (e) {
+            setDone(friendlyErrorMessage(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        testID="short-ask-yes"
+      />
+      {bookingId ? (
+        <Button
+          label={lang === "en" ? "That's wrong" : "Ghalat hai"}
+          size="sm"
+          variant="soft"
+          onPress={() => router.push({ pathname: "/(player)/booking/[id]/done", params: { id: bookingId } })}
+          testID="short-ask-no"
+        />
+      ) : null}
+    </View>
   );
 }
 

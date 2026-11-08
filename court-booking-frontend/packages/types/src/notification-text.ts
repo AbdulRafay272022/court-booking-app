@@ -149,8 +149,25 @@ function stage2Parts(item: NotificationFeedItem, lang: Lang): string[] {
   return out;
 }
 
+/** fix/nov-9 item 3: "Total PKR 2,000 · Aap ne diye PKR 1,500 · Baqi PKR 500. Sahi hai ya ghalat?" */
+export function shortAskLine(p: NotificationFeedItem["params"], lang: Lang): string | null {
+  if (typeof p.total_pkr !== "number" || typeof p.paid_pkr !== "number" || typeof p.due_pkr !== "number") return null;
+  const money = (n: number) => formatPkrAmount(n);
+  return lang === "ru"
+    ? `Total ${money(p.total_pkr)} · Aap ne diye ${money(p.paid_pkr)} · Baqi ${money(p.due_pkr)}. Sahi hai ya ghalat?`
+    : `Total ${money(p.total_pkr)} · You paid ${money(p.paid_pkr)} · Due ${money(p.due_pkr)}. Is that right?`;
+}
+
+/** The open money question a list item can answer in place (Sahi hai / Ghalat hai), or null. */
+export function openShortAsk(item: NotificationFeedItem): string | null {
+  const ev = (item.event_type ?? "").replace(/_(wa|whatsapp|sms|push|web_push)$/, "");
+  return ev === "player_short_ask" && item.params?.claim_status === "awaiting_reply" && item.params.claim_id ? item.params.claim_id : null;
+}
+
 function contextFor(item: NotificationFeedItem, lang: Lang, now: Date): string {
   const p = item.params ?? {};
+  const ask = (item.event_type ?? "").startsWith("player_short_ask") ? shortAskLine(p, lang) : null;
+  if (ask) return [p.court_name ?? p.venue_name, ask].filter(Boolean).join(SEP);
   const parts: string[] = [];
   const venueKind = item.kind === "venue_approved" || item.kind === "venue_rejected" || item.kind === "venue_changes";
   if (venueKind || item.kind === "daily_summary") {

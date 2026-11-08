@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { notificationText, type NotificationFeedItem } from "@court-booking/types";
+import { notificationText, openShortAsk, type NotificationFeedItem } from "@court-booking/types";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useLang, useT } from "@/components/i18n/lang-provider";
 import { useFmt } from "@/lib/use-fmt";
 import type { MessageKey } from "@/lib/i18n";
@@ -358,6 +361,60 @@ function Row({
       ) : (
         <div className={cls}>{body}</div>
       )}
+      <ShortAskActions item={item} onNavigate={onNavigate} />
     </li>
+  );
+}
+
+/** fix/nov-9 item 3: answer "Booking ka hisaab check karein" right in the list. "Ghalat hai" needs a reason, so it opens the
+ * booking where the reason box is. */
+function ShortAskActions({ item, onNavigate }: { item: NotificationFeedItem; onNavigate: (href: string) => void }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const claimId = openShortAsk(item);
+  if (!claimId && !done) return null;
+  if (done) {
+    return (
+      <p className="border-b border-khelo-divider px-4 pb-3 pl-[2.375rem] text-[13px] font-semibold text-khelo-ink" role="status" data-testid="short-ask-done">
+        {done}
+      </p>
+    );
+  }
+  const bookingId = item.link?.booking_id;
+  return (
+    <div className="flex flex-wrap gap-2 border-b border-khelo-divider px-4 pb-3 pl-[2.375rem]" data-testid="short-ask-actions">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await api.phase3.replyShort(claimId!, "yes");
+            setDone(t("notif.short.thanks"));
+            void queryClient.invalidateQueries({ queryKey: ["my-notifications-feed"] });
+          } catch (e) {
+            setDone(friendlyErrorMessage(e, t));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="min-h-10 rounded-full bg-khelo-ink px-4 text-[13px] font-extrabold text-white disabled:opacity-60"
+        data-testid="short-ask-yes"
+      >
+        {t("notif.short.yes")}
+      </button>
+      {bookingId ? (
+        <button
+          type="button"
+          onClick={() => onNavigate(`/booking/${encodeURIComponent(bookingId)}/done#short-payment`)}
+          className="min-h-10 rounded-full border border-khelo-divider px-4 text-[13px] font-extrabold text-khelo-ink"
+          data-testid="short-ask-no"
+        >
+          {t("notif.short.no")}
+        </button>
+      ) : null}
+    </div>
   );
 }

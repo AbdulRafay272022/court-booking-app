@@ -73,6 +73,12 @@ export interface NotificationFeedItem {
     minutes_waiting?: number;
     minutes_to_cancel?: number;
     title?: string;
+    /** fix/nov-9 item 3: the "Booking ka hisaab check karein" question (player_short_ask). */
+    total_pkr?: number;
+    paid_pkr?: number;
+    due_pkr?: number;
+    claim_id?: string;
+    claim_status?: string;
   };
   link: { kind: "approvals" | "refunds" | "booking" | "bookings" | "overview" | "venue_status" | "none"; booking_id?: string };
   deliveries: { channel: "push" | "whatsapp" | "sms" | "web_push"; status: "sent" | "failed" }[];

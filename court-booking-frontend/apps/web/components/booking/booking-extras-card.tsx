@@ -119,7 +119,7 @@ function ShortBlock({ short }: { short: NonNullable<BookingExtras["short_payment
     ? short.resolution === "waived" ? t("play.p3.st.waived") : t("play.p3.st.paid")
     : t(`play.p3.st.${short.status}`);
   return (
-    <div className="flex flex-col gap-1" data-testid="short-payment">
+    <div id="short-payment" className="flex scroll-mt-6 flex-col gap-1" data-testid="short-payment">
       <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.p3.shortTitle")}</h2>
       <p className="text-[14.5px] font-bold text-fl-night">{t("play.p3.shortLine", { total: formatPKR(short.total_pkr), paid: formatPKR(short.paid_pkr), due: formatPKR(short.due_pkr) })}</p>
       <p className="text-[13px] text-fl-muted">{status}</p>

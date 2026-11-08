@@ -35,6 +35,12 @@ class FeedParamsOut(BaseModel):
     minutes_waiting: int | None = None
     minutes_to_cancel: int | None = None
     title: str | None = None
+    # fix/nov-9 item 3: "Booking ka hisaab check karein" states the numbers and offers Sahi hai / Ghalat hai while open
+    total_pkr: int | None = None
+    paid_pkr: int | None = None
+    due_pkr: int | None = None
+    claim_id: str | None = None
+    claim_status: str | None = None
 
 
 class FeedLinkOut(BaseModel):

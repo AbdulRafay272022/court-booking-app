@@ -357,6 +357,29 @@ def _with_payload(params: dict, group: _Group) -> dict:
     return params
 
 
+async def _short_claims(db: AsyncSession, booking_ids: list) -> dict:
+    """fix/nov-9 item 3: the short-payment claims behind "Booking ka hisaab check karein" items (one query for the page)."""
+    ids = [i for i in booking_ids if i is not None]
+    if not ids:
+        return {}
+    from app.models.audit_phase3 import ShortPaymentClaim
+
+    rows = (await db.execute(select(ShortPaymentClaim).where(ShortPaymentClaim.booking_id.in_(ids)))).scalars().all()
+    return {c.booking_id: c for c in rows}
+
+
+def _short_params(event: str, ref, claims: dict, params: dict) -> dict:
+    """The bell item states the numbers ("Total X · Aap ne diye Y · Baqi Z. Sahi hai ya ghalat?") and carries the claim
+    id + status so the list can offer Sahi hai / Ghalat hai while the question is open."""
+    claim = claims.get(ref) if event == "player_short_ask" else None
+    if claim is not None:
+        params.update(
+            total_pkr=claim.total_pkr, paid_pkr=claim.paid_pkr, due_pkr=claim.due_pkr,
+            claim_id=str(claim.id), claim_status=claim.status,
+        )
+    return params
+
+
 async def notification_feed(db: AsyncSession, user_id: uuid.UUID, page: int, page_size: int) -> dict:
     page = max(1, page)
     page_size = min(max(1, page_size), 100)
@@ -365,6 +388,7 @@ async def notification_feed(db: AsyncSession, user_id: uuid.UUID, page: int, pag
     window = groups[start : start + page_size]
     has_more = len(groups) > start + page_size
     bookings, payments, disputes, venues = await _resolve(db, window)
+    claims = await _short_claims(db, [g.reference_id for g in window if base_event(g.first.event_type) == "player_short_ask"])
     items = []
     for g in window:
         first = g.first
@@ -380,8 +404,9 @@ async def notification_feed(db: AsyncSession, user_id: uuid.UUID, page: int, pag
                 "event_type": base_event(first.event_type),
                 "kind": kind,
                 "created_at": first.created_at,
-                "params": _with_payload(
-                    _params(kind, ref_type, g.reference_id, bookings, payments, disputes, venues), g
+                "params": _short_params(
+                    base_event(first.event_type), g.reference_id, claims,
+                    _with_payload(_params(kind, ref_type, g.reference_id, bookings, payments, disputes, venues), g),
                 ),
                 "link": link,
                 "deliveries": _deliveries(g),
