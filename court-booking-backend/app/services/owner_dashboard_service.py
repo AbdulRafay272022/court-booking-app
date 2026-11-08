@@ -202,11 +202,12 @@ class OwnerDashboardService:
         # The day's slots, and the bookings on them. A schedule day belongs to the day it OPENS (Section 32 Part 3), so an
         # overnight court's after-midnight bookings are Today's even though they start on tomorrow's calendar date, and
         # yesterday's after-midnight tail (which starts today) belongs to yesterday, not to this day's totals.
-        slots_by_court = {court.id: await self.availability.get_day_slots(court, target_date) for court in courts}
+        # the owner's own Today shows the schedule as it is (an hour with no rate stays visible to the owner, fix/nov-9)
+        slots_by_court = {court.id: await self.availability.get_day_slots(court, target_date, hide_unpriced=False) for court in courts}
         slot_booking_ids = {s.booking_id for slots in slots_by_court.values() for s in slots if s.booking_id}
         yesterdays_tail_ids: set[uuid.UUID] = set()
         for court in courts:
-            for s in await self.availability.get_day_slots(court, target_date - timedelta(days=1)):
+            for s in await self.availability.get_day_slots(court, target_date - timedelta(days=1), hide_unpriced=False):
                 if s.after_midnight and s.booking_id:
                     yesterdays_tail_ids.add(s.booking_id)
 

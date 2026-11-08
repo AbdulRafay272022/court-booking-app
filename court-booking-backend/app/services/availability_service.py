@@ -306,7 +306,8 @@ class AvailabilityService:
         return slots
 
     async def get_day_slots(
-        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None, *, legacy_units: bool = False
+        self, court: Court, target_date: date, viewer_id: uuid.UUID | None = None, *, legacy_units: bool = False,
+        hide_unpriced: bool = True,
     ) -> list[SlotOut]:
         """The slots of the schedule day that OPENS on `target_date` (see build_day_slots).
         TRANSITION (delete once the new EAS build is out everywhere): `legacy_units=True` returns the same day regrouped into
@@ -325,7 +326,7 @@ class AvailabilityService:
         window_end = (closes_local - PKT_OFFSET).replace(tzinfo=timezone.utc)
         blackouts, bookings = await self._blackouts_and_bookings(court.id, window_start, window_end)
         rules = await self._load_rules(court.id)
-        new_slots = self.build_day_slots(court, target_date, template, rules, blackouts, bookings, viewer_id)
+        new_slots = self.build_day_slots(court, target_date, template, rules, blackouts, bookings, viewer_id, hide_unpriced=hide_unpriced)
         if legacy_units:
             from app.services import slot_compat
 
