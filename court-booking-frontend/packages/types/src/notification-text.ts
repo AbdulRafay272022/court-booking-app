@@ -105,7 +105,7 @@ function humanize(eventType: string): string {
 export function eventTypeTitle(eventType: string, lang: Lang): string {
   const known =
     EVENT_TITLES[eventType] ??
-    EVENT_TITLES[eventType.replace(/_(whatsapp|sms|push|web_push)$/, "")] ??
+    EVENT_TITLES[eventType.replace(/_(wa|whatsapp|sms|push|web_push)$/, "")] ??
     (/^payment_reminder(_\d+)?$/.test(eventType) ? TITLES.payment_reminder : undefined);
   if (known) return known[lang];
   const h = humanize(eventType);
@@ -188,22 +188,15 @@ function joinNames(names: string[], lang: Lang): string {
   return `${names.slice(0, -1).join(", ")} ${and} ${names[names.length - 1]}`;
 }
 
-/** "WhatsApp par bheja gaya" / "SMS par bheja gaya (WhatsApp nahi gaya)" / "WhatsApp nahi ja saka"; null if unknown. */
+/** "WhatsApp par bheja gaya" / "Sent by WhatsApp and the app"; null when nothing was delivered or nothing is known.
+ * fix/nov-9 item 5: a channel that FAILED is never mentioned in the notification list -- one event is one plain item; channel
+ * failures belong in the owner/admin notification logs, not in a player's bell. */
 export function deliveryText(deliveries: NotificationFeedItem["deliveries"] | undefined, lang: Lang): string | null {
   if (!deliveries || deliveries.length === 0) return null;
   const sentSet = new Set(deliveries.filter((d) => d.status === "sent").map((d) => d.channel));
-  const failedSet = new Set(deliveries.filter((d) => d.status === "failed" && !sentSet.has(d.channel)).map((d) => d.channel));
   const sent = CHANNEL_ORDER.filter((c) => sentSet.has(c)).map((c) => CHANNEL_LABEL[c][lang]);
-  const failed = CHANNEL_ORDER.filter((c) => failedSet.has(c)).map((c) => CHANNEL_LABEL[c][lang]);
-  if (sent.length === 0 && failed.length === 0) return null;
-  if (lang === "ru") {
-    if (sent.length === 0) return `${joinNames(failed, lang)} par nahi ja saka`;
-    const base = `${joinNames(sent, lang)} par bheja gaya`;
-    return failed.length ? `${base} (${joinNames(failed, lang)} par nahi gaya)` : base;
-  }
-  if (sent.length === 0) return `Could not be sent by ${joinNames(failed, lang)}`;
-  const base = `Sent by ${joinNames(sent, lang)}`;
-  return failed.length ? `${base} (${joinNames(failed, lang)} failed)` : base;
+  if (sent.length === 0) return null;
+  return lang === "ru" ? `${joinNames(sent, lang)} par bheja gaya` : `Sent by ${joinNames(sent, lang)}`;
 }
 
 export interface NotificationText {

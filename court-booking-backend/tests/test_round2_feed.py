@@ -251,3 +251,17 @@ async def test_reference_ids_on_booking_venue_court_and_waitlist_notifications(
     assert rows and all(r.reference_id == entry_id for r in rows)
     feed = (await client.get(FEED, headers=await make_auth_headers(waiter))).json()["items"]
     assert feed[0]["kind"] == "slot_freed" and feed[0]["params"]["court_name"] == "Futsal 1" and feed[0]["params"]["starts_at"]
+
+
+async def test_nov9_a_failed_whatsapp_copy_is_not_its_own_bell_item(venue_world, client, db_session_factory, make_user, make_auth_headers):
+    """fix/nov-9 item 5: the booking reminder's WhatsApp copy is logged as `booking_reminder_wa`; it used to show as a separate
+    'Update: Booking reminder wa -- Could not be sent by WhatsApp' item. One event = one item."""
+    owner, venue, court, oh = await venue_world("+92301409")
+    player = await make_user("+923014090099")
+    b = await add_booking(db_session_factory, court, at(future_day(1), 21), player=player, source=BookingSource.APP)
+    t0 = datetime.now(timezone.utc) - timedelta(minutes=20)
+    await _log(db_session_factory, player, "booking_reminder", "push", t0, b.id)
+    await _log(db_session_factory, player, "booking_reminder_wa", "whatsapp", t0 + timedelta(seconds=2), b.id, "failed")
+    body = (await client.get(FEED, headers=await make_auth_headers(player))).json()
+    assert [(i["event_type"], i["kind"]) for i in body["items"]] == [("booking_reminder", "booking_reminder")]
+    assert body["items"][0]["link"] == {"kind": "booking", "booking_id": str(b.id)}

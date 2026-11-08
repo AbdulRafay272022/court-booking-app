@@ -77,9 +77,10 @@ test("delivery line: one row for WhatsApp then SMS, failures muted", () => {
   assert.equal(deliveryText([{ channel: "sms", status: "sent" }], "ru"), "SMS par bheja gaya");
   assert.equal(
     deliveryText([{ channel: "whatsapp", status: "failed" }, { channel: "sms", status: "sent" }], "ru"),
-    "SMS par bheja gaya (WhatsApp par nahi gaya)",
+    "SMS par bheja gaya", // fix/nov-9: a failed channel is not mentioned in the list
   );
-  assert.equal(deliveryText([{ channel: "whatsapp", status: "failed" }], "en"), "Could not be sent by WhatsApp");
+  assert.equal(deliveryText([{ channel: "whatsapp", status: "failed" }], "en"), null);
+  assert.equal(deliveryText([{ channel: "whatsapp", status: "failed" }], "ru"), null);
   assert.equal(deliveryText([{ channel: "push", status: "sent" }, { channel: "whatsapp", status: "sent" }], "en"), "Sent by WhatsApp and the app");
 });
 

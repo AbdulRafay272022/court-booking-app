@@ -103,7 +103,21 @@ ESCALATION_FAMILIES = {"payment_submitted"}
 CHANNELS = ("push", "whatsapp", "sms", "web_push")
 
 
+_CHANNEL_SUFFIXES = ("_wa", "_whatsapp", "_sms")
+
+
+def base_event(event_type: str) -> str:
+    """fix/nov-9 item 5: a channel copy of an event that is logged under its own name (the booking reminder's WhatsApp copy
+    is `booking_reminder_wa`) is the SAME event: it folds into that event's one bell item instead of showing up as a
+    separate "Update: Booking reminder wa" row."""
+    for suffix in _CHANNEL_SUFFIXES:
+        if event_type.endswith(suffix) and event_type[: -len(suffix)] in EVENT_KINDS:
+            return event_type[: -len(suffix)]
+    return event_type
+
+
 def classify(event_type: str) -> tuple[str, str, str, str]:
+    event_type = base_event(event_type)
     if event_type not in EVENT_KINDS and event_type.startswith("payment_reminder_"):
         # each numbered reminder is its own family, so every reminder shows as its own bell item
         return ("payment_reminder", event_type, "booking", "approvals")
@@ -363,7 +377,7 @@ async def notification_feed(db: AsyncSession, user_id: uuid.UUID, page: int, pag
         items.append(
             {
                 "id": first.id,
-                "event_type": first.event_type,
+                "event_type": base_event(first.event_type),
                 "kind": kind,
                 "created_at": first.created_at,
                 "params": _with_payload(
