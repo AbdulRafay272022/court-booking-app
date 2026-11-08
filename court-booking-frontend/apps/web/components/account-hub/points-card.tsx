@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { pointsReasonLabel } from "@court-booking/types";
+import { pointsReasonLabel, venuePointsLine } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { useFmt } from "@/lib/use-fmt";
 import { useLang, useT } from "@/components/i18n/lang-provider";
@@ -22,6 +22,13 @@ export function PointsCard() {
         <h2 className="font-khelo-display text-[20px] font-extrabold tracking-tight">{t("play.p3.pointsTitle")}</h2>
         <span className="font-mono text-[22px] font-extrabold" data-testid="points-balance">{d.balance}</span>
       </div>
+      {d.by_venue && d.by_venue.length > 0 ? (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0" data-testid="points-by-venue">
+          {d.by_venue.map((v) => (
+            <li key={v.venue_id} className="text-[15px] font-bold">{venuePointsLine(v, lang === "en" ? "en" : "ru")}</li>
+          ))}
+        </ul>
+      ) : null}
       <p className="text-[13.5px] text-khelo-muted">{lang === "en" ? d.rule_text_en : d.rule_text_ru}</p>
       {d.entries.length > 0 ? (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">

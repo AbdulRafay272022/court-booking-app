@@ -49,3 +49,11 @@ test("past bookings never show a QR or a placeholder", () => {
   }
   assert.equal(ticketQrMode({ status: "booked", ends_at: future }, NOW), "show");
 });
+
+test("fix/nov-9: points are shown per venue, and a booking says what it earned", async () => {
+  const { bookingPointsLine, venuePointsLine } = await import("./phase3");
+  assert.equal(venuePointsLine({ venue_name: "Court Site", balance: 100 }), "Court Site: 100 points");
+  assert.equal(bookingPointsLine({ balance: 100, venue_name: "Court Site", earned_here: 50 }, "ru"), "Court Site: 100 points · Is booking par +50");
+  assert.equal(bookingPointsLine({ balance: 80, venue_name: "Court Site", earned_here: -20 }, "en"), "Court Site: 80 points · This booking -20");
+  assert.equal(bookingPointsLine({ balance: 0, venue_name: "Court Site", earned_here: 0 }, "ru"), "Court Site: 0 points");
+});

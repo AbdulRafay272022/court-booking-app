@@ -17,9 +17,16 @@ class PointEntryOut(BaseModel):
     created_at: datetime
 
 
+class VenuePointsOut(BaseModel):
+    venue_id: uuid.UUID
+    venue_name: str
+    balance: int
+
+
 class PointsOut(BaseModel):
     enabled: bool
-    balance: int
+    balance: int  # all venues together (shown as a total only; points are spent per venue)
+    by_venue: list[VenuePointsOut] = []  # fix/nov-9 item 2: "Court Site: 100 points"
     redeem_points: int
     rule_text_ru: str
     rule_text_en: str
@@ -29,11 +36,13 @@ class PointsOut(BaseModel):
 class PointsOfferOut(BaseModel):
     # off | venue_off | not_now | not_enough | available | used
     state: str
-    balance: int
+    balance: int  # fix/nov-9: the balance at THIS booking's venue
     cost_points: int
     discount_pkr: int
     rule_text_ru: str
     rule_text_en: str
+    venue_name: str | None = None
+    earned_here: int = 0  # net points this booking earned (or spent)
 
 
 class DueOut(BaseModel):

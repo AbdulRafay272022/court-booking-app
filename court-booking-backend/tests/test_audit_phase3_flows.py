@@ -35,9 +35,13 @@ async def _claim(sf, booking_id) -> ShortPaymentClaim | None:
         return (await s.execute(select(ShortPaymentClaim).where(ShortPaymentClaim.booking_id == booking_id))).scalar_one_or_none()
 
 
-async def _give_points(sf, player, n):
+async def _give_points(sf, player, n, booking_id=None):
+    """fix/nov-9: points belong to a venue through their booking, so seeded points are put on the player's latest booking
+    (the venue under test) unless a booking is named."""
     async with sf() as s:
-        s.add(PointEntry(player_id=player.id, delta=n, reason="seed"))
+        if booking_id is None:
+            booking_id = await s.scalar(select(Booking.id).where(Booking.player_id == player.id).order_by(Booking.created_at.desc()).limit(1))
+        s.add(PointEntry(player_id=player.id, booking_id=booking_id, delta=n, reason="seed"))
         await s.commit()
 
 
@@ -402,3 +406,25 @@ async def test_nov9_the_bell_item_for_the_money_question_states_the_numbers(clie
     assert (p["total_pkr"], p["paid_pkr"], p["due_pkr"]) == (claim.total_pkr, claim.paid_pkr, claim.due_pkr)
     assert p["due_pkr"] > 0 and p["claim_id"] == str(claim.id) and p["claim_status"] == "awaiting_reply"
     assert item["link"] == {"kind": "booking", "booking_id": str(b.id)}
+
+
+async def test_nov9_points_are_per_venue_and_each_booking_says_what_it_earned(client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers, monkeypatch):
+    """fix/nov-9 item 2: 'Court Site: 100 points' on the profile, and on a booking the balance AT THAT venue plus what this
+    booking earned. Points earned at one venue are not spent at another."""
+    mock_upload(monkeypatch)
+    await set_flag(db_session_factory, "player_points")
+    owner_a, venue_a, court_a = await half_advance_venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone="+923003110301")
+    owner_b, venue_b, court_b = await half_advance_venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, phone="+923003110311")
+    player = await make_user("+923003110302")
+    ph = await make_auth_headers(player)
+    bid_a = await booked_with_balance(client, court_a, await make_auth_headers(owner_a), ph)
+    bid_b = (await add_booking(db_session_factory, court_b, at(past_day(), 12), 1, player=player, price=2000, paid=2000, source=BookingSource.APP)).id
+    await _give_points(db_session_factory, player, 100, bid_a)
+    await _give_points(db_session_factory, player, 30, bid_b)
+    pts = (await client.get("/api/v1/users/me/points", headers=ph)).json()
+    assert pts["balance"] == 130
+    assert sorted((v["venue_name"], v["balance"]) for v in pts["by_venue"]) == sorted([(venue_a.name, 100), (venue_b.name, 30)])
+    offer_a = (await client.get(f"/api/v1/bookings/{bid_a}/extras", headers=ph)).json()["points"]
+    assert (offer_a["balance"], offer_a["venue_name"], offer_a["earned_here"]) == (100, venue_a.name, 100)
+    offer_b = (await client.get(f"/api/v1/bookings/{bid_b}/extras", headers=ph)).json()["points"]
+    assert (offer_b["balance"], offer_b["earned_here"]) == (30, 30)

@@ -131,9 +131,42 @@ async def _venue_of(db: AsyncSession, booking: Booking) -> tuple[Court | None, V
 # ------------------------------------------------------------------ points
 
 
-async def points_balance(db: AsyncSession, player_id: uuid.UUID) -> int:
-    total = await db.scalar(select(func.coalesce(func.sum(PointEntry.delta), 0)).where(PointEntry.player_id == player_id))
+async def points_balance(db: AsyncSession, player_id: uuid.UUID, venue_id: uuid.UUID | None = None) -> int:
+    """fix/nov-9 item 2: points are kept PER VENUE (the venue funds the discount, so points earned at Court Site are spent at
+    Court Site). With `venue_id` the balance at that venue; without it the sum over all venues (shown as a total only)."""
+    q = select(func.coalesce(func.sum(PointEntry.delta), 0)).where(PointEntry.player_id == player_id)
+    if venue_id is not None:
+        q = q.join(Booking, Booking.id == PointEntry.booking_id).join(Court, Court.id == Booking.court_id).where(Court.venue_id == venue_id)
+    total = await db.scalar(q)
     return max(int(total or 0), 0)
+
+
+async def venue_of_booking(db: AsyncSession, booking_id: uuid.UUID | None) -> uuid.UUID | None:
+    if booking_id is None:
+        return None
+    return await db.scalar(select(Court.venue_id).join(Booking, Booking.court_id == Court.id).where(Booking.id == booking_id))
+
+
+async def points_by_venue(db: AsyncSession, player_id: uuid.UUID) -> list[dict]:
+    """[{venue_id, venue_name, balance}] for every venue where the player has points history (balance never below 0)."""
+    rows = (
+        await db.execute(
+            select(Venue.id, Venue.name, func.coalesce(func.sum(PointEntry.delta), 0))
+            .select_from(PointEntry)
+            .join(Booking, Booking.id == PointEntry.booking_id)
+            .join(Court, Court.id == Booking.court_id)
+            .join(Venue, Venue.id == Court.venue_id)
+            .where(PointEntry.player_id == player_id)
+            .group_by(Venue.id, Venue.name)
+            .order_by(Venue.name)
+        )
+    ).all()
+    return [{"venue_id": vid, "venue_name": name, "balance": max(int(total or 0), 0)} for vid, name, total in rows]
+
+
+async def booking_points(db: AsyncSession, booking_id: uuid.UUID) -> int:
+    """Net points this one booking earned (+50 transfer, +5 reply, -20 no reply, -500 redeem ... all summed)."""
+    return int(await db.scalar(select(func.coalesce(func.sum(PointEntry.delta), 0)).where(PointEntry.booking_id == booking_id)) or 0)
 
 
 async def add_points(db: AsyncSession, player_id: uuid.UUID, booking_id: uuid.UUID | None, delta: int, reason: str,
@@ -141,7 +174,7 @@ async def add_points(db: AsyncSession, player_id: uuid.UUID, booking_id: uuid.UU
     """Append one entry and flush; returns the delta actually recorded (a deduction never takes the balance below 0, so it
     may be smaller; 0 = nothing recorded). The same (booking, reason) twice is refused by the unique index and returns 0."""
     if delta < 0:
-        delta = -min(-delta, await points_balance(db, player_id))
+        delta = -min(-delta, await points_balance(db, player_id, await venue_of_booking(db, booking_id)))
     if delta == 0:
         return 0
     try:
@@ -165,11 +198,13 @@ async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, book
     await db.commit()
     if got:
         player = await db.get(User, booking.player_id)
-        bal = await points_balance(db, booking.player_id)
+        _court, venue = await _venue_of(db, booking)
+        bal = await points_balance(db, booking.player_id, venue.id if venue else None)
         code = short_code(booking.id)
+        where = f"{venue.name} par " if venue else ""
         await _notify(
             db, settings, player, "player_points_reward", "Points mile",
-            f"Mubarak! Booking {code} poori transfer se ada hui: +{got} points mile, kul {bal}. {POINTS_RULE_RU}",
+            f"Mubarak! Booking {code} poori transfer se ada hui: +{got} points mile, {where}kul {bal}. {POINTS_RULE_RU}",
             reference_id=booking.id, template="khelo_points_reward", params=[str(got), code, str(bal)],
         )
     return got
@@ -182,6 +217,7 @@ async def points_summary(db: AsyncSession, player: User) -> dict:
     return {
         "enabled": await flag_on(db, "player_points"),
         "balance": await points_balance(db, player.id),
+        "by_venue": await points_by_venue(db, player.id),
         "redeem_points": REDEEM_POINTS,
         "rule_text_ru": POINTS_RULE_RU,
         "rule_text_en": POINTS_RULE_EN,
@@ -197,7 +233,7 @@ async def points_offer(db: AsyncSession, player: User, booking: Booking) -> dict
     """What the booking screen shows: can this booking take the venue's points discount now?"""
     _court, venue = await _venue_of(db, booking)
     on = await flag_on(db, "player_points")
-    bal = await points_balance(db, player.id) if on else 0
+    bal = await points_balance(db, player.id, venue.id if venue is not None else None) if on else 0
     discount = 0
     state = "off"
     if on and venue is not None:
@@ -214,7 +250,9 @@ async def points_offer(db: AsyncSession, player: User, booking: Booking) -> dict
             else:
                 state = "available"
     return {"state": state, "balance": bal, "cost_points": REDEEM_POINTS, "discount_pkr": discount,
-            "rule_text_ru": POINTS_RULE_RU, "rule_text_en": POINTS_RULE_EN}
+            "rule_text_ru": POINTS_RULE_RU, "rule_text_en": POINTS_RULE_EN,
+            "venue_name": venue.name if venue is not None else None,
+            "earned_here": await booking_points(db, booking.id) if on else 0}
 
 
 async def redeem_points(db: AsyncSession, settings: Settings, player: User, booking_id: uuid.UUID) -> Booking:
@@ -616,11 +654,13 @@ async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, act
     await db.commit()
     if got:
         player = await db.get(User, booking.player_id)
-        bal = await points_balance(db, booking.player_id)
+        _court, venue = await _venue_of(db, booking)
+        bal = await points_balance(db, booking.player_id, venue.id if venue else None)
         code = short_code(booking.id)
+        where = f"{venue.name} par " if venue else ""
         await _notify(
             db, settings, player, "player_points_reward", "Points mile",
-            f"Booking {code}: venue ne aap ka transfer sahi maan liya: +{got} points mile, kul {bal}.",
+            f"Booking {code}: venue ne aap ka transfer sahi maan liya: +{got} points mile, {where}kul {bal}.",
             reference_id=booking.id, template="khelo_points_reward", params=[str(got), code, str(bal)],
         )
     return got
@@ -693,7 +733,7 @@ async def take_back_transfer_points(db: AsyncSession, actor: User, booking: Book
             entity_id=booking.id, new_value={"points": taken, "entry_id": str(entry.id), "reasons": sorted(given)},
         )
     await db.commit()
-    return taken, await points_balance(db, booking.player_id)
+    return taken, await points_balance(db, booking.player_id, await venue_of_booking(db, booking.id))
 
 
 async def start_short_round(db: AsyncSession, settings: Settings, booking: Booking, actor: User | None, *, note: str,

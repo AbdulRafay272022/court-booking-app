@@ -109,8 +109,8 @@ async def test_approving_a_noshow_reversal_transfer_sends_the_receipt_and_the_po
     assert not await log_rows(db_session_factory, user_id=player.id, event_type="booking_confirmed")
     # +50 (fully paid by transfer) and +10 (no-show transfer), each with its own notice
     points = _bodies(seen, "player_points_reward")
-    assert any("+50 points mile, kul 50" in t for t in points), points
-    assert any("+10 points mile, kul 60" in t for t in points), points
+    assert any("+50 points mile, Test Arena par kul 50" in t for t in points), points  # fix/nov-9: per venue
+    assert any("+10 points mile, Test Arena par kul 60" in t for t in points), points
     assert await _balance(db_session_factory, player) == 60
 
 
@@ -140,8 +140,8 @@ async def test_rejecting_a_noshow_reversal_transfer_starts_the_short_payment_flo
     owner, venue, (court,) = await seed_venue(make_user, make_venue, make_court, make_schedule, make_pricing_rule, "+923003130041")
     player = await make_user("+923003130042")
     oh, ph = await make_auth_headers(owner), await make_auth_headers(player)
-    await _give_points(db_session_factory, player, 50)
     b = await _noshow(db_session_factory, court, player)
+    await _give_points(db_session_factory, player, 50, b.id)  # fix/nov-9: points live at a venue (through a booking)
     r = await client.post(f"/api/v1/owners/bookings/{b.id}/noshow-reverse",
                           data={"final_price_pkr": 2000, "received_pkr": 1500, "method": "transfer"}, files={"screenshot": _shot()}, headers=oh)
     assert r.status_code == 200, r.text
@@ -326,7 +326,7 @@ async def test_player_se_baqi_takes_back_the_points_that_transfer_earned_and_say
     async with db_session_factory() as s:
         from app.models.audit_phase3 import PointEntry
 
-        s.add(PointEntry(player_id=player.id, delta=-25, reason="redeem"))
+        s.add(PointEntry(player_id=player.id, booking_id=b.id, delta=-25, reason="redeem"))  # same venue (fix/nov-9)
         await s.commit()
     assert (await client.post(f"/api/v1/owners/bank-check/{entry.id}/not-received", headers=oh)).status_code == 200
     assert await _balance(db_session_factory, player) == 35  # marking alone takes nothing
@@ -336,7 +336,7 @@ async def test_player_se_baqi_takes_back_the_points_that_transfer_earned_and_say
         from app.models.audit import AuditLog
         from app.models.audit_phase3 import PointEntry
 
-        taken = {p.reason: p.delta for p in (await s.execute(select(PointEntry).where(PointEntry.booking_id == b.id, PointEntry.delta < 0))).scalars()}
+        taken = {p.reason: p.delta for p in (await s.execute(select(PointEntry).where(PointEntry.booking_id == b.id, PointEntry.delta < 0, PointEntry.reason != "redeem"))).scalars()}
         audit = (await s.execute(select(AuditLog).where(AuditLog.action == "points.bank_missing_taken_back"))).scalars().all()
     assert sum(taken.values()) == -35 and set(taken) <= {"transfer_booking_taken_back", "noshow_transfer_taken_back"}
     assert len(audit) == 1 and audit[0].new_value["points"] == 35

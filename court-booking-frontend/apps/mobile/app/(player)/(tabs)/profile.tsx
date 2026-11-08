@@ -5,7 +5,7 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CircleHelp, FileText, Languages, LogOut, Pencil, ShieldCheck } from "lucide-react-native";
-import { CITY_OPTIONS, formatDate, formatTime, pointsReasonLabel, type WaitlistEntry } from "@court-booking/types";
+import { CITY_OPTIONS, formatDate, formatTime, pointsReasonLabel, venuePointsLine, type WaitlistEntry } from "@court-booking/types";
 import { alpha, palette, radius, space } from "@court-booking/ui-tokens";
 
 import { Avatar, Button, Card, IconButton, ListRow, Screen, Sheet, Text, useCopy, useLang, useToast } from "@/components/ui";
@@ -203,6 +203,9 @@ function PointsCard() {
   return (
     <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="profile-points">
       <Text variant="title" accessibilityRole="header">{`Points: ${data.balance}`}</Text>
+      {(data.by_venue ?? []).map((v) => (
+        <Text key={v.venue_id} variant="bodyStrong" testID="profile-points-venue">{venuePointsLine(v, "ru")}</Text>
+      ))}
       <Text variant="meta" tone="muted">{data.rule_text_ru}</Text>
       {data.entries.slice(0, 5).map((e) => (
         <View key={e.id} style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>

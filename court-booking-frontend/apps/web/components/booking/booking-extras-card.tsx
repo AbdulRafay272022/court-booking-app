@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BookingExtras, ShortPaymentDue } from "@court-booking/types";
+import { bookingPointsLine, type BookingExtras, type ShortPaymentDue } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { formatPKR } from "@/lib/format";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -131,6 +131,7 @@ function PointsBlock({ points, busy, onUse, lang }: { points: BookingExtras["poi
   const t = useT();
   return (
     <div className="flex flex-col gap-2 border-t border-fl-line pt-3" data-testid="points-offer">
+      <p className="text-[14px] font-bold text-fl-night" data-testid="points-here">{bookingPointsLine(points, lang === "en" ? "en" : "ru")}</p>
       {points.state === "available" ? (
         <Btn busy={busy} onClick={onUse}>{t("play.p3.usePoints", { points: String(points.cost_points), amount: formatPKR(points.discount_pkr) })}</Btn>
       ) : points.state === "used" ? (

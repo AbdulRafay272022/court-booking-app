@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import * as Location from "expo-location";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { replyEarnsBonus, type BookingExtras, type ShortPaymentDue } from "@court-booking/types";
+import { replyEarnsBonus, type BookingExtras, type ShortPaymentDue, bookingPointsLine } from "@court-booking/types";
 import { formatPkr, space } from "@court-booking/ui-tokens";
 import { Banner, Button, Card, Input, Text } from "@/components/ui";
 
@@ -154,6 +154,7 @@ export function BookingExtrasCard({ bookingId }: { bookingId: string }) {
 
       {showPoints ? (
         <View style={{ gap: space[2] }} testID="extras-points">
+          <Text variant="bodyStrong" testID="extras-points-here">{bookingPointsLine(points, "ru")}</Text>
           {points.state === "available" ? (
             <Button
               label={`${points.cost_points} points se ${formatPkr(points.discount_pkr)} ki chhoot lo`}

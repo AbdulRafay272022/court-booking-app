@@ -10,9 +10,17 @@ export interface PointEntry {
   created_at: string;
 }
 
+export interface VenuePoints {
+  venue_id: string;
+  venue_name: string;
+  balance: number;
+}
+
 export interface PlayerPoints {
   enabled: boolean;
+  /** All venues together. Points are spent per venue (fix/nov-9), so screens list `by_venue`. */
   balance: number;
+  by_venue?: VenuePoints[];
   redeem_points: number;
   rule_text_ru: string;
   rule_text_en: string;
@@ -21,7 +29,11 @@ export interface PlayerPoints {
 
 export interface PointsOffer {
   state: "off" | "venue_off" | "not_now" | "not_enough" | "available" | "used";
+  /** fix/nov-9: the balance at THIS booking's venue. */
   balance: number;
+  venue_name?: string | null;
+  /** Net points this booking earned (+50, +5, -20 ...). */
+  earned_here?: number;
   cost_points: number;
   discount_pkr: number;
   rule_text_ru: string;
@@ -170,4 +182,18 @@ export function acceptReceivedInput(raw: string, max: number, previous: string):
   const n = Number(digits);
   if (n > Math.max(0, Math.round(max))) return { value: previous, blocked: true };
   return { value: String(n), blocked: false };
+}
+
+/** fix/nov-9 item 2: "Court Site: 100 points". */
+export function venuePointsLine(v: { venue_name: string; balance: number }, lang: "en" | "ru" = "ru"): string {
+  return `${v.venue_name}: ${v.balance} points`;
+}
+
+/** fix/nov-9 item 2, on a booking: "Court Site: 100 points · Is booking par +50" (the second half only when it earned some). */
+export function bookingPointsLine(offer: Pick<PointsOffer, "balance" | "venue_name" | "earned_here">, lang: "en" | "ru" = "ru"): string {
+  const head = offer.venue_name ? `${offer.venue_name}: ${offer.balance} points` : lang === "en" ? `${offer.balance} points` : `${offer.balance} points`;
+  const e = offer.earned_here ?? 0;
+  if (!e) return head;
+  const signed = e > 0 ? `+${e}` : `${e}`;
+  return `${head} · ${lang === "en" ? `This booking ${signed}` : `Is booking par ${signed}`}`;
 }
