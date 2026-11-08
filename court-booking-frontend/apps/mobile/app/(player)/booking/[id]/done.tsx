@@ -416,7 +416,8 @@ export default function BookingStatusScreen() {
               { label: copy("Total", "Total"), value: formatPkr(booking.price) },
               { label: copy("Advance", "Advance"), value: formatPkr(booking.advance_amount) },
               { label: copy("Mila (venue ne darj kiya)", "Received (recorded by the venue)"), value: formatPkr(booking.amount_paid), tone: booking.amount_paid > 0 ? "open" : "default" },
-              { label: copy("Baqi", "Balance"), value: formatPkr(booking.balance_due), strong: true, tone: booking.balance_due > 0 ? "waiting" : "default" },
+              // fix/nov-9: nothing is due on a cancelled booking (the refund line says what comes back)
+              { label: copy("Baqi", "Balance"), value: formatPkr(booking.status === "cancelled" ? 0 : booking.balance_due), strong: true, tone: booking.status !== "cancelled" && booking.balance_due > 0 ? "waiting" : "default" },
             ]}
           />
           )}

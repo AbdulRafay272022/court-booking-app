@@ -67,6 +67,7 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
   // fix/nov-8: one header + QR area per status (booked / completed / no_show / cancelled / still waiting).
   const header = bookingHeader(booking, { canReplyNoShow: extrasQuery.data?.arrival.can_reply_noshow === true, lang: lang === "ru" ? "ru" : "en" });
   const waiting = header.kind === "waiting";
+  const dueAtVenue = booking.status === "cancelled" ? 0 : booking.balance_due;
   const d = detail!;
   const venueName = d.venue.name;
   const court = courtLabel(d.court.name, d.court.sport);
@@ -117,9 +118,10 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
             { label: t("play.done.paid"), value: `PKR ${formatPKR(booking.amount_paid)}`, tone: "open" },
             {
               label: t("play.done.dueAtVenue"),
-              value: booking.balance_due > 0 ? `PKR ${formatPKR(booking.balance_due)}` : t("play.done.nothingDue"),
-              strong: booking.balance_due > 0,
-              tone: booking.balance_due > 0 ? "waiting" : "default",
+              // fix/nov-9: nothing is due at the venue for a cancelled booking (what comes back is the refund line)
+              value: dueAtVenue > 0 ? `PKR ${formatPKR(dueAtVenue)}` : t("play.done.nothingDue"),
+              strong: dueAtVenue > 0,
+              tone: dueAtVenue > 0 ? "waiting" : "default",
             },
           ]}
         />
