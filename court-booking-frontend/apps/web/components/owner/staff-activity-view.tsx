@@ -272,6 +272,9 @@ export function StaffActivityView({
                       <span className="text-owner-ink">{t("odash.p3.playerSaysCame")}{n.player_note ? `: "${n.player_note}"` : ""}</span>
                     ) : null}
                     {n.reply_id && !n.owner_decision && onDecideNoShow ? (
+                      <span className="text-[12.5px] text-owner-ink-muted" data-testid="noshow-decide-help">{t("odash.p3.decideHelp")}</span>
+                    ) : null}
+                    {n.reply_id && !n.owner_decision && onDecideNoShow ? (
                       <span className="flex flex-wrap gap-2">
                         <button type="button" onClick={() => onDecideNoShow(n.reply_id!, "keep", n.booking_id, "")} className="cursor-pointer rounded-full border border-owner-border px-3 py-1 text-[12.5px] font-bold">
                           {t("odash.p3.keepNoShow")}

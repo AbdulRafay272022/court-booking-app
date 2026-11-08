@@ -259,9 +259,13 @@ function NoShowDecision({ replyId, bookingId, subtitle }: { replyId: string; boo
   }
   return (
     <View style={{ gap: space[2], paddingTop: space[1] }}>
+      {/* fix/nov-9 item 9: the founder's wording, with one line on what each choice does */}
+      <Text variant="meta" tone="muted" testID="sact-noshow-help">
+        Player sahi hai: booking mukammal maani jayegi aur aap asal raqam darj karenge. No-show rakho: no-show qayam rahega aur player ko bata diya jayega.
+      </Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-        <Button label="No-show rakhein" size="sm" variant="soft" loading={busy === "keep"} onPress={keep} testID="sact-noshow-keep" />
-        <Button label="No-show hatayein" size="sm" loading={busy === "reverse"} onPress={openReverse} testID="sact-noshow-reverse" />
+        <Button label="Player sahi hai, no-show hatao" size="sm" loading={busy === "reverse"} onPress={openReverse} testID="sact-noshow-reverse" />
+        <Button label="No-show rakho" size="sm" variant="soft" loading={busy === "keep"} onPress={keep} testID="sact-noshow-keep" />
       </View>
       {error ? <Banner tone="danger" body={error} /> : null}
       {reverse ? (
