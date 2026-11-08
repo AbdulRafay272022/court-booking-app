@@ -209,7 +209,9 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
           <Button label={t("play.done.checkin")} block variant="secondary" onClick={() => router.push(`/booking/${id}/checkin`)} />
         ) : null}
 
-        {waiting || header.kind === "cancelled" ? (
+        {/* fix/nov-9: the Hold -> Screenshot -> Venue check -> Pakki journey only while the booking is still on its way; on a
+            cancelled booking it guessed wrong ("Screenshot waqt par nahi aaya" for a booking the venue had approved). */}
+        {waiting ? (
           <div className="flex flex-col gap-4 rounded-fl-card bg-fl-white p-5" data-testid="status-journey">
             <StatusPill booking={booking} />
             <Timeline steps={journeySteps(booking, lang)} />
