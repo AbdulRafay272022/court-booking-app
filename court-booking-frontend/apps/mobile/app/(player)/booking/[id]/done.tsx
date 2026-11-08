@@ -330,9 +330,12 @@ export default function BookingStatusScreen() {
           />
         ) : (
           <>
-            <Card padding={5} radiusSize="cardL" testID="status-timeline">
-              <Timeline steps={steps} />
-            </Card>
+            {/* fix/nov-9: the journey only while the booking is on its way (on a cancelled one it guessed the wrong step) */}
+            {header.kind === "waiting" ? (
+              <Card padding={5} radiusSize="cardL" testID="status-timeline">
+                <Timeline steps={steps} />
+              </Card>
+            ) : null}
             <Card padding={4} radiusSize="cardL" style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
               <DateTile iso={booking.starts_at} variant="orange" />
               <View style={{ flex: 1, gap: 2 }}>
