@@ -2,6 +2,15 @@
 import type { ruHist } from "../ru/hist";
 
 export const enHist: Record<keyof typeof ruHist, string> = {
+  "hist.staff.banner": "{who}'s work: {what}",
+  "hist.staff.someone": "Staff",
+  "hist.staff.act.created": "Bookings made",
+  "hist.staff.act.marked": "Marked complete",
+  "hist.staff.act.no_show": "No-shows",
+  "hist.staff.act.check_in": "Check-ins",
+  "hist.staff.act.short": "Paid short",
+  "hist.staff.act.cash": "Cash taken",
+  "hist.staff.act.transfer": "Transfers taken",
   "hist.title": "Bookings history",
   "hist.backToOverview": "Back to Overview",
   "hist.results": "Bookings list",

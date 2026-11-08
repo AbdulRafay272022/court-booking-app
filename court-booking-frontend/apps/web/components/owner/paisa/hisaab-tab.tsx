@@ -14,6 +14,8 @@ import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useOwnerCourtSports } from "@/lib/court-sports";
+import Link from "next/link";
+import { paisaHref } from "@/lib/paisa-redirect";
 import { PAISA_PERIODS, correctionChange, entryKind, groupByDay, milaSplit, periodRange, type PaisaPeriod } from "@/lib/paisa";
 
 const PERIOD_LABEL: Record<PaisaPeriod, string> = { aaj: "Aaj", hafta: "Is hafta", mahina: "Is mahina" };
@@ -84,7 +86,8 @@ export function HisaabTab() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3" data-testid="paisa-tiles">
-        <Tile label={`Mila · ${PERIOD_LABEL[period]}`} value={ledger ? pkr(split.total) : "—"} testId="tile-mila">
+        {/* fix/nov-9 item 8: each tile opens its list (Mila = the day-by-day list below; the other two their tabs) */}
+        <Tile label={`Mila · ${PERIOD_LABEL[period]}`} value={ledger ? pkr(split.total) : "—"} testId="tile-mila" href="#paisa-list">
           {ledger ? (
             <span className="text-[13px] text-owner-ink-muted" data-testid="tile-mila-split">
               Cash {pkr(split.cash)} · Transfer {pkr(split.transfer)}
@@ -92,10 +95,10 @@ export function HisaabTab() {
             </span>
           ) : null}
         </Tile>
-        <Tile label="Lena baqi" value={ledger ? pkr(ledger.summary.outstanding_balance) : "—"} tone={ledger && ledger.summary.outstanding_balance > 0 ? "warn" : undefined} testId="tile-baqi">
+        <Tile label="Lena baqi" value={ledger ? pkr(ledger.summary.outstanding_balance) : "—"} tone={ledger && ledger.summary.outstanding_balance > 0 ? "warn" : undefined} testId="tile-baqi" href={paisaHref("baqi")}>
           <span className="text-[13px] text-owner-ink-muted">Bookings par jo players ne abhi dena hai</span>
         </Tile>
-        <Tile label="Wapas dena" value={ledger ? pkr(ledger.summary.cancelled_refund_pending) : "—"} tone={ledger && ledger.summary.cancelled_refund_pending > 0 ? "danger" : undefined} testId="tile-wapas">
+        <Tile label="Wapas dena" value={ledger ? pkr(ledger.summary.cancelled_refund_pending) : "—"} tone={ledger && ledger.summary.cancelled_refund_pending > 0 ? "danger" : undefined} testId="tile-wapas" href={paisaHref("wapas")}>
           <span className="text-[13px] text-owner-ink-muted">Cancel hui bookings ke paise jo lautane hain</span>
         </Tile>
       </div>
@@ -118,7 +121,7 @@ export function HisaabTab() {
           {PERIOD_LABEL[period]} koi paisa darj nahi hua.
         </p>
       ) : (
-        <div className="flex flex-col gap-4" data-testid="paisa-days">
+        <div id="paisa-list" className="flex scroll-mt-6 flex-col gap-4" data-testid="paisa-days">
           {days.map((d) => (
             <section key={d.day} aria-label={d.label} className="rounded-xl border border-owner-border bg-owner-surface">
               <header className="flex items-baseline justify-between gap-3 rounded-t-xl border-b border-owner-border-light bg-owner-bg px-4 py-2.5">
@@ -173,14 +176,21 @@ export function HisaabTab() {
   );
 }
 
-function Tile({ label, value, tone, testId, children }: { label: string; value: string; tone?: "warn" | "danger"; testId: string; children?: React.ReactNode }) {
+function Tile({ label, value, tone, testId, href, children }: { label: string; value: string; tone?: "warn" | "danger"; testId: string; href: string; children?: React.ReactNode }) {
   const color = tone === "danger" ? "text-owner-danger" : tone === "warn" ? "text-owner-warn-dark" : "text-owner-ink";
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-owner-border bg-owner-surface px-4 py-3" data-testid={testId}>
-      <span className="text-[12px] font-bold tracking-wide text-owner-ink-faint">{label}</span>
+    <Link
+      href={href}
+      className="flex flex-col gap-1 rounded-xl border border-owner-border bg-owner-surface px-4 py-3 transition-colors hover:border-owner-accent focus-visible:outline-2 focus-visible:outline-owner-accent"
+      data-testid={testId}
+    >
+      <span className="flex items-center justify-between gap-2 text-[12px] font-bold tracking-wide text-owner-ink-faint">
+        {label}
+        <span aria-hidden className="text-owner-ink-faint">›</span>
+      </span>
       <span className={`text-2xl font-bold tabular-nums ${color}`}>{value}</span>
       {children}
-    </div>
+    </Link>
   );
 }
 

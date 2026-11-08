@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { addDays, pktDateString, type StaffActivity } from "@court-booking/types";
+import { addDays, pktDateString, type StaffActivity, type StaffActivityKind } from "@court-booking/types";
+import Link from "next/link";
+import { paisaHref } from "@/lib/paisa-redirect";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
@@ -57,6 +59,14 @@ export function StaffActivityView({
   const from = addDays(to, -(days - 1));
   const query = useQuery({ queryKey: [...queryKey, from, to], queryFn: () => load(from, to) });
   const pkr = (n: number) => `PKR ${formatPKR(n)}`;
+  // fix/nov-9 item 8: on the venue's own page each number opens Bookings history filtered to exactly those bookings
+  // (who did it + what, in the same date range). The admin view stays plain.
+  const linkable = canDecide;
+  const hrefFor = (p: StaffActivity["people"][number], act: StaffActivityKind): string | null => {
+    if (!linkable || !p.user_id) return null;
+    const usp = new URLSearchParams({ from, to, staff: p.user_id, act, who: p.name ?? "" });
+    return `/dashboard/bookings?${usp.toString()}`;
+  };
   // audit fixes 2026-10-31 (b): a balance transfer the bank never got -- the owner chooses who pays
   const [bankBusy, setBankBusy] = useState<string | null>(null);
   const decideBank = canDecide
@@ -146,17 +156,18 @@ export function StaffActivityView({
                       <td className="px-3 py-2 font-semibold text-owner-ink">
                         {p.name ?? "?"} <span className="text-[12px] font-normal text-owner-ink-faint">{p.role === "owner" ? t("odash.sact.owner") : t("odash.sact.staff")}</span>
                       </td>
-                      <td className="px-3 py-2" data-testid="sact-created">{p.bookings_created ?? p.walkins}</td>
-                      <td className="px-3 py-2">{p.bookings_marked}</td>
-                      <td className="px-3 py-2">{p.no_shows}</td>
-                      <td className="px-3 py-2">{p.check_ins}</td>
+                      {/* fix/nov-9 item 8: every number opens the bookings behind it */}
+                      <td className="px-3 py-2" data-testid="sact-created"><Num n={p.bookings_created ?? p.walkins} href={hrefFor(p, "created")}>{p.bookings_created ?? p.walkins}</Num></td>
+                      <td className="px-3 py-2"><Num n={p.bookings_marked} href={hrefFor(p, "marked")}>{p.bookings_marked}</Num></td>
+                      <td className="px-3 py-2" data-testid="sact-noshow"><Num n={p.no_shows} href={hrefFor(p, "no_show")}>{p.no_shows}</Num></td>
+                      <td className="px-3 py-2"><Num n={p.check_ins} href={hrefFor(p, "check_in")}>{p.check_ins}</Num></td>
                       <td className="px-3 py-2">
-                        {p.short_payments}
+                        <Num n={p.short_payments} href={hrefFor(p, "short")}>{p.short_payments}</Num>
                         {p.short_amount_pkr > 0 ? <span className="block text-[12px] text-owner-danger">{pkr(p.short_amount_pkr)}</span> : null}
                       </td>
-                      <td className="px-3 py-2">{pkr(p.cash_pkr)}</td>
-                      <td className="px-3 py-2">{pkr(p.transfers_pkr)}</td>
-                      <td className="px-3 py-2">{pkr(p.refunds_paid_pkr)}</td>
+                      <td className="px-3 py-2"><Num n={p.cash_entries} href={hrefFor(p, "cash")}>{pkr(p.cash_pkr)}</Num></td>
+                      <td className="px-3 py-2"><Num n={p.transfers} href={hrefFor(p, "transfer")}>{pkr(p.transfers_pkr)}</Num></td>
+                      <td className="px-3 py-2"><Num n={p.refunds_paid_pkr} href={linkable ? paisaHref("wapas") : null}>{pkr(p.refunds_paid_pkr)}</Num></td>
                       <td className="px-3 py-2 font-bold">{pkr(p.total_recorded_pkr)}</td>
                       <td className={`px-3 py-2 ${(p.bank_missing_open ?? 0) > 0 ? "font-bold text-red-700" : ""}`}>
                         {p.bank_missing ? pkr(p.bank_missing_pkr ?? 0) : "0"}
@@ -291,6 +302,16 @@ export function StaffActivityView({
 }
 
 /** A column heading with a short explanation: shown on hover (title) and on keyboard focus / tap (the "?" button). */
+/** A count that opens its list (a plain number when there is nothing to open). */
+function Num({ n, href, children }: { n: number; href: string | null; children: React.ReactNode }) {
+  if (!href || !n) return <>{children}</>;
+  return (
+    <Link href={href} className="font-bold text-owner-accent underline underline-offset-2 hover:no-underline" data-testid="sact-link">
+      {children}
+    </Link>
+  );
+}
+
 function ColHead({ label, tip, testId }: { label: string; tip: string; testId: string }) {
   const [open, setOpen] = useState(false);
   return (

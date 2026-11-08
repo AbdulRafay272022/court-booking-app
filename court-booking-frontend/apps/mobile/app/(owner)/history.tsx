@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import type { HistoryStatusFilter } from "@court-booking/types";
+import { STAFF_ACTIVITY_KINDS, type HistoryStatusFilter, type StaffActivityKind } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 
 import { api } from "@/lib/api";
@@ -49,10 +49,13 @@ function detectPreset(from: string, to: string): Preset {
 }
 
 const PAGE_SIZE = 20;
+const STAFF_ACT_LABEL: Record<StaffActivityKind, string> = {
+  created: "Bookings banayi", marked: "Mukammal ki", no_show: "Nahi aaye", check_in: "Check-in kiye", short: "Kam mila", cash: "Cash liya", transfer: "Transfer liye",
+};
 
 /** Bookings history: date range (presets + custom), courts, statuses, search; paginated card list with a totals strip. */
 export default function HistoryScreen() {
-  const params = useLocalSearchParams<{ from?: string; to?: string; courts?: string; status?: string; q?: string; booking?: string; open?: string }>();
+  const params = useLocalSearchParams<{ from?: string; to?: string; courts?: string; status?: string; q?: string; booking?: string; open?: string; staff?: string; act?: string; who?: string }>();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const perms = useMyPermissions();
   const today = pktDateString();
@@ -93,9 +96,13 @@ export default function HistoryScreen() {
   }, [text]);
 
   const allCourts = (activeVenue?.courts ?? []).filter((c) => c.is_active !== false);
+  // fix/nov-9 item 8: opened from a Staff ka kaam number (who + what); "Hatayein" drops it
+  const [staffFilter, setStaffFilter] = useState<{ staff: string; act: StaffActivityKind } | null>(
+    params.staff && params.act && (STAFF_ACTIVITY_KINDS as readonly string[]).includes(params.act) ? { staff: params.staff, act: params.act as StaffActivityKind } : null,
+  );
 
   const query = useInfiniteQuery({
-    queryKey: ["owner-history", activeVenueId, from, to, courtIds.join(","), statuses.join(","), q],
+    queryKey: ["owner-history", activeVenueId, from, to, courtIds.join(","), statuses.join(","), q, staffFilter?.staff, staffFilter?.act],
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       api.owners.bookingsHistory({
@@ -107,6 +114,7 @@ export default function HistoryScreen() {
         q: q || undefined,
         page: pageParam,
         pageSize: PAGE_SIZE,
+        ...(staffFilter ?? {}),
       }),
     getNextPageParam: (last) => (last.page * last.page_size < last.total ? last.page + 1 : undefined),
     enabled: !!activeVenueId && perms.can("view_ledger"),
@@ -193,6 +201,15 @@ export default function HistoryScreen() {
         <PaisaSwitch current="history" tone="light" />
       </View>
 
+      {staffFilter ? (
+        <View testID="history-staff-banner" style={{ marginHorizontal: space[4] }}>
+          <Banner
+            tone="info"
+            body={`${params.who || "Staff"} ka kaam: ${STAFF_ACT_LABEL[staffFilter.act]}`}
+            action={<Button label="Filter hatayen" variant="soft" size="sm" onPress={() => setStaffFilter(null)} accessibilityLabel="Filter hatayen" />}
+          />
+        </View>
+      ) : null}
       {focusOnly && highlight ? (
         <View testID="history-focus-banner" style={{ marginHorizontal: space[4] }}>
           <Banner tone="info" body="Sirf ye booking dikhayi ja rahi hai" action={<Button label="Filter hatayen" variant="soft" size="sm" onPress={clearFocus} accessibilityLabel="Filter hatayen" />} />

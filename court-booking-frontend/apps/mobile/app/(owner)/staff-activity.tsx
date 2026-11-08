@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { View } from "react-native";
+import { router } from "expo-router";
+import { Pressable } from "@/components/ui/Pressable";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, formatWhen, pktDateString, type StaffActivityRow, type StaffBankMissing } from "@court-booking/types";
+import { addDays, formatWhen, pktDateString, type StaffActivityKind, type StaffActivityRow, type StaffBankMissing } from "@court-booking/types";
 import { formatPkr, palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Button, Chip, EmptyState, ErrorState, Screen, SkeletonCard, Text } from "@/components/ui";
 
@@ -49,7 +51,7 @@ export default function StaffActivityScreen() {
       ) : (
         <>
           {data.people.map((p) => (
-            <PersonCard key={p.user_id ?? p.name ?? "?"} p={p} />
+            <PersonCard key={p.user_id ?? p.name ?? "?"} p={p} from={from} to={to} />
           ))}
           <View style={{ backgroundColor: palette.white, borderRadius: radius.card, padding: space[4], gap: space[1] }} testID="sact-totals">
             <Text variant="title">Kul</Text>
@@ -119,15 +121,28 @@ export default function StaffActivityScreen() {
   );
 }
 
-function PersonCard({ p }: { p: StaffActivityRow }) {
-  const line = (label: string, value: string) => (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
-      <Text variant="body" tone="muted">
-        {label}
-      </Text>
-      <Text variant="bodyStrong">{value}</Text>
-    </View>
-  );
+function PersonCard({ p, from, to }: { p: StaffActivityRow; from: string; to: string }) {
+  // fix/nov-9 item 8: a number opens History filtered to exactly those bookings (who + what, same date range)
+  const line = (label: string, value: string, act?: StaffActivityKind, count?: number) => {
+    const open = act && p.user_id && (count ?? 0) > 0
+      ? () => router.push({ pathname: "/(owner)/history", params: { from, to, staff: p.user_id!, act, who: p.name ?? "" } } as never)
+      : undefined;
+    return (
+      <Pressable
+        onPress={open}
+        disabled={!open}
+        accessibilityRole={open ? "link" : "text"}
+        accessibilityLabel={`${label} ${value}`}
+        style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2], minHeight: open ? 32 : undefined, alignItems: "center" }}
+        testID={open ? "sact-link" : undefined}
+      >
+        <Text variant="body" tone="muted">
+          {label}
+        </Text>
+        <Text variant="bodyStrong" style={open ? { color: palette.teal, textDecorationLine: "underline" } : undefined}>{value}</Text>
+      </Pressable>
+    );
+  };
   const red = (p.bank_missing_open ?? 0) > 0;
   return (
     <View
@@ -142,13 +157,13 @@ function PersonCard({ p }: { p: StaffActivityRow }) {
       testID={red ? "sact-person-red" : "sact-person"}
     >
       <Text variant="title">{`${p.name ?? "?"} ${p.role === "owner" ? "(owner)" : "(staff)"}`}</Text>
-      {line("Bookings banayi", String(p.bookings_created ?? p.walkins))}
-      {line("Mukammal ki", String(p.bookings_marked))}
-      {line("Nahi aaye", String(p.no_shows))}
-      {line("Check-in kiye", String(p.check_ins))}
-      {line("Kam mila", p.short_payments > 0 ? `${p.short_payments} (${formatPkr(p.short_amount_pkr)})` : "0")}
-      {line("Cash liya", formatPkr(p.cash_pkr))}
-      {line("Transfer liya", formatPkr(p.transfers_pkr))}
+      {line("Bookings banayi", String(p.bookings_created ?? p.walkins), "created", p.bookings_created ?? p.walkins)}
+      {line("Mukammal ki", String(p.bookings_marked), "marked", p.bookings_marked)}
+      {line("Nahi aaye", String(p.no_shows), "no_show", p.no_shows)}
+      {line("Check-in kiye", String(p.check_ins), "check_in", p.check_ins)}
+      {line("Kam mila", p.short_payments > 0 ? `${p.short_payments} (${formatPkr(p.short_amount_pkr)})` : "0", "short", p.short_payments)}
+      {line("Cash liya", formatPkr(p.cash_pkr), "cash", p.cash_entries)}
+      {line("Transfer liya", formatPkr(p.transfers_pkr), "transfer", p.transfers)}
       {line("Refund diye", formatPkr(p.refunds_paid_pkr))}
       {line("Kul darj", formatPkr(p.total_recorded_pkr))}
       {p.bank_missing ? (

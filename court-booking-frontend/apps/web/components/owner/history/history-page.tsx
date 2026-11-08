@@ -90,7 +90,7 @@ export function HistoryPage() {
   useEffect(() => {
     if (linkedId && linkedStart) router.replace(`${historyHref(linkedId, linkedStart)}&open=1`, { scroll: false });
   }, [linkedId, linkedStart, router]);
-  const filtersKey = [activeVenueId, state.from, state.to, validCourts.join(","), state.status.join(","), state.q, reqPage, reqSize, formatSort(state.sort)];
+  const filtersKey = [activeVenueId, state.from, state.to, validCourts.join(","), state.status.join(","), state.q, reqPage, reqSize, formatSort(state.sort), state.staff, state.act];
   const filterArgs = {
     venueId: activeVenueId,
     dateFrom: state.from,
@@ -99,6 +99,7 @@ export function HistoryPage() {
     statuses: state.status,
     q: state.q,
     sort: formatSort(state.sort),
+    ...(state.staff && state.act ? { staff: state.staff, act: state.act } : {}),
   };
   const query = useQuery({
     queryKey: ["owner-bookings-history", ...filtersKey],
@@ -246,6 +247,20 @@ export function HistoryPage() {
         {noShow.message?.text}
       </p>
 
+      {state.staff && state.act ? (
+        // fix/nov-9 item 8: opened from a Staff ka kaam number
+        <div data-testid="staff-banner" role="status" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-owner-accent-soft-border bg-owner-accent-soft px-4 py-2.5 text-[14px] font-semibold text-owner-ink">
+          <span>{t("hist.staff.banner", { who: state.who || t("hist.staff.someone"), what: t(`hist.staff.act.${state.act}`) })}</span>
+          <button
+            type="button"
+            onClick={() => update({ staff: null, act: null, who: "" })}
+            className="inline-flex min-h-11 items-center font-bold text-owner-accent underline underline-offset-2"
+            data-testid="staff-clear"
+          >
+            {t("hist.focus.clear")}
+          </button>
+        </div>
+      ) : null}
       {focusId && !loading ? (
         <div data-testid="focus-banner" role="status" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-owner-accent-soft-border bg-owner-accent-soft px-4 py-2.5 text-[14px] font-semibold text-owner-ink">
           <span className="inline-flex items-center gap-2">

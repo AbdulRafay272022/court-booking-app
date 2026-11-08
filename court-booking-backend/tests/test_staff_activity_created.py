@@ -43,3 +43,34 @@ async def test_a_walkin_without_an_audit_row_counts_under_the_owner(
     owner_row = next(p for p in out["people"] if p["role"] == "owner")
     assert owner_row["bookings_created"] == 1
     assert out["totals"]["bookings_created"] == 1
+
+
+async def test_nov9_each_staff_number_opens_exactly_the_bookings_behind_it(
+    client, db_session_factory, make_user, make_venue, make_court, make_schedule, make_pricing_rule, make_auth_headers
+):
+    """fix/nov-9 item 8: Bookings history with ?staff=<user>&act=<kind> lists the bookings a Staff ka kaam number counts."""
+    owner, venue, court = await _venue_with_court(make_user, make_venue, make_court, make_schedule, make_pricing_rule)
+    staff = await make_staff(db_session_factory, make_user, venue, "+923001230011", ["walkin", "record_payments"], name="Bilal")
+    oh, sh = await make_auth_headers(owner), await make_auth_headers(staff)
+    mine = [await _booked_walkin(client, oh, court, "+923001230012", paid=0, hour=h) for h in (8, 10)]
+    bilal = await _booked_walkin(client, sh, court, "+923001230013", paid=500, hour=14)
+
+    out = (await client.get(f"/api/v1/owners/staff-activity?venue_id={venue.id}", headers=oh)).json()
+    rng = {"date_from": out["date_from"], "date_to": out["date_to"], "venue_id": str(venue.id)}
+
+    async def ids(user_id, act, headers=oh):
+        r = await client.get("/api/v1/owners/bookings-history", params={**rng, "staff": str(user_id), "act": act, "page_size": 100}, headers=headers)
+        return r, {i["booking_id"] for i in r.json().get("items", [])} if r.status_code == 200 else set()
+
+    _, got = await ids(owner.id, "created")
+    assert got == {m["id"] if isinstance(m, dict) else str(m) for m in mine}
+    _, got = await ids(staff.id, "created")
+    assert got == {bilal["id"] if isinstance(bilal, dict) else str(bilal)}
+    people = {p["user_id"]: p for p in out["people"]}
+    _, cash = await ids(staff.id, "cash")
+    assert len(cash) == people[str(staff.id)]["cash_entries"]
+    # staff can't look at a colleague's numbers through History either
+    r, _ = await ids(owner.id, "created", headers=sh)
+    assert r.status_code == 403
+    r, _ = await ids(owner.id, "bogus")
+    assert r.status_code == 400

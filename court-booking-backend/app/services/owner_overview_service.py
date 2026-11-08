@@ -248,6 +248,10 @@ class HistoryFilter:
     sort: str = "starts_at:desc"
     # Owner Round 2 (A2 focus mode): only this booking's rows (main + cancelled/refund), date range ignored.
     booking_id: uuid.UUID | None = None
+    # fix/nov-9 item 8: the bookings behind one number on Staff ka kaam (who did it + what); the date range is the range of
+    # the ACTIVITY (when it was done), not of the bookings' start times. Owner/admin only.
+    staff_id: uuid.UUID | None = None
+    staff_act: str | None = None
 
 
 class OwnerOverviewService:
@@ -690,6 +694,11 @@ class OwnerOverviewService:
             return None
         if f.booking_id is not None:
             where = [Booking.court_id.in_([c.id for c in courts]), Booking.id == f.booking_id]
+        elif f.staff_id is not None and f.staff_act:
+            from app.services.staff_activity_service import staff_booking_ids
+
+            ids = await staff_booking_ids(self.db, venue, f.date_from, f.date_to, f.staff_id, f.staff_act)
+            where = [Booking.court_id.in_([c.id for c in courts]), Booking.id.in_(list(ids) or [uuid.uuid4()])]
         elif f.date_to < f.date_from:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "date_to must be >= date_from")
         elif search_spans_all_dates(f.q):
@@ -719,6 +728,9 @@ class OwnerOverviewService:
         page_size = min(max(page_size, 1), MAX_PAGE_SIZE)
         now = datetime.now(timezone.utc)
         venue = await self.resolve_venue(actor, venue_id, "view_ledger")
+        if f.staff_id is not None and actor.role not in (UserRole.OWNER, UserRole.ADMIN):
+            # staff never see each other's numbers (same rule as the Staff ka kaam page)
+            raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_STAFF_PERMITTED, "Your account isn't allowed to do this.")
         built = await self._history_subquery(venue, f)
         empty_totals = HistoryTotalsOut(count=0, total=0, collected=0, due=0)
         if built is None:

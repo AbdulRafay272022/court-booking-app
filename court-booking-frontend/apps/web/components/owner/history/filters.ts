@@ -1,4 +1,5 @@
 /** Pure helpers for the Bookings history page: date presets and the URL <-> filter mapping (docs/owner-overview-contract.md, "URL query names"). */
+import { STAFF_ACTIVITY_KINDS, type StaffActivityKind } from "@court-booking/types";
 import { addDays, daysOfMonth, mondayFirstWeekdayOf, monthOf, pktDateString } from "@court-booking/types";
 import type { HistoryStatusFilter } from "@court-booking/types";
 
@@ -114,6 +115,10 @@ export interface HistoryState {
   size: number;
   sort: SortState | null;
   booking: string | null;
+  /** fix/nov-9 item 8: opened from a Staff ka kaam number (?staff=<user>&act=<kind>&who=<name>). */
+  staff: string | null;
+  act: StaffActivityKind | null;
+  who: string;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -132,6 +137,9 @@ export function parseHistoryQuery(get: (key: string) => string | null, today: st
   const pageNum = Math.floor(Number(get("page")));
   const sizeNum = Number(get("size"));
   const booking = get("booking");
+  const staffId = get("staff");
+  const rawAct = get("act");
+  const act = (STAFF_ACTIVITY_KINDS as readonly string[]).includes(rawAct ?? "") ? (rawAct as StaffActivityKind) : null;
   return {
     from,
     to,
@@ -142,6 +150,9 @@ export function parseHistoryQuery(get: (key: string) => string | null, today: st
     size: (PAGE_SIZES as readonly number[]).includes(sizeNum) ? sizeNum : DEFAULT_PAGE_SIZE,
     sort: parseSort(get("sort")),
     booking: booking && UUID_RE.test(booking) ? booking : null,
+    staff: staffId && UUID_RE.test(staffId) && act ? staffId : null,
+    act: staffId && UUID_RE.test(staffId) && act ? act : null,
+    who: (get("who") ?? "").slice(0, 60),
   };
 }
 
@@ -157,6 +168,11 @@ export function buildHistoryQuery(state: HistoryState, today: string): string {
   if (state.q.trim()) usp.set("q", state.q.trim());
   if (state.page > 1) usp.set("page", String(state.page));
   if (state.size !== DEFAULT_PAGE_SIZE) usp.set("size", String(state.size));
+  if (state.staff && state.act) {
+    usp.set("staff", state.staff);
+    usp.set("act", state.act);
+    if (state.who) usp.set("who", state.who);
+  }
   const sort = formatSort(state.sort);
   if (sort) usp.set("sort", sort);
   if (state.booking) usp.set("booking", state.booking);

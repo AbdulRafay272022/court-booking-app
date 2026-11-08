@@ -285,6 +285,8 @@ def _history_filter(
     q: str | None,
     sort: str,
     booking_id: uuid.UUID | None = None,
+    staff: uuid.UUID | None = None,
+    act: str | None = None,
 ) -> HistoryFilter:
     today = pkt_today()
     return HistoryFilter(
@@ -295,6 +297,8 @@ def _history_filter(
         q=q,
         sort=sort,
         booking_id=booking_id,
+        staff_id=staff,
+        staff_act=act,
     )
 
 
@@ -313,9 +317,12 @@ async def owner_bookings_history(
     page_size: int = Query(25, ge=1, le=100),
     sort: str = "starts_at:desc",
     booking_id: uuid.UUID | None = None,
+    staff: uuid.UUID | None = None,
+    act: str | None = Query(None, max_length=20),
 ) -> OwnerBookingsPageOut:
-    """`booking_id` (Owner Round 2, A2): only that booking's rows, the date range ignored; same permissions."""
-    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort, booking_id)
+    """`booking_id` (Owner Round 2, A2): only that booking's rows, the date range ignored; same permissions.
+    `staff` + `act` (fix/nov-9): the bookings behind one number on Staff ka kaam, the range being when it was done."""
+    f = _history_filter(date_from, date_to, court_ids, statuses, q, sort, booking_id, staff, act)
     return await OwnerOverviewService(db, settings).history(owner, venue_id, f, page, page_size)
 
 

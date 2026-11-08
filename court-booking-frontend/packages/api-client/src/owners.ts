@@ -55,6 +55,8 @@ function historyQuery(f: HistoryFilters): string {
   set("page", f.page);
   set("page_size", f.pageSize);
   set("sort", f.sort);
+  set("staff", f.staff);
+  set("act", f.act);
   const text = usp.toString();
   return text ? `?${text}` : "";
 }

@@ -46,7 +46,16 @@ test("normaliseRange fixes bad input", () => {
 
 test("URL -> state defaults", () => {
   const s = parseHistoryQuery(getter(""), TODAY);
-  assert.deepEqual(s, { from: TODAY, to: TODAY, courts: [], status: [], q: "", page: 1, size: 25, sort: null, booking: null });
+  assert.deepEqual(s, { from: TODAY, to: TODAY, courts: [], status: [], q: "", page: 1, size: 25, sort: null, booking: null, staff: null, act: null, who: "" });
+});
+
+test("fix/nov-9: a Staff ka kaam link keeps who + what through filter changes; junk is ignored", () => {
+  const s = parseHistoryQuery(getter(`from=2026-10-01&to=2026-10-31&staff=${ID}&act=no_show&who=Bilal`), TODAY);
+  assert.deepEqual([s.staff, s.act, s.who], [ID, "no_show", "Bilal"]);
+  const back = new URLSearchParams(buildHistoryQuery({ ...s, page: 2 }, TODAY));
+  assert.deepEqual([back.get("staff"), back.get("act"), back.get("who")], [ID, "no_show", "Bilal"]);
+  assert.equal(parseHistoryQuery(getter(`staff=${ID}&act=bogus`), TODAY).staff, null);
+  assert.equal(parseHistoryQuery(getter(`staff=nope&act=cash`), TODAY).act, null);
 });
 
 test("URL -> state and back", () => {

@@ -121,7 +121,14 @@ export interface HistoryFilters {
   page?: number;
   pageSize?: number;
   sort?: string;
+  /** fix/nov-9 item 8: the bookings behind one Staff ka kaam number (who + what; the range = when it was done). */
+  staff?: string;
+  act?: StaffActivityKind;
 }
+
+/** fix/nov-9 item 8: the Staff ka kaam numbers that open a list. */
+export const STAFF_ACTIVITY_KINDS = ["created", "marked", "no_show", "check_in", "short", "cash", "transfer"] as const;
+export type StaffActivityKind = (typeof STAFF_ACTIVITY_KINDS)[number];
 
 export interface OwnerBookingsPage {
   items: OwnerBookingRow[];

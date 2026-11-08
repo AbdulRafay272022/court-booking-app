@@ -1,5 +1,14 @@
 // Roman Urdu copy (source of truth). Keys start with 'hist.'.
 export const ruHist = {
+  "hist.staff.banner": "{who} ka kaam: {what}",
+  "hist.staff.someone": "Staff",
+  "hist.staff.act.created": "Bookings banayi",
+  "hist.staff.act.marked": "Mukammal ki",
+  "hist.staff.act.no_show": "Nahi aaye",
+  "hist.staff.act.check_in": "Check-in kiye",
+  "hist.staff.act.short": "Kam mila",
+  "hist.staff.act.cash": "Cash liya",
+  "hist.staff.act.transfer": "Transfer liye",
   "hist.title": "Bookings ki history",
   "hist.backToOverview": "Overview par wapas",
   "hist.results": "Bookings ki list",

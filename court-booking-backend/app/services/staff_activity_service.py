@@ -92,10 +92,37 @@ def _empty_row(user: User | None, uid: uuid.UUID | None) -> dict:
     }
 
 
+# fix/nov-9 item 8: every count on the Staff ka kaam page opens the bookings behind it (Bookings history with
+# ?staff=<user>&act=<kind>). The kinds, in the order of the columns:
+ACTIVITY_KINDS = ("created", "marked", "no_show", "check_in", "short", "cash", "transfer")
+
+
 async def staff_activity(
     db: AsyncSession, actor: User, venue_id: uuid.UUID | None, date_from: date | None, date_to: date | None
 ) -> dict:
     venue = await _venue_for(db, actor, venue_id)
+    return await _activity(db, venue, date_from, date_to)
+
+
+async def staff_booking_ids(
+    db: AsyncSession, venue: Venue, date_from: date | None, date_to: date | None, staff_id: uuid.UUID, kind: str
+) -> set[uuid.UUID]:
+    """The bookings behind one number on the Staff ka kaam page (same counting rules, same date range)."""
+    if kind not in ACTIVITY_KINDS:
+        raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, f"Unknown activity: {kind}")
+    collect: dict[tuple[uuid.UUID, str], set[uuid.UUID]] = {}
+    await _activity(db, venue, date_from, date_to, collect=collect)
+    return collect.get((staff_id, kind), set())
+
+
+async def _activity(
+    db: AsyncSession, venue: Venue, date_from: date | None, date_to: date | None,
+    collect: dict[tuple[uuid.UUID, str], set[uuid.UUID]] | None = None,
+) -> dict:
+    def note(uid: uuid.UUID, kind: str, booking_id: uuid.UUID | None) -> None:
+        if collect is not None and booking_id is not None:
+            collect.setdefault((uid, kind), set()).add(booking_id)
+
     start, end, t0, t1 = _range(date_from, date_to)
     venue_bookings = select(Booking.id).join(Court, Court.id == Booking.court_id).where(Court.venue_id == venue.id)
 
@@ -173,8 +200,10 @@ async def staff_activity(
         r = row(a.actor_id)
         if a.action == "booking.completion_marked":
             r["bookings_marked"] += 1
+            note(a.actor_id, "marked", a.entity_id)
             value = a.new_value or {}
             if value.get("result") == "no":
+                note(a.actor_id, "short", a.entity_id)
                 booking = prices.get(a.entity_id)
                 received = int(value.get("received_pkr") or 0)
                 short = max(int(round(float(booking.price))) - received, 0) if booking is not None else 0
@@ -182,13 +211,16 @@ async def staff_activity(
                 r["short_amount_pkr"] += short
         elif a.action == "booking.no_show":
             r["no_shows"] += 1
+            note(a.actor_id, "no_show", a.entity_id)
             booking = prices.get(a.entity_id)
             no_shows.append({"booking_id": a.entity_id, "marked_at": a.created_at, "marked_by": a.actor_id, "booking": booking})
         elif a.action == "booking.checked_in":
             r["check_ins"] += 1
+            note(a.actor_id, "check_in", a.entity_id)
         elif a.action == "booking.walkin":
             r["walkins"] += 1
             r["bookings_created"] += 1
+            note(a.actor_id, "created", a.entity_id)
         elif a.action == "refund.marked_paid":
             r["refunds_paid_pkr"] += int(round(float((a.new_value or {}).get("this_payment") or 0)))
 
@@ -210,6 +242,8 @@ async def staff_activity(
         if owner_user is not None:
             users[owner_user.id] = owner_user
             row(owner_user.id)["bookings_created"] += len(missing)
+            for b in missing:
+                note(owner_user.id, "created", b)
 
     for e in entries:
         if not counted(e.recorded_by):
@@ -218,9 +252,11 @@ async def staff_activity(
         if e.method == PaymentMethod.CASH_AT_VENUE and e.amount_pkr > 0:
             r["cash_entries"] += 1
             r["cash_pkr"] += e.amount_pkr
+            note(e.recorded_by, "cash", e.booking_id)
         elif e.method == PaymentMethod.BANK_TRANSFER_PROOF and e.amount_pkr > 0:
             r["transfers"] += 1
             r["transfers_pkr"] += e.amount_pkr
+            note(e.recorded_by, "transfer", e.booking_id)
     for m in bank_missing:
         if not counted(m["approved_by_id"]):
             continue
