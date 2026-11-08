@@ -106,7 +106,7 @@ def classify_court_day(
     """Pure: partition one court's grid for the schedule day opening on `target_date` into the four states."""
     # confirmed bookings first, so a (rare) overlapping stale pending one never hides a confirmed one in the grid
     ordered = sorted(bookings, key=lambda b: 0 if b.status in CONFIRMED_STATUSES else 1)
-    slots = AvailabilityService.build_day_slots(court, target_date, template, [], blackouts, ordered)
+    slots = AvailabilityService.build_day_slots(court, target_date, template, [], blackouts, ordered, hide_unpriced=False)  # counts only, no prices loaded
     count = CourtSlotCount(court_id=court.id, court_name=court.name)
     for s in slots:
         count.total += 1

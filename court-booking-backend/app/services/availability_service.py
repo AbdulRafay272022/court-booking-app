@@ -194,6 +194,8 @@ class AvailabilityService:
         blackouts: list[Blackout],
         bookings: list[Booking],
         viewer_id: uuid.UUID | None = None,
+        *,
+        hide_unpriced: bool = True,
     ) -> list[SlotOut]:
         """The slots of the schedule day that OPENS on `target_date`, from data that is ALREADY LOADED (no queries), so the day
         view and the month summary run the identical grid code. Includes any slots after midnight on an overnight court
@@ -271,7 +273,7 @@ class AvailabilityService:
                         after_midnight=after_midnight,
                     )
                 )
-            elif price <= 0:
+            elif hide_unpriced and price <= 0:
                 # fix/nov-9 (item 4): an open hour that no price rule covers can't be booked (quote_range refuses it with
                 # INVALID_SLOT_TIME "No pricing rule covers this slot"), so it must not be listed as open. Production:
                 # Court Site Padel 2 opened 6 AM on Sunday while its rates start at 10 AM; 6:30 AM showed "Open" and the
