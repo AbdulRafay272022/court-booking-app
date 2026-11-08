@@ -182,9 +182,12 @@ class PlayerTimelineEventOut(BaseModel):
 
 
 class PlayerRefundOut(BaseModel):
-    amount: float
+    amount: float  # the whole refund the venue owes
     status: str  # "owed" | "paid"
     paid_at: datetime | None = None
+    # fix/nov-9: a refund can be sent in parts; "Refund owed 2,000" after 1,000 was sent was wrong
+    sent: float = 0.0
+    remaining: float = 0.0
 
 
 class PlayerBookingDetailOut(BaseModel):

@@ -45,6 +45,8 @@ export const ruDetail = {
   "detail.cancel.by.owner": "Owner ne",
   "detail.cancel.by.system": "System ne",
   "detail.refund.amount": "Refund ki raqam",
+  "detail.refund.sent": "Bheja gaya",
+  "detail.refund.remaining": "Abhi baqi",
   "detail.refund.status": "Refund ki halat",
   "detail.refund.paid": "Bhej diya gaya",
   "detail.refund.owed": "Bhejna baqi hai",

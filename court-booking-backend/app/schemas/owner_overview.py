@@ -46,6 +46,9 @@ class OwnerBookingRowOut(BaseModel):
     original_booking_id: uuid.UUID | None
     refund_amount: float | None
     refund_status: Literal["owed", "paid"] | None
+    # fix/nov-9: partial refunds (sent so far / still owed); None when the row is not a refund
+    refund_sent: float | None = None
+    refund_remaining: float | None = None
     # Round 2 Stage 2 (no-show fix): booked, slot ended, owner has not marked it yet (Haan/Nahi or "Nahi aaye").
     status_pending: bool = False
 
@@ -162,10 +165,13 @@ class DetailCancellationOut(BaseModel):
 
 
 class DetailRefundOut(BaseModel):
-    amount: float
+    amount: float  # the whole refund owed
     status: Literal["owed", "paid"]
     paid_at: datetime | None
     reference: str | None
+    # fix/nov-9: partial refunds -- how much has gone back so far and what is still owed
+    sent: float = 0.0
+    remaining: float = 0.0
 
 
 class OwnerBookingDetailOut(BaseModel):

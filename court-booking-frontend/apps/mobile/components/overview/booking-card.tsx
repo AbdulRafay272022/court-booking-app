@@ -1,3 +1,4 @@
+import { refundSummary } from "@court-booking/types";
 import { useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -97,7 +98,7 @@ export function BookingCard({
   const isBooked = row.kind === "booked" && ["booked", "no_show"].includes(row.status_key);
   const refundLine =
     row.kind === "refund" && row.refund_amount != null
-      ? `${row.refund_status === "paid" ? "Refund bheja gaya" : "Refund bhejna hai"} · PKR ${formatPKR(row.refund_amount)}`
+      ? refundSummary({ amount: row.refund_amount, status: row.refund_status === "paid" ? "paid" : "owed", sent: row.refund_sent, remaining: row.refund_remaining }, "ru").text
       : null;
 
   const yes = useMutation({

@@ -9,7 +9,7 @@ import { useRequireAuth } from "@/lib/use-require-auth";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { isConfirmed, journeySteps } from "@court-booking/ui-tokens";
-import { bookingHeader, paymentLineLabel, timelineLabel, whatsappLink } from "@court-booking/types";
+import { bookingHeader, paymentLineLabel, refundSummary, timelineLabel, whatsappLink } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
@@ -151,8 +151,8 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
             </ul>
           )}
           {d.refund ? (
-            <p className={`text-[14px] font-bold ${d.refund.status === "owed" ? "text-fl-waiting" : "text-fl-open"}`} data-testid="detail-refund">
-              {t(d.refund.status === "owed" ? "play.done.refundOwed" : "play.done.refundPaid", { amount: `PKR ${formatPKR(d.refund.amount)}` })}
+            <p className={`text-[14px] font-bold ${refundSummary(d.refund, lang === "ru" ? "ru" : "en").tone === "done" ? "text-fl-open" : "text-fl-waiting"}`} data-testid="detail-refund">
+              {refundSummary(d.refund, lang === "ru" ? "ru" : "en").text}
             </p>
           ) : null}
         </section>

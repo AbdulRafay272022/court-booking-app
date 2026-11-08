@@ -65,6 +65,9 @@ export interface OwnerBookingRow {
   /** Refund rows (and cancelled rows that have one). */
   refund_amount: number | null;
   refund_status: "owed" | "paid" | null;
+  /** fix/nov-9: partial refunds -- sent so far / still owed (refund rows only). */
+  refund_sent?: number | null;
+  refund_remaining?: number | null;
   /** Stage 2: booked, slot ended, not completed and not no_show yet (owner must mark). */
   status_pending?: boolean;
 }
@@ -150,7 +153,7 @@ export interface OwnerBookingDetail {
   ocr_amount: number | null;
   approval: { verdict: "approved" | "rejected" | null; by_name: string | null; at: string | null; reason: string | null; auto: boolean } | null;
   cancellation: { by: "player" | "owner" | "system"; at: string | null; reason: string | null } | null;
-  refund: { amount: number; status: "owed" | "paid"; paid_at: string | null; reference: string | null } | null;
+  refund: { amount: number; status: "owed" | "paid"; paid_at: string | null; reference: string | null; sent?: number; remaining?: number } | null;
   completion: BookingCompletion | null;
   timeline: BookingTimelineEvent[];
   /** Owner Round 2 (A4): for a walk-in, who added it ("owner" | "staff"); null/absent otherwise or when unknown. */

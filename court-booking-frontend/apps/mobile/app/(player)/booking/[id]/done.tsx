@@ -5,7 +5,7 @@ import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CalendarPlus, Check, Clock3, MessageCircle, Navigation, Phone, QrCode, ScanLine, Share2, X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { bookingHeader, formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink, type BookingStatus } from "@court-booking/types";
+import { bookingHeader, refundSummary, formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink, type BookingStatus } from "@court-booking/types";
 import { formatPkr, isConfirmed, journeySteps, palette, radius, space } from "@court-booking/ui-tokens";
 
 import {
@@ -456,8 +456,8 @@ export default function BookingStatusScreen() {
               ))
             )}
             {detail.refund ? (
-              <Text variant="bodyStrong" tone={detail.refund.status === "owed" ? "waiting" : "open"} testID="status-refund">
-                {detail.refund.status === "owed" ? copy(`Refund baqi: ${formatPkr(detail.refund.amount)}`, `Refund owed: ${formatPkr(detail.refund.amount)}`) : copy(`Refund bhej diya gaya: ${formatPkr(detail.refund.amount)}`, `Refund sent: ${formatPkr(detail.refund.amount)}`)}
+              <Text variant="bodyStrong" tone={refundSummary(detail.refund, lang).tone === "done" ? "open" : "waiting"} testID="status-refund">
+                {refundSummary(detail.refund, lang).text}
               </Text>
             ) : null}
           </Card>

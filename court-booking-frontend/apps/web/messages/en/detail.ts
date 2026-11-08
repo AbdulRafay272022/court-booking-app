@@ -47,6 +47,8 @@ export const enDetail: Record<keyof typeof ruDetail, string> = {
   "detail.cancel.by.owner": "The owner",
   "detail.cancel.by.system": "The system",
   "detail.refund.amount": "Refund amount",
+  "detail.refund.sent": "Sent so far",
+  "detail.refund.remaining": "Still owed",
   "detail.refund.status": "Refund status",
   "detail.refund.paid": "Sent",
   "detail.refund.owed": "Still to be sent",

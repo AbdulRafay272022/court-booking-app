@@ -21,7 +21,8 @@ export interface PlayerBookingDetail {
   duration_minutes: number;
   payments: { at: string; amount: number; method: "bank_transfer_proof" | "cash_at_venue" | "other"; is_reversal: boolean }[];
   timeline: { at: string; kind: string; amount: number | null; note: string | null }[];
-  refund: { amount: number; status: "owed" | "paid"; paid_at: string | null } | null;
+  /** fix/nov-9: `sent` (so far) and `remaining` (still owed) -- a refund can be sent in parts. */
+  refund: { amount: number; status: "owed" | "paid"; paid_at: string | null; sent?: number; remaining?: number } | null;
   /** audit 2026-10-28 Phase 2 item 3: is "Refund maangein" offered (state "eligible") and for how much. */
   refund_request?: {
     state: "eligible" | "not_cancelled" | "policy_no_refund" | "window_closed" | "already_owed" | "nothing_paid";

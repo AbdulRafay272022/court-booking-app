@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { CompletionResult, OwnerBookingRow } from "@court-booking/types";
+import { refundSummary, type CompletionResult, type OwnerBookingRow } from "@court-booking/types";
 
 import { formatPKR } from "@/lib/format";
 import { useFmt } from "@/lib/use-fmt";
-import { useT } from "@/components/i18n/lang-provider";
+import { useLang, useT } from "@/components/i18n/lang-provider";
 import { CompletionChips } from "./completion-chips";
 import { NoShowButton, StatusChip, StatusPendingChip, isConfirmedBooked, isStatusPending } from "./status-chip";
 
@@ -185,6 +185,7 @@ function SortArrow({ dir }: { dir: "asc" | "desc" | null }) {
 export function BookingRowsTable(props: BookingRowsTableProps) {
   const { rows, onOpen, onPickCompletion, busyId, highlightId, isNew, sort, onSort, showDate, compactEarly, caption, tableMinWidth = 900, onNoShow } = props;
   const t = useT();
+  const lang = useLang();
   const fmt = useFmt();
   const [wrapRef, wide] = useWide(tableMinWidth);
   const [flashKey, setFlashKey] = useState<string | null>(null);
@@ -232,7 +233,11 @@ export function BookingRowsTable(props: BookingRowsTableProps) {
     return {
       isRefund,
       title: isRefund ? t("hist.row.refundTitle", { name }) : name,
-      sub: isRefund ? (row.status_key === "refunded" ? t("hist.row.refunded") : t("hist.row.refundOwed")) : when,
+      sub: isRefund
+        ? row.status_key !== "refunded" && (row.refund_sent ?? 0) > 0 && row.refund_amount != null
+          ? refundSummary({ amount: row.refund_amount, status: "owed", sent: row.refund_sent, remaining: row.refund_remaining }, lang).text
+          : row.status_key === "refunded" ? t("hist.row.refunded") : t("hist.row.refundOwed")
+        : when,
       showMoney: !isRefund,
       due: row.kind === "booked" || row.status_key === "held" || row.status_key === "awaiting_approval" ? row.due : null,
       paid: isRefund ? (row.refund_amount ?? row.total_paid) : row.total_paid,

@@ -290,13 +290,24 @@ async def test_mark_refund_paid_partial_amount_allowed(
     # Money-correctness: a partial refund does NOT close the dispute -- 250 is still owed.
     assert resp.json()["refund_status"] == "owed"
     assert resp.json()["remaining_amount"] == 250.0
+    # fix/nov-9 item 1: player and owner both see what was sent and what is still owed, not "owed 400"
+    mine = (await client.get(f"/api/v1/bookings/{booking['id']}/detail", headers=customer_headers)).json()["refund"]
+    assert (mine["amount"], mine["sent"], mine["remaining"], mine["status"]) == (400.0, 150.0, 250.0, "owed")
+    theirs = (await client.get(f"/api/v1/owners/bookings/{booking['id']}/overview-detail", headers=owner_headers)).json()["refund"]
+    assert (theirs["amount"], theirs["sent"], theirs["remaining"]) == (400.0, 150.0, 250.0)
+    rest = await client.post(
+        f"/api/v1/owners/refunds/{row['id']}/mark-refunded", headers=owner_headers, data={"reference": "rest", "amount": "250"},
+    )
+    assert rest.status_code == 200, rest.text
+    mine = (await client.get(f"/api/v1/bookings/{booking['id']}/detail", headers=customer_headers)).json()["refund"]
+    assert (mine["sent"], mine["remaining"], mine["status"]) == (400.0, 0.0, "paid")
     async with db_session_factory() as session:
         from sqlalchemy import select
 
         dispute = (
             await session.execute(select(PaymentDispute).where(PaymentDispute.booking_id == booking["id"]))
         ).scalar_one()
-        assert dispute.resolved is False
+        assert dispute.resolved is True  # the second transfer paid the rest
 
 
 async def test_double_click_on_refunded_is_idempotent(

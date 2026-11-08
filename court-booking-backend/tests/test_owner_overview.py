@@ -286,7 +286,7 @@ async def test_detail_shape_timeline_and_privacy(seed, make_auth_headers, client
     det = r.json()
     assert det["row"]["booking_id"] == str(s["b4"].id) and det["row"]["status_key"] == "cancelled"
     assert det["cancellation"]["by"] == "player" and det["cancellation"]["reason"] == "changed plans"
-    assert det["refund"] == {"amount": 2000.0, "status": "owed", "paid_at": None, "reference": None}
+    assert det["refund"] == {"amount": 2000.0, "status": "owed", "paid_at": None, "reference": None, "sent": 0.0, "remaining": 2000.0}
     assert det["advance_required"] == 2000.0 and det["completion"] is None
     kinds = [e["kind"] for e in det["timeline"]]
     assert "refund_owed" in kinds and "cancelled" in kinds and kinds[0] in ("created", "held")

@@ -92,6 +92,7 @@ from app.schemas.owner_overview import (
     OwnerOverviewOut,
     SlotCourtCountsOut,
 )
+from app.services.refund_parts import refund_parts
 from app.services.booking_service import BookingService
 from app.services.payment_service import AWAITING_STATES, BALANCE_PROOF_STATUSES
 from app.services.overview_slots import (
@@ -385,6 +386,7 @@ class OwnerOverviewService:
                 Booking.checked_in_at.label("checked_in_at"),
                 disp.c.refund_amount.label("refund_amount"),
                 disp.c.refund_status.label("refund_status"),
+                disp.c.refunded_amount.label("refunded_amount"),
                 self._completion_result_expr().label("completion_result"),
             )
             .select_from(Booking)
@@ -479,7 +481,19 @@ class OwnerOverviewService:
             original_booking_id=m.booking_id if m.kind in ("cancelled", "refund") else None,
             refund_amount=refund_amount,
             refund_status=refund_status,
+            **OwnerOverviewService._row_refund_parts(m, refund_amount),
         )
+
+    @staticmethod
+    def _row_refund_parts(m, refund_amount: float | None) -> dict:
+        """fix/nov-9: the refund row's sent-so-far and still-owed amounts (a refund can be sent in parts)."""
+        if refund_amount is None:
+            return {}
+        sent = float(getattr(m, "refunded_amount", None) or 0)
+        if m.refund_status != "owed":
+            sent = max(sent, refund_amount)
+        sent = round(min(sent, refund_amount), 2)
+        return {"refund_sent": sent, "refund_remaining": round(max(refund_amount - sent, 0.0), 2)}
 
     async def _build_rows(self, records, now: datetime, show_phone: bool = True) -> list[OwnerBookingRowOut]:
         completions = await self._completions(list({r.booking_id for r in records if r.status in CONFIRMED_VALUES}))
@@ -833,6 +847,7 @@ class OwnerOverviewService:
                 status="owed" if dispute.refund_status == "owed" else "paid",
                 paid_at=dispute.refunded_at,
                 reference=dispute.refund_reference,
+                **refund_parts(dispute),
             )
 
         completion_logs = [a for a in audit_rows if a.action == COMPLETION_ACTION]

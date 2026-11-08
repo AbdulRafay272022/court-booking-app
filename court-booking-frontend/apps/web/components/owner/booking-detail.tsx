@@ -1,5 +1,7 @@
 "use client";
 
+import { refundParts } from "@court-booking/types";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -379,6 +381,13 @@ function DetailContent({
             <dl className="mt-2">
               <Row label={t("detail.refund.amount")}>{pkr(detail.refund.amount)}</Row>
               <Row label={t("detail.refund.status")}>{detail.refund.status === "paid" ? t("detail.refund.paid") : t("detail.refund.owed")}</Row>
+              {/* fix/nov-9: a refund sent in parts shows what went back and what is still owed */}
+              {refundParts(detail.refund).sent > 0 && refundParts(detail.refund).remaining > 0 ? (
+                <>
+                  <Row label={t("detail.refund.sent")}>{pkr(refundParts(detail.refund).sent)}</Row>
+                  <Row label={t("detail.refund.remaining")}>{pkr(refundParts(detail.refund).remaining)}</Row>
+                </>
+              ) : null}
               {detail.refund.paid_at ? <Row label={t("detail.refund.paidAt")}>{fmt.when(detail.refund.paid_at)}</Row> : null}
               {detail.refund.reference ? <Row label={t("detail.refund.ref")}>{detail.refund.reference}</Row> : null}
             </dl>

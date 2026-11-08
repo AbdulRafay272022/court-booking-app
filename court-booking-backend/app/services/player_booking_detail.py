@@ -28,6 +28,7 @@ from app.schemas.booking import (
     PlayerRefundRequestOut,
     PlayerTimelineEventOut,
 )
+from app.services.refund_parts import refund_parts
 from app.services.booking_service import BookingService
 from app.services.owner_overview_service import COMPLETION_ACTION, CONFIRMED_VALUES, OwnerOverviewService
 
@@ -82,6 +83,7 @@ async def player_booking_detail(db: AsyncSession, settings: Settings, user: User
                 amount=float(dispute.refund_amount or 0),
                 status="owed" if dispute.refund_status == "owed" else "paid",
                 paid_at=dispute.refunded_at,
+                **refund_parts(dispute),
             )
             if dispute is not None
             else None

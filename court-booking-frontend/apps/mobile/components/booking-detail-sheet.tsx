@@ -1,3 +1,4 @@
+import { refundSummary } from "@court-booking/types";
 import { useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -309,7 +310,7 @@ function DetailBody({
         <KeyValueBlock>
           <KeyValue
             label="Refund"
-            value={`PKR ${formatPKR(d.refund.amount)} (${d.refund.status === "paid" ? `bheja gaya${d.refund.paid_at ? `, ${formatWhen(d.refund.paid_at)}` : ""}` : "bhejna baqi hai"})`}
+            value={`PKR ${formatPKR(d.refund.amount)} · ${refundSummary(d.refund, "ru").text}${d.refund.paid_at ? ` (${formatWhen(d.refund.paid_at)})` : ""}`}
             last
           />
         </KeyValueBlock>
