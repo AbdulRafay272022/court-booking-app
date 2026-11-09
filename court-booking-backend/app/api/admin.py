@@ -140,7 +140,10 @@ async def _review_venue(
     if new_status == VenueStatus.APPROVED:
         from app.services.venue_completeness import missing_for_approval
 
-        missing = missing_for_approval(venue, venue_service.decrypted_bank_details(venue))
+        from app.services.venue_service import read_bank_details
+
+        bank, bank_unreadable = read_bank_details(venue, settings)
+        missing = missing_for_approval(venue, bank, bank_details_unreadable=bank_unreadable)
         if missing:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,

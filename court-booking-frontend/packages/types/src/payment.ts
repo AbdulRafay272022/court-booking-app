@@ -6,7 +6,7 @@ export type ReviewVerdict = "approved" | "rejected";
 /** Section 32 Part 7 -- verdicts computed once at submission time. */
 export type NameMatchVerdict = "match" | "mismatch" | "unavailable";
 export type TimeCheckVerdict = "within_timer" | "before_hold" | "after_timer" | "not_visible";
-export type ReceiverMatchVerdict = "match" | "mismatch" | "not_configured" | "unavailable";
+export type ReceiverMatchVerdict = "match" | "mismatch" | "not_configured" | "unavailable" | "unreadable";
 
 export interface Payment {
   id: string;

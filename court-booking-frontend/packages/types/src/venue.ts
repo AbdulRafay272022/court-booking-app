@@ -80,6 +80,8 @@ export interface Venue {
   distance_meters: number | null;
   /** Populated only when the requester is this venue's owner or an admin. */
   bank_details: BankDetails | null;
+  /** Owner/admin only: saved bank details can no longer be decrypted (server key lost/rotated); re-enter them. */
+  bank_details_unreadable?: boolean;
   /** Section 32 Part 9: a per-venue token meant to be printed/posted physically at the
    * venue entrance -- a player scans it (POST /bookings/:id/checkin/self) to check
    * themselves in. Populated only when the requester is this venue's owner or an admin,
@@ -101,7 +103,7 @@ export interface Venue {
 
 /** One gap that stops a venue going live (backend app/services/venue_completeness.py). */
 export interface VenueMissingItem {
-  code: "court" | "schedule" | "pricing" | "bank_details" | "photo" | "address" | "location" | "sports" | string;
+  code: "court" | "schedule" | "pricing" | "bank_details" | "bank_details_unreadable" | "photo" | "address" | "location" | "sports" | string;
   court: string | null;
 }
 

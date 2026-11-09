@@ -84,6 +84,7 @@ const MISSING_SECTION: Record<string, Section> = {
   schedule: "courts",
   pricing: "courts",
   bank_details: "bank",
+  bank_details_unreadable: "bank",
   photo: "photos",
   address: "details",
   location: "details",

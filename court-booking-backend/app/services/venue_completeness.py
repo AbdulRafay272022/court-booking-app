@@ -6,7 +6,8 @@ gap; the admin approve endpoint refuses while it is non-empty, and the owner/adm
 owner can fix it (web + app).
 
 Codes (the UI writes the words): court, schedule, pricing (per court, with its name), bank_details, photo, address,
-location, sports.
+location, sports. bank_details_unreadable replaces bank_details when details ARE saved but can no longer be decrypted (the
+encryption key was lost or rotated away): the owner has to enter them again.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 from app.models.venue import Venue
 
 
-def missing_for_approval(venue: Venue, bank_details: dict | None) -> list[dict]:
+def missing_for_approval(venue: Venue, bank_details: dict | None, *, bank_details_unreadable: bool = False) -> list[dict]:
     missing: list[dict] = []
     if not (venue.address or "").strip():
         missing.append({"code": "address", "court": None})
@@ -25,7 +26,9 @@ def missing_for_approval(venue: Venue, bank_details: dict | None) -> list[dict]:
     if not venue.photos:
         missing.append({"code": "photo", "court": None})
     details = bank_details or {}
-    if not all(str(details.get(k) or "").strip() for k in ("bank", "account_title", "account_number")):
+    if bank_details_unreadable:
+        missing.append({"code": "bank_details_unreadable", "court": None})
+    elif not all(str(details.get(k) or "").strip() for k in ("bank", "account_title", "account_number")):
         missing.append({"code": "bank_details", "court": None})
     courts = [c for c in (venue.courts or []) if c.is_active]
     if not courts:

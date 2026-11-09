@@ -18,6 +18,8 @@ from app.models.venue import Venue, VenueStatus
 from app.schemas.venue import VenueCreateIn, VenueUpdateIn
 from app.services.availability_service import AvailabilityService
 from app.services.notification_service import NotificationService
+import structlog
+
 from app.utils.encryption import decrypt_json, encrypt_json
 from app.utils.geo import distance_meters, within_radius
 from app.utils.timezone import utc_to_pkt_naive
@@ -27,6 +29,35 @@ from app.utils.text import slugify
 # Section 32 Part 6: sensible upload caps.
 MAX_VENUE_PHOTOS = 8
 MAX_COURT_PHOTOS = 5
+
+logger = structlog.get_logger(__name__)
+
+
+def encrypt_bank_details(details: dict, settings: Settings) -> dict:
+    """The stored (encrypted) form of a venue's bank details. Raises BANK_DETAILS_STORAGE_UNAVAILABLE (503) when the
+    server cannot encrypt (no key outside DEBUG): the details are never stored in clear, and the caller changes nothing."""
+    try:
+        return encrypt_json(details, settings)
+    except Exception as exc:  # noqa: BLE001 -- e.g. RuntimeError "key not set"
+        logger.error("venue.bank_details_encrypt_failed", error=type(exc).__name__)
+        raise AppError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            ErrorCode.BANK_DETAILS_STORAGE_UNAVAILABLE,
+            "Bank details can't be saved right now. Please try again later.",
+        ) from None
+
+
+def read_bank_details(venue: Venue | None, settings: Settings) -> tuple[dict | None, bool]:
+    """(details, unreadable). Never raises: details saved under a key that is gone (lost, or rotated without keeping the
+    old one in BANK_DETAILS_ENCRYPTION_KEYS_OLD) come back as (None, True), so every screen treats the venue as having no
+    bank details and the owner is asked to enter them again (missing_for_approval code bank_details_unreadable)."""
+    if venue is None or not venue.bank_details:
+        return None, False
+    try:
+        return decrypt_json(venue.bank_details, settings), False
+    except Exception as exc:  # noqa: BLE001 -- InvalidToken, or no key at all
+        logger.warning("venue.bank_details_undecryptable", venue_id=str(venue.id), error=type(exc).__name__)
+        return None, True
 
 
 
@@ -76,7 +107,7 @@ class VenueService:
             whatsapp=payload.whatsapp,
             sports=payload.sports,
             amenities=payload.amenities,
-            bank_details=encrypt_json(payload.bank_details.model_dump(), self.settings)
+            bank_details=encrypt_bank_details(payload.bank_details.model_dump(), self.settings)
             if payload.bank_details
             else None,
             # one policy per venue (Section 32 Part 4); a cutoff means nothing when cancelling is not allowed
@@ -156,14 +187,18 @@ class VenueService:
         lat = data.pop("latitude", None)
         lon = data.pop("longitude", None)
         bank_details = data.pop("bank_details", "unset")
+        # encrypt BEFORE touching the venue: a 503 here must leave every field unchanged (nothing half-saved)
+        new_bank_blob = (
+            encrypt_bank_details(bank_details, self.settings) if bank_details != "unset" and bank_details else None
+        )
         for field, value in data.items():
             setattr(venue, field, value)
         if data.get("cancellation_allowed") is False:
             venue.cancellation_cutoff_hours = None  # a cutoff means nothing when cancelling is not allowed
         if bank_details != "unset":
-            before = self.decrypted_bank_details(venue)
-            venue.bank_details = encrypt_json(bank_details, self.settings) if bank_details else None
-            if (before or None) != (bank_details or None):
+            before, before_unreadable = read_bank_details(venue, self.settings)
+            venue.bank_details = new_bank_blob
+            if before_unreadable or (before or None) != (bank_details or None):
                 # audit 2026-10-28 item 8: who changed where players send money, and when. Numbers are masked (last 4
                 # digits); bank name and account title are kept so a wrong-title change is visible.
                 from app.services.audit_service import AuditService
@@ -174,7 +209,7 @@ class VenueService:
                     action="venue.bank_details_changed",
                     entity_type="venue",
                     entity_id=venue.id,
-                    old_value=mask_bank_details(before),
+                    old_value={"unreadable": True} if before_unreadable else mask_bank_details(before),
                     new_value=mask_bank_details(bank_details),
                 )
         if lat is not None and lon is not None:
@@ -486,8 +521,9 @@ class VenueService:
         avg, _count = await self.rating_summary(venue_id)
         return avg
 
-    def decrypted_bank_details(self, venue: Venue) -> dict | None:
-        return decrypt_json(venue.bank_details, self.settings)
+    def decrypted_bank_details(self, venue: Venue | None) -> dict | None:
+        """None when there are none OR they can no longer be decrypted (see read_bank_details); never raises."""
+        return read_bank_details(venue, self.settings)[0]
 
     @staticmethod
     def photo_urls(venue: Venue) -> list[str]:
@@ -509,11 +545,13 @@ class VenueService:
         can_see_bank_details = requesting_user is not None and (
             requesting_user.role == UserRole.ADMIN or requesting_user.id == venue.owner_id
         )
-        out.bank_details = self.decrypted_bank_details(venue) if can_see_bank_details else None
+        bank, bank_unreadable = read_bank_details(venue, self.settings) if can_see_bank_details else (None, False)
+        out.bank_details = bank
         if can_see_bank_details:
             from app.services.venue_completeness import missing_for_approval, unconfirmed_settings
 
-            out.missing_for_approval = missing_for_approval(venue, out.bank_details)
+            out.bank_details_unreadable = bank_unreadable
+            out.missing_for_approval = missing_for_approval(venue, bank, bank_details_unreadable=bank_unreadable)
             out.unconfirmed_settings = unconfirmed_settings(venue)
             from app.services.venue_visibility import hidden_reason
 

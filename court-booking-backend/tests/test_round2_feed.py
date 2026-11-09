@@ -220,7 +220,7 @@ async def test_reference_ids_on_booking_venue_court_and_waitlist_notifications(
 
     # venue_* events: the venue is the reference. (The court was just deactivated, so this venue is not "complete"; the
     # completeness gate (audit 2026-10-28 item 9) is not what this test is about.)
-    monkeypatch.setattr("app.services.venue_completeness.missing_for_approval", lambda venue, bank: [])
+    monkeypatch.setattr("app.services.venue_completeness.missing_for_approval", lambda venue, bank, **_kw: [])
     admin = await make_user("+923014050003", role=UserRole.ADMIN)
     ah = await make_auth_headers(admin)
     for path, ev, body in (

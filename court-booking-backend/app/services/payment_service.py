@@ -103,7 +103,12 @@ def compute_receiver_match(receiver_name: str | None, venue: Venue | None, setti
     against) does not block auto-approve; a genuine "mismatch" does."""
     if venue is None or not venue.bank_details:
         return "not_configured"
-    bank_details = decrypt_json(venue.bank_details, settings)
+    try:
+        bank_details = decrypt_json(venue.bank_details, settings)
+    except Exception as exc:  # noqa: BLE001 -- key lost / rotated away: saved details exist but can't be read
+        # NOT "not_configured" (that one still allows auto-approve): the owner reviews this payment by hand
+        logger.warning("payment.receiver_check_bank_details_undecryptable", venue_id=str(venue.id), error=type(exc).__name__)
+        return "unreadable"
     account_title = (bank_details or {}).get("account_title") if isinstance(bank_details, dict) else None
     if not account_title:
         return "not_configured"
@@ -321,6 +326,12 @@ def build_payment_checks(payment: Payment, booking: Booking, account_name: str |
             "not_configured",
             f"Paid via {bank_en}. The venue hasn't saved bank details to check against.",
             f"{bank_ru} se payment. Venue ki bank details save nahi, is liye check nahi ho saka.",
+        )
+    elif payment.receiver_match_verdict == "unreadable":
+        bank = chk(
+            "warning",
+            f"Paid via {bank_en}. The venue's saved bank details can't be read, so the receiver wasn't checked.",
+            f"{bank_ru} se payment. Venue ki saved bank details parhi nahi ja sakin, is liye paane wala check nahi hua.",
         )
     else:
         bank = chk(

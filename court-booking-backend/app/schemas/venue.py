@@ -171,6 +171,9 @@ class VenueOut(BaseModel):
     # audit 2026-10-28 item 9: what the venue still needs before it can go live (owner + admin views only; see
     # app/services/venue_completeness.py). Each item: {"code": "schedule", "court": "Court 1"}.
     missing_for_approval: list[dict] | None = None
+    # Owner + admin only: saved bank details can no longer be decrypted (encryption key lost / rotated away). bank_details is
+    # then null and the owner must enter them again; never true for other viewers.
+    bank_details_unreadable: bool = False
     # audit 2026-10-28 item 15: settings still running on a hidden default (owner + admin only): confirm by saving
     unconfirmed_settings: list[dict] | None = None
     # audit 2026-10-28 Phase 2 item 2: why players cannot see this venue right now ("cnic" while the CNIC gate is on and the
