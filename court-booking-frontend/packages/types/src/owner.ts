@@ -1,3 +1,4 @@
+import type { RefundPayout, RefundTransfer } from "./refund-dispute";
 import type { BookingSource } from "./booking";
 import type { PaymentChecks } from "./payment";
 
@@ -219,6 +220,10 @@ export interface OwnerRefund {
   is_overdue: boolean;
   /** Stage 2: this refund's screenshot was also credited on N OTHER bookings (same image, any player); null = not reused. */
   duplicate_proof?: { used_on_bookings: number } | null;
+  /** fix/nov-9 item 10: where the player wants the refund, MASKED (the full number: api.refundDisputes.revealPayout). */
+  payout?: RefundPayout | null;
+  /** fix/nov-9 items 11-12: each refund sent, its screenshot check and the player's answer. */
+  transfers?: RefundTransfer[];
 }
 
 /** GET /owners/digest */

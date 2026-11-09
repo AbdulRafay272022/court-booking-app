@@ -191,8 +191,12 @@ async def test_refund_sent_is_checked_answered_and_taken_to_khelo(
     nope = await client.post(f"{API}/refund-transfers/{first['id']}/answer", headers=ph,
                              json={"answer": "not_received", "note": "sirf 900 aaye"})
     assert nope.status_code == 200
+    # fully sent, but the player says one part never came: it stays on the owner's list until the venue replies
+    listed = (await client.get(f"{API}/owners/refunds", headers=oh)).json()
+    assert [r["id"] for r in listed] == [str(dispute.id)] and listed[0]["transfers"][0]["player_response"] == "not_received"
     reply = await client.post(f"{API}/owners/refund-transfers/{first['id']}/reply", headers=oh, json={"note": "1000 bheje the"})
     assert reply.status_code == 200 and reply.json()["owner_reply"] == "1000 bheje the"
+    assert (await client.get(f"{API}/owners/refunds", headers=oh)).json() == []
 
     admin = await make_user("+923007300003", role=UserRole.ADMIN)
     ah = await make_auth_headers(admin)

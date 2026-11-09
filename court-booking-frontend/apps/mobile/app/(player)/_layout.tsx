@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { LanguageSync } from "@/components/language-sync";
 import { Stack } from "expo-router";
 import { FontScaleProvider, LangProvider, RoleProvider, ToastProvider } from "@/components/ui";
 import { usePlayerLang } from "@/lib/player-lang";
@@ -17,6 +18,7 @@ export default function PlayerLayout() {
   return (
     <RoleProvider role="player">
       <LangProvider lang={lang}>
+        <LanguageSync />
         <FontScaleProvider scale={fs}>
           <ToastProvider>
             <PlayerNetworkProvider>

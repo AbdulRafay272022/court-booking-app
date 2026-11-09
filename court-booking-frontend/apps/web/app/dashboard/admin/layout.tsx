@@ -16,6 +16,7 @@ const NAV = [
   { href: "/dashboard/admin/identities", label: "Owner CNIC" },
   { href: "/dashboard/admin/staff-activity", label: "Staff activity" },
   { href: "/dashboard/admin/money-health", label: "Dues & points" },
+  { href: "/dashboard/admin/escalations", label: "Complaints" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

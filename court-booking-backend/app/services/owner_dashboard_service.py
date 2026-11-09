@@ -72,6 +72,7 @@ async def positive_entries_by_booking(db: AsyncSession, booking_ids: set[uuid.UU
     return {bid: int(total) for bid, total in result.all()}
 
 
+from app.models.refund_flow import RefundTransfer  # noqa: E402
 from app.services.refund_flow_service import payout_out, transfer_out, transfers_for  # noqa: E402
 
 def refund_out(
@@ -528,7 +529,18 @@ class OwnerDashboardService:
             .outerjoin(Payment, Payment.id == PaymentDispute.payment_id)
             .where(
                 Court.id.in_(all_court_ids),
-                PaymentDispute.refund_status == "owed",
+                # fix/nov-9 item 12: a refund sent in full stays on the list while the player says "Nahi mila" and the
+                # venue has not replied yet
+                or_(
+                    PaymentDispute.refund_status == "owed",
+                    select(RefundTransfer.id)
+                    .where(
+                        RefundTransfer.dispute_id == PaymentDispute.id,
+                        RefundTransfer.player_response == "not_received",
+                        RefundTransfer.owner_reply.is_(None),
+                    )
+                    .exists(),
+                ),
                 # Owner Round 2 (A10): a 0-amount dispute (e.g. the audit trail every rejection leaves) is not a
                 # refund to pay; it stays in the table but never shows on the Refunds screen or its badge.
                 func.coalesce(PaymentDispute.refund_amount, 0) > 0,

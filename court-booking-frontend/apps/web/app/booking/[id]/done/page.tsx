@@ -3,6 +3,7 @@
 import { courtLabel } from "@/components/court-label";
 import { PaymentInstructionsCard } from "@/components/booking/payment-instructions-card";
 import { BookingExtrasCard } from "@/components/booking/booking-extras-card";
+import { RefundDisputeCard } from "@/components/booking/refund-dispute-card";
 
 import { use, useState } from "react";
 import { useRequireAuth } from "@/lib/use-require-auth";
@@ -133,6 +134,9 @@ function DonePageInner({ params }: PageProps<"/booking/[id]/done">) {
 
         {/* audit Phase 3: points rule + discount, the short-payment question, "Pohanch gaya" / "Main aaya tha" */}
         <BookingExtrasCard bookingId={id} />
+
+        {/* fix/nov-9 items 9-12: where the refund goes, each refund sent + check + Mil gaya / Nahi mila, Khelo se shikayat */}
+        <RefundDisputeCard bookingId={id} />
 
         <section className="flex flex-col gap-2 rounded-fl-card bg-fl-white p-5" data-testid="detail-payments">
           <h2 className="font-fl-display text-[17px] font-extrabold text-fl-night">{t("play.done.paymentsTitle")}</h2>

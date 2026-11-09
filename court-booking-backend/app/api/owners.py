@@ -446,12 +446,13 @@ async def owner_mark_refund_paid(
     # payout details, and the player asked "Mil gaya / Nahi mila" (this replaces the old refund_paid notice)
     from app.services.refund_flow_service import record_transfer
 
-    await record_transfer(
-        db, settings, owner, dispute, booking, amount=float(dispute.refunded_amount or 0) - already_refunded,
-        reference=reference,
-        screenshot=(screenshot_bytes, screenshot.content_type) if screenshot is not None and screenshot_bytes else None,
-        screenshot_key=screenshot_key,
-    )
+    sent_now = float(dispute.refunded_amount or 0) - already_refunded
+    if sent_now > 0.009:  # a 0-amount "refund" (nothing was owed) leaves no transfer to check or answer
+        await record_transfer(
+            db, settings, owner, dispute, booking, amount=sent_now, reference=reference,
+            screenshot=(screenshot_bytes, screenshot.content_type) if screenshot is not None and screenshot_bytes else None,
+            screenshot_key=screenshot_key,
+        )
 
     await db.refresh(dispute)
     payment = await db.get(Payment, dispute.payment_id) if dispute.payment_id else None
