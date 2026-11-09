@@ -54,6 +54,13 @@ def _wa_link(phone: str | None) -> str | None:
         digits = "92" + digits
     return f"https://wa.me/{digits}" if len(digits) == 12 and digits.startswith("923") else None
 
+
+def _short_code(booking_id: uuid.UUID) -> str:
+    """The booking ID players see (KH-XXXXXXXX), same as owner_overview_service.short_code."""
+    from app.services.owner_overview_service import short_code
+
+    return short_code(booking_id)
+
 class NotificationService:
     """Routes notifications by tier (see Section 8):
 
@@ -399,7 +406,7 @@ class NotificationService:
         when = _when(starts_at, ends_at)
         await self.send_khelo_whatsapp(
             user, "booking_reminder_wa", f"Yaad dehaani: {court_name}, {when}. Waqt par pohanchein.",
-            template_name="khelo_booking_reminder", template_params=[court_name, when, "Khelo"], reference_id=booking_id,
+            template_name="khelo_booking_reminder", template_params=[court_name, when, _short_code(booking_id)], reference_id=booking_id,
         )
 
     # -- Tier 2 ----------------------------------------------------------
@@ -720,8 +727,10 @@ class NotificationService:
         else:
             title = "Booking par paisa baqi hai"
             body = f"Booking {code} ({slot}): {money}{contact}"
-            template = "khelo_short_payment"
-            params = [code, format_pkr(total_pkr), format_pkr(paid_pkr), format_pkr(due_pkr)]
+            # fix/nov-9: this plain notice goes out only when the Sahi hai / Ghalat hai question is OFF (no claim, no
+            # 24-hour penalty), so it must not use khelo_short_payment, whose body promises both.
+            template = "generic_notification"
+            params = [body]
         await self._audit_tier(
             player, f"player_{kind}", title, body, reference_id=booking_id, template_name=template, template_params=params,
             buttons=buttons,

@@ -197,3 +197,20 @@ async def test_failed_marketing_send_is_logged(db_session, make_user, make_venue
     assert row.status == "failed"
     assert row.cost_category == "marketing"
     assert "meta_error_code=132001" in row.error_message
+
+
+def test_no_khelo_template_body_starts_or_ends_with_a_variable():
+    """fix/nov-9: Meta refuses a template whose body starts or ends with {{n}}; the rendered bodies ARE the Meta bodies."""
+    from app.services.whatsapp_templates import TEMPLATES
+
+    names = [n for n in TEMPLATES if n.startswith("khelo_") and n != "khelo_otp"] + ["tournament_announcement"]
+    assert len(names) == 11
+    for name in names:
+        t = TEMPLATES[name]
+        body = t.render([f"{{{{{i + 1}}}}}" for i in range(t.param_count)])
+        for i in range(t.param_count):
+            assert f"{{{{{i + 1}}}}}" in body, (name, i)
+        assert not body.startswith("{{"), name
+        assert not body.rstrip(".!?").endswith("}}"), name
+    short = TEMPLATES["khelo_short_payment"].render(["a", "b", "c", "d"])
+    assert "24 ghante mein jawab na aaya to 20 points kat jayenge." in short

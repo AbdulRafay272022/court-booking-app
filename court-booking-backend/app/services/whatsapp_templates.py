@@ -77,16 +77,18 @@ def _generic_notification(p: list[str]) -> str:
     return p[0]
 
 
-# ---- audit 2026-10-28: Khelo templates (Roman Urdu). Registered in code so the payload shape is fixed; they are SENT only
+# ---- audit 2026-10-28: Khelo templates (Roman Urdu). fix/nov-9: Meta refuses a body that STARTS or ENDS with a variable, so
+# every body below opens and closes with plain words; these strings are the exact bodies submitted to Meta.
+# ---- (original note) Khelo templates (Roman Urdu). Registered in code so the payload shape is fixed; they are SENT only
 # while the `whatsapp_templates` flag is on, which the founder turns on after Meta approved each one (docs/deploy-steps.md).
 
 
 def _khelo_advance_payment(p: list[str]) -> str:
-    return f"{p[0]}: {p[1]} hold ho gaya. Advance {p[2]} is account mein bhejein: {p[3]}. Phir screenshot app mein bhejein."
+    return f"Aap ki booking hold ho gayi: {p[0]}, {p[1]}. Advance {p[2]} is account mein bhejein: {p[3]}. Phir payment ka screenshot app mein bhejein."
 
 
 def _khelo_balance_payment(p: list[str]) -> str:
-    return f"Booking {p[0]}: baqi {p[1]}. Transfer se dena ho to is account mein bhejein: {p[2]}."
+    return f"Booking {p[0]}: baqi {p[1]}. Transfer se dena ho to is account mein bhejein: {p[2]}. Shukriya!"
 
 
 def _khelo_payment_receipt(p: list[str]) -> str:
@@ -94,7 +96,10 @@ def _khelo_payment_receipt(p: list[str]) -> str:
 
 
 def _khelo_short_payment(p: list[str]) -> str:
-    return f"Booking {p[0]}: kul {p[1]}, diye {p[2]}, baqi {p[3]}. Sahi hai ya ghalat? App mein jawab dein."
+    return (
+        f"Booking {p[0]}: kul {p[1]}, diye {p[2]}, baqi {p[3]}. Sahi hai ya ghalat? Neeche button se ya app mein jawab dein. "
+        "24 ghante mein jawab na aaya to 20 points kat jayenge."
+    )
 
 
 def _khelo_points_deducted(p: list[str]) -> str:
@@ -106,19 +111,22 @@ def _khelo_due_resolved(p: list[str]) -> str:
 
 
 def _khelo_no_show(p: list[str]) -> str:
-    return f"Booking {p[0]} ({p[1]}) no-show mark hui. Kul {p[2]}, diye {p[3]}, baqi {p[4]}. Aap aaye the to app mein batayein."
+    return (
+        f"Booking {p[0]} ({p[1]}) no-show mark hui. Kul {p[2]}, diye {p[3]}, baqi {p[4]}. "
+        "Aap aaye the to neeche 'Main aaya tha' dabayein ya app mein batayein."
+    )
 
 
 def _khelo_walkin_welcome(p: list[str]) -> str:
-    return f"{p[0]} mein khelne ka shukriya! Agli booking Khelo app se karein aur rasid WhatsApp par payein."
+    return f"Shukriya, aap ne {p[0]} mein khela! Agli booking Khelo app se karein aur rasid WhatsApp par payein."
 
 
 def _khelo_points_reward(p: list[str]) -> str:
-    return f"Mubarak! {p[1]} par {p[0]} points mile. Ab aap ke {p[2]} points hain."
+    return f"Mubarak! Booking {p[1]} par {p[0]} points mile. Ab is venue par aap ke {p[2]} points hain."
 
 
 def _khelo_booking_reminder(p: list[str]) -> str:
-    return f"Yaad dehaani: {p[0]}, {p[1]}, {p[2]}. Waqt par pohanchein."
+    return f"Yaad dehaani: aap ki booking {p[0]} par {p[1]} hai. Booking ID: {p[2]}. Waqt par pohanchein, shukriya!"
 
 
 TEMPLATES: dict[str, WhatsAppTemplate] = {
