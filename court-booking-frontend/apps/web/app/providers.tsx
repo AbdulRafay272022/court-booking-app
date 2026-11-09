@@ -1,5 +1,6 @@
 "use client";
 
+import { LanguageSync } from "@/components/i18n/language-sync";
 import { useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { REFRESH_CHECK_INTERVAL_MS, restoreSession, shouldRefreshSoon } from "@court-booking/api-client";
@@ -58,6 +59,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <OfflineBanner />
+      <LanguageSync />
       {status === "unreachable" ? <SessionUnreachable onRetry={() => void restore()} /> : children}
     </QueryClientProvider>
   );

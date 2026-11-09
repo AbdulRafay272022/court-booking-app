@@ -58,5 +58,15 @@ class PaymentDispute(UUIDPkMixin, TimestampMixin, Base):
     )
     refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # fix/nov-9 item 10 (migration c3e8a1f5b902): "Refund kahan bhejein?" -- the number / IBAN is Fernet-encrypted
+    # (app.utils.encryption, the venue bank-details key); last4 is kept in clear for the masked view (****6789). The full
+    # number goes only to the venue that owes this refund while it is owed (refund_payout_service), each view audited.
+    payout_method: Mapped[str | None] = mapped_column(String(12), nullable=True)  # jazzcash | easypaisa | bank
+    payout_account_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payout_account_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    payout_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    payout_bank: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    payout_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     booking: Mapped["Booking"] = relationship()  # noqa: F821
     payment: Mapped["Payment"] = relationship()  # noqa: F821

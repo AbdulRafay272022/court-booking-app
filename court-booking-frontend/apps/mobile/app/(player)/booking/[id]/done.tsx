@@ -35,6 +35,7 @@ import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from 
 import { RaastQr } from "@/components/raast-qr";
 import { BalanceProofUpload } from "@/components/balance-proof-upload";
 import { BookingExtrasCard } from "@/components/booking-extras";
+import { RefundDisputeCard } from "@/components/refund-dispute";
 import { DateTile, PlayerOfflineBanner, openDirections, shareText, sportLabel, useBookingPlace, useNow } from "../../_components";
 
 /**
@@ -441,6 +442,8 @@ export default function BookingStatusScreen() {
         ) : null}
 
         {booking.player_id && booking.status !== "no_show" ? <BookingExtrasCard bookingId={id} /> : null}
+        {/* fix/nov-9 items 9-12: refund account, refunds sent + check + Mil gaya / Nahi mila, Khelo se shikayat */}
+        {booking.player_id ? <RefundDisputeCard bookingId={id} /> : null}
 
         {detail ? (
           <Card padding={4} radiusSize="cardL" style={{ gap: space[2] }} testID="status-payment-lines">

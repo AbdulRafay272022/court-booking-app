@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { LanguageSync } from "@/components/language-sync";
 import { Stack } from "expo-router";
 import { FontScaleProvider, LangProvider, RoleProvider, ToastProvider } from "@/components/ui";
 
@@ -26,6 +27,7 @@ export default function OwnerLayout() {
   return (
     <RoleProvider role="owner">
       <LangProvider lang={lang}>
+        <LanguageSync />
         <FontScaleProvider scale={devFontScale()}>
           <ToastProvider>
             <Stack screenOptions={{ headerShown: false }} initialRouteName="index">

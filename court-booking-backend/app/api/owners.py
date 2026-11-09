@@ -418,6 +418,7 @@ async def owner_mark_refund_paid(
     booking = await booking_service.require_accessible_booking(dispute.booking_id, owner, permission="mark_refunds")
 
     screenshot_key: str | None = None
+    screenshot_bytes: bytes | None = None
     if screenshot is not None:
         if screenshot.content_type not in ALLOWED_REFUND_SCREENSHOT_TYPES:
             raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_IMAGE_FORMAT, "Unsupported image type")
@@ -441,16 +442,17 @@ async def owner_mark_refund_paid(
 
     court = await db.get(Court, booking.court_id)
     venue = await db.get(Venue, court.venue_id) if court is not None else None
-    if booking.player_id is not None:
-        player = await db.get(User, booking.player_id)
-        if player is not None:
-            await NotificationService(db, settings).notify_refund_paid(
-                user=player,
-                court_name=court.name if court else "",
-                amount=float(dispute.refunded_amount or 0) - already_refunded,
-                reference=reference,
-                reference_id=booking.id,
-            )
+    # fix/nov-9 items 11-12: one refund_transfers row per send, the screenshot checked against the amount and the player's
+    # payout details, and the player asked "Mil gaya / Nahi mila" (this replaces the old refund_paid notice)
+    from app.services.refund_flow_service import record_transfer
+
+    sent_now = float(dispute.refunded_amount or 0) - already_refunded
+    if sent_now > 0.009:  # a 0-amount "refund" (nothing was owed) leaves no transfer to check or answer
+        await record_transfer(
+            db, settings, owner, dispute, booking, amount=sent_now, reference=reference,
+            screenshot=(screenshot_bytes, screenshot.content_type) if screenshot is not None and screenshot_bytes else None,
+            screenshot_key=screenshot_key,
+        )
 
     await db.refresh(dispute)
     payment = await db.get(Payment, dispute.payment_id) if dispute.payment_id else None
@@ -464,6 +466,9 @@ async def owner_mark_refund_paid(
     out.player_name = booking.player_name
     out.player_phone = booking.player_phone
     out.is_overdue = False
+    from app.services.refund_flow_service import transfer_out, transfers_for
+
+    out.transfers = [transfer_out(t) for t in (await transfers_for(db, [dispute.id])).get(dispute.id, [])]
     return out
 
 

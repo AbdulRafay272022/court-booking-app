@@ -65,6 +65,8 @@ export interface UpdateProfileInput {
   city?: City;
   gender?: Gender;
   avatar_url?: string;
+  /** fix/nov-9 item 6: the chosen language, so the server writes push / bell text in it. */
+  language?: "ru" | "en";
 }
 
 export interface PhoneChangeOut {

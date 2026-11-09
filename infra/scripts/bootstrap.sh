@@ -59,6 +59,8 @@ ALLOWED_ORIGINS=["https://${WEB_HOST}"]
 DATABASE_URL=postgresql+asyncpg://court_admin:${db_pass}@${db_host}:5432/court_booking?ssl=require
 SESSION_TOKEN_SECRET=$(ssm_get "$P/secrets/SESSION_TOKEN_SECRET")
 BANK_DETAILS_ENCRYPTION_KEY=$(ssm_get "$P/secrets/BANK_DETAILS_ENCRYPTION_KEY")
+# Key rotation (optional): earlier keys, comma-separated, only to READ data written with them.
+BANK_DETAILS_ENCRYPTION_KEYS_OLD=$(ssm_get "$P/secrets/BANK_DETAILS_ENCRYPTION_KEYS_OLD")
 AWS_REGION=${AWS_REGION}
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=

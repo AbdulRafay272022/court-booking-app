@@ -179,6 +179,10 @@ class OwnerRefundOut(BaseModel):
     # player) -- the Refunds screen warns before paying the same money back twice. Null = not reused.
     duplicate_proof: dict | None = None
     player_note: str | None = None  # audit 2026-10-28 Phase 2: the player's reason ("Refund maangein")
+    # fix/nov-9 items 10-12: where the player wants it (MASKED; the full number via GET /owners/refunds/{id}/payout) and each
+    # refund sent with its screenshot check and the player's answer
+    payout: dict | None = None
+    transfers: list[dict] = []
 
 
 

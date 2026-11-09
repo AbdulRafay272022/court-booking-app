@@ -45,7 +45,9 @@ def _capture(monkeypatch) -> list[tuple[str, str]]:
     real = p3._notify
 
     async def spy(db, settings, user, event, title, body, **kw):
-        seen.append((event, body))
+        from app.services.lang import text_for
+
+        seen.append((event, text_for(user, body)))  # fix/nov-9 item 6: bodies are (ru, en) now; this user never chose
         return await real(db, settings, user, event, title, body, **kw)
 
     monkeypatch.setattr(p3, "_notify", spy)

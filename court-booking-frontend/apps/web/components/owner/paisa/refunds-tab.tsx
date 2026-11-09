@@ -23,6 +23,7 @@ import type { OwnerRefund } from "@court-booking/types";
 import { BookingDetail } from "@/components/owner/booking-detail";
 import { FilterBanner, NayaChip, RowLinks } from "@/components/owner/queue-extras";
 import { ScreenshotThumb } from "@/components/media/screenshot-thumb";
+import { RefundPayoutBlock } from "@/components/owner/paisa/refund-payout-block";
 import { parseQueueFilter } from "@/lib/queue-filter";
 import { isNaya } from "@/lib/owner-seen";
 import { useSeenSince } from "@/lib/use-owner-seen";
@@ -170,6 +171,8 @@ export function RefundsTab() {
                       <ScreenshotThumb paymentId={refund.payment_id} alt={t("rfd.row.proofAlt", { who })} />
                     </div>
                   ) : null}
+                  {/* fix/nov-9 items 10-12: the player's account (masked until shown) + each refund sent, checked and answered */}
+                  <RefundPayoutBlock refund={refund} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] })} />
                   <RowLinks
                     bookingId={refund.booking_id}
                     startsAt={refund.starts_at}
@@ -184,6 +187,7 @@ export function RefundsTab() {
                       <span className="block text-[11px] font-semibold text-owner-ink-faint">{t("rfd.row.of", { total: formatPKR(b.refundDue) })}</span>
                     ) : null}
                   </span>
+                  {b.remaining > 0 ? (
                   <button
                     type="button"
                     onClick={() => setOpenId(refund.id)}
@@ -192,6 +196,7 @@ export function RefundsTab() {
                   >
                     {t("odash.refunds.mark")}
                   </button>
+                  ) : null}
                 </div>
               </li>
             );

@@ -72,6 +72,9 @@ async def positive_entries_by_booking(db: AsyncSession, booking_ids: set[uuid.UU
     return {bid: int(total) for bid, total in result.all()}
 
 
+from app.models.refund_flow import RefundTransfer  # noqa: E402
+from app.services.refund_flow_service import payout_out, transfer_out, transfers_for  # noqa: E402
+
 def refund_out(
     dispute: PaymentDispute,
     booking: Booking,
@@ -126,6 +129,7 @@ def refund_out(
         created_at=dispute.created_at,
         is_overdue=dispute.refund_status == "owed" and refund_due > already and now - dispute.created_at >= overdue_cutoff,
         duplicate_proof={"used_on_bookings": duplicate_used} if duplicate_used > 0 else None,
+        payout=payout_out(dispute),
     )
 
 
@@ -525,7 +529,18 @@ class OwnerDashboardService:
             .outerjoin(Payment, Payment.id == PaymentDispute.payment_id)
             .where(
                 Court.id.in_(all_court_ids),
-                PaymentDispute.refund_status == "owed",
+                # fix/nov-9 item 12: a refund sent in full stays on the list while the player says "Nahi mila" and the
+                # venue has not replied yet
+                or_(
+                    PaymentDispute.refund_status == "owed",
+                    select(RefundTransfer.id)
+                    .where(
+                        RefundTransfer.dispute_id == PaymentDispute.id,
+                        RefundTransfer.player_response == "not_received",
+                        RefundTransfer.owner_reply.is_(None),
+                    )
+                    .exists(),
+                ),
                 # Owner Round 2 (A10): a 0-amount dispute (e.g. the audit trail every rejection leaves) is not a
                 # refund to pay; it stays in the table but never shows on the Refunds screen or its badge.
                 func.coalesce(PaymentDispute.refund_amount, 0) > 0,
@@ -538,7 +553,7 @@ class OwnerDashboardService:
         dup_used = await used_on_bookings_map(self.db, [row[4] for row in rows if row[4] is not None])
         now = datetime.now(timezone.utc)
         overdue_cutoff = timedelta(days=self.settings.REFUND_OVERDUE_DAYS)
-        return [
+        out = [
             refund_out(
                 dispute, booking, venue, player, payment, positives.get(booking.id, 0),
                 court_name=court_names.get(booking.court_id, ""), court_sport=court_sports.get(booking.court_id),
@@ -547,6 +562,11 @@ class OwnerDashboardService:
             )
             for dispute, booking, venue, player, payment in rows
         ]
+        # fix/nov-9 items 11-12: each refund sent so far, its check and the player's answer
+        sent = await transfers_for(self.db, [r.id for r in out])
+        for r in out:
+            r.transfers = [transfer_out(t) for t in sent.get(r.id, [])]
+        return out
 
     async def _sum_entries(self, court_ids: list[uuid.UUID], start_date: date, end_date: date) -> int:
         """Net PKR recorded (positive entries minus any reversals) for these courts, in a Pakistan-calendar

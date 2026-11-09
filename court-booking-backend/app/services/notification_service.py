@@ -12,6 +12,7 @@ from app.models.notification import NotificationLog
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.web_push_subscription import WebPushSubscription
+from app.services.lang import Txt, text_for
 from app.services.apns import send_apns
 from app.services.fcm import PushOutcome, send_push
 from app.services.web_push import HIGH_URGENCY_EVENTS as WEB_PUSH_HIGH_URGENCY
@@ -186,8 +187,8 @@ class NotificationService:
         self,
         user: User,
         event_type: str,
-        title: str,
-        body: str,
+        title: "str | Txt",
+        body: "str | Txt",
         *,
         reference_id: uuid.UUID | None = None,
         bell: bool = False,
@@ -204,6 +205,7 @@ class NotificationService:
         # unaffected. OTP delivery does NOT come through here, so it's unaffected.
         if not await flag_on(self.db, "push_notifications"):
             return
+        title, body = text_for(user, title), text_for(user, body)  # fix/nov-9 item 6
         data = {"event_type": event_type}
         if reference_id is not None:
             data["reference_id"] = str(reference_id)
@@ -326,8 +328,8 @@ class NotificationService:
         self,
         user: User,
         event_type: str,
-        title: str,
-        body: str,
+        title: "str | Txt",
+        body: "str | Txt",
         *,
         reference_id: uuid.UUID | None = None,
         template_params: list[str] | None = None,
@@ -340,6 +342,7 @@ class NotificationService:
         to fall back to outside the 24h window (see whatsapp_templates.py);
         if there's no dedicated template for it, the generic one-param
         fallback is used automatically."""
+        title, body = text_for(user, title), text_for(user, body)  # fix/nov-9 item 6: the receiver's language
         template_used, whatsapp_error = await self._whatsapp_smart_best_effort(
             user, body, template_name=template_name or event_type, template_params=template_params or [body], buttons=buttons
         )
@@ -385,9 +388,11 @@ class NotificationService:
         await self._send_push_tier(
             user,
             "slot_reopened",
-            "Slot available",
-            f"A slot just opened up at {court_name} on {_when(starts_at, ends_at)} -- book fast, other "
-            "waitlisted players were notified too.",
+            Txt("Slot khali ho gaya", "Slot available"),
+            Txt(f"{court_name} par {_when(starts_at, ends_at)} ka slot khali ho gaya. Jaldi book karein, intezar wale "
+                "baqi players ko bhi bataya gaya hai.",
+                f"A slot just opened up at {court_name} on {_when(starts_at, ends_at)} -- book fast, other "
+                "waitlisted players were notified too."),
             reference_id=reference_id,
         )
 
@@ -399,8 +404,9 @@ class NotificationService:
         await self._send_push_tier(
             user,
             "booking_reminder",
-            "Upcoming booking",
-            f"Reminder: your booking at {court_name} is {_when(starts_at, ends_at)}.",
+            Txt("Booking ki yaad-dehani", "Upcoming booking"),
+            Txt(f"Yaad dehaani: aap ki booking {court_name} par {_when(starts_at, ends_at)} hai.",
+                f"Reminder: your booking at {court_name} is {_when(starts_at, ends_at)}."),
             reference_id=booking_id,
         )
         when = _when(starts_at, ends_at)
@@ -433,8 +439,9 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             user,
             "booking_confirmed",
-            "Booking confirmed",
-            f"Your booking for {court_name} on {_when(starts_at, ends_at)} is confirmed. See you on court!",
+            Txt("Booking confirm ho gayi", "Booking confirmed"),
+            Txt(f"{court_name} par {_when(starts_at, ends_at)} ki booking confirm ho gayi. Court par milte hain!",
+                f"Your booking for {court_name} on {_when(starts_at, ends_at)} is confirmed. See you on court!"),
             # {{5}} is never empty (Meta refuses an empty parameter): nothing paid yet = "0".
             template_params=[court_name, venue_name, date_text, time_text, f"{amount_paid:,.0f}" if amount_paid else "0"],
             reference_id=reference_id,
@@ -452,8 +459,9 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             user,
             "booking_cancelled",
-            "Booking cancelled",
-            f"Your booking for {court_name} on {_when(starts_at, ends_at)} was cancelled.",
+            Txt("Booking cancel ho gayi", "Booking cancelled"),
+            Txt(f"{court_name} par {_when(starts_at, ends_at)} ki booking cancel ho gayi.",
+                f"Your booking for {court_name} on {_when(starts_at, ends_at)} was cancelled."),
             template_params=[court_name, _when(starts_at, ends_at)],
             reference_id=reference_id,
         )
@@ -477,9 +485,11 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             user,
             "court_deactivated",
-            "Court unavailable",
-            f"Heads up: {court_name} was marked unavailable by the venue. Your booking on "
-            f"{_when(starts_at, ends_at)} is still on file -- the venue will follow up with you directly.",
+            Txt("Court band hai", "Court unavailable"),
+            Txt(f"Venue ne {court_name} band kar diya hai. {_when(starts_at, ends_at)} wali aap ki booking abhi qaim hai; "
+                "venue khud aap se raabta karega.",
+                f"Heads up: {court_name} was marked unavailable by the venue. Your booking on "
+                f"{_when(starts_at, ends_at)} is still on file -- the venue will follow up with you directly."),
             template_params=[court_name, _when(starts_at, ends_at)],
             reference_id=reference_id,
         )
@@ -490,8 +500,9 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             user,
             "payment_rejected",
-            "Payment rejected",
-            f"Payment rejected: {reason}. Your slot has been released.",
+            Txt("Payment reject ho gayi", "Payment rejected"),
+            Txt(f"Payment reject ho gayi: {reason}. Aap ka slot chhod diya gaya.",
+                f"Payment rejected: {reason}. Your slot has been released."),
             template_params=[court_name, reason],
             reference_id=reference_id,
         )
@@ -506,8 +517,9 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             user,
             "refund_paid",
-            "Refund sent",
-            f"The venue for {court_name} recorded a refund of {format_pkr(amount)} (ref: {reference}).",
+            Txt("Refund wapas bhej diya gaya", "Refund sent"),
+            Txt(f"{court_name} ke venue ne {format_pkr(amount)} refund bhejne ka likha (ref: {reference}).",
+                f"The venue for {court_name} recorded a refund of {format_pkr(amount)} (ref: {reference})."),
             template_params=[court_name, format_pkr(amount), reference],
             reference_id=reference_id,
         )
@@ -524,8 +536,9 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             owner,
             "owner_new_booking",
-            "New booking",
-            f"New booking on {court_name} for {_when(starts_at, ends_at)}.",
+            Txt("Nayi booking aayi", "New booking"),
+            Txt(f"{court_name} par {_when(starts_at, ends_at)} ki nayi booking.",
+                f"New booking on {court_name} for {_when(starts_at, ends_at)}."),
             reference_id=reference_id,
         )
 
@@ -537,8 +550,9 @@ class NotificationService:
         await self._send_push_tier(
             owner,
             "owner_player_cancelled",
-            "Player cancelled",
-            f"The player cancelled {court_name} on {_when(starts_at, ends_at)} while the payment was waiting for approval.",
+            Txt("Player ne booking cancel kar di", "Player cancelled"),
+            Txt(f"Player ne {court_name} par {_when(starts_at, ends_at)} ki booking cancel kar di; payment approval ke intezar mein thi.",
+                f"The player cancelled {court_name} on {_when(starts_at, ends_at)} while the payment was waiting for approval."),
             reference_id=booking_id,
             bell=True,
         )
@@ -551,9 +565,11 @@ class NotificationService:
         await self._send_push_tier(
             owner,
             "late_payment_proof",
-            "Late payment screenshot",
-            f"A payment screenshot for {court_name} on {_when(starts_at, ends_at)} arrived after the hold expired. "
-            "Please check it in Approvals.",
+            Txt("Screenshot hold khatam hone ke baad aaya", "Late payment screenshot"),
+            Txt(f"{court_name} par {_when(starts_at, ends_at)} ka payment screenshot hold khatam hone ke baad aaya. "
+                "Approvals mein dekhein.",
+                f"A payment screenshot for {court_name} on {_when(starts_at, ends_at)} arrived after the hold expired. "
+                "Please check it in Approvals."),
             reference_id=booking_id,
             bell=True,
         )
@@ -568,9 +584,10 @@ class NotificationService:
         await self._send_push_tier(
             user,
             "hold_expiring",
-            "Your slot is about to be released",
-            f"Send your payment of {format_pkr(amount)} for {court_name} within {minutes_left} minutes, "
-            "or the slot will be released.",
+            Txt("Aap ka slot chhootne wala hai", "Your slot is about to be released"),
+            Txt(f"{court_name} ke liye {format_pkr(amount)} {minutes_left} minute mein bhejein, warna slot chhoot jayega.",
+                f"Send your payment of {format_pkr(amount)} for {court_name} within {minutes_left} minutes, "
+                "or the slot will be released."),
             reference_id=booking_id,
             bell=True,
         )
@@ -580,8 +597,8 @@ class NotificationService:
         self,
         user: User,
         event_type: str,
-        title: str,
-        body: str,
+        title: "str | Txt",
+        body: "str | Txt",
         *,
         reference_id: uuid.UUID | None,
         template_name: str | None = None,
@@ -590,6 +607,7 @@ class NotificationService:
     ) -> None:
         """audit 2026-10-28: push (app) + web push + bell ALWAYS; WhatsApp only while the `whatsapp_templates` flag is on
         (the founder turns it on once Meta approved the khelo_* templates), never the unapproved generic fallback."""
+        title, body = text_for(user, title), text_for(user, body)  # fix/nov-9 item 6
         if await flag_on(self.db, "whatsapp_templates") and template_name:
             await self._send_push_and_whatsapp(
                 user, event_type, title, body, reference_id=reference_id,
@@ -645,10 +663,12 @@ class NotificationService:
     async def notify_owner_cnic_result(self, *, owner: User, approved: bool, reason: str | None) -> None:
         """audit 2026-10-28 Phase 2 item 1: the admin approved / did not approve the owner's CNIC."""
         if approved:
-            title, body = "CNIC approve ho gaya", "Aap ka CNIC tasdeeq ho gaya. Shukriya!"
+            title = Txt("CNIC approve ho gaya", "CNIC approved", "ru")
+            body = Txt("Aap ka CNIC tasdeeq ho gaya. Shukriya!", "Your CNIC is verified. Thank you!", "ru")
         else:
-            title = "CNIC approve nahi hua"
-            body = f"Aap ka CNIC approve nahi hua: {reason}. Sahi CNIC ki dono taraf ki photo dobara upload karein."
+            title = Txt("CNIC approve nahi hua", "CNIC not approved", "ru")
+            body = Txt(f"Aap ka CNIC approve nahi hua: {reason}. Sahi CNIC ki dono taraf ki photo dobara upload karein.",
+                       f"Your CNIC was not approved: {reason}. Upload clear photos of both sides again.", "ru")
         await self._audit_tier(owner, "owner_cnic_result", title, body, reference_id=None)
 
     async def notify_owner_refund_requested(
@@ -657,16 +677,19 @@ class NotificationService:
         """audit 2026-10-28 Phase 2 item 3: a player pressed "Refund maangein"; it is on the owner's Refunds list now."""
         who = player_name or "Player"
         extra = f" Wajah: {note}" if note else ""
+        extra_en = f" Reason: {note}" if note else ""
         await self._audit_tier(
-            owner, "owner_refund_requested", "Player ne refund maanga",
-            f"{who} ne booking {code} ka refund maanga: {format_pkr(amount)}. Refunds mein dekhein.{extra}",
+            owner, "owner_refund_requested", Txt("Player ne refund maanga", "A player asked for a refund", "ru"),
+            Txt(f"{who} ne booking {code} ka refund maanga: {format_pkr(amount)}. Refunds mein dekhein.{extra}",
+                f"{who} asked for a refund on booking {code}: {format_pkr(amount)}. See Refunds.{extra_en}", "ru"),
             reference_id=booking_id,
         )
 
     async def notify_player_refund_requested(self, *, player: User, booking_id: uuid.UUID, code: str, amount: float) -> None:
         await self._audit_tier(
-            player, "player_refund_requested", "Refund ki darkhwast bhej di",
-            f"Booking {code}: {format_pkr(amount)} refund ki darkhwast venue ko chali gayi. Venue khud paisa wapas bhejega.",
+            player, "player_refund_requested", Txt("Refund ki darkhwast bhej di", "Refund request sent", "ru"),
+            Txt(f"Booking {code}: {format_pkr(amount)} refund ki darkhwast venue ko chali gayi. Venue khud paisa wapas bhejega.",
+                f"Booking {code}: your request for a {format_pkr(amount)} refund went to the venue. The venue sends the money back.", "ru"),
             reference_id=booking_id,
         )
 
@@ -688,13 +711,16 @@ class NotificationService:
         when = format_time(starts_at)
         who = f" ({player_name})" if player_name else ""
         if kind == "no_show":
-            title = "Staff ne no-show mark kiya"
-            body = f"{staff_name} ne {when} wali booking no-show ki: {court_name}{who}."
+            title = Txt("Staff ne no-show mark kiya", "Staff marked a no-show", "ru")
+            body = Txt(f"{staff_name} ne {when} wali booking no-show ki: {court_name}{who}.",
+                       f"{staff_name} marked the {when} booking as a no-show: {court_name}{who}.", "ru")
         else:
-            title = "Staff ne kam paisa darj kiya"
-            body = (
+            title = Txt("Staff ne kam paisa darj kiya", "Staff recorded a short payment", "ru")
+            body = Txt(
                 f"{staff_name} ne {when} wali booking par {format_pkr(short_pkr)} kam darj kiye: {court_name}{who}. "
-                f"Baqi {format_pkr(due_pkr)}."
+                f"Baqi {format_pkr(due_pkr)}.",
+                f"{staff_name} recorded {format_pkr(short_pkr)} less on the {when} booking: {court_name}{who}. "
+                f"Due {format_pkr(due_pkr)}.", "ru",
             )
         await self._audit_tier(owner, "owner_staff_action", title, body, reference_id=booking_id)
 
@@ -717,20 +743,23 @@ class NotificationService:
         due ("kam mila"): booking ID, total, paid, due, and the venue's WhatsApp to sort it out."""
         link = _wa_link(venue_whatsapp)
         contact = f" Venue se baat: {link}" if link else ""
+        contact_en = f" Talk to the venue: {link}" if link else ""
         money = f"Kul {format_pkr(total_pkr)}, diye {format_pkr(paid_pkr)}, baqi {format_pkr(due_pkr)}."
+        money_en = f"Total {format_pkr(total_pkr)}, paid {format_pkr(paid_pkr)}, due {format_pkr(due_pkr)}."
         slot = f"{court_name}, {format_time(starts_at)}"
         if kind == "no_show":
-            title = "Booking no-show mark hui"
-            body = f"Booking {code} ({slot}) no-show mark hui. {money}{contact}"
+            title = Txt("Booking no-show mark hui", "Booking marked as no-show", "ru")
+            body = Txt(f"Booking {code} ({slot}) no-show mark hui. {money}{contact}",
+                       f"Booking {code} ({slot}) was marked as a no-show. {money_en}{contact_en}", "ru")
             template = "khelo_no_show"
             params = [code, slot, format_pkr(total_pkr), format_pkr(paid_pkr), format_pkr(due_pkr)]
         else:
-            title = "Booking par paisa baqi hai"
-            body = f"Booking {code} ({slot}): {money}{contact}"
+            title = Txt("Booking par paisa baqi hai", "Money is due on a booking", "ru")
+            body = Txt(f"Booking {code} ({slot}): {money}{contact}", f"Booking {code} ({slot}): {money_en}{contact_en}", "ru")
             # fix/nov-9: this plain notice goes out only when the Sahi hai / Ghalat hai question is OFF (no claim, no
             # 24-hour penalty), so it must not use khelo_short_payment, whose body promises both.
             template = "generic_notification"
-            params = [body]
+            params = [text_for(player, body)]
         await self._audit_tier(
             player, f"player_{kind}", title, body, reference_id=booking_id, template_name=template, template_params=params,
             buttons=buttons,
@@ -751,11 +780,13 @@ class NotificationService:
         Push + best-effort WhatsApp (the generic template covers it outside the 24h window); the push data payload
         carries reference_id = the booking id so a tap can open that booking."""
         who = f"{player_name} " if player_name else "A player "
+        who_ru = player_name or "Player"
         await self._send_push_and_whatsapp(
             owner,
             "refund_owed",
-            "Refund owed",
-            f"{who}cancelled {court_name} on {_when(starts_at, ends_at)}. Refund owed: {format_pkr(amount)}.",
+            Txt("Player ko refund dena hai", "Refund owed"),
+            Txt(f"{who_ru} ne {court_name} par {_when(starts_at, ends_at)} ki booking cancel ki. Refund dena hai: {format_pkr(amount)}.",
+                f"{who}cancelled {court_name} on {_when(starts_at, ends_at)}. Refund owed: {format_pkr(amount)}."),
             reference_id=booking_id,
         )
 
@@ -802,8 +833,8 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             user,
             "venue_pending_review",
-            "New venue pending review",
-            f'"{venue_name}" was just submitted and needs approval.',
+            Txt("Naya venue review ke liye", "New venue pending review"),
+            Txt(f'"{venue_name}" abhi submit hua hai, approval chahiye.', f'"{venue_name}" was just submitted and needs approval.'),
             reference_id=venue_id,
         )
 
@@ -811,8 +842,8 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             owner,
             "venue_approved",
-            "Venue approved",
-            f'Your venue "{venue_name}" has been approved! \U0001f389',
+            Txt("Venue approve ho gaya", "Venue approved"),
+            Txt(f'Aap ka venue "{venue_name}" approve ho gaya! \U0001f389', f'Your venue "{venue_name}" has been approved! \U0001f389'),
             template_params=[venue_name],
             reference_id=venue_id,
         )
@@ -823,8 +854,8 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             owner,
             "venue_changes_requested",
-            "Changes requested",
-            f'Changes were requested for "{venue_name}": {reason}',
+            Txt("Venue mein tabdeeli chahiye", "Changes requested"),
+            Txt(f'"{venue_name}" mein tabdeeli chahiye: {reason}', f'Changes were requested for "{venue_name}": {reason}'),
             template_params=[venue_name, reason],
             reference_id=venue_id,
         )
@@ -835,8 +866,8 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             owner,
             "venue_rejected",
-            "Venue rejected",
-            f'Your venue "{venue_name}" was rejected: {reason}',
+            Txt("Venue approve nahi hua", "Venue rejected"),
+            Txt(f'Aap ka venue "{venue_name}" approve nahi hua: {reason}', f'Your venue "{venue_name}" was rejected: {reason}'),
             template_params=[venue_name, reason],
             reference_id=venue_id,
         )
@@ -853,9 +884,18 @@ class NotificationService:
             "mismatch": f"⚠️ Mismatch: screenshot doesn't match expected PKR {amount:,.0f}",
             "unreadable": "❓ Could not read amount from screenshot",
         }.get(ocr_verdict, "")
-        body = f"Payment received for {court_name} (PKR {amount:,.0f}). {verdict_note} Tap to approve.".strip()
+        verdict_ru = {
+            "match": "✅ Raqam sahi hai",
+            "mismatch": f"⚠️ Farq hai: screenshot PKR {amount:,.0f} se nahi milta",
+            "unreadable": "❓ Screenshot se raqam parhi nahi gayi",
+        }.get(ocr_verdict, "")
+        body = Txt(
+            f"{court_name} ki payment aayi (PKR {amount:,.0f}). {verdict_ru} Approve karne ke liye kholein.".strip(),
+            f"Payment received for {court_name} (PKR {amount:,.0f}). {verdict_note} Tap to approve.".strip(),
+        )
         await self._send_push_tier(
-            owner, "payment_submitted", "Payment awaiting verification", body, reference_id=booking_id,
+            owner, "payment_submitted", Txt("Naya payment approval ke liye", "Payment awaiting verification"), body,
+            reference_id=booking_id,
             # Owner Round 2 (A6): an owner with no device token (web only) must still see this in the bell.
             bell=True,
         )
@@ -884,16 +924,19 @@ class NotificationService:
             return False
         final = event_type == "payment_final_warning"
         if final:
-            title = "Booking will be cancelled soon"
-            body = (
+            title = Txt("Approve na kiya to booking jaldi cancel ho jayegi", "Booking will be cancelled soon")
+            body = Txt(
+                f"{court_name} ki payment ({format_pkr(amount)}) abhi approval ke intezar mein hai. Approve ya reject na kiya "
+                f"to booking {minutes_to_cancel or 0} minute mein cancel ho jayegi.",
                 f"Payment for {court_name} ({format_pkr(amount)}) is still waiting for approval. The booking will be "
-                f"cancelled in {minutes_to_cancel or 0} minutes unless you approve or reject it."
+                f"cancelled in {minutes_to_cancel or 0} minutes unless you approve or reject it.",
             )
         else:
-            title = "Payment still waiting for approval"
-            body = (
+            title = Txt("Payment abhi tak approval ke intezar mein hai", "Payment still waiting for approval")
+            body = Txt(
+                f"{court_name} ki payment ({format_pkr(amount)}) {minutes_waiting} minute se aap ke review ka intezar kar rahi hai.",
                 f"Still awaiting your review: payment for {court_name} ({format_pkr(amount)}), waiting "
-                f"{minutes_waiting} minutes."
+                f"{minutes_waiting} minutes.",
             )
         payload = {"amount": amount, "minutes_waiting": minutes_waiting}
         if minutes_to_cancel is not None:
@@ -933,10 +976,12 @@ class NotificationService:
         await self._send_push_and_whatsapp(
             owner,
             "owner_payment_auto_cancelled",
-            "Booking auto-cancelled",
-            f"The booking for {court_name} on {_when(starts_at, ends_at)} was cancelled because its payment"
-            f"{amount_text} was not approved in time. If the money arrived it has to be returned: open Approvals and "
-            "choose 'money received' to add it to Refunds.",
+            Txt("Booking auto-cancel ho gayi", "Booking auto-cancelled"),
+            Txt(f"{court_name} par {_when(starts_at, ends_at)} ki booking cancel ho gayi kyunke payment{amount_text} waqt par "
+                "approve nahi hui. Paisa aaya hai to wapas dena hai: Approvals kholein aur 'Paisa aa gaya' chunein.",
+                f"The booking for {court_name} on {_when(starts_at, ends_at)} was cancelled because its payment"
+                f"{amount_text} was not approved in time. If the money arrived it has to be returned: open Approvals and "
+                "choose 'money received' to add it to Refunds."),
             reference_id=booking_id,
             bell=True,
             payload={"amount": amount, "refund_may_be_owed": True} if amount else {"refund_may_be_owed": True},

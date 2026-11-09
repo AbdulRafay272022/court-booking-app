@@ -15,6 +15,7 @@ from app.api import (
     payments,
     phase3,
     public,
+    refund_flow,
     reviews,
     stage2,
     staff,
@@ -28,6 +29,7 @@ from app.api import (
 api_router = APIRouter()
 
 api_router.include_router(phase3.router)  # audit Phase 3 (before users/owners so its fixed paths win)
+api_router.include_router(refund_flow.router)  # fix/nov-9 items 9-12 (fixed paths, before owners/admin)
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(web_push.router)

@@ -20,6 +20,7 @@ import { BookingDetailSheet } from "@/components/booking-detail-sheet";
 import { useLinkedDetail } from "@/lib/linked-booking";
 import { BookingLinks } from "@/components/booking-links";
 import { RefundSheet } from "@/components/refund-sheet";
+import { RefundPayoutBlock } from "@/components/refund-payout-block";
 import { HeroLayout, PaisaSwitch } from "../_fl";
 
 const DAY = 86400_000;
@@ -183,6 +184,8 @@ export default function RefundsScreen() {
                       </Text>
                     </View>
                   ) : null}
+                  {/* fix/nov-9 items 10-12: the player's account (masked until shown) + each refund sent, checked and answered */}
+                  <RefundPayoutBlock refund={refund} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] })} />
                   {b.remaining > 0 ? <Button label="Bhej diya · record karein" block size="md" onPress={() => setOpenId(refund.id)} accessibilityLabel={`${refund.player_name ?? "Player"}: refund bhej diya, record karein`} /> : null}
                   <BookingLinks bookingId={refund.booking_id} startsAt={refund.starts_at} onDetails={() => setDetailId(refund.booking_id)} />
                 </View>

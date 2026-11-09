@@ -74,6 +74,8 @@ export interface User {
   total_no_shows: number;
   total_rejections: number;
   created_at: string;
+  /** fix/nov-9 item 6: the language the server writes push / bell text in ('ru' | 'en'); null = never chosen. */
+  language?: "ru" | "en" | null;
 }
 
 export interface Session {
