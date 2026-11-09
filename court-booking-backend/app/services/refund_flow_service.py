@@ -94,14 +94,30 @@ def normalize_payout(method: str, account: str, title: str, bank: str | None) ->
 
 
 def _encrypt(account: str, settings: Settings) -> str:
-    return encrypt_json({"account": account}, settings)[ENCRYPTED_MARKER]
+    """Raises PAYOUT_STORAGE_UNAVAILABLE (503) when the server has no key: the number is never stored in clear."""
+    try:
+        return encrypt_json({"account": account}, settings)[ENCRYPTED_MARKER]
+    except Exception as exc:  # noqa: BLE001 -- e.g. RuntimeError "key not set"
+        logger.error("payout.encrypt_failed", error=type(exc).__name__)
+        raise _err(status.HTTP_503_SERVICE_UNAVAILABLE, ErrorCode.PAYOUT_STORAGE_UNAVAILABLE,
+                   "Refund details can't be saved right now. Please try again later.") from None
 
 
 def _decrypt(token: str | None, settings: Settings) -> str | None:
+    """The stored number, or None when it cannot be read (the key was lost or rotated without keeping the old one in
+    BANK_DETAILS_ENCRYPTION_KEYS_OLD). Never raises: an unreadable number only means the player is asked for it again."""
     if not token:
         return None
-    data = decrypt_json({ENCRYPTED_MARKER: token}, settings) or {}
+    try:
+        data = decrypt_json({ENCRYPTED_MARKER: token}, settings) or {}
+    except Exception as exc:  # noqa: BLE001 -- InvalidToken, or no key at all
+        logger.warning("payout.undecryptable", error=type(exc).__name__)
+        return None
     return data.get("account")
+
+
+def payout_readable(dispute: PaymentDispute, settings: Settings) -> bool:
+    return bool(dispute.payout_method) and _decrypt(dispute.payout_account_enc, settings) is not None
 
 
 def masked(last4: str | None) -> str | None:
@@ -196,8 +212,8 @@ async def set_payout(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if prev is None:
-            raise _err(422, ErrorCode.PAYOUT_INVALID, "No earlier refund account to reuse.")
+        if prev is None or _decrypt(prev.payout_account_enc, settings) is None:
+            raise _err(422, ErrorCode.PAYOUT_INVALID, "No earlier refund account to reuse. Please type the account.")
         dispute.payout_method, dispute.payout_account_enc = prev.payout_method, prev.payout_account_enc
         dispute.payout_account_last4, dispute.payout_title, dispute.payout_bank = (
             prev.payout_account_last4, prev.payout_title, prev.payout_bank,
@@ -228,7 +244,7 @@ async def set_payout(
     return dispute
 
 
-async def previous_payout(db: AsyncSession, player: User) -> dict | None:
+async def previous_payout(db: AsyncSession, player: User, settings: Settings | None = None) -> dict | None:
     """The account the player used last time (masked), so "Pichla account use karein" can be offered."""
     prev = (
         await db.execute(
@@ -239,7 +255,9 @@ async def previous_payout(db: AsyncSession, player: User) -> dict | None:
             .limit(1)
         )
     ).scalar_one_or_none()
-    return payout_out(prev) if prev is not None else None
+    if prev is None or (settings is not None and _decrypt(prev.payout_account_enc, settings) is None):
+        return None
+    return payout_out(prev)
 
 
 async def reveal_payout(db: AsyncSession, settings: Settings, actor: User, dispute_id: uuid.UUID) -> dict:
@@ -259,6 +277,10 @@ async def reveal_payout(db: AsyncSession, settings: Settings, actor: User, dispu
     if not is_owed(dispute):
         raise _err(status.HTTP_403_FORBIDDEN, ErrorCode.PAYOUT_NOT_VISIBLE, "This refund is no longer owed, so the full number is hidden.")
     full = _decrypt(dispute.payout_account_enc, settings)
+    if full is None:
+        # the key that wrote it is gone: nothing to show; the player's screen asks for the account again
+        raise _err(status.HTTP_409_CONFLICT, ErrorCode.PAYOUT_UNREADABLE,
+                   "This account number can't be read any more. The player has been asked to enter it again.")
     await AuditService(db).log(
         actor_user_id=actor.id, actor_type=actor.role.value, action="payout.viewed", entity_type="payment_dispute",
         entity_id=dispute.id, new_value={"method": dispute.payout_method, "last4": dispute.payout_account_last4,

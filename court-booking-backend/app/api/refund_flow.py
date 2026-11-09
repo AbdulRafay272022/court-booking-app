@@ -34,30 +34,34 @@ from app.services import refund_flow_service as rf
 router = APIRouter(tags=["refund-disputes"])
 
 
-async def _refund_state(db, player, booking) -> PlayerRefundStateOut | None:
+async def _refund_state(db, settings, player, booking) -> PlayerRefundStateOut | None:
     dispute = await rf.open_dispute_for(db, booking.id)
     if dispute is None:
         return None
     transfers = (await rf.transfers_for(db, [dispute.id])).get(dispute.id, [])
     owed = rf.is_owed(dispute)
     payout = rf.payout_out(dispute)
+    # an account the server can no longer read (encryption key lost / rotated away) is asked for again
+    unreadable = payout is not None and not rf.payout_readable(dispute, settings)
     return PlayerRefundStateOut(
         dispute_id=dispute.id,
         amount=float(dispute.refund_amount or 0),
         sent=round(float(dispute.refunded_amount or 0), 2),
         remaining=rf.remaining_of(dispute),
         status="owed" if owed else "refunded",
-        needs_payout=owed and payout is None,
-        payout=payout,
-        previous_payout=await rf.previous_payout(db, player) if owed and payout is None else None,
+        needs_payout=owed and (payout is None or unreadable),
+        payout=None if unreadable else payout,
+        previous_payout=await rf.previous_payout(db, player, settings) if owed and (payout is None or unreadable) else None,
         transfers=[RefundTransferOut(**rf.transfer_out(t)) for t in transfers],
     )
 
 
 @router.get("/bookings/{booking_id}/disputes", response_model=BookingDisputesOut)
-async def booking_disputes(booking_id: uuid.UUID, db: DbSession, player: CurrentUser) -> BookingDisputesOut:
+async def booking_disputes(booking_id: uuid.UUID, db: DbSession, settings: AppSettings, player: CurrentUser) -> BookingDisputesOut:
     booking = await rf._player_booking(db, player, booking_id)
-    return BookingDisputesOut(refund=await _refund_state(db, player, booking), escalations=await rf.player_escalations(db, player, booking))
+    return BookingDisputesOut(
+        refund=await _refund_state(db, settings, player, booking), escalations=await rf.player_escalations(db, player, booking)
+    )
 
 
 @router.put("/bookings/{booking_id}/refund-payout", response_model=PlayerRefundStateOut)
@@ -69,7 +73,7 @@ async def set_refund_payout(
         bank=payload.bank, use_previous=payload.use_previous,
     )
     booking = await rf._player_booking(db, player, booking_id)
-    state = await _refund_state(db, player, booking)
+    state = await _refund_state(db, settings, player, booking)
     assert state is not None
     return state
 

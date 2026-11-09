@@ -331,3 +331,108 @@ async def test_language_is_saved_and_server_text_follows_it(
         p = await s.get(User, player.id)
         await _notify(s, get_settings(), p, "x", ("Ru title", "En title"), ("Ru body", "En body"), reference_id=None)
     assert sent[-1][2:] == ("En title", "En body")
+
+
+# ------------------------------------------------------------------ the encryption key: lost / rotated
+
+
+async def test_a_lost_key_never_breaks_the_app_it_only_asks_the_player_again(
+    client, db_session_factory, make_user, make_venue, make_court, make_auth_headers, monkeypatch
+):
+    """The Fernet key (SSM BANK_DETAILS_ENCRYPTION_KEY) is replaced without keeping the old one: the stored number can't be
+    read. Nothing 500s: the owner gets PAYOUT_UNREADABLE, the player's screen asks for the account again, a refund can
+    still be marked sent (the check uses the account title), and the new number is stored with the new key."""
+    from app.config import get_settings
+
+    owner, player, venue, court, oh, ph = await _setup(make_user, make_venue, make_court, make_auth_headers, db_session_factory, phone_tail="06")
+    booking, dispute = await _owed_refund(db_session_factory, court, player)
+    await set_flag(db_session_factory, "refunds")
+    await client.put(f"{API}/bookings/{booking.id}/refund-payout", headers=ph,
+                     json={"method": "jazzcash", "account": "03001234567", "title": "Ali Raza"})
+    settings = get_settings()
+    monkeypatch.setattr(settings, "BANK_DETAILS_ENCRYPTION_KEY", "a-completely-new-key-old-one-lost")
+
+    gone = await client.get(f"{API}/owners/refunds/{dispute.id}/payout", headers=oh)
+    assert gone.status_code == 409 and gone.json()["error"]["code"] == "PAYOUT_UNREADABLE"
+    assert (await client.get(f"{API}/owners/refunds", headers=oh)).status_code == 200
+    state = (await client.get(f"{API}/bookings/{booking.id}/disputes", headers=ph)).json()["refund"]
+    assert state["needs_payout"] is True and state["payout"] is None and state["previous_payout"] is None
+
+    _fake_ocr(monkeypatch, 1000, "Ali Raza")
+    sent = await client.post(f"{API}/owners/refunds/{dispute.id}/mark-refunded", headers=oh,
+                             data={"reference": "EP-9", "amount": "1000"}, files={"screenshot": ("r.png", _png(), "image/png")})
+    assert sent.status_code == 200 and sent.json()["transfers"][0]["ocr_verdict"] == "match"  # matched on the title
+
+    again = await client.put(f"{API}/bookings/{booking.id}/refund-payout", headers=ph,
+                             json={"method": "jazzcash", "account": "03007654321", "title": "Ali Raza"})
+    assert again.status_code == 200 and again.json()["needs_payout"] is False
+    full = await client.get(f"{API}/owners/refunds/{dispute.id}/payout", headers=oh)
+    assert full.status_code == 200 and full.json()["account"] == "03007654321"
+
+
+async def test_a_rotated_key_keeps_old_numbers_readable_through_the_old_keys_setting(
+    client, db_session_factory, make_user, make_venue, make_court, make_auth_headers, monkeypatch
+):
+    from app.config import get_settings
+
+    owner, player, venue, court, oh, ph = await _setup(make_user, make_venue, make_court, make_auth_headers, db_session_factory, phone_tail="07")
+    booking, dispute = await _owed_refund(db_session_factory, court, player)
+    settings = get_settings()
+    old_key = settings.BANK_DETAILS_ENCRYPTION_KEY or settings.SESSION_TOKEN_SECRET
+    await client.put(f"{API}/bookings/{booking.id}/refund-payout", headers=ph,
+                     json={"method": "bank", "account": "PK36SCBL0000001123456702", "title": "Ali Raza"})
+    monkeypatch.setattr(settings, "BANK_DETAILS_ENCRYPTION_KEY", "the-new-key")
+    monkeypatch.setattr(settings, "BANK_DETAILS_ENCRYPTION_KEYS_OLD", old_key)
+    full = await client.get(f"{API}/owners/refunds/{dispute.id}/payout", headers=oh)
+    assert full.status_code == 200 and full.json()["account"] == "PK36SCBL0000001123456702"
+
+
+async def test_no_key_on_the_server_refuses_to_store_a_number_cleanly(
+    client, db_session_factory, make_user, make_venue, make_court, make_auth_headers, monkeypatch
+):
+    from app.config import get_settings
+
+    owner, player, venue, court, oh, ph = await _setup(make_user, make_venue, make_court, make_auth_headers, db_session_factory, phone_tail="08")
+    booking, dispute = await _owed_refund(db_session_factory, court, player)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "BANK_DETAILS_ENCRYPTION_KEY", "")
+    monkeypatch.setattr(settings, "DEBUG", False)
+    r = await client.put(f"{API}/bookings/{booking.id}/refund-payout", headers=ph,
+                         json={"method": "jazzcash", "account": "03001234567", "title": "Ali Raza"})
+    assert r.status_code == 503 and r.json()["error"]["code"] == "PAYOUT_STORAGE_UNAVAILABLE"
+    async with db_session_factory() as s:
+        assert (await s.get(PaymentDispute, dispute.id)).payout_method is None  # nothing stored, never in clear
+
+
+# ------------------------------------------------------------------ khelo_booking_reminder {{3}} = booking ID
+
+
+async def test_booking_reminder_template_sends_the_booking_short_code_as_the_third_variable(
+    db_session_factory, make_user, make_venue, make_court, monkeypatch
+):
+    from app.config import get_settings
+    from app.services.notification_service import NotificationService
+    from app.services.whatsapp_service import WhatsAppService
+
+    sent: list[dict] = []
+
+    async def fake_send(self, payload):
+        sent.append(payload)
+        return {"messages": [{"id": "wamid.r"}]}
+
+    monkeypatch.setattr(WhatsAppService, "_send", fake_send)
+    import uuid
+
+    player = await make_user("+923007200009")
+    await set_flag(db_session_factory, "whatsapp_templates")
+    booking_id = uuid.uuid4()
+    start = datetime.now(timezone.utc) + timedelta(hours=2)
+    async with db_session_factory() as s:
+        user = await s.get(User, player.id)
+        await NotificationService(s, get_settings()).notify_booking_reminder(
+            user=user, court_name="Futsal 1", starts_at=start, ends_at=start + timedelta(hours=1), booking_id=booking_id,
+        )
+    tpl = [p["template"] for p in sent if p.get("template", {}).get("name") == "khelo_booking_reminder"]
+    assert len(tpl) == 1
+    params = [x["text"] for x in tpl[0]["components"][0]["parameters"]]
+    assert params[0] == "Futsal 1" and params[2] == "KH-" + booking_id.hex[:8].upper() and "Khelo" not in params

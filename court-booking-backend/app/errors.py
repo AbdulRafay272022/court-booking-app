@@ -123,6 +123,8 @@ class ErrorCode:
     PAYOUT_INVALID = "PAYOUT_INVALID"  # 422: wrong JazzCash/Easypaisa number, IBAN or account title
     PAYOUT_NOT_VISIBLE = "PAYOUT_NOT_VISIBLE"  # 403: the full number is only for the venue that still owes this refund
     REFUND_NOT_OWED = "REFUND_NOT_OWED"  # 409: no open refund on this booking
+    PAYOUT_UNREADABLE = "PAYOUT_UNREADABLE"  # 409: the stored number cannot be decrypted (key lost / rotated away); player re-enters it
+    PAYOUT_STORAGE_UNAVAILABLE = "PAYOUT_STORAGE_UNAVAILABLE"  # 503: no encryption key on the server; nothing is stored
     ESCALATION_NOT_ALLOWED = "ESCALATION_NOT_ALLOWED"  # 409: nothing the venue refused that Khelo could look at
     ALREADY_ESCALATED = "ALREADY_ESCALATED"  # 409: this was already sent to Khelo
 

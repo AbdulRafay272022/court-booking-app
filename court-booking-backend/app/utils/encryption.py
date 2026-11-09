@@ -3,7 +3,7 @@ import hashlib
 import json
 
 import structlog
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 
 from app.config import Settings
 
@@ -12,7 +12,11 @@ ENCRYPTED_MARKER = "_encrypted"
 logger = structlog.get_logger(__name__)
 
 
-def _fernet(settings: Settings) -> Fernet:
+def _key(material: str) -> Fernet:
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(material.encode()).digest()))
+
+
+def _fernet(settings: Settings) -> MultiFernet:
     """Fernet needs a 32-byte url-safe base64 key; derive one from a plain
     secret so operators don't have to generate/manage a separate key by hand.
 
@@ -38,8 +42,10 @@ def _fernet(settings: Settings) -> Fernet:
             )
         logger.warning("encryption.bank_details_key_unset_falling_back_to_session_secret")
     key_material = settings.BANK_DETAILS_ENCRYPTION_KEY or settings.SESSION_TOKEN_SECRET
-    key = base64.urlsafe_b64encode(hashlib.sha256(key_material.encode()).digest())
-    return Fernet(key)
+    # fix/nov-9: the current key encrypts; it and any earlier keys (BANK_DETAILS_ENCRYPTION_KEYS_OLD) decrypt, so a key
+    # can be rotated without making stored bank / payout details unreadable.
+    old = [k.strip() for k in (settings.BANK_DETAILS_ENCRYPTION_KEYS_OLD or "").split(",") if k.strip()]
+    return MultiFernet([_key(key_material), *(_key(k) for k in old)])
 
 
 def encrypt_json(data: dict, settings: Settings) -> dict:

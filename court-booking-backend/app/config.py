@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # SESSION_TOKEN_SECRET (logged loudly) for local-dev convenience only;
     # unset + DEBUG=false makes app/utils/encryption.py raise at first use.
     BANK_DETAILS_ENCRYPTION_KEY: str = ""
+    # fix/nov-9: key ROTATION. Comma-separated earlier keys, used only to READ data written with them (MultiFernet);
+    # everything new is written with BANK_DETAILS_ENCRYPTION_KEY. Rotate = put the old key here, a new one above.
+    BANK_DETAILS_ENCRYPTION_KEYS_OLD: str = ""
     # Section 26: sessions are short-lived (8h) and kept alive by proactive
     # refresh (POST /auth/refresh) while the user is active. This is NOT the
     # same clock as phone verification below.
