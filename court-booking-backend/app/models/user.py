@@ -85,6 +85,9 @@ class User(UUIDPkMixin, TimestampMixin, Base):
         nullable=False,
     )
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # fix/nov-9 item 6 (migration c3e8a1f5b902): 'ru' | 'en'; NULL = never chosen = Roman Urdu. Text the server writes
+    # (push, WhatsApp, bell) follows it.
+    language: Mapped[str | None] = mapped_column(String(5), nullable=True)
     reliability_score: Mapped[float] = mapped_column(
         Numeric(3, 2), default=1.00, server_default=text("1.00"), nullable=False
     )

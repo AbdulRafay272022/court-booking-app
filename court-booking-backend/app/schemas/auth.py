@@ -190,6 +190,7 @@ class UserOut(BaseModel):
     total_no_shows: int
     total_rejections: int
     created_at: datetime
+    language: str | None = None  # fix/nov-9 item 6: 'ru' | 'en' | null (never chosen = Roman Urdu)
 
 
 class SessionOut(BaseModel):
@@ -235,6 +236,8 @@ class UserUpdateIn(BaseModel):
     city: City | None = None
     gender: Gender | None = None
     avatar_url: str | None = None
+    # fix/nov-9 item 6: the app / web language switch saves it here, so push / WhatsApp / bell text follows it
+    language: Literal["ru", "en"] | None = None
 
     @field_validator("name")
     @classmethod

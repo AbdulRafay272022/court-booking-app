@@ -119,6 +119,12 @@ class ErrorCode:
     ARRIVAL_WINDOW_CLOSED = "ARRIVAL_WINDOW_CLOSED"  # "Pohanch gaya" only from 1 h before the start to the end
     PROOF_REQUIRED = "PROOF_REQUIRED"  # a transfer reported by the owner needs its screenshot
     NOSHOW_REVERSAL_REQUIRED = "NOSHOW_REVERSAL_REQUIRED"  # 409: a no-show is taken back only with price/received/method
+    # fix/nov-9 items 9-12 (refund payouts, refund transfers, escalations)
+    PAYOUT_INVALID = "PAYOUT_INVALID"  # 422: wrong JazzCash/Easypaisa number, IBAN or account title
+    PAYOUT_NOT_VISIBLE = "PAYOUT_NOT_VISIBLE"  # 403: the full number is only for the venue that still owes this refund
+    REFUND_NOT_OWED = "REFUND_NOT_OWED"  # 409: no open refund on this booking
+    ESCALATION_NOT_ALLOWED = "ESCALATION_NOT_ALLOWED"  # 409: nothing the venue refused that Khelo could look at
+    ALREADY_ESCALATED = "ALREADY_ESCALATED"  # 409: this was already sent to Khelo
 
     # General
     RATE_LIMITED = "RATE_LIMITED"

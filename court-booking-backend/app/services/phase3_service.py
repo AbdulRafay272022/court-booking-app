@@ -36,6 +36,7 @@ from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import User
 from app.models.venue import Venue
 from app.services.feature_flag_service import flag_on
+from app.services.lang import Txt
 from app.utils.timezone import format_pkr, format_time
 
 logger = structlog.get_logger()
@@ -106,7 +107,7 @@ async def _require_flag(db: AsyncSession, key: str) -> None:
         raise _err(ErrorCode.FEATURE_DISABLED, "This feature is currently unavailable.", status.HTTP_403_FORBIDDEN)
 
 
-async def _notify(db: AsyncSession, settings: Settings, user: User | None, event: str, title: str, body: str, *,
+async def _notify(db: AsyncSession, settings: Settings, user: User | None, event: str, title: "str | Txt", body: "str | Txt", *,
                   reference_id: uuid.UUID | None, template: str | None = None, params: list[str] | None = None,
                   buttons: list[tuple[str, str]] | None = None) -> None:
     """Best effort: a notification problem never fails the action that already committed."""
@@ -203,8 +204,10 @@ async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, book
         code = short_code(booking.id)
         where = f"{venue.name} par " if venue else ""
         await _notify(
-            db, settings, player, "player_points_reward", "Points mile",
-            f"Mubarak! Booking {code} poori transfer se ada hui: +{got} points mile, {where}kul {bal}. {POINTS_RULE_RU}",
+            db, settings, player, "player_points_reward", Txt("Points mile", "Points earned", "ru"),
+            Txt(f"Mubarak! Booking {code} poori transfer se ada hui: +{got} points mile, {where}kul {bal}. {POINTS_RULE_RU}",
+                f"Booking {code} was paid fully by transfer: +{got} points{f' at {venue.name}' if venue else ''}, "
+                f"{bal} in total there.", "ru"),
             reference_id=booking.id, template="khelo_points_reward", params=[code, str(got), str(bal)],
         )
     return got
@@ -359,9 +362,11 @@ async def open_short_claim(db: AsyncSession, settings: Settings, booking: Bookin
         code = short_code(booking.id)
         lead = f"{note} " if note else ""
         await _notify(
-            db, settings, player, "player_short_ask", "Booking ka hisaab check karein",
-            f"Booking {code}: {lead}Total {format_pkr(total)}, diye {format_pkr(paid)}, baqi {format_pkr(due)}. Sahi hai ya ghalat? "
-            f"24 ghante mein jawab na diya to 20 points katenge. 4 din ke andar jawab dene par 5 points milenge.",
+            db, settings, player, "player_short_ask", Txt("Booking ka hisaab check karein", "Check your booking's money", "ru"),
+            Txt(f"Booking {code}: {lead}Total {format_pkr(total)}, diye {format_pkr(paid)}, baqi {format_pkr(due)}. Sahi hai ya ghalat? "
+                f"24 ghante mein jawab na diya to 20 points katenge. 4 din ke andar jawab dene par 5 points milenge.",
+                f"Booking {code}: {lead}Total {format_pkr(total)}, you paid {format_pkr(paid)}, due {format_pkr(due)}. Is this right? "
+                f"No answer in 24 hours costs 20 points. Answering within 4 days earns 5 points.", "ru"),
             reference_id=booking.id, template="khelo_short_payment",
             params=[code, format_pkr(total), format_pkr(paid), format_pkr(due)],
             buttons=[(f"short:{claim.id}:yes", "Sahi hai"), (f"short:{claim.id}:no", "Ghalat hai")],
@@ -425,10 +430,14 @@ async def reply_short(db: AsyncSession, settings: Settings, player: User, claim_
         venue = await db.get(Venue, claim.venue_id)
         owner = await db.get(User, venue.owner_id) if venue is not None else None
         why = f" Wajah: {reason}" if reason else ""
+        why_en = f" Reason: {reason}" if reason else ""
+        who = (booking.player_name if booking else None) or "Player"
         await _notify(
-            db, settings, owner, "owner_short_dispute", "Player ne hisaab ghalat kaha",
-            f"{(booking.player_name if booking else None) or 'Player'} ne booking {short_code(claim.booking_id)} ka baqi "
-            f"{format_pkr(claim.due_pkr)} ghalat kaha.{why} Baqi raqam lein ya maaf karein.",
+            db, settings, owner, "owner_short_dispute", Txt("Player ne hisaab ghalat kaha", "Player disputes the amount due", "ru"),
+            Txt(f"{who} ne booking {short_code(claim.booking_id)} ka baqi "
+                f"{format_pkr(claim.due_pkr)} ghalat kaha.{why} Baqi raqam lein ya maaf karein.",
+                f"{who} says the {format_pkr(claim.due_pkr)} due on booking {short_code(claim.booking_id)} is wrong.{why_en} "
+                f"Collect it or waive it.", "ru"),
             reference_id=claim.booking_id,
         )
     return claim, bonus
@@ -454,10 +463,13 @@ async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClai
     player = await db.get(User, claim.player_id) if claim.player_id else None
     code = short_code(claim.booking_id)
     text = "clear ho gaya" if how == "paid" else "venue ne maaf kar diya"
+    text_en = "is settled" if how == "paid" else "was waived by the venue"
     back = f" {returned} points wapas mil gaye." if returned else ""
+    back_en = f" {returned} points returned." if returned else ""
     await _notify(
-        db, settings, player, "player_due_resolved", "Baqi raqam clear",
-        f"Booking {code} ka baqi {format_pkr(claim.due_pkr)} {text}.{back} Shukriya!",
+        db, settings, player, "player_due_resolved", Txt("Baqi raqam clear", "Amount due settled", "ru"),
+        Txt(f"Booking {code} ka baqi {format_pkr(claim.due_pkr)} {text}.{back} Shukriya!",
+            f"Booking {code}: the {format_pkr(claim.due_pkr)} due {text_en}.{back_en} Thank you!", "ru"),
         reference_id=claim.booking_id, template="khelo_due_resolved", params=[code, format_pkr(claim.due_pkr)],
     )
 
@@ -490,8 +502,11 @@ async def decide_short(db: AsyncSession, settings: Settings, actor: User, claim_
         await db.commit()
         player = await db.get(User, claim.player_id) if claim.player_id else None
         await _notify(
-            db, settings, player, "player_short_decision", "Venue ne baqi raqam rakhi",
-            f"Booking {short_code(claim.booking_id)}: venue ne baqi {format_pkr(claim.due_pkr)} sahi kaha. Agli dafa venue par de dein.",
+            db, settings, player, "player_short_decision", Txt("Venue ne baqi raqam rakhi", "The venue kept the amount due", "ru"),
+            Txt(f"Booking {short_code(claim.booking_id)}: venue ne baqi {format_pkr(claim.due_pkr)} sahi kaha. Agli dafa venue par de dein. "
+                f"Aap ke khayal mein ye ghalat hai to booking kholein aur 'Khelo se shikayat karein' dabayein.",
+                f"Booking {short_code(claim.booking_id)}: the venue says the {format_pkr(claim.due_pkr)} due is right. Pay it at the "
+                f"venue next time. If you think it is wrong, open the booking and press 'Report to Khelo'.", "ru"),
             reference_id=claim.booking_id,
         )
     await db.refresh(claim)
@@ -623,8 +638,11 @@ async def reverse_noshow(db: AsyncSession, settings: Settings, actor: User, book
     player = await db.get(User, booking.player_id) if booking.player_id else None
     code = short_code(booking.id)
     extra = " Transfer ka screenshot venue check kar raha hai." if method == "transfer" and received > 0 else ""
-    await _notify(db, settings, player, "player_noshow_decision", "No-show par faisla",
-                  f"Booking {code}: venue ne maan liya ke aap aaye the; no-show hata diya.{extra}", reference_id=booking.id)
+    extra_en = " The venue is checking the transfer screenshot." if method == "transfer" and received > 0 else ""
+    await _notify(db, settings, player, "player_noshow_decision", Txt("No-show par faisla", "No-show decision", "ru"),
+                  Txt(f"Booking {code}: venue ne maan liya ke aap aaye the; no-show hata diya.{extra}",
+                      f"Booking {code}: the venue agreed you came; the no-show is removed.{extra_en}", "ru"),
+                  reference_id=booking.id)
     pending_transfer = method == "transfer" and received > 0
     if not pending_transfer and float(booking.balance_due or 0) > 0:
         from app.services.unsettled_notices import notify_unsettled
@@ -659,8 +677,10 @@ async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, act
         code = short_code(booking.id)
         where = f"{venue.name} par " if venue else ""
         await _notify(
-            db, settings, player, "player_points_reward", "Points mile",
-            f"Booking {code}: venue ne aap ka transfer sahi maan liya: +{got} points mile, {where}kul {bal}.",
+            db, settings, player, "player_points_reward", Txt("Points mile", "Points earned", "ru"),
+            Txt(f"Booking {code}: venue ne aap ka transfer sahi maan liya: +{got} points mile, {where}kul {bal}.",
+                f"Booking {code}: the venue accepted your transfer: +{got} points{f' at {venue.name}' if venue else ''}, "
+                f"{bal} in total there.", "ru"),
             reference_id=booking.id, template="khelo_points_reward", params=[code, str(got), str(bal)],
         )
     return got
@@ -683,8 +703,9 @@ async def send_balance_receipt(db: AsyncSession, settings: Settings, booking: Bo
     code = short_code(booking.id)
     paid, due = float(booking.amount_paid or 0), float(booking.balance_due or 0)
     await _notify(
-        db, settings, player, "payment_receipt", "Payment mil gayi",
-        f"Booking {code}: {format_pkr(credited)} mil gaye. Kul ada {format_pkr(paid)}, baqi {format_pkr(due)}. Shukriya!",
+        db, settings, player, "payment_receipt", Txt("Payment mil gayi", "Payment received", "ru"),
+        Txt(f"Booking {code}: {format_pkr(credited)} mil gaye. Kul ada {format_pkr(paid)}, baqi {format_pkr(due)}. Shukriya!",
+            f"Booking {code}: {format_pkr(credited)} received. Paid in total {format_pkr(paid)}, due {format_pkr(due)}. Thank you!", "ru"),
         reference_id=booking.id, template="khelo_payment_receipt",
         params=[code, format_pkr(credited), format_pkr(paid), format_pkr(due)],
     )
@@ -773,9 +794,11 @@ async def run_short_payment_job(db: AsyncSession, settings: Settings, now: datet
             player = await db.get(User, claim.player_id) if claim.player_id else None
             code = short_code(claim.booking_id)
             await _notify(
-                db, settings, player, "player_points_deducted", "Points kat gaye",
-                f"Booking {code} ke baqi {format_pkr(claim.due_pkr)} par 24 ghante mein jawab nahi aaya, is liye {taken} points kat gaye. "
-                f"Baqi raqam venue par de dein: points wapas mil jayenge. Hisaab ghalat ho to ab bhi 'Ghalat hai' bata sakte hain.",
+                db, settings, player, "player_points_deducted", Txt("Points kat gaye", "Points deducted", "ru"),
+                Txt(f"Booking {code} ke baqi {format_pkr(claim.due_pkr)} par 24 ghante mein jawab nahi aaya, is liye {taken} points kat gaye. "
+                    f"Baqi raqam venue par de dein: points wapas mil jayenge. Hisaab ghalat ho to ab bhi 'Ghalat hai' bata sakte hain.",
+                    f"No answer in 24 hours about the {format_pkr(claim.due_pkr)} due on booking {code}, so {taken} points were "
+                    f"deducted. Pay the rest at the venue to get them back. If the amount is wrong you can still say so.", "ru"),
                 reference_id=claim.booking_id, template="khelo_points_deducted", params=[code, str(taken), "jawab nahi diya"],
             )
     returned = await return_points_for_dead_bookings(db)
@@ -878,10 +901,15 @@ async def reply_noshow(db: AsyncSession, settings: Settings, player: User, booki
         arrival.verdict if arrival else "", ""
     )
     why = f" Unhon ne likha: {reply.note}" if reply.note else ""
+    gps_en = {"near": " GPS says the player was at the venue.", "far": " GPS says the player was far from the venue."}.get(
+        arrival.verdict if arrival else "", ""
+    )
+    why_en = f" They wrote: {reply.note}" if reply.note else ""
+    slot = f"{court.name if court else ''}, {format_time(booking.starts_at)}"
     await _notify(
-        db, settings, owner, "owner_noshow_reply", "Player ne kaha: main aaya tha",
-        f"{booking.player_name or 'Player'} ne booking {short_code(booking.id)} ({court.name if court else ''}, "
-        f"{format_time(booking.starts_at)}) par kaha ke woh aaye the.{gps}{why}",
+        db, settings, owner, "owner_noshow_reply", Txt("Player ne kaha: main aaya tha", "Player says they came", "ru"),
+        Txt(f"{booking.player_name or 'Player'} ne booking {short_code(booking.id)} ({slot}) par kaha ke woh aaye the.{gps}{why}",
+            f"{booking.player_name or 'The player'} says they came for booking {short_code(booking.id)} ({slot}).{gps_en}{why_en}", "ru"),
         reference_id=booking.id,
     )
     return reply
@@ -911,8 +939,13 @@ async def decide_noshow(db: AsyncSession, settings: Settings, actor: User, reply
     reply.decided_at = datetime.now(timezone.utc)
     await db.commit()
     player = await db.get(User, reply.player_id)
-    await _notify(db, settings, player, "player_noshow_decision", "No-show par faisla",
-                  f"Booking {short_code(reply.booking_id)}: venue ne no-show barqarar rakha.", reference_id=reply.booking_id)
+    # fix/nov-9 item 9: after "No-show rakho" the player can take it to Khelo ("Khelo se shikayat karein" on the booking)
+    await _notify(db, settings, player, "player_noshow_decision", Txt("No-show par faisla", "No-show decision", "ru"),
+                  Txt(f"Booking {short_code(reply.booking_id)}: venue ne no-show barqarar rakha. Aap aaye the to booking kholein "
+                      f"aur 'Khelo se shikayat karein' dabayein.",
+                      f"Booking {short_code(reply.booking_id)}: the venue kept the no-show. If you came, open the booking and "
+                      f"press 'Report to Khelo'.", "ru"),
+                  reference_id=reply.booking_id)
     await db.refresh(reply)
     return reply
 
