@@ -122,7 +122,7 @@ def _khelo_walkin_welcome(p: list[str]) -> str:
 
 
 def _khelo_points_reward(p: list[str]) -> str:
-    return f"Mubarak! Booking {p[1]} par {p[0]} points mile. Ab is venue par aap ke {p[2]} points hain."
+    return f"Mubarak! Booking {p[0]} par {p[1]} points mile. Ab is venue par aap ke {p[2]} points hain."
 
 
 def _khelo_booking_reminder(p: list[str]) -> str:

@@ -205,7 +205,7 @@ async def maybe_award_transfer_points(db: AsyncSession, settings: Settings, book
         await _notify(
             db, settings, player, "player_points_reward", "Points mile",
             f"Mubarak! Booking {code} poori transfer se ada hui: +{got} points mile, {where}kul {bal}. {POINTS_RULE_RU}",
-            reference_id=booking.id, template="khelo_points_reward", params=[str(got), code, str(bal)],
+            reference_id=booking.id, template="khelo_points_reward", params=[code, str(got), str(bal)],
         )
     return got
 
@@ -661,7 +661,7 @@ async def award_noshow_transfer_points(db: AsyncSession, settings: Settings, act
         await _notify(
             db, settings, player, "player_points_reward", "Points mile",
             f"Booking {code}: venue ne aap ka transfer sahi maan liya: +{got} points mile, {where}kul {bal}.",
-            reference_id=booking.id, template="khelo_points_reward", params=[str(got), code, str(bal)],
+            reference_id=booking.id, template="khelo_points_reward", params=[code, str(got), str(bal)],
         )
     return got
 

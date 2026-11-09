@@ -208,8 +208,8 @@ def test_no_khelo_template_body_starts_or_ends_with_a_variable():
     for name in names:
         t = TEMPLATES[name]
         body = t.render([f"{{{{{i + 1}}}}}" for i in range(t.param_count)])
-        for i in range(t.param_count):
-            assert f"{{{{{i + 1}}}}}" in body, (name, i)
+        positions = [body.index(f"{{{{{i + 1}}}}}") for i in range(t.param_count)]
+        assert positions == sorted(positions), (name, "variables must appear in order {{1}}, {{2}}, ...")
         assert not body.startswith("{{"), name
         assert not body.rstrip(".!?").endswith("}}"), name
     short = TEMPLATES["khelo_short_payment"].render(["a", "b", "c", "d"])
