@@ -96,13 +96,13 @@ function EscalationCard({ e }: { e: AdminEscalation }) {
             <p className="text-owner-ink-muted">Screenshot read: {t.ocr_amount != null ? `PKR ${formatPKR(t.ocr_amount)}` : "no amount"}{t.ocr_receiver ? ` · to ${t.ocr_receiver}` : ""}</p>
           ) : null}
           {d.payout ? (
-            <p className="text-owner-ink-muted">Player's account: {d.payout.method_label} {d.payout.account_masked} ({d.payout.title})</p>
+            <p className="text-owner-ink-muted">Player&apos;s account: {d.payout.method_label} {d.payout.account_masked} ({d.payout.title})</p>
           ) : null}
           {t.player_note ? <p>Player: {t.player_note}</p> : null}
           {t.owner_reply ? <p>Venue replied: {t.owner_reply}</p> : null}
           {t.screenshot_url ? (
             <a href={t.screenshot_url} target="_blank" rel="noopener noreferrer" className="font-semibold text-owner-accent underline">
-              Open the venue's screenshot
+              Open the venue&apos;s screenshot
             </a>
           ) : null}
         </div>
