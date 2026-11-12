@@ -1,0 +1,859 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Khelo Owner Ledger</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: account book. Position strip → venue money rules → period statement (booking basis + cash bridge) → tabs (Bookings / Payment history / Players / To do) → inline drill-down per row. */
+:root{
+  --bg:#F3F5F4; --surface:#FFFFFF; --sunk:#F7F9F8; --ink:#15201D; --muted:#56635E; --line:#E0E6E3;
+  --accent:#0E7C6B; --accent-ink:#0B5E52; --accent-soft:#E2F2EE; --brand:#E8590C;
+  --in:#0B6B3A; --in-soft:#E3F4EA; --out:#A3261B; --out-soft:#FBE9E7;
+  --adj:#5A3E9B; --adj-soft:#EFEAFB; --warn:#7A4F00; --warn-soft:#FDF3DE;
+  --info:#1F4E8C; --info-soft:#E7EFFA; --grey-soft:#EEF1EF;
+  --f-body:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1513; --surface:#161F1C; --sunk:#1B2522; --ink:#E5ECE9; --muted:#9BA8A3; --line:#28332F;
+  --accent:#3DBFA6; --accent-ink:#86DCCB; --accent-soft:#143A33; --brand:#FF8A4C;
+  --in:#6FD39A; --in-soft:#15321F; --out:#F28B80; --out-soft:#3B1916;
+  --adj:#BBA8F2; --adj-soft:#2A2142; --warn:#F2C46B; --warn-soft:#3A2D10;
+  --info:#93B8EF; --info-soft:#172A45; --grey-soft:#222C29; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1513; --surface:#161F1C; --sunk:#1B2522; --ink:#E5ECE9; --muted:#9BA8A3; --line:#28332F;
+  --accent:#3DBFA6; --accent-ink:#86DCCB; --accent-soft:#143A33; --brand:#FF8A4C;
+  --in:#6FD39A; --in-soft:#15321F; --out:#F28B80; --out-soft:#3B1916;
+  --adj:#BBA8F2; --adj-soft:#2A2142; --warn:#F2C46B; --warn-soft:#3A2D10;
+  --info:#93B8EF; --info-soft:#172A45; --grey-soft:#222C29; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45;font-variant-numeric:tabular-nums}
+.shell{display:flex;flex-wrap:wrap;min-height:100vh;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.side{flex:1 1 220px;max-width:260px;background:var(--surface);border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;gap:4px}
+.side .who{font-size:12px;color:var(--muted);padding:4px 8px 16px}
+.side a{text-decoration:none;color:var(--muted);padding:11px 12px;border-radius:10px;font-size:14px}
+.side a:hover{background:var(--sunk);color:var(--ink)}
+.side a[aria-current="page"]{color:#fff;background:var(--accent);font-weight:700}
+.side .wordmark{font-size:26px;font-weight:800;letter-spacing:-.5px}
+.wrap{flex:999 1 560px;min-width:0;max-width:1180px;padding-left:max(16px,40px);padding-right:max(16px,40px);padding-block:32px 48px;display:flex;flex-direction:column;gap:20px}
+@media (max-width:860px){
+  .side{max-width:none;flex-basis:100%;flex-direction:row;align-items:center;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-left,0px));gap:6px}
+  .side .who,.side .brandrow{display:none}
+  .side a{white-space:nowrap;padding:8px 12px}
+  .wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-size:12.5px}
+.muted{color:var(--muted)}
+.sample{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;background:var(--warn-soft);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:var(--r);padding:10px 14px;font-size:13px}
+.sample strong{font-weight:800;letter-spacing:.3px}
+header.top{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-end}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:34px;height:34px;border-radius:9px;background:var(--brand);display:grid;place-items:center;flex-shrink:0}
+h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.5px;text-wrap:balance}
+.sub{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+.role{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+.role button{border:0;background:transparent;border-radius:999px;padding:8px 14px;min-height:38px;font-size:13px;font-weight:600;color:var(--muted)}
+.role button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.position{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.pos{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:6px;text-align:left}
+button.pos:hover{border-color:var(--accent)}
+.pos .k{font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.pos .v{font-size:24px;font-weight:800;letter-spacing:-.4px}
+.pos.warn{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.pos.warn .k,.pos.warn .s{color:var(--warn)}
+.pos .s{font-size:12px;color:var(--muted)}
+.pos.warn .v{color:var(--warn)} .pos.out .v{color:var(--out)} .pos.info .v{color:var(--info)}
+.seclabel{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}
+.seclabel h2{margin:0;font-size:18px;font-weight:800}
+.seclabel span{font-size:12.5px;color:var(--muted)}
+.rules{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 18px;font-size:13px}
+.rules .rk{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:2px}
+.rules select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 8px;min-height:36px;font-size:13px;max-width:100%}
+.period{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:9px 16px;min-height:44px;font-size:14px;font-weight:500}
+.chip[aria-pressed="true"]{font-weight:700}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.sel{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:0 4px 0 12px;min-height:44px;font-size:13px;color:var(--muted);max-width:100%}
+label.sel select,label.sel input{border:0;background:transparent;font-weight:700;color:var(--ink);min-height:42px;padding:0 6px;font-size:14px;min-width:0;max-width:100%}
+.period{gap:8px}
+.statement{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:14px}
+.eq,.split{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px}
+.eqb{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--sunk);display:flex;flex-direction:column;gap:2px;min-width:0;text-align:left;flex:1 1 150px}
+button.eqb:hover{border-color:var(--accent)}
+.eqb .k{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.eqb .v{font-size:18px;font-weight:800}
+.eqb .s{font-size:11.5px;color:var(--muted)}
+.op{align-self:center;font-weight:800;color:var(--muted);font-size:18px;padding:0 2px}
+.eqb.final{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+.eqb.final .v{color:var(--accent-ink)}
+.eqb.adj .v{color:var(--adj)} .eqb.in .v{color:var(--in)} .eqb.warn .v{color:var(--warn)} .eqb.out .v{color:var(--out)}
+.bridge{font-size:13px;color:var(--muted);border-top:1px dashed var(--line);padding-top:12px;display:flex;flex-direction:column;gap:4px}
+.bridge strong{color:var(--ink)}
+details.months summary{cursor:pointer;font-weight:700;font-size:13px;color:var(--accent-ink);min-height:32px;display:flex;align-items:center}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);background:var(--sunk)}
+tbody tr:last-child td{border-bottom:0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:transparent;padding:12px 14px;min-height:44px;font-weight:700;font-size:14px;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.badge{display:inline-block;min-width:20px;padding:1px 7px;border-radius:999px;background:var(--out-soft);color:var(--out);font-size:11.5px;margin-left:6px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.search{flex:1 1 240px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:0 12px;min-height:42px}
+.search input{border:0;outline:0;background:transparent;flex:1;min-width:0;font-size:14px}
+.tools select{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:0 10px;min-height:42px;font-size:13.5px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:0 14px;min-height:42px;font-size:13.5px;font-weight:600}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--out);border-color:color-mix(in srgb,var(--out) 40%,transparent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.statuschips{display:flex;flex-wrap:wrap;gap:6px}
+.list{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.row{display:grid;align-items:center;gap:12px;padding:13px 20px;border-top:1px solid var(--line);width:100%;background:transparent;border-left:0;border-right:0;border-bottom:0;text-align:left;font-size:13.5px}
+.list>.row:first-child,.list>div:first-child>.row{border-top:0}
+button.row:hover{background:var(--sunk)}
+.row.head{background:var(--sunk);font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.bk{grid-template-columns:86px minmax(150px,1.3fr) minmax(120px,1fr) repeat(4,minmax(78px,.7fr)) 160px}
+.tx{grid-template-columns:96px 130px minmax(150px,1.2fr) minmax(120px,1fr) 80px minmax(110px,.9fr) 96px}
+.pl{grid-template-columns:minmax(150px,1.4fr) 70px repeat(4,minmax(90px,.8fr)) 120px}
+.num{text-align:right}
+.cell2{display:flex;flex-direction:column;gap:1px;min-width:0}
+.cell2 small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{display:inline-block;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.p-paid{background:var(--in-soft);color:var(--in)} .p-partial,.p-unpaid{background:var(--warn-soft);color:var(--warn)}
+.p-refund{background:var(--out-soft);color:var(--out)} .p-adv,.p-pending{background:var(--info-soft);color:var(--info)}
+.p-cancel,.p-noshow{background:var(--grey-soft);color:var(--muted)}
+.t-in{color:var(--in);font-weight:700} .t-out{color:var(--out);font-weight:700} .t-adj{color:var(--adj);font-weight:700} .t-grey{color:var(--muted);font-weight:700} .t-info{color:var(--info);font-weight:700}
+.k-chip{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11.5px;font-weight:700}
+.k-in{background:var(--in-soft);color:var(--in)} .k-out{background:var(--out-soft);color:var(--out)} .k-adj{background:var(--adj-soft);color:var(--adj)} .k-grey{background:var(--grey-soft);color:var(--muted)} .k-fix{background:var(--warn-soft);color:var(--warn)} .k-info{background:var(--info-soft);color:var(--info)}
+.flag{font-size:11px;font-weight:700;color:var(--out)}
+.mob{display:none}
+.more{display:flex;justify-content:center;padding:10px;border-top:1px solid var(--line)}
+.detail{background:var(--sunk);border-top:1px solid var(--line);padding:16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px}
+.detail h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.calc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.calc .ln{display:flex;justify-content:space-between;gap:10px}
+.calc .ln span:first-child{min-width:0}
+.calc .tot{border-top:1px dashed var(--line);padding-top:6px;font-weight:800}
+.calc .result{margin-top:4px;border-radius:8px;padding:8px 10px;font-weight:800;display:flex;justify-content:space-between;gap:10px}
+.formula{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.tl{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tli{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:10px;padding:9px 12px;border-top:1px solid var(--line);font-size:13px;align-items:start}
+.tl>.tli:first-child{border-top:0}
+.tli .meta{font-size:11.5px;color:var(--muted)}
+.tli.ev{background:var(--sunk);color:var(--muted)}
+.tli.rev .body{opacity:.6;text-decoration:line-through}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.form{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:12px;margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.form .fields{display:flex;flex-wrap:wrap;gap:10px}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--muted);flex:1 1 140px;min-width:0}
+.form input,.form select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;min-height:40px;font-size:14px;font-weight:500;width:100%}
+.msg{font-size:12.5px;border-radius:8px;padding:8px 10px}
+.msg.err{background:var(--out-soft);color:var(--out)} .msg.info{background:var(--info-soft);color:var(--info)} .msg.ok{background:var(--in-soft);color:var(--in)}
+.foot{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;padding:12px 14px;border-top:2px solid var(--line);background:var(--sunk);font-size:13px}
+.tasks{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.task{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.task h3{margin:0;padding:12px 14px;font-size:14px;display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line)}
+.task .ti{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid var(--line);width:100%;background:transparent;border-left:0;border-right:0;border-bottom:0;text-align:left;font-size:13px;min-height:44px}
+.task h3+.ti{border-top:0}
+button.ti:hover{background:var(--sunk)}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13.5px;font-weight:600;max-width:calc(100% - 32px);z-index:20}
+.note{font-size:12px;color:var(--muted)}
+@media (max-width:860px){
+  .bk,.tx,.pl{grid-template-columns:minmax(0,1fr) auto}
+  .row.head{display:none}
+  .dsk{display:none}
+  .mob{display:flex}
+  .detail{grid-template-columns:1fr}
+  .tli{grid-template-columns:74px minmax(0,1fr) auto}
+}
+</style>
+
+<div class="shell">
+<nav class="side" aria-label="Owner menu">
+  <div class="brand brandrow" style="padding:0 8px">
+    <div class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="12" y1="5" x2="12" y2="19"/><circle cx="12" cy="12" r="3"/></svg></div>
+    <span class="wordmark">Khelo</span>
+  </div>
+  <div class="who">Hamza Khan · Owner</div>
+  <a href="#">Overview</a>
+  <a href="#">Approvals</a>
+  <a href="#">Add booking</a>
+  <a href="#">Bookings</a>
+  <a href="#" aria-current="page">Ledger</a>
+  <a href="#">Bank check</a>
+  <a href="#">Dues</a>
+  <a href="#">Refunds to pay</a>
+  <a href="#">Growth</a>
+  <a href="#">Reviews</a>
+  <a href="#">Venue settings</a>
+  <a href="#">Staff</a>
+  <a href="#">Staff activity</a>
+</nav>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Ledger</h1>
+      <p class="sub">Hamza Sports Arena</p>
+    </div>
+    <button type="button" class="btn" data-copy="bookings">Export CSV</button>
+  </header>
+
+  <section aria-labelledby="pos-h" style="display:flex;flex-direction:column;gap:8px">
+    <div class="seclabel"><h2 id="pos-h">Right now</h2></div>
+    <div class="position" id="position"></div>
+  </section>
+
+  <section aria-labelledby="st-h" style="display:flex;flex-direction:column;gap:8px">
+    <div class="seclabel"><h2 id="st-h">Statement</h2><span id="st-scope"></span></div>
+    <div class="period" id="period"></div>
+    <div class="statement" id="statement"></div>
+  </section>
+
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <section id="panel" style="display:flex;flex-direction:column;gap:10px"></section>
+  <p class="note" style="text-align:center;margin:8px 0 0">Design preview · sample bookings</p>
+</div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+'use strict';
+var TODAY='2026-11-10',NOW_H=12;
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function addDays(s,n){var d=new Date(s+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
+function dow(s){return new Date(s+'T00:00:00Z').getUTCDay();}
+function dayDiff(a,b){return Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/864e5);}
+function fd(s,yr){if(!s)return '';var p=s.split('-');var t=(+p[2])+' '+MONTHS[+p[1]-1];return (yr||p[0]!=='2026')?t+' '+p[0]:t;}
+function rs(n){return 'Rs '+Math.abs(Math.round(n)).toLocaleString('en-IN');}
+function sg(n){return (n<0?'−':'+')+rs(n);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function hr(h){if(h>=24)return (h-24===0?12:h-24)+':00 AM';var ap=h>=12?'PM':'AM';return (h%12||12)+':00 '+ap;}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+var R=mulberry(20261110);
+function pick(a){return a[Math.floor(R()*a.length)];}
+
+var COURTS={P:{name:'Right wing · Padel',short:'Padel',price:6000,wk:7000},C:{name:'Center Mid · Cricket',short:'Cricket',price:5000,wk:5000},F:{name:'Left Wing · Futsal',short:'Futsal',price:4000,wk:4500}};
+function priceOf(c,d){var w=dow(d);return (w===0||w===6)?COURTS[c].wk:COURTS[c].price;}
+var POOL=['Asad Qureshi','Bilawal Khan','Taha Siddiqui','Hamid Raza','Junaid Akhtar','Faraz Hussain','Moiz Ahmed','Rehan Baig','Shahzaib Ali','Talha Iqbal','Umer Farooq','Yasir Shah','Zohaib Hassan','Arsalan Mirza','Hassan Raza','Obaid Ullah','Kashif Noor','Sameer Jafri','Waleed Anwar','Fawad Haider','Saud Ansari','Rizwan Malik','Adeel Qadri','Noman Saeed','Owais Khan','Haris Memon','Ammar Rizvi','Daniyal Sheikh','Shoaib Lodhi','Mustafa Kazmi','Ehsan Abbasi','Sufyan Tariq'];
+var PHONES={};
+function phone(n){if(!PHONES[n]){PHONES[n]='03'+(10+Math.floor(R()*40))+'-'+String(1000000+Math.floor(R()*8999999));}return PHONES[n];}
+
+/* venue rules (owner settings); text saved on each entry the rule creates */
+var RULES={noshow:'advance',cancelHours:24,venueCancel:'full'};
+function noshowText(){return RULES.noshow==='advance'?'No-show rule: advance kept, unplayed balance not charged':'No-show rule: full amount charged';}
+
+var bookings=[],entries=[],byB={},eSeq=1000,kSeq=0;
+function addB(o){o.key='b'+(++kSeq);o.events=o.events||[];o.phone=o.phone||phone(o.player);bookings.push(o);byB[o.key]=[];return o;}
+function addE(b,kind,amt,mdate,o){o=o||{};var e={id:'E-'+(++eSeq),b:b.key,kind:kind,amt:amt,mdate:mdate,edate:o.edate||mdate,etime:o.time||'',method:o.method||'',by:o.by||'',note:o.note||'',ref:o.ref||null,reversed:false,tag:o.tag||null};entries.push(e);byB[b.key].push(e);return e;}
+
+/* ---------- generated background records (fixed seed: same numbers every load) ---------- */
+(function gen(){
+  var d='2026-05-10',end='2026-11-16';
+  while(d<=end){
+    var w=dow(d),n=2+Math.floor(R()*3)+((w===0||w===6)?1:0),used={};
+    for(var i=0;i<n;i++){
+      var c=pick(['P','P','C','F']);var h=17+Math.floor(R()*7);if(used[c+h])continue;used[c+h]=1;
+      var price=priceOf(c,d),pl=pick(POOL),created=addDays(d,-Math.floor(R()*3));
+      var up=d>TODAY,r=R(),staff=pick(['Ali','Ali','Usman']);
+      var b=addB({player:pl,court:c,date:d,time:hr(h),hour:h,price:price,status:up?'upcoming':'played',created:created,source:'app'});
+      var adv=Math.round(price*(0.3+R()*0.15)/500)*500;
+      if(!up&&r<0.09){b.source='walkin';b.created=d;addE(b,'walkin',price,d,{method:'cash',by:staff,time:hr(h)});continue;}
+      if(up){if(R()<0.15)adv=price;addE(b,'adv',adv,created,{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'2:'+(10+i)+' PM'});continue;}
+      var advE=addE(b,'adv',adv,created,{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'1:'+(10+i)+' PM'});
+      if(r<0.13){b.status='cancelled';b.cancelBy='player';b.cancelledOn=addDays(d,-2);
+        addE(b,'cancel',-price,b.cancelledOn,{by:'System',note:'Cancelled 24+ hours before: full refund (venue rule)'});
+        var paidDay=addDays(b.cancelledOn,1);
+        if(paidDay<=addDays(TODAY,-3))addE(b,'refund',-adv,paidDay,{method:'transfer',by:'Hamza',ref:advE.id,note:'Sent from bank app'});
+        continue;}
+      if(r<0.19){b.status='no_show';b.markedBy=staff;
+        addE(b,'noshow',-(price-adv),d,{by:'System',note:'No-show rule: advance kept, unplayed balance not charged · marked by '+staff});continue;}
+      if(r<0.26){var short=pick([500,1000,1500,2000]);
+        addE(b,'bal',price-adv-short,d,{method:'cash',by:staff,time:hr(h+1),note:'Less than due recorded · owner alerted'});
+        if(dayDiff(d,TODAY)>15){var rr=R();
+          if(rr<0.55){var pd=addDays(d,5+Math.floor(R()*25));if(pd>TODAY)pd=TODAY;addE(b,'due',short,pd,{method:pick(['cash','transfer']),by:pick(['Ali','Usman','Hamza']),note:'Old due paid · linked by booking ID'});}
+          else if(rr<0.75)addE(b,'waiver',short,addDays(d,7),{by:'Hamza',note:'Owner waived: regular player'});}
+        continue;}
+      var balT=R()<0.3;
+      if(balT&&R()<0.35){addE(b,'discount',-500,created,{by:'Points',note:'500 points used = Rs 500 off (funded by owner)'});addE(b,'bal',price-adv-500,d,{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:hr(h+1)});}
+      else addE(b,'bal',price-adv,d,balT?{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:hr(h+1)}:{method:'cash',by:staff,time:hr(h+1)});
+    }
+    d=addDays(d,1);
+  }
+})();
+
+/* ---------- named scenarios (spec section E) ---------- */
+(function scen(){
+  var b,e;
+  b=addB({player:'Bilal Shah',court:'C',date:'2026-10-05',time:'8:00 PM',hour:20,price:5000,status:'played',created:'2026-10-03',source:'app',events:[{d:'2026-10-03',t:'6:40 PM',x:'Screenshot rejected: duplicate (already used). No ledger entry.'}]});
+  addE(b,'adv',3000,'2026-10-04',{method:'transfer',by:'Hamza',note:'New screenshot approved · OCR amount matched',time:'11:20 AM'});
+  addE(b,'due',2000,'2026-11-06',{method:'cash',by:'Ali',note:'Remaining paid a month later · linked by booking ID',time:'7:15 PM'});
+
+  b=addB({player:'Kashan Riaz',court:'C',date:'2026-11-13',time:'9:00 PM',hour:21,price:5000,status:'upcoming',created:'2026-11-09',source:'app',adv:2000});
+  addE(b,'adv',3000,'2026-11-09',{method:'transfer',by:'Hamza',note:'Advance asked Rs 2,000, player sent Rs 3,000 · accepted, remaining reduced',time:'5:40 PM'});
+
+  b=addB({player:'Omar Farooq',court:'P',date:'2026-11-12',time:'8:00 PM',hour:20,price:6000,status:'upcoming',created:'2026-11-09',source:'app'});
+  addE(b,'adv',6500,'2026-11-09',{method:'transfer',by:'Hamza',note:'Rs 500 more than booking amount · owner chose: refund the extra',time:'6:10 PM'});
+
+  var t1=addB({player:'Taimoor Aslam',court:'P',date:'2026-10-23',time:'8:00 PM',hour:20,price:6000,status:'played',created:'2026-10-22',source:'app'});
+  addE(t1,'adv',2000,'2026-10-22',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'4:00 PM'});
+  addE(t1,'bal',4500,'2026-10-23',{method:'cash',by:'Ali',note:'Gave Rs 4,500 for Rs 4,000 due',time:'9:10 PM'});
+  addE(t1,'tocredit',-500,'2026-10-23',{by:'Hamza',note:'Extra Rs 500 kept as player credit (player asked)',time:'9:12 PM'});
+  var t2=addB({player:'Taimoor Aslam',court:'F',date:'2026-11-06',time:'7:00 PM',hour:19,price:4000,status:'played',created:'2026-11-05',source:'app'});
+  addE(t2,'fromcredit',500,'2026-11-05',{method:'credit',by:'Hamza',note:'Player credit used (from booking of 23 Oct)',time:'3:00 PM'});
+  addE(t2,'adv',1500,'2026-11-05',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'3:05 PM'});
+  addE(t2,'bal',2000,'2026-11-06',{method:'cash',by:'Usman',time:'8:05 PM'});
+
+  b=addB({player:'Zain Malik',court:'C',date:'2026-11-07',time:'7:00 PM',hour:19,price:5000,status:'no_show',markedBy:'Usman',created:'2026-11-06',source:'app'});
+  addE(b,'adv',1000,'2026-11-06',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'12:30 PM'});
+  addE(b,'noshow',-4000,'2026-11-07',{by:'System',note:'No-show rule: advance kept, unplayed balance not charged · marked by Usman 8:10 PM',time:'8:10 PM'});
+
+  b=addB({player:'Moin Shah',court:'F',date:'2026-11-09',time:'8:00 PM',hour:20,price:4000,status:'cancelled',cancelBy:'player',cancelledOn:'2026-11-07',created:'2026-11-06',source:'app'});
+  e=addE(b,'adv',500,'2026-11-06',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'1:00 PM'});
+  addE(b,'cancel',-4000,'2026-11-07',{by:'System',note:'Cancelled 55 hours before: full refund (venue rule: 24+ hours)',time:'1:00 PM'});
+  addE(b,'refund',-500,'2026-11-08',{method:'transfer',by:'Hamza',ref:e.id,note:'Returned to player JazzCash',time:'11:30 AM'});
+
+  b=addB({player:'Arif Khan',court:'F',date:'2026-11-08',time:'8:00 PM',hour:20,price:4500,status:'cancelled',cancelBy:'player',cancelledOn:'2026-11-08',created:'2026-11-05',source:'app'});
+  addE(b,'adv',500,'2026-11-05',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'6:00 PM'});
+  addE(b,'cancel',-4000,'2026-11-08',{by:'System',note:'Cancelled 6 hours before: advance kept, rest not charged (venue rule: under 24 hours)',time:'2:00 PM'});
+
+  b=addB({player:'Kamran Javed',court:'P',date:'2026-11-08',time:'6:00 PM',hour:18,price:7000,status:'cancelled',cancelBy:'player',cancelledOn:'2026-11-07',created:'2026-11-03',source:'app'});
+  e=addE(b,'adv',2000,'2026-11-03',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'4:00 PM'});
+  addE(b,'cancel',-5000,'2026-11-07',{by:'System',note:'Cancelled 20 hours before: advance kept, rest not charged',time:'10:00 PM'});
+  addE(b,'pricefix',-1000,'2026-11-07',{by:'Hamza',note:'Goodwill for a regular player: half the advance back',time:'10:05 PM'});
+  addE(b,'refund',-1000,'2026-11-08',{method:'transfer',by:'Hamza',ref:e.id,note:'Sent from Meezan app',time:'11:00 AM'});
+
+  b=addB({player:'Sana Tariq',court:'F',date:'2026-11-04',time:'7:00 PM',hour:19,price:4000,status:'cancelled',cancelBy:'venue',cancelledOn:'2026-11-04',created:'2026-11-02',source:'app'});
+  addE(b,'adv',1000,'2026-11-02',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'1:00 PM'});
+  addE(b,'cancel',-4000,'2026-11-04',{by:'System',note:'Venue cancelled (power failure): always full refund',time:'6:15 PM'});
+
+  b=addB({player:'Fahad Khan',court:'C',date:'2026-11-07',time:'10:00 PM',hour:22,price:5000,status:'played',created:'2026-11-06',source:'app',dispute:{state:'open',text:'Player replied "Not correct": "I gave Ali Rs 3,500 cash"'}});
+  addE(b,'adv',1500,'2026-11-06',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'5:20 PM'});
+  addE(b,'bal',2500,'2026-11-07',{method:'cash',by:'Ali',time:'11:03 PM',note:'Less than due recorded · owner alerted · player messaged'});
+
+  b=addB({player:'Faisal Rana',court:'P',date:'2026-11-07',time:'12:00 AM (Sun 8 Nov)',hour:24,price:7000,status:'played',created:'2026-11-06',source:'app'});
+  addE(b,'adv',2000,'2026-11-06',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'9:00 PM'});
+  addE(b,'bal',5000,'2026-11-07',{method:'cash',by:'Usman',note:'Received after midnight · counted in Saturday 7 Nov business day',time:'1:10 AM (Sun 8 Nov)'});
+
+  b=addB({player:'Saad Ali',court:'F',date:'2026-11-07',time:'9:00 PM',hour:21,price:4500,status:'played',created:'2026-11-07',source:'walkin'});
+  e=addE(b,'walkin',4000,'2026-11-07',{method:'cash',by:'Usman',time:'9:00 PM'});
+  addE(b,'correction',500,'2026-11-07',{method:'cash',by:'Hamza',ref:e.id,note:'Rs 4,500 was received, Rs 4,000 was typed',time:'10:40 PM'});
+
+  b=addB({player:'Hassan Iqbal',court:'P',date:'2026-11-01',time:'8:00 PM',hour:20,price:7000,status:'played',created:'2026-10-30',source:'app'});
+  addE(b,'adv',2000,'2026-10-30',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'3:00 PM'});
+  addE(b,'bal',5000,'2026-11-01',{method:'cash',by:'Ali',time:'9:05 PM'});
+  e=addE(b,'bal',5000,'2026-11-01',{method:'cash',by:'Ali',time:'9:06 PM',note:'Tapped twice'});
+  addE(b,'reversal',-5000,'2026-11-01',{edate:'2026-11-02',method:'cash',by:'Hamza',ref:e.id,note:'Same payment recorded twice',time:'10:15 AM (2 Nov)'});e.reversed=true;
+
+  b=addB({player:'Nabeel Ahmed',court:'C',date:'2026-10-28',time:'9:00 PM',hour:21,price:5000,status:'played',created:'2026-10-27',source:'app'});
+  addE(b,'adv',2000,'2026-10-27',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'2:00 PM'});
+  addE(b,'bal',3000,'2026-10-28',{edate:'2026-10-30',method:'cash',by:'Usman',note:'Entered late: app was closed',time:'10:00 PM'});
+
+  b=addB({player:'Ahmed Raza',court:'P',date:'2026-11-06',time:'7:00 PM',hour:19,price:6000,status:'played',created:'2026-11-04',source:'app'});
+  addE(b,'discount',-500,'2026-11-04',{by:'Points',note:'500 points used = Rs 500 off (funded by owner)'});
+  addE(b,'adv',2000,'2026-11-04',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'2:10 PM'});
+  addE(b,'bal',3500,'2026-11-06',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'8:05 PM'});
+
+  b=addB({player:'Waqas Mir',court:'C',date:'2026-11-03',time:'8:00 PM',hour:20,price:5000,status:'played',created:'2026-11-01',source:'app',dispute:{state:'noreply',text:'No reply in 24 hours to "Total 5,000, paid 4,000"'}});
+  addE(b,'adv',1000,'2026-11-01',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'5:00 PM'});
+  addE(b,'bal',2000,'2026-11-03',{method:'cash',by:'Usman',time:'9:10 PM'});
+  addE(b,'due',1000,'2026-11-05',{method:'transfer',by:'Hamza',note:'Third instalment · screenshot approved',time:'3:40 PM'});
+
+  b=addB({player:'Imran Shaikh',court:'F',date:'2026-10-20',time:'7:00 PM',hour:19,price:4000,status:'played',created:'2026-10-19',source:'app'});
+  addE(b,'adv',1000,'2026-10-19',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched'});
+  addE(b,'bal',2000,'2026-10-20',{method:'cash',by:'Ali',time:'8:05 PM'});
+  addE(b,'waiver',1000,'2026-10-25',{by:'Hamza',note:'Regular customer · owner waived',time:'1:00 PM'});
+
+  b=addB({player:'Danish Ali',court:'C',date:'2026-10-14',time:'9:00 PM',hour:21,price:5000,status:'played',created:'2026-10-13',source:'app'});
+  addE(b,'adv',1500,'2026-10-13',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched'});
+  addE(b,'bal',2500,'2026-10-14',{method:'cash',by:'Usman',time:'10:05 PM'});
+  b=addB({player:'Danish Ali',court:'P',date:'2026-10-29',time:'8:00 PM',hour:20,price:6000,status:'played',created:'2026-10-28',source:'app'});
+  addE(b,'adv',2000,'2026-10-28',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched'});
+  addE(b,'bal',3000,'2026-10-29',{method:'cash',by:'Ali',time:'9:10 PM'});
+
+  b=addB({player:'Ali Raza',court:'C',date:'2026-11-09',time:'9:00 PM',hour:21,price:5000,status:'unmarked',created:'2026-11-08',source:'app'});
+  addE(b,'adv',1000,'2026-11-08',{method:'transfer',by:'Hamza',note:'Screenshot approved · OCR amount matched',time:'4:30 PM'});
+})();
+var PENDING=[
+  {player:'Usama Khan',court:'F',date:'2026-11-11',time:'7:00 PM',amount:2000,ocr:'OCR read Rs 2,000 · matches',since:'10 Nov, 8:40 AM'},
+  {player:'Hira Baig',court:'P',date:'2026-11-13',time:'6:00 PM',amount:2000,ocr:'OCR read Rs 1,500 · less than asked',since:'10 Nov, 9:15 AM'}
+];
+bookings.sort(function(a,b){return a.date===b.date?(a.hour-b.hour):(a.date<b.date?-1:1);});
+bookings.forEach(function(b,i){b.id='KH-'+(1001+i);});
+var B={};bookings.forEach(function(b){B[b.key]=b;});
+var ENTRY={};entries.forEach(function(e){ENTRY[e.id]=e;});
+var MIN_DATE=bookings[0].date,MAX_DATE=bookings[bookings.length-1].date;
+
+/* ---------- calculation engine ---------- */
+var CASHMOVE={adv:1,bal:1,walkin:1,due:1,refund:1,reversal:1,correction:1};          /* real money (cash / transfer) */
+var PAYIN={adv:1,bal:1,walkin:1,due:1,correction:1,reversal:1,fromcredit:1};       /* counts as received on the booking */
+var KL={adv:'Advance',bal:'Balance payment',walkin:'Walk-in payment',due:'Old due paid',refund:'Refund paid',reversal:'Reversal',correction:'Correction',
+  discount:'Points discount',noshow:'No-show rule',cancel:'Cancellation rule',pricefix:'Price reduced',waiver:'Waived',tocredit:'Moved to player credit',fromcredit:'Paid from player credit'};
+function kcls(e){var k=e.kind;if(k==='refund'||k==='reversal')return 'k-out';if(k==='correction')return 'k-fix';if(k==='discount'||k==='noshow'||k==='cancel'||k==='pricefix')return 'k-adj';if(k==='waiver')return 'k-grey';if(k==='tocredit'||k==='fromcredit')return 'k-info';return 'k-in';}
+function tcls(e){var k=e.kind;if(k==='refund'||k==='reversal'||(k==='correction'&&e.amt<0))return 't-out';if(CASHMOVE[k])return 't-in';if(k==='waiver')return 't-grey';if(k==='tocredit'||k==='fromcredit')return 't-info';return 't-adj';}
+function amtText(e){if(CASHMOVE[e.kind]||e.kind==='fromcredit'||e.kind==='tocredit')return sg(e.amt);if(e.kind==='waiver')return rs(e.amt)+' waived';return (e.amt<0?'−':'+')+rs(e.amt);}
+function role(e){var k=e.kind;if(k==='refund')return 'Paid back by';if(k==='reversal'||k==='correction'||k==='pricefix'||k==='waiver'||k==='tocredit'||k==='fromcredit')return 'Owner';if(k==='noshow'||k==='cancel')return 'Rule applied';if(k==='discount')return 'Points';return e.method==='transfer'?'Approved by':'Collected by';}
+function method(e){return e.method==='cash'?'Cash':e.method==='transfer'?'Transfer':e.method==='credit'?'Credit':'—';}
+function calc(b){
+  var c={price:b.price,disc:0,ns:0,cx:0,pf:0,paid:0,ref:0,tocr:0,fromcr:0,waive:0};
+  (byB[b.key]||[]).forEach(function(e){var k=e.kind;
+    if(k==='discount')c.disc+=e.amt;else if(k==='noshow')c.ns+=e.amt;else if(k==='cancel')c.cx+=e.amt;else if(k==='pricefix')c.pf+=e.amt;
+    else if(k==='waiver')c.waive+=e.amt;else if(k==='refund')c.ref+=-e.amt;else if(k==='tocredit')c.tocr+=-e.amt;
+    else if(PAYIN[k]){c.paid+=e.amt;if(k==='fromcredit')c.fromcr+=e.amt;}});
+  c.adj=c.disc+c.ns+c.cx+c.pf;c.final=c.price+c.adj;c.net=c.paid-c.ref-c.tocr;c.bal=c.final-c.net-c.waive;
+  c.payable=b.status!=='upcoming'&&b.status!=='unmarked';
+  c.due=c.payable&&c.bal>0?c.bal:0;c.later=!c.payable&&c.bal>0?c.bal:0;c.refund=c.bal<0?-c.bal:0;
+  c.st=statusOf(b,c);return c;
+}
+function statusOf(b,c){
+  if(b.status==='cancelled'){if(c.bal<0)return['refund','Cancelled · refund due'];return['cancel',c.net>0?'Cancelled · advance kept':'Cancelled · settled'];}
+  if(b.status==='upcoming'){if(c.bal<0)return['refund','Overpaid · refund due'];if(c.net<=0)return['unpaid','Not paid yet'];if(c.bal>0)return['adv','Advance received'];return['paid','Fully paid'];}
+  if(b.status==='unmarked')return['pending','Attendance pending'];
+  if(c.bal<0)return['refund','Refund due'];
+  if(c.bal===0){if(b.status==='no_show')return['noshow','No-show · advance kept'];return['paid',c.waive>0?'Paid · part waived':'Fully paid'];}
+  if(c.net<=0)return['unpaid','Unpaid · due'];
+  return['partial','Partly paid · due'];
+}
+function attText(b){return {played:'Played',no_show:'No-show'+(b.markedBy?' · marked by '+b.markedBy:''),cancelled:'Cancelled by '+(b.cancelBy==='venue'?'venue':'player')+' on '+fd(b.cancelledOn),upcoming:'Upcoming',unmarked:'Slot is over · attendance not marked yet'}[b.status];}
+function playerCredit(name){var s=0;entries.forEach(function(e){if(B[e.b].player!==name)return;if(e.kind==='tocredit')s+=-e.amt;else if(e.kind==='fromcredit')s-=e.amt;});return s;}
+
+/* ---------- UI state ---------- */
+var st={role:'owner',tab:'bookings',preset:'6m',from:'',to:'',court:'',bkFilter:'',q:'',page:40,open:null,form:null,formMsg:null,txKinds:'money',txMethod:'',txBy:'',plOpen:null,plSort:'due'};
+try{var saved=localStorage.getItem('khelo-ledger-tab');if(saved&&/^(bookings|history|players|tasks)$/.test(saved))st.tab=saved;}catch(e){}
+function setRange(){
+  var p=st.preset;if(p==='custom')return;st.to=TODAY;
+  if(p==='7d')st.from=addDays(TODAY,-6);
+  else if(p==='30d')st.from=addDays(TODAY,-29);
+  else if(p==='month'){st.from='2026-11-01';st.to='2026-11-30';}
+  else if(p==='3m'){st.from=addDays(TODAY,-91);st.to=MAX_DATE;}
+  else if(p==='6m'){st.from=addDays(TODAY,-182);st.to=MAX_DATE;}
+  else if(p==='1y'){st.from=addDays(TODAY,-364);st.to=MAX_DATE;}
+  else if(p==='all'){st.from=MIN_DATE;st.to=MAX_DATE;}
+}
+setRange();
+function inRange(d){return d>=st.from&&d<=st.to;}
+function courtOk(b){return !st.court||b.court===st.court;}
+var $=function(id){return document.getElementById(id);};
+
+/* ---------- right now ---------- */
+function renderPosition(){
+  var q=0,qn=0,disp=0,rf=0,rfn=0,adv=0,advn=0,later=0,cr=0,crn=0,seen={};
+  bookings.forEach(function(b){if(!courtOk(b))return;var c=calc(b);
+    if(c.due){q+=c.due;qn++;if(b.dispute)disp+=c.due;}
+    if(c.refund){rf+=c.refund;rfn++;}
+    if(b.status==='upcoming'&&c.net>0){adv+=Math.min(c.net,c.final);advn++;later+=c.later;}
+    if(!seen[b.player]){seen[b.player]=1;var pc=playerCredit(b.player);if(pc>0){cr+=pc;crn++;}}});
+  var pend=PENDING.reduce(function(s,p){return s+p.amount;},0);
+  $('position').innerHTML=
+   '<button type="button" class="pos warn" data-goto="tasks"><span class="k">Customers owe</span><span class="v">'+rs(q)+'</span><span class="s">'+qn+' bookings'+(disp?' · '+rs(disp)+' disputed':'')+'</span></button>'+
+   '<button type="button" class="pos out" data-goto="tasks"><span class="k">Refunds due</span><span class="v">'+rs(rf)+'</span><span class="s">'+rfn+' bookings</span></button>'+
+   '<div class="pos"><span class="k">Advance received</span><span class="v">'+rs(adv)+'</span><span class="s">'+advn+' upcoming bookings</span></div>'+
+   '<button type="button" class="pos info" data-goto="players"><span class="k">Player credit</span><span class="v">'+rs(cr)+'</span><span class="s">'+crn+' players</span></button>'+
+   '<button type="button" class="pos" data-goto="tasks"><span class="k">Pending approval</span><span class="v">'+rs(pend)+'</span><span class="s">'+PENDING.length+' screenshots</span></button>';
+}
+
+/* ---------- period statement ---------- */
+function renderPeriod(){
+  var P=[['7d','Last 7 days'],['30d','Last 30 days'],['month','This month'],['3m','Last 3 months'],['6m','Last 6 months'],['1y','Last 1 year'],['all','Since start'],['custom','Custom dates']];
+  var h='<label class="sel"><span>Period</span><select id="preset">'+P.map(function(p){return '<option value="'+p[0]+'"'+(st.preset===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('')+'</select></label>';
+  if(st.preset==='custom'){
+    h+='<label class="sel"><span>From</span><input type="date" id="from" value="'+st.from+'" min="'+MIN_DATE+'" max="'+MAX_DATE+'"></label>';
+    h+='<label class="sel"><span>To</span><input type="date" id="to" value="'+st.to+'" min="'+MIN_DATE+'" max="'+MAX_DATE+'"></label>';
+  }
+  h+='<label class="sel"><span>Court</span><select id="court"><option value="">All courts</option>'+Object.keys(COURTS).map(function(k){return '<option value="'+k+'"'+(st.court===k?' selected':'')+'>'+COURTS[k].name+'</option>';}).join('')+'</select></label>';
+  if(st.preset!=='custom')h+='<span class="muted" style="font-size:13px">'+fd(st.from,1)+' – '+fd(st.to,1)+'</span>';
+  $('period').innerHTML=h;
+}
+function periodSet(){return bookings.filter(function(b){return inRange(b.date)&&courtOk(b);});}
+function agg(list){
+  var a={n:0,played:0,ns:0,cx:0,up:0,price:0,disc:0,nsA:0,cxA:0,pf:0,final:0,net:0,fromcr:0,waive:0,due:0,later:0,refund:0};
+  list.forEach(function(b){var c=calc(b);a.n++;
+    if(b.status==='played')a.played++;else if(b.status==='no_show')a.ns++;else if(b.status==='cancelled')a.cx++;else a.up++;
+    a.price+=c.price;a.disc+=c.disc;a.nsA+=c.ns;a.cxA+=c.cx;a.pf+=c.pf;a.final+=c.final;a.net+=c.net;a.fromcr+=c.fromcr;a.waive+=c.waive;a.due+=c.due;a.later+=c.later;a.refund+=c.refund;});
+  a.adj=a.disc+a.nsA+a.cxA+a.pf;return a;
+}
+function renderStatement(){
+  var list=periodSet(),a=agg(list);
+  $('st-scope').textContent=a.n+' bookings · '+a.played+' played · '+a.ns+' no-show · '+a.cx+' cancelled · '+a.up+' upcoming';
+  var h='<div class="eq">'+
+    '<button type="button" class="eqb" data-bkf=""><span class="k">Booking amount</span><span class="v">'+rs(a.price)+'</span></button>'+
+    '<span class="op" aria-hidden="true">−</span>'+
+    '<button type="button" class="eqb adj" data-bkf="adj"><span class="k">Deductions</span><span class="v">'+rs(a.adj)+'</span><span class="s">Points '+rs(a.disc)+' · No-show '+rs(a.nsA)+' · Cancellation '+rs(a.cxA)+' · Price reduced '+rs(a.pf)+'</span></button>'+
+    '<span class="op" aria-hidden="true">=</span>'+
+    '<div class="eqb final"><span class="k">Final amount</span><span class="v">'+rs(a.final)+'</span></div>'+
+  '</div><div class="split">'+
+    '<button type="button" class="eqb in" data-bkf="paid"><span class="k">Received</span><span class="v">'+rs(a.net)+'</span><span class="s">After refunds</span></button>'+
+    '<span class="op" aria-hidden="true">+</span>'+
+    '<button type="button" class="eqb warn" data-bkf="due"><span class="k">Due</span><span class="v">'+rs(a.due)+'</span></button>'+
+    '<span class="op" aria-hidden="true">+</span>'+
+    '<button type="button" class="eqb" data-bkf="later"><span class="k">Due at slot</span><span class="v">'+rs(a.later)+'</span><span class="s">Upcoming</span></button>'+
+    '<span class="op" aria-hidden="true">+</span>'+
+    '<button type="button" class="eqb" data-bkf="waive"><span class="k">Waived</span><span class="v">'+rs(a.waive)+'</span></button>'+
+    '<span class="op" aria-hidden="true">−</span>'+
+    '<button type="button" class="eqb out" data-bkf="refund"><span class="k">Refund due</span><span class="v">'+rs(a.refund)+'</span></button>'+
+  '</div>';
+  var inn=0,out=0,cashIn=0,trIn=0;
+  entries.forEach(function(e){if(!CASHMOVE[e.kind])return;var b=B[e.b];if(!courtOk(b)||!inRange(e.mdate))return;
+    if(e.kind==='refund')out+=-e.amt;else{inn+=e.amt;if(e.method==='cash')cashIn+=e.amt;else trIn+=e.amt;}});
+  var cp=inn?Math.round(cashIn/inn*100):0;
+  h+='<div class="bridge" style="gap:10px"><div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px"><strong style="font-size:15px">How the money came in</strong><span>Refunds paid <strong style="color:var(--out)">'+rs(out)+'</strong> · Net <strong>'+rs(inn-out)+'</strong></span></div>'+
+    '<div style="display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--line)" role="img" aria-label="Cash '+cp+' percent, transfer '+(100-cp)+' percent"><div style="width:'+cp+'%;background:#C2410C"></div><div style="width:'+(100-cp)+'%;background:var(--accent)"></div></div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:24px;font-size:14px;color:var(--ink)"><span style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;border-radius:3px;background:#C2410C"></span>Cash <strong>'+rs(cashIn)+'</strong> <span class="muted">('+cp+'%)</span></span><span style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;border-radius:3px;background:var(--accent)"></span>Transfer <strong>'+rs(trIn)+'</strong> <span class="muted">('+(100-cp)+'%)</span></span></div></div>';
+  if(dayDiff(st.from,st.to)>40){
+    var m={};list.forEach(function(b){var k=b.date.slice(0,7);(m[k]=m[k]||[]).push(b);});
+    var rows=Object.keys(m).sort().map(function(k){var x=agg(m[k]);var p=k.split('-');return '<tr><td>'+MONTHS[+p[1]-1]+' '+p[0]+'</td><td>'+x.n+'</td><td>'+rs(x.price)+'</td><td style="color:var(--adj)">'+rs(x.adj)+'</td><td>'+rs(x.final)+'</td><td style="color:var(--in)">'+rs(x.net)+'</td><td>'+rs(x.waive)+'</td><td style="color:var(--warn)">'+rs(x.due+x.later)+'</td><td style="color:var(--out)">'+rs(x.refund)+'</td></tr>';}).join('');
+    h+='<details class="months"><summary>Month by month ('+Object.keys(m).length+' months)</summary><div class="tablebox"><table><thead><tr><th>Month (slot day)</th><th>Bookings</th><th>Booking amount</th><th>Deductions</th><th>Final</th><th>Received</th><th>Waived</th><th>Still due</th><th>Refund due</th></tr></thead><tbody>'+rows+'</tbody></table></div></details>';
+  }
+  $('statement').innerHTML=h;
+}
+
+/* ---------- tabs ---------- */
+function taskCount(){var n=PENDING.length;bookings.forEach(function(b){var c=calc(b);if(c.refund||(b.dispute&&c.due)||b.status==='unmarked')n++;});return n;}
+function renderTabs(){
+  var T=[['bookings','Bookings'],['history','Payment history'],['players','Players'],['tasks','To do']];
+  $('tabs').innerHTML=T.map(function(t){return '<button type="button" role="tab" id="tab-'+t[0]+'" aria-selected="'+(st.tab===t[0])+'" data-tab="'+t[0]+'">'+t[1]+(t[0]==='tasks'?'<span class="badge">'+taskCount()+'</span>':'')+'</button>';}).join('');
+}
+var BKF=[['','All'],['due','Due / unpaid'],['paid','Fully paid'],['later','Advance only'],['refund','Refund due'],['cancel','Cancelled'],['noshow','No-show'],['adj','With deductions'],['waive','With waiver'],['credit','With credit'],['dispute','Disputed']];
+function bkMatch(b,c){var f=st.bkFilter;
+  if(f==='')return true;if(f==='due')return c.due>0;if(f==='paid')return c.st[0]==='paid';if(f==='later')return c.later>0;if(f==='refund')return c.refund>0;
+  if(f==='cancel')return b.status==='cancelled';if(f==='noshow')return b.status==='no_show';if(f==='adj')return c.adj!==0;if(f==='waive')return c.waive>0;
+  if(f==='credit')return c.tocr>0||c.fromcr>0;if(f==='dispute')return !!b.dispute;if(f==='paidall')return c.net!==0;return true;}
+function qMatch(b){var q=st.q.trim().toLowerCase();if(!q)return true;return (b.player+' '+b.phone+' '+b.id).toLowerCase().indexOf(q)>=0;}
+var SEARCH_SVG='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
+
+/* ---------- Bookings ---------- */
+function renderBookings(){
+  var list=periodSet().filter(function(b){return qMatch(b)&&bkMatch(b,calc(b));}).sort(function(a,b){return a.date===b.date?b.hour-a.hour:(a.date<b.date?1:-1);});
+  var h='<div class="tools"><label class="search">'+SEARCH_SVG+'<input id="q" type="search" placeholder="Player, phone or booking ID" aria-label="Search" value="'+esc(st.q)+'"></label>'+
+    '<label class="sel"><span>Status</span><select id="bkf">'+BKF.map(function(f){return '<option value="'+f[0]+'"'+(st.bkFilter===f[0]?' selected':'')+'>'+f[1]+'</option>';}).join('')+'</select></label></div>';
+  h+='<div class="list" role="list"><div class="row bk head" role="presentation"><span>Slot day</span><span>Booking</span><span>Player</span><span class="num">Booking amount</span><span class="num">Deductions</span><span class="num">Received</span><span class="num">Balance</span><span>Status</span></div>';
+  if(!list.length)h+='<div class="empty">No bookings match this period and filter. Change the dates or pick "All".</div>';
+  list.slice(0,st.page).forEach(function(b){var c=calc(b),open=st.open===b.key;
+    var balTxt=c.bal>0?rs(c.bal):c.bal<0?'−'+rs(c.bal):'—';var balCol=c.bal>0?'var(--warn)':c.bal<0?'var(--out)':'var(--muted)';
+    h+='<div role="listitem"><button type="button" class="row bk" data-open="'+b.key+'" aria-expanded="'+open+'">'+
+      '<span class="cell2 dsk"><span>'+DAYS[dow(b.date)]+' '+fd(b.date)+'</span><small>'+b.time+'</small></span>'+
+      '<span class="cell2 dsk"><span class="mono">'+b.id+'</span><small>'+COURTS[b.court].name+(b.source==='walkin'?' · walk-in':'')+'</small></span>'+
+      '<span class="cell2 dsk"><span>'+esc(b.player)+(b.dispute?' <span class="flag">· disputed</span>':'')+'</span><small>'+b.phone+'</small></span>'+
+      '<span class="num dsk">'+rs(b.price)+'</span><span class="num dsk '+(c.adj?'t-adj':'muted')+'">'+(c.adj?'−'+rs(c.adj):'—')+'</span>'+
+      '<span class="num dsk">'+rs(c.net)+'</span><span class="num dsk" style="font-weight:800;color:'+balCol+'">'+balTxt+'</span>'+
+      '<span class="dsk"><span class="pill p-'+c.st[0]+'">'+c.st[1]+'</span></span>'+
+      '<span class="cell2 mob"><span><strong>'+esc(b.player)+'</strong> <span class="mono muted">'+b.id+'</span></span><small>'+fd(b.date)+' · '+b.time+' · '+COURTS[b.court].short+'</small><small>Final '+rs(c.final)+' · Received '+rs(c.net)+'</small></span>'+
+      '<span class="cell2 mob" style="align-items:flex-end"><span class="pill p-'+c.st[0]+'">'+c.st[1]+'</span><small style="font-weight:800;color:'+balCol+'">'+(c.bal?balTxt:'')+'</small></span>'+
+    '</button>'+(open?renderDetail(b,c):'')+'</div>';
+  });
+  if(list.length>st.page)h+='<div class="more"><button type="button" class="btn" data-more="1">Show '+Math.min(40,list.length-st.page)+' more ('+(list.length-st.page)+' left)</button></div>';
+  h+='</div>';
+  return h;
+}
+
+/* ---------- booking drill-down ---------- */
+function renderDetail(b,c){
+  var es=(byB[b.key]||[]);
+  var h='<div class="detail"><div><h3>Calculation</h3><div class="calc">'+
+    '<div class="ln"><span>Booking amount <span class="muted">('+COURTS[b.court].short+', '+fd(b.date)+(b.adv?', advance asked '+rs(b.adv):'')+')</span></span><span>'+rs(b.price)+'</span></div>';
+  es.forEach(function(e){if(e.kind==='discount'||e.kind==='noshow'||e.kind==='cancel'||e.kind==='pricefix')h+='<div class="ln t-adj"><span>'+KL[e.kind]+'</span><span>'+(e.amt<0?'−':'+')+rs(e.amt)+'</span></div>';});
+  h+='<div class="ln tot"><span>Final amount</span><span>'+rs(c.final)+'</span></div>'+
+    '<div class="ln t-in"><span>Received</span><span>'+rs(c.paid)+'</span></div>'+
+    (c.fromcr?'<div class="ln t-info"><span style="padding-left:12px">of which paid from player credit</span><span>'+rs(c.fromcr)+'</span></div>':'')+
+    (c.ref?'<div class="ln t-out"><span>Refunds paid</span><span>−'+rs(c.ref)+'</span></div>':'')+
+    (c.tocr?'<div class="ln t-info"><span>Moved to player credit</span><span>−'+rs(c.tocr)+'</span></div>':'')+
+    (c.waive?'<div class="ln t-grey"><span>Waived</span><span>'+rs(c.waive)+'</span></div>':'');
+  var resCls=c.bal>0?'background:var(--warn-soft);color:var(--warn)':c.bal<0?'background:var(--out-soft);color:var(--out)':'background:var(--in-soft);color:var(--in)';
+  var resTxt=c.bal>0?(c.payable?'Due':'Due at slot'):c.bal<0?'Refund due':'Settled';
+  h+='<div class="result" style="'+resCls+'"><span>'+resTxt+'</span><span>'+(c.bal?rs(c.bal):'Rs 0')+'</span></div></div>'+
+    '<div class="note" style="margin-top:8px">'+attText(b)+(b.dispute?'<br><span class="flag">'+(b.dispute.state==='open'?'Dispute':'No reply')+':</span> '+esc(b.dispute.text):'')+'</div>'+
+    renderActions(b,c)+'</div>';
+  var items=[{d:b.created,t:'',ev:1,x:'Booking created ('+(b.source==='walkin'?'walk-in, by staff':'app')+') · '+esc(b.player)}];
+  (b.events||[]).forEach(function(v){items.push({d:v.d,t:v.t,ev:1,x:esc(v.x)});});
+  if(b.status!=='upcoming'&&b.status!=='unmarked')items.push({d:b.status==='cancelled'?b.cancelledOn:b.date,t:'',ev:1,x:attText(b)});
+  es.forEach(function(e){items.push({d:e.mdate,t:e.etime,e:e});});
+  items.sort(function(x,y){return x.d===y.d?0:(x.d<y.d?-1:1);});
+  h+='<div><h3>History</h3><div class="tl">';
+  items.forEach(function(it){
+    if(it.ev){h+='<div class="tli ev"><span>'+fd(it.d)+(it.t?'<br><span class="meta">'+it.t+'</span>':'')+'</span><span>'+it.x+'</span><span></span></div>';return;}
+    var e=it.e,refE=e.ref?ENTRY[e.ref]:null;
+    var refTxt=refE?'<br><span class="meta">'+(e.kind==='refund'?'Returns ':e.kind==='reversal'?'Cancels ':'Fixes ')+'<span class="mono">'+refE.id+'</span> ('+KL[refE.kind]+', '+fd(refE.mdate)+', '+rs(refE.amt)+')</span>':'';
+    h+='<div class="tli'+(e.reversed?' rev':'')+'"><span>'+fd(e.mdate)+(e.etime?'<br><span class="meta">'+e.etime+'</span>':'')+'</span>'+
+      '<span><span class="body"><span class="k-chip '+kcls(e)+'">'+KL[e.kind]+'</span> '+(e.method?method(e):'')+(e.by?' · <span class="meta">'+role(e)+':</span> '+esc(e.by):'')+'</span>'+refTxt+
+      (e.note?'<br><span class="meta">'+esc(e.note)+'</span>':'')+
+      (e.edate!==e.mdate?'<br><span class="meta" style="color:var(--warn)">Entered on '+fd(e.edate)+' · money received '+fd(e.mdate)+'</span>':'')+
+      (e.reversed?'<br><span class="meta">This entry was reversed</span>':'')+
+      '<br><span class="meta mono">'+e.id+'</span></span><span class="'+tcls(e)+'">'+amtText(e)+'</span></div>';
+  });
+  h+='</div></div></div>';return h;
+}
+function renderActions(b,c){
+  var own=st.role==='owner',h='<div class="actions">',pc=playerCredit(b.player);
+  if(b.status==='unmarked')h+='<button type="button" class="btn primary" data-act="played">Mark played</button><button type="button" class="btn" data-act="noshow">Mark no-show</button>';
+  if(c.bal>0)h+='<button type="button" class="btn primary" data-form="pay">Record payment</button>';
+  if(c.bal>0&&pc>0)h+='<button type="button" class="btn" data-form="usecredit"'+(own?'':' disabled')+'>Use player credit ('+rs(pc)+')</button>';
+  if(c.refund)h+='<button type="button" class="btn danger" data-form="refund"'+(own?'':' disabled')+'>Record refund paid</button><button type="button" class="btn" data-form="tocredit"'+(own?'':' disabled')+'>Keep as player credit</button>';
+  if(b.status==='upcoming')h+='<button type="button" class="btn" data-form="cancel"'+(own?'':' disabled')+'>Cancel booking</button>';
+  if(b.status==='no_show')h+='<button type="button" class="btn" data-act="undonoshow"'+(own?'':' disabled')+'>Player was here: change to played</button>';
+  if(c.net>0&&b.status!=='upcoming')h+='<button type="button" class="btn" data-form="pricefix"'+(own?'':' disabled')+'>Reduce price</button>';
+  if(c.due)h+='<button type="button" class="btn" data-form="waive"'+(own?'':' disabled')+'>Waive due</button>';
+  if((byB[b.key]||[]).some(function(e){return CASHMOVE[e.kind]&&e.kind!=='reversal'&&e.kind!=='refund'&&!e.reversed;}))h+='<button type="button" class="btn" data-form="reverse"'+(own?'':' disabled')+'>Reverse an entry</button>';
+  h+='</div>';
+  if(st.form&&st.form.key===b.key)h+=renderForm(b,c);
+  return h;
+}
+function payOptions(b,kinds){return (byB[b.key]||[]).filter(function(e){return kinds[e.kind]&&!e.reversed;}).map(function(e){return '<option value="'+e.id+'">'+e.id+' · '+KL[e.kind]+' · '+fd(e.mdate)+' · '+method(e)+' · '+rs(e.amt)+'</option>';}).join('');}
+function renderForm(b,c){
+  var t=st.form.type,h='<form class="form" data-fkey="'+b.key+'" novalidate>',m=st.formMsg;
+  var who='<label>Recorded by<select id="f-by">'+(st.role==='owner'?'<option>Hamza</option><option>Ali</option><option>Usman</option>':'<option>Ali</option>')+'</select></label>';
+  if(t==='pay'){
+    h+='<strong>Record payment · '+b.id+' · balance '+rs(c.bal)+'</strong><div class="fields"><label>Amount (Rs)<input id="f-amt" inputmode="numeric" value="'+c.bal+'"></label><label>Method<select id="f-method"><option value="cash">Cash</option><option value="transfer">Transfer (approved screenshot)</option></select></label><label>Business day received<input id="f-date" type="date" value="'+TODAY+'" max="'+TODAY+'"></label>'+who+
+      '<label>Extra amount<select id="f-extra"><option value="refund">Refund to player</option><option value="credit">Keep as player credit</option></select></label><label style="flex-basis:100%">Note<input id="f-note" placeholder="Optional"></label></div>';
+  }else if(t==='usecredit'){
+    var pc=playerCredit(b.player);
+    h+='<strong>Use player credit · '+esc(b.player)+' has '+rs(pc)+'</strong><div class="fields"><label>Amount (Rs)<input id="f-amt" inputmode="numeric" value="'+Math.min(pc,c.bal)+'"></label></div>';
+  }else if(t==='refund'){
+    h+='<strong>Record refund paid · '+b.id+' · refund due '+rs(c.refund)+'</strong><div class="fields"><label style="flex-basis:100%">Which payment is being returned<select id="f-ref">'+payOptions(b,{adv:1,bal:1,walkin:1,due:1,correction:1})+'</select></label><label>Amount (Rs)<input id="f-amt" inputmode="numeric" value="'+c.refund+'"></label><label>Method<select id="f-method"><option value="transfer">Transfer</option><option value="cash">Cash</option></select></label><label>Day paid<input id="f-date" type="date" value="'+TODAY+'" max="'+TODAY+'"></label></div>';
+  }else if(t==='tocredit'){
+    h+='<strong>Keep as player credit · '+b.id+'</strong><div class="fields"><label>Amount (Rs)<input id="f-amt" inputmode="numeric" value="'+c.refund+'"></label><label style="flex-basis:60%">Reason<input id="f-note" placeholder="e.g. player asked to keep it for next game"></label></div>';
+  }else if(t==='cancel'){
+    var hrs=dayDiff(TODAY,b.date)*24+(b.hour-NOW_H);
+    var full=hrs>=RULES.cancelHours;
+    h+='<strong>Cancel booking · '+b.id+' · slot is '+hrs+' hours away</strong><div class="fields"><label>Cancelled by<select id="f-by2"><option value="player">Player</option><option value="venue">Venue</option></select></label></div>'+
+      '<div class="msg info">Player cancels: '+(full?'refund due '+rs(c.net):'advance kept, nothing due')+' · Venue cancels: refund due '+rs(c.net)+'</div>';
+  }else if(t==='pricefix'){
+    h+='<strong>Reduce price · '+b.id+'</strong><div class="fields"><label>Reduce by (Rs)<input id="f-amt" inputmode="numeric" value="1000"></label><label style="flex-basis:60%">Reason<input id="f-note" placeholder="e.g. lights failed, played 30 minutes less"></label></div>';
+  }else if(t==='waive'){
+    h+='<strong>Waive due · '+b.id+' · due '+rs(c.due)+'</strong><div class="fields"><label>Amount (Rs)<input id="f-amt" inputmode="numeric" value="'+c.due+'"></label><label style="flex-basis:60%">Reason<input id="f-note" placeholder="e.g. regular customer"></label></div>';
+  }else if(t==='reverse'){
+    h+='<strong>Reverse an entry · '+b.id+'</strong><div class="fields"><label style="flex-basis:55%">Entry<select id="f-ref">'+payOptions(b,{adv:1,bal:1,walkin:1,due:1,correction:1})+'</select></label><label style="flex-basis:40%">Reason<input id="f-note" placeholder="e.g. recorded twice"></label></div>';
+  }
+  if(m)h+='<div class="msg '+m[0]+'">'+m[1]+'</div>';
+  h+='<div class="actions"><button type="submit" class="btn primary">Save</button><button type="button" class="btn" data-cancel="1">Cancel</button></div></form>';
+  return h;
+}
+function nowTime(){return new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
+function submitForm(form){
+  var b=B[form.getAttribute('data-fkey')],c=calc(b),t=st.form.type;
+  var v=function(id){var el=form.querySelector('#'+id);return el?el.value.trim():'';};
+  var amt=Math.round(Number((v('f-amt')||'0').replace(/[, ]/g,'')));
+  var err=function(x){st.formMsg=['err',x];renderPanel();};
+  var add=function(kind,a,d,o){var e=addE(b,kind,a,d,o);e.edate=TODAY;ENTRY[e.id]=e;return e;};
+  if(t!=='reverse'&&t!=='cancel'&&(!amt||amt<=0))return err('Enter an amount above 0.');
+  if(t==='pay'){
+    var m=v('f-method'),d=v('f-date'),note=v('f-note'),extra=amt-c.bal;
+    if(d>TODAY)return err('A payment cannot be recorded on a future day.');
+    if(d<TODAY&&!note)return err('Earlier day ('+fd(d)+'): add a note. The entry is made today and shows the money as received on '+fd(d)+'.');
+    var kind=b.date<d&&c.payable?'due':(b.status==='upcoming'||d<b.date)?'adv':'bal';
+    add(kind,amt,d,{method:m,by:v('f-by'),time:nowTime(),note:note||(kind==='due'?'Old due paid · linked by booking ID':'')+(extra>0?' · '+rs(extra)+' more than balance':'')});
+    if(extra>0&&v('f-extra')==='credit')add('tocredit',-extra,d,{by:'Hamza',time:nowTime(),note:'Extra kept as player credit'});
+    var c2=calc(b);toast(rs(amt)+' linked to '+b.id+'. Status: '+c2.st[1]+(extra>0?(v('f-extra')==='credit'?' · '+rs(extra)+' added to player credit':' · '+rs(extra)+' shown as refund due'):'')+'.');
+  }else if(t==='usecredit'){
+    var pc=playerCredit(b.player);if(amt>pc)return err('Player has only '+rs(pc)+' credit.');if(amt>c.bal)return err('More than the balance ('+rs(c.bal)+').');
+    add('fromcredit',amt,TODAY,{method:'credit',by:'Hamza',time:nowTime(),note:'Player credit used'});toast(rs(amt)+' credit used on '+b.id+'.');
+  }else if(t==='refund'){
+    if(amt>c.refund)return err('Refund '+rs(amt)+' is more than the refund due ('+rs(c.refund)+'). To give more back, first use "Reduce price" with a reason.');
+    var ref=ENTRY[v('f-ref')];if(!ref)return err('Pick the payment being returned.');
+    add('refund',-amt,v('f-date'),{method:v('f-method'),by:'Hamza',ref:ref.id,time:nowTime(),note:'Refund recorded'});toast(rs(amt)+' refund recorded against '+ref.id+'. '+b.id+': '+calc(b).st[1]+'.');
+  }else if(t==='tocredit'){
+    if(amt>c.refund)return err('Only '+rs(c.refund)+' is due back.');
+    add('tocredit',-amt,TODAY,{by:'Hamza',time:nowTime(),note:v('f-note')||'Kept as player credit'});toast(rs(amt)+' moved to '+b.player+'\'s credit.');
+  }else if(t==='cancel'){
+    var by=v('f-by2'),hrs=dayDiff(TODAY,b.date)*24+(b.hour-NOW_H),full=by==='venue'||hrs>=RULES.cancelHours;
+    var adjA=full?-c.final:-Math.max(c.bal,0);
+    b.status='cancelled';b.cancelBy=by;b.cancelledOn=TODAY;
+    add('cancel',adjA,TODAY,{by:'System',time:nowTime(),note:by==='venue'?'Venue cancelled: always full refund':full?'Cancelled '+hrs+' hours before: full refund (venue rule: 24+ hours)':'Cancelled '+hrs+' hours before: advance kept, rest not charged (venue rule: under 24 hours)'});
+    var c3=calc(b);toast(b.id+' cancelled. '+(c3.refund?rs(c3.refund)+' is now refund due.':'Advance kept, nothing due.'));
+  }else if(t==='pricefix'){
+    var n2=v('f-note');if(!n2)return err('A reason is required.');if(amt>c.final)return err('Cannot reduce by more than the final amount ('+rs(c.final)+').');
+    add('pricefix',-amt,TODAY,{by:'Hamza',note:n2,time:nowTime()});var c4=calc(b);toast('Final amount is now '+rs(c4.final)+'.'+(c4.refund?' Refund due: '+rs(c4.refund)+'.':''));
+  }else if(t==='waive'){
+    var n3=v('f-note');if(!n3)return err('A reason is required.');if(amt>c.due)return err('Cannot waive more than the due ('+rs(c.due)+').');
+    add('waiver',amt,TODAY,{by:'Hamza',note:n3,time:nowTime()});toast(rs(amt)+' waived. '+b.id+': '+calc(b).st[1]+'.');
+  }else if(t==='reverse'){
+    var n4=v('f-note'),r=ENTRY[v('f-ref')];if(!n4)return err('A reason is required.');if(!r)return err('Pick an entry.');
+    add('reversal',-r.amt,TODAY,{by:'Hamza',ref:r.id,note:n4,time:nowTime(),method:r.method});r.reversed=true;toast(r.id+' reversed. '+b.id+': '+calc(b).st[1]+'.');
+  }
+  st.form=null;st.formMsg=null;renderAll();
+}
+function act(b,a){
+  var c=calc(b);
+  if(a==='played'){b.status='played';toast(b.id+' marked played. '+(calc(b).due?rs(calc(b).due)+' is now due.':'Settled.'));}
+  else if(a==='noshow'){b.status='no_show';b.markedBy=st.role==='owner'?'Hamza':'Ali';
+    if(RULES.noshow==='advance'&&c.bal>0){var e=addE(b,'noshow',-c.bal,TODAY,{by:'System',time:nowTime(),note:noshowText()+' · marked by '+b.markedBy});ENTRY[e.id]=e;}
+    toast(b.id+' marked no-show. '+(RULES.noshow==='advance'?'Advance kept, rest not charged. Player and owner notified.':rs(calc(b).due)+' is now due. Player and owner notified.'));}
+  else if(a==='undonoshow'){b.status='played';var ns=(byB[b.key]||[]).reduce(function(s,e){return e.kind==='noshow'?s+e.amt:s;},0);
+    if(ns){var e2=addE(b,'noshow',-ns,TODAY,{by:'Hamza',time:nowTime(),note:'No-show undone: player was here'});ENTRY[e2.id]=e2;}
+    toast(b.id+' changed to played. '+(calc(b).due?rs(calc(b).due)+' is now due.':'Settled.'));}
+  renderAll();
+}
+
+/* ---------- Payment history ---------- */
+function histList(){
+  return entries.filter(function(e){var b=B[e.b];if(!inRange(e.mdate)||!courtOk(b))return false;
+    if(st.txKinds==='money'&&!CASHMOVE[e.kind])return false;if(st.txKinds==='adj'&&CASHMOVE[e.kind])return false;
+    if(st.txMethod&&e.method!==st.txMethod)return false;if(st.txBy&&e.by!==st.txBy)return false;return qMatch(b);})
+  .sort(function(a,b){return a.mdate===b.mdate?(a.id<b.id?1:-1):(a.mdate<b.mdate?1:-1);});
+}
+function renderHistory(){
+  var list=histList();
+  var h='<div class="tools"><label class="search">'+SEARCH_SVG+'<input id="q" type="search" placeholder="Player, phone or booking ID" aria-label="Search" value="'+esc(st.q)+'"></label>'+
+    '<select id="txKinds" aria-label="Show"><option value="money"'+(st.txKinds==='money'?' selected':'')+'>Money only (in and out)</option><option value="all"'+(st.txKinds==='all'?' selected':'')+'>Money + deductions, waivers, credit</option><option value="adj"'+(st.txKinds==='adj'?' selected':'')+'>Only deductions, waivers, credit</option></select>'+
+    '<select id="txMethod" aria-label="Method"><option value="">Cash + transfer</option><option value="cash"'+(st.txMethod==='cash'?' selected':'')+'>Cash only</option><option value="transfer"'+(st.txMethod==='transfer'?' selected':'')+'>Transfer only</option></select>'+
+    '<select id="txBy" aria-label="Person"><option value="">Everyone</option>'+['Hamza','Ali','Usman'].map(function(p){return '<option'+(st.txBy===p?' selected':'')+'>'+p+'</option>';}).join('')+'</select>'+
+    '</div>';
+  h+='<div class="list"><div class="row tx head"><span>Money day</span><span>Type</span><span>Booking · slot</span><span>Player · note</span><span>Method</span><span>Person</span><span class="num">Amount</span></div>';
+  if(!list.length)h+='<div class="empty">No entries in these dates.</div>';
+  list.slice(0,st.page).forEach(function(e){var b=B[e.b],old=b.date<e.mdate&&PAYIN[e.kind];
+    h+='<button type="button" class="row tx" data-jump="'+b.key+'">'+
+      '<span class="cell2 dsk"><span>'+fd(e.mdate)+'</span><small>'+(e.etime||'')+(e.edate!==e.mdate?' · entered '+fd(e.edate):'')+'</small></span>'+
+      '<span class="dsk"><span class="k-chip '+kcls(e)+'">'+KL[e.kind]+'</span>'+(e.reversed?' <small class="muted">reversed</small>':'')+'</span>'+
+      '<span class="cell2 dsk"><span class="mono">'+b.id+'</span><small'+(old?' style="color:var(--warn)"':'')+'>Slot '+fd(b.date)+' · '+COURTS[b.court].short+'</small></span>'+
+      '<span class="cell2 dsk"><span>'+esc(b.player)+'</span><small>'+esc(e.ref?(e.kind==='refund'?'Returns ':e.kind==='reversal'?'Cancels ':'Fixes ')+e.ref:e.note)+'</small></span>'+
+      '<span class="dsk">'+method(e)+'</span>'+
+      '<span class="cell2 dsk"><small>'+role(e)+'</small><span>'+esc(e.by||'—')+'</span></span>'+
+      '<span class="num dsk '+tcls(e)+'">'+amtText(e)+'</span>'+
+      '<span class="cell2 mob"><span><span class="k-chip '+kcls(e)+'">'+KL[e.kind]+'</span> '+esc(b.player)+'</span><small>'+fd(e.mdate)+' · <span class="mono">'+b.id+'</span> · slot '+fd(b.date)+'</small><small>'+method(e)+' · '+role(e)+': '+esc(e.by||'—')+'</small></span>'+
+      '<span class="mob '+tcls(e)+'">'+amtText(e)+'</span></button>';
+  });
+  if(list.length>st.page)h+='<div class="more"><button type="button" class="btn" data-more="1">Show more ('+(list.length-st.page)+' left)</button></div>';
+  var inn=0,out=0,cash={},adjT=0,waiveT=0,crT=0;
+  list.forEach(function(e){if(e.kind==='refund')out+=-e.amt;else if(CASHMOVE[e.kind]){inn+=e.amt;if(e.method==='cash')cash[e.by]=(cash[e.by]||0)+e.amt;}else if(e.kind==='waiver')waiveT+=e.amt;else if(e.kind==='tocredit'||e.kind==='fromcredit')crT+=Math.abs(e.amt);else adjT+=-e.amt;});
+  h+='<div class="foot"><span>In <strong class="t-in">'+rs(inn)+'</strong> − Out <strong class="t-out">'+rs(out)+'</strong> = Net <strong>'+rs(inn-out)+'</strong>'+(st.txKinds!=='money'?' · Deductions '+rs(adjT)+' · Waived '+rs(waiveT)+' · Credit moves '+rs(crT)+' (no money moved)':'')+'</span>'+
+    '<span>Cash collected by: '+(Object.keys(cash).map(function(k){return esc(k)+' '+rs(cash[k]);}).join(' · ')||'—')+'</span></div></div>';
+  return h;
+}
+
+/* ---------- Players ---------- */
+function playerAgg(){
+  var m={};bookings.forEach(function(b){if(!courtOk(b))return;var c=calc(b),p=m[b.player]||(m[b.player]={name:b.player,phone:b.phone,n:0,final:0,net:0,waive:0,due:0,later:0,refund:0,last:'',list:[]});
+    p.n++;p.final+=c.final;p.net+=c.net;p.waive+=c.waive;p.due+=c.due;p.later+=c.later;p.refund+=c.refund;if(b.date>p.last)p.last=b.date;p.list.push(b);});
+  return Object.keys(m).map(function(k){var p=m[k];p.credit=playerCredit(p.name);return p;});
+}
+function renderPlayers(){
+  var q=st.q.trim().toLowerCase();
+  var list=playerAgg().filter(function(p){return !q||(p.name+' '+p.phone).toLowerCase().indexOf(q)>=0;});
+  list.sort(function(a,b){return st.plSort==='due'?(b.due+b.refund+b.credit-a.due-a.refund-a.credit)||(b.final-a.final):st.plSort==='final'?b.final-a.final:(a.last<b.last?1:-1);});
+  var h='<div class="tools"><label class="search">'+SEARCH_SVG+'<input id="q" type="search" placeholder="Player or phone" aria-label="Search" value="'+esc(st.q)+'"></label>'+
+   '<select id="plSort" aria-label="Sort"><option value="due"'+(st.plSort==='due'?' selected':'')+'>Open balances first</option><option value="final"'+(st.plSort==='final'?' selected':'')+'>Highest spend</option><option value="last"'+(st.plSort==='last'?' selected':'')+'>Most recent</option></select></div>';
+  h+='<div class="list"><div class="row pl head"><span>Player · all time</span><span class="num">Bookings</span><span class="num">Final amount</span><span class="num">Received</span><span class="num">Waived</span><span class="num">Open balance</span><span>Last booking</span></div>';
+  list.slice(0,st.page).forEach(function(p){var open=st.plOpen===p.name;
+    var ob=p.due?[rs(p.due)+' due','var(--warn)']:p.refund?[rs(p.refund)+' refund','var(--out)']:p.credit?[rs(p.credit)+' credit','var(--info)']:p.later?[rs(p.later)+' upcoming','var(--muted)']:['—','var(--muted)'];
+    h+='<div><button type="button" class="row pl" data-pl="'+esc(p.name)+'" aria-expanded="'+open+'">'+
+      '<span class="cell2 dsk"><span>'+esc(p.name)+'</span><small>'+p.phone+'</small></span><span class="num dsk">'+p.n+'</span><span class="num dsk">'+rs(p.final)+'</span><span class="num dsk t-in">'+rs(p.net)+'</span><span class="num dsk">'+(p.waive?rs(p.waive):'—')+'</span>'+
+      '<span class="num dsk" style="font-weight:800;color:'+ob[1]+'">'+ob[0]+'</span><span class="dsk">'+fd(p.last)+'</span>'+
+      '<span class="cell2 mob"><strong>'+esc(p.name)+'</strong><small>'+p.n+' bookings · Final '+rs(p.final)+' · Received '+rs(p.net)+'</small></span><span class="mob" style="font-weight:800;color:'+ob[1]+'">'+(ob[0]==='—'?'':ob[0])+'</span></button>'+(open?renderPlayerDetail(p):'')+'</div>';
+  });
+  if(list.length>st.page)h+='<div class="more"><button type="button" class="btn" data-more="1">Show more</button></div>';
+  h+='</div>';return h;
+}
+function renderPlayerDetail(p){
+  var due=p.list.filter(function(b){return calc(b).due>0;}).sort(function(a,b){return a.date<b.date?-1:1;});
+  var h='<div class="detail"><div><h3>Bookings</h3><div class="tl">';
+  p.list.slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,12).forEach(function(b){var c=calc(b);
+    h+='<button type="button" class="tli" data-jump="'+b.key+'" style="border-left:0;border-right:0;border-bottom:0;background:transparent;text-align:left;width:100%"><span>'+fd(b.date)+'</span><span><span class="mono">'+b.id+'</span> · '+COURTS[b.court].short+' · Final '+rs(c.final)+' · Received '+rs(c.net)+'</span><span class="pill p-'+c.st[0]+'">'+c.st[1]+'</span></button>';});
+  h+='</div>'+(p.list.length>12?'<div class="note">'+(p.list.length-12)+' older bookings are in the Bookings tab.</div>':'')+(p.credit?'<div class="msg info" style="margin-top:8px">Credit: '+rs(p.credit)+'</div>':'')+'</div><div><h3>Take a payment</h3>';
+  if(!due.length){h+='<div class="calc">Nothing due.'+(p.refund?' Refund due: '+rs(p.refund)+'.':'')+'</div>';}
+  else{
+    h+='<form class="form" data-plpay="'+esc(p.name)+'" novalidate><div class="fields"><label>Amount (Rs)<input id="pp-amt" inputmode="numeric" value="'+p.due+'"></label><label>Method<select id="pp-method"><option value="cash">Cash</option><option value="transfer">Transfer</option></select></label></div>'+
+      '<div class="calc"><strong style="font-size:12px;text-transform:uppercase;color:var(--muted)">Applied oldest first</strong>';
+    due.forEach(function(b){h+='<div class="ln"><span><span class="mono">'+b.id+'</span> · slot '+fd(b.date)+(b.dispute?' <span class="flag">disputed</span>':'')+'</span><span>'+rs(calc(b).due)+'</span></div>';});
+    h+='</div>';
+    if(st.formMsg&&st.formMsg[2]==='pl')h+='<div class="msg '+st.formMsg[0]+'">'+st.formMsg[1]+'</div>';
+    h+='<div class="actions"><button type="submit" class="btn primary">Save</button><button type="button" class="btn" data-stmt="'+esc(p.name)+'">Share on WhatsApp</button></div></form>';
+  }
+  h+='</div></div>';return h;
+}
+function submitPlayerPay(form){
+  var name=form.getAttribute('data-plpay'),p=playerAgg().filter(function(x){return x.name===name;})[0];
+  var amt=Math.round(Number(form.querySelector('#pp-amt').value.replace(/[, ]/g,''))),m=form.querySelector('#pp-method').value;
+  if(!amt||amt<=0){st.formMsg=['err','Enter an amount above 0.','pl'];return renderPanel();}
+  if(amt>p.due){st.formMsg=['err','More than the total due ('+rs(p.due)+'). Record the extra on a specific booking, where you can refund it or keep it as credit.','pl'];return renderPanel();}
+  var due=p.list.filter(function(b){return calc(b).due>0;}).sort(function(a,b){return a.date<b.date?-1:1;}),left=amt,parts=[];
+  due.forEach(function(b){if(!left)return;var take=Math.min(left,calc(b).due);var e=addE(b,'due',take,TODAY,{method:m,by:st.role==='owner'?'Hamza':'Ali',note:'Paid together with other dues · oldest first',time:nowTime()});ENTRY[e.id]=e;left-=take;parts.push(b.id+' '+rs(take));});
+  st.formMsg=null;toast(rs(amt)+' split: '+parts.join(', ')+'.');renderAll();
+}
+function statementText(name){
+  var p=playerAgg().filter(function(x){return x.name===name;})[0];
+  var lines=['Khelo · Hamza Sports Arena','Account: '+name+' ('+p.phone+')',''];
+  p.list.slice().sort(function(a,b){return a.date<b.date?-1:1;}).forEach(function(b){var c=calc(b);if(c.bal||b.dispute)lines.push(b.id+' · '+fd(b.date,1)+' · '+COURTS[b.court].short+': total '+rs(c.final)+', paid '+rs(c.net)+(c.waive?', waived '+rs(c.waive):'')+', balance '+rs(c.bal));});
+  lines.push('','Total due: '+rs(p.due));if(p.credit)lines.push('Your credit: '+rs(p.credit));return lines.join('\n');
+}
+
+/* ---------- To do ---------- */
+function renderTasks(){
+  var disp=[],ref=[],qz=[],un=[];
+  bookings.forEach(function(b){var c=calc(b);if(!courtOk(b))return;
+    if(b.dispute&&c.due)disp.push([b,c.due]);if(c.refund)ref.push([b,c.refund]);if(c.due&&!b.dispute)qz.push([b,c.due]);if(b.status==='unmarked')un.push([b,c.later]);});
+  qz.sort(function(a,b){return a[0].date<b[0].date?-1:1;});ref.sort(function(a,b){return a[0].date<b[0].date?-1:1;});
+  function age(d){var n=dayDiff(d,TODAY);return n<=0?'today':n+' days';}
+  function box(title,items,f,empty){var tot=0;items.forEach(function(x){tot+=x[1]||0;});
+    return '<div class="task"><h3><span>'+title+'</span><span>'+items.length+(tot?' · '+rs(tot):'')+'</span></h3>'+(items.length?items.map(f).join(''):'<div class="empty">'+empty+'</div>')+'</div>';}
+  var h='<div class="tasks">';
+  h+=box('Disputes to decide',disp,function(x){return '<button type="button" class="ti" data-jump="'+x[0].key+'"><span><strong>'+esc(x[0].player)+'</strong> · <span class="mono">'+x[0].id+'</span><br><span class="muted">'+esc(x[0].dispute.text)+'</span></span><strong style="color:var(--warn)">'+rs(x[1])+'</strong></button>';},'No open disputes.');
+  h+=box('Refunds to pay',ref,function(x){return '<button type="button" class="ti" data-jump="'+x[0].key+'"><span><strong>'+esc(x[0].player)+'</strong> · <span class="mono">'+x[0].id+'</span><br><span class="muted">'+(x[0].status==='upcoming'?'Paid more than the booking amount':attText(x[0]))+' · waiting '+age(x[0].cancelledOn||x[0].created)+'</span></span><strong style="color:var(--out)">'+rs(x[1])+'</strong></button>';},'No refunds pending.');
+  h+=box('Screenshots to approve',PENDING.map(function(p){return [p,p.amount];}),function(x){var p=x[0];return '<div class="ti"><span><strong>'+esc(p.player)+'</strong> · '+COURTS[p.court].short+' · slot '+fd(p.date)+'<br><span class="muted">'+p.ocr+' · since '+p.since+' · on the Approvals page</span></span><strong>'+rs(p.amount)+'</strong></div>';},'Nothing waiting.');
+  h+=box('Mark attendance',un,function(x){return '<button type="button" class="ti" data-jump="'+x[0].key+'"><span><strong>'+esc(x[0].player)+'</strong> · <span class="mono">'+x[0].id+'</span><br><span class="muted">Slot '+fd(x[0].date)+' '+x[0].time+' is over · played or no-show?</span></span><strong>'+rs(x[1])+'</strong></button>';},'All bookings are marked.');
+  h+=box('Dues to collect (oldest first)',qz.slice(0,12),function(x){return '<button type="button" class="ti" data-jump="'+x[0].key+'"><span><strong>'+esc(x[0].player)+'</strong> · <span class="mono">'+x[0].id+'</span><br><span class="muted">Slot '+fd(x[0].date)+' · '+age(x[0].date)+' old</span></span><strong style="color:var(--warn)">'+rs(x[1])+'</strong></button>';},'Nothing due.');
+  h+='</div>';
+  return h;
+}
+
+/* ---------- render + events ---------- */
+function renderPanel(){var p=$('panel');p.setAttribute('role','tabpanel');p.setAttribute('aria-labelledby','tab-'+st.tab);
+  p.innerHTML=st.tab==='bookings'?renderBookings():st.tab==='history'?renderHistory():st.tab==='players'?renderPlayers():renderTasks();
+  var q=$('q');if(q&&st._focusQ){q.focus();q.setSelectionRange(q.value.length,q.value.length);st._focusQ=false;}}
+function renderAll(){renderPosition();renderPeriod();renderStatement();renderTabs();renderPanel();}
+var tt;function toast(x){var t=$('toast');t.textContent=x;t.hidden=false;clearTimeout(tt);tt=setTimeout(function(){t.hidden=true;},4500);}
+function csv(kind){
+  var rows=[];
+  if(kind==='bookings'){rows.push(['Booking','Slot day','Time','Court','Player','Phone','Booking amount','Deductions','Final','Received','Waived','Balance','Status']);
+    periodSet().filter(function(b){return qMatch(b)&&bkMatch(b,calc(b));}).forEach(function(b){var c=calc(b);rows.push([b.id,b.date,b.time,COURTS[b.court].name,b.player,b.phone,b.price,c.adj,c.final,c.net,c.waive,c.bal,c.st[1]]);});}
+  else{rows.push(['Entry','Money day','Entered','Type','Booking','Slot day','Player','Method','Person','Amount','Linked entry','Note']);
+    histList().forEach(function(e){var b=B[e.b];rows.push([e.id,e.mdate,e.edate,KL[e.kind],b.id,b.date,b.player,e.method,e.by,e.amt,e.ref||'',e.note]);});}
+  return rows.map(function(r){return r.map(function(x){x=String(x);return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;}).join(',');}).join('\n');
+}
+function copy(text,label){
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){toast(label+' copied.');},function(){fallbackCopy(text,label);});}else fallbackCopy(text,label);
+}
+function fallbackCopy(text,label){var ta=document.createElement('textarea');ta.value=text;ta.setAttribute('aria-label',label);ta.style.cssText='width:100%;height:160px';$('panel').prepend(ta);ta.select();toast('Could not copy automatically. The text is selected above: copy it yourself.');}
+
+document.addEventListener('click',function(ev){
+  var t=ev.target.closest('button');if(!t)return;
+  if(t.id==='role-owner'||t.id==='role-staff'){st.role=t.id==='role-owner'?'owner':'staff';$('role-owner').setAttribute('aria-pressed',String(st.role==='owner'));$('role-staff').setAttribute('aria-pressed',String(st.role==='staff'));st.form=null;renderPanel();return;}
+  var a;
+  if((a=t.getAttribute('data-preset'))){st.preset=a;setRange();st.page=40;renderAll();return;}
+  if(t.hasAttribute('data-bkf')){st.bkFilter=t.getAttribute('data-bkf');st.tab='bookings';st.page=40;try{localStorage.setItem('khelo-ledger-tab',st.tab);}catch(e){}renderTabs();renderPanel();if(t.classList.contains('eqb'))$('tabs').scrollIntoView({behavior:'smooth',block:'start'});return;}
+  if((a=t.getAttribute('data-tab'))||(a=t.getAttribute('data-goto'))){st.tab=a;st.page=40;st.form=null;if(a==='players')st.plSort='due';try{localStorage.setItem('khelo-ledger-tab',a);}catch(e){}renderTabs();renderPanel();if(t.hasAttribute('data-goto'))$('tabs').scrollIntoView({behavior:'smooth',block:'start'});return;}
+  if((a=t.getAttribute('data-open'))){st.open=st.open===a?null:a;st.form=null;st.formMsg=null;renderPanel();return;}
+  if((a=t.getAttribute('data-jump'))){var b=B[a];st.tab='bookings';st.open=a;st.q=b.id;st.bkFilter='';st.form=null;
+    if(!inRange(b.date)){st.preset='all';setRange();}try{localStorage.setItem('khelo-ledger-tab','bookings');}catch(e){}renderAll();
+    var el=document.querySelector('[data-open="'+a+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});return;}
+  if((a=t.getAttribute('data-form'))){if(t.disabled)return;st.form={key:st.open,type:a};st.formMsg=null;renderPanel();return;}
+  if((a=t.getAttribute('data-act'))){if(t.disabled)return;act(B[st.open],a);return;}
+  if(t.hasAttribute('data-cancel')){st.form=null;st.formMsg=null;renderPanel();return;}
+  if(t.hasAttribute('data-more')){st.page+=40;renderPanel();return;}
+  if((a=t.getAttribute('data-pl'))){st.plOpen=st.plOpen===a?null:a;st.formMsg=null;renderPanel();return;}
+  if((a=t.getAttribute('data-copy'))){copy(csv(a),'CSV');return;}
+  if((a=t.getAttribute('data-stmt'))){copy(statementText(a),'Account');return;}
+});
+document.addEventListener('submit',function(ev){ev.preventDefault();var f=ev.target;if(f.hasAttribute('data-fkey'))submitForm(f);else if(f.hasAttribute('data-plpay'))submitPlayerPay(f);});
+document.addEventListener('input',function(ev){var t=ev.target;if(t.id==='q'){st.q=t.value;st.page=40;st._focusQ=true;renderPanel();}});
+document.addEventListener('change',function(ev){var t=ev.target;
+  if(t.id==='from'||t.id==='to'){if(!t.value)return;st[t.id]=t.value;st.preset='custom';if(st.from>st.to){var x=st.from;st.from=st.to;st.to=x;}renderAll();}
+  else if(t.id==='court'){st.court=t.value;renderAll();}
+  else if(t.id==='preset'){st.preset=t.value;if(t.value!=='custom')setRange();st.page=40;renderAll();}
+  else if(t.id==='bkf'){st.bkFilter=t.value;st.page=40;renderPanel();}
+  else if(t.id==='r-noshow'){RULES.noshow=t.value;toast('No-show rule changed. Already-marked bookings keep the rule they were marked with.');}
+  else if(t.id==='txKinds'||t.id==='txMethod'||t.id==='txBy'||t.id==='plSort'){st[t.id]=t.value;renderPanel();}
+});
+renderAll();
+})();
+</script>
