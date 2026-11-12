@@ -17,6 +17,7 @@ from app.models.booking import Booking
 from app.models.court import Court
 from app.models.user import User, UserRole
 from app.models.venue import Venue
+from app.services.money import owed_now
 
 logger = structlog.get_logger()
 
@@ -37,7 +38,7 @@ async def notify_unsettled(
         notifications = NotificationService(db, settings)
         total = int(round(float(booking.price)))
         paid = int(round(float(booking.amount_paid or 0)))
-        due = max(total - paid, 0)
+        due = await owed_now(db, booking)  # ledger v2 read path (flag-free): minus active waivers
         player = await db.get(User, booking.player_id) if booking.player_id else None
         if actor.role == UserRole.STAFF:
             owner = await db.get(User, venue.owner_id)

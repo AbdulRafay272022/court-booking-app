@@ -91,6 +91,8 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
     # rupees off a booking at this venue, only while the owner switched it on.
     points_discount_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     points_discount_pkr: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("500"))
+    # Ledger v2: what a no-show costs. 'advance' (default) = keep what was paid, charge nothing more; 'full' = the rest is due.
+    no_show_charge: Mapped[str] = mapped_column(String(10), nullable=False, default="advance", server_default="advance")
 
     # NOTE: the GIST index on `location` is created automatically by GeoAlchemy2's
     # DDL event listener (named idx_venues_location, matching the spec) as part of
@@ -103,6 +105,7 @@ class Venue(UUIDPkMixin, TimestampMixin, Base):
         CheckConstraint("repeat_every_min >= 5", name="ck_venues_repeat_every_min"),
         CheckConstraint("max_reminders BETWEEN 1 AND 10", name="ck_venues_max_reminders"),
         CheckConstraint("auto_cancel_after_min BETWEEN 5 AND 1440", name="ck_venues_auto_cancel_after_min"),
+        CheckConstraint("no_show_charge IN ('advance', 'full')", name="ck_venues_no_show_charge"),
     )
 
     owner: Mapped["User"] = relationship(back_populates="venues")  # noqa: F821

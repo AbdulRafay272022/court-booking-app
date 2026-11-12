@@ -28,7 +28,12 @@ async def recompute_payment_totals(db: AsyncSession, booking: Booking) -> None:
     )
     total = int(total or 0)
     booking.amount_paid = total
-    booking.balance_due = max(round(float(booking.price) - total, 2), 0.0)
+    # Ledger v2 read path (flag-free, contract 4.2): a waiver is not part of the price, so it is subtracted here; without it a
+    # waived booking (whose price the backfill restores) would show its due again.
+    from app.services.money import waived_total
+
+    waived = await waived_total(db, booking.id)
+    booking.balance_due = max(round(float(booking.price) - total - waived, 2), 0.0)
 
 
 class PaymentLedgerService:
@@ -68,7 +73,10 @@ class PaymentLedgerService:
             select(func.coalesce(func.sum(PaymentEntry.amount_pkr), 0)).where(PaymentEntry.booking_id == booking.id)
         )
         current_paid = int(current_paid or 0)
-        balance = round(float(booking.price) - current_paid, 2)
+        # ledger v2 read path (flag-free): a waived amount is not owed
+        from app.services.money import waived_total
+
+        balance = round(float(booking.price) - current_paid - await waived_total(self.db, booking.id), 2)
         if amount_pkr > balance:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,

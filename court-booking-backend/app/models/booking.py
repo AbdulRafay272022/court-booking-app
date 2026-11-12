@@ -99,7 +99,10 @@ class Booking(UUIDPkMixin, TimestampMixin, Base):
     )
     player_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     player_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Ledger v2: `price` is the booking's FINAL amount (base_price minus active deductions; never minus a waiver), written
+    # together with base_price. base_price is NULL only on rows the ledger_v2 backfill has not reached yet.
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    base_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     advance_amount: Mapped[float] = mapped_column(
         Numeric(10, 2), default=0, server_default=text("0"), nullable=False
     )

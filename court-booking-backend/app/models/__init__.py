@@ -8,6 +8,7 @@ from app.models.dispute import PaymentDispute
 from app.models.favorite import FavoriteVenue
 from app.models.fcm_token import FCMToken
 from app.models.feature_flag import FEATURE_FLAG_SEED, FeatureFlag, FeatureFlagKey
+from app.models.ledger_v2 import AdjustmentKind, BookingAdjustment, PlayerCredit
 from app.models.message import Message
 from app.models.notification import NotificationLog
 from app.models.owner_identity import OwnerIdentity
@@ -23,7 +24,7 @@ from app.models.owner_billing import (
     PremiumFeatureKey,
 )
 from app.models.payment import Payment
-from app.models.payment_entry import PaymentEntry, PaymentMethod
+from app.models.payment_entry import EntryKind, PaymentEntry, PaymentMethod
 from app.models.pricing import PricingRule
 from app.models.refund_flow import Escalation, RefundTransfer
 from app.models.review import Review
@@ -75,6 +76,10 @@ __all__ = [
     "OwnerIdentity",
     "Payment",
     "PaymentEntry",
+    "EntryKind",
+    "AdjustmentKind",
+    "BookingAdjustment",
+    "PlayerCredit",
     "PaymentMethod",
     "PricingRule",
     "Review",

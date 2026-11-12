@@ -44,6 +44,7 @@ class FeatureFlagKey(str, enum.Enum):
     PLAYER_DUES = "player_dues"                      # baqi carried to the next booking
     SHORT_PAYMENT_REPLY = "short_payment_reply"      # "Sahi hai / Ghalat hai" with +5 / -20
     NOSHOW_REPLY = "noshow_reply"                    # "Main aaya tha" + GPS "Pohanch gaya"
+    LEDGER_V2 = "ledger_v2"                          # Paisa v2: new money rules + screens (docs/design/LEDGER-V2-CONTRACT.md)
 
 
 # key -> (human label, one-line description) for the seed and the admin panel.
@@ -138,6 +139,11 @@ FEATURE_FLAG_SEED: dict[str, tuple[str, str]] = {
         "No-show reply + GPS",
         "ON: 'Main aaya tha' and the one-tap 'Pohanch gaya' location proof. OFF (default).",
     ),
+    FeatureFlagKey.LEDGER_V2.value: (
+        "Paisa v2 (ledger)",
+        "ON: Bookings / Len-den / Players / Kaam screens and the v2 money rules (extra money choice, late cancel keeps the "
+        "advance, owner-only corrections). OFF (default): the old Paisa screens and rules.",
+    ),
 }
 
 # audit 2026-10-28: flags that are OFF while their row is missing (every older flag fails OPEN, see FeatureFlagService).
@@ -152,6 +158,7 @@ DEFAULT_OFF_FLAGS: frozenset[str] = frozenset(
         FeatureFlagKey.PLAYER_DUES.value,
         FeatureFlagKey.SHORT_PAYMENT_REPLY.value,
         FeatureFlagKey.NOSHOW_REPLY.value,
+        FeatureFlagKey.LEDGER_V2.value,
     }
 )
 

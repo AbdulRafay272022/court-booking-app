@@ -188,7 +188,7 @@ def build_payment_summary(payment: Payment, booking: Booking) -> tuple[str, str,
     credited = min(paid, price)
     already = int(round(float(booking.amount_paid)))
     total_after = already + credited
-    balance_after = max(price - total_after, 0)
+    balance_after = max(price - total_after, 0)  # a booking awaiting approval never carries a waiver
     if paid == expected:
         status_, text = "paid_in_full", "Paid in full"
     elif paid > expected:

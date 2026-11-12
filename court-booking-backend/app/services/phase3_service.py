@@ -35,6 +35,7 @@ from app.models.court import Court
 from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import User
 from app.models.venue import Venue
+from app.services.money import owed_now
 from app.services.feature_flag_service import flag_on
 from app.services.lang import Txt
 from app.utils.timezone import format_pkr, format_time
@@ -245,7 +246,7 @@ async def points_offer(db: AsyncSession, player: User, booking: Booking) -> dict
         elif not venue.points_discount_enabled:
             state = "venue_off"
         else:
-            discount = min(int(venue.points_discount_pkr), max(int(round(float(booking.price) - float(booking.amount_paid or 0))), 0))
+            discount = min(int(venue.points_discount_pkr), await owed_now(db, booking))  # ledger v2 read path (flag-free): minus active waivers
             if booking.player_id != player.id or booking.status not in (BookingStatus.HELD, BookingStatus.PAYMENT_SUBMITTED, BookingStatus.BOOKED) or booking.starts_at <= datetime.now(timezone.utc) or discount <= 0:
                 state = "not_now"
             elif bal < REDEEM_POINTS:
@@ -332,7 +333,7 @@ async def open_short_claim(db: AsyncSession, settings: Settings, booking: Bookin
         return False
     total = int(round(float(booking.price)))
     paid = int(round(float(booking.amount_paid or 0)))
-    due = max(total - paid, 0)
+    due = await owed_now(db, booking)  # ledger v2 read path (flag-free): minus active waivers
     if due <= 0:
         return False
     now = datetime.now(timezone.utc)

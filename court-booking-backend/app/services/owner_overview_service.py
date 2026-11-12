@@ -102,6 +102,7 @@ from app.services.overview_slots import (
     starts_between_prefilter,
 )
 from app.services.live_bookings import hold_not_expired
+from app.services.money import waived_sql, waived_total
 from app.services.payment_ledger_service import UNCREDITED_REFUND_REASONS, PaymentLedgerService
 from app.services.staff_service import resolve_owner_context, staffed_venue_ids
 from app.utils.timezone import pkt_today
@@ -308,7 +309,9 @@ class OwnerOverviewService:
             else_=func.greatest(func.coalesce(disp.c.refund_amount, 0) - func.coalesce(disp.c.refunded_amount, 0), 0),
         )
         collected = func.greatest(Booking.amount_paid - remaining_owed, 0)
-        due_confirmed = case((_confirmed_cond(), func.greatest(Booking.price - Booking.amount_paid, 0)), else_=0)
+        due_confirmed = case(
+            (_confirmed_cond(), func.greatest(Booking.price - Booking.amount_paid - waived_sql(Booking.id), 0)), else_=0
+        )  # ledger v2 read path (flag-free): minus active waivers
         return collected, due_confirmed, remaining_owed
 
     def _completion_result_expr(self):
@@ -361,7 +364,7 @@ class OwnerOverviewService:
             kind = literal("refund", String)
         due_row = case(
             (cast(Booking.status, String).in_(CONFIRMED_VALUES + ("held", "payment_submitted")),
-             func.greatest(Booking.price - Booking.amount_paid, 0)),
+             func.greatest(Booking.price - Booking.amount_paid - waived_sql(Booking.id), 0)),  # ledger v2 read path (flag-free): minus active waivers
             else_=0,
         )
         sel = (
@@ -1070,7 +1073,7 @@ class OwnerOverviewService:
         elif received_now is not None:
             # Owner Round 2 (A8): "Baqi mein se kitna mila?" -- a POSITIVE amount on top of what was already paid.
             paid = int(round(float(booking.amount_paid)))
-            due = max(price - paid, 0)
+            due = max(price - paid - await waived_total(self.db, booking.id), 0)  # ledger v2 read path (flag-free): minus active waivers
             if received_now < 0 or received_now > due:
                 raise AppError(
                     status.HTTP_400_BAD_REQUEST,
