@@ -310,3 +310,31 @@ GO: build shuru karo, contract ke order (9) ke mutabiq. Migration-Go sirf local/
 Step 3 (backfill + check local DB par) ke baad RUK jao aur check report do. Report dekh kar main aage ka GO dunga.
 Prod par kuch nahi.
 ```
+
+## Step 3 report ke jawab (12 Nov 2026)
+
+```
+Report theek hai. 3 jawab aur 3 baatein:
+
+1. S16 jaise walk-ins: haan, backfill overpayment_excess dispute banaye taake Kaam → Wapas dena mein aayein.
+   Lekin aisa paisa aksar typing ki ghalti hota hai (4,000 likh diya, 2,000 mila). Is liye us row/booking par
+   owner ke paas "Ghalti theek karein" (reverse) bhi ho; reverse karne par dispute khud band ho jaye.
+2. S08 (no-show, owner 4,000 maang raha hai, short claim khula): Due hi rahe. Koi kami nahi lagani.
+3. Hold / screenshot-review bookings: Statement mein na hon, LEKIN sirf jab un par koi approved paisa na ho.
+   Jis booking par advance approve ho chuka aur sirf baqi ka screenshot review mein hai, woh Statement mein
+   rahe (warna asal mila hua paisa gaib ho jayega).
+
+Baatein:
+a. C4 fail 1 par fix ke baad check dobara chalao. Aage badhne se pehle 9/9 OK hon.
+b. Backfill ke baad flag OFF par bhi no-show ki price 5,000 → 1,000 dikhegi. Is liye prod par backfill aur
+   flag ON ek saath hoga, alag alag nahi. Contract ke process mein yeh likh do.
+c. Local DB khali tha, is liye asli data par yeh abhi pakka nahi. Prod se pehle prod ki copy par --dry-run +
+   check zaroori hai (mere GO par). Contract mein gate ke taur par likh do.
+
+GO: step 4, 5, 6 (likhne wale raaste + API, web Paisa, mobile Paisa). Sirf local.
+Step 6 ke baad RUK jao aur do:
+- web + mobile screenshots: Paisa ke 4 tabs, booking khuli, Paisa darj karein (zyada paise ka choice),
+  Refund ho gaya, Kaam ke sab groups, Bank se mila lein, ek staff login ka view
+- tests ka nateeja aur check report dobara.
+Prod par kuch nahi, push nahi.
+```

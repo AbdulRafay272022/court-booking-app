@@ -6,6 +6,8 @@ import { api } from "@/lib/api";
 import { addDays, pktDateString, type StaffActivity, type StaffActivityKind } from "@court-booking/types";
 import Link from "next/link";
 import { paisaHref } from "@/lib/paisa-redirect";
+import { paisaV2Href } from "@/lib/paisa-v2";
+import { usePaisaT } from "@/lib/use-paisa-v2";
 import { ErrorState } from "@/components/error-state";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { formatPKR } from "@/lib/format";
@@ -25,12 +27,16 @@ export function StaffActivityView({
   queryKey,
   load,
   canDecide = false,
+  kaamLinks = false,
 }: {
   queryKey: unknown[];
   load: (from: string, to: string) => Promise<StaffActivity>;
   /** audit Phase 3 item 6: the venue's own view may keep / reverse a no-show the player answered ("Main aaya tha"). */
   canDecide?: boolean;
+  /** ledger v2: the decisions live in Paisa > Kaam; here only the status line and a link to it */
+  kaamLinks?: boolean;
 }) {
+  const pt = usePaisaT();
   const decideClient = useQueryClient();
   const t = useT();
   const fmt = useFmt();
@@ -38,7 +44,7 @@ export function StaffActivityView({
   const [decideError, setDecideError] = useState<string | null>(null);
   const refresh = () => decideClient.invalidateQueries({ queryKey: queryKey.slice(0, 1) });
   // "keep" is one tap; "reverse" asks the final price / received / cash or transfer first (audit fixes 2026-10-31)
-  const onDecideNoShow = canDecide
+  const onDecideNoShow = canDecide && !kaamLinks
     ? async (replyId: string, decision: "keep" | "reverse", bookingId: string, label: string) => {
         setDecideError(null);
         try {
@@ -69,7 +75,7 @@ export function StaffActivityView({
   };
   // audit fixes 2026-10-31 (b): a balance transfer the bank never got -- the owner chooses who pays
   const [bankBusy, setBankBusy] = useState<string | null>(null);
-  const decideBank = canDecide
+  const decideBank = canDecide && !kaamLinks
     ? async (entryId: string, decision: "staff" | "player") => {
         setDecideError(null);
         setBankBusy(entryId);
@@ -239,7 +245,14 @@ export function StaffActivityView({
                         </button>
                       </span>
                     ) : (
-                      <span className="font-semibold text-red-700">{t("odash.sact.bank.waiting")}</span>
+                      <span className="flex flex-wrap items-center gap-3">
+                        <span className="font-semibold text-red-700">{t("odash.sact.bank.waiting")}</span>
+                        {kaamLinks ? (
+                          <Link href={paisaV2Href("kaam", "bank_check")} className="font-bold text-owner-accent hover:underline" data-testid="bank-missing-kaam-link">
+                            {pt("paisa.act.openKaam")}
+                          </Link>
+                        ) : null}
+                      </span>
                     )}
                   </li>
                 ))}
@@ -292,6 +305,10 @@ export function StaffActivityView({
                       </span>
                     ) : n.owner_decision ? (
                       <span className="text-owner-ink-muted">{n.owner_decision === "reverse" ? t("odash.p3.reversed") : t("odash.p3.kept")}</span>
+                    ) : kaamLinks && n.reply_id ? (
+                      <Link href={paisaV2Href("kaam", "noshow_reply")} className="font-bold text-owner-accent hover:underline" data-testid="noshow-kaam-link">
+                        {pt("paisa.act.openKaam")}
+                      </Link>
                     ) : null}
                   </li>
                 ))}

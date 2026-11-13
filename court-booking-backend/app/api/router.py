@@ -12,6 +12,7 @@ from app.api import (
     feature_flags,
     owner_premium,
     owners,
+    paisa,
     payments,
     phase3,
     public,
@@ -28,6 +29,7 @@ from app.api import (
 
 api_router = APIRouter()
 
+api_router.include_router(paisa.router)  # ledger v2 Paisa (fixed /owners/paisa paths, before owners)
 api_router.include_router(phase3.router)  # audit Phase 3 (before users/owners so its fixed paths win)
 api_router.include_router(refund_flow.router)  # fix/nov-9 items 9-12 (fixed paths, before owners/admin)
 api_router.include_router(auth.router)

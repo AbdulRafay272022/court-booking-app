@@ -249,7 +249,9 @@ class Run:
                                          PaymentDispute.refund_amount > 0)
         )).all()
         for d in disputes:
-            done = await self.db.scalar(select(PaymentEntry.id).where(PaymentEntry.dispute_id == d.id, PaymentEntry.backfilled.is_(True)))
+            # already credited (by an earlier backfill run, by v2, or step 6a linked the payment that brought it)
+            done = await self.db.scalar(select(PaymentEntry.id).where(PaymentEntry.dispute_id == d.id,
+                                                                      PaymentEntry.kind == EntryKind.PAYMENT).limit(1))
             if done:
                 continue
             pay = await self.db.get(Payment, d.payment_id) if d.payment_id else None
@@ -325,6 +327,37 @@ class Run:
             self.add_adj(b, AdjustmentKind.CANCELLATION, amount,
                          "backfill: cancelled, refund owed" if remaining else "backfill: cancelled")
 
+    # ---- step 6a -----------------------------------------------------------------------------------------------------
+    async def excess_without_dispute(self, b: Booking) -> None:
+        """Founder 13 Nov: money above the total with no refund row (the walk-in 4,000 on 2,000 bug) gets an overpayment_excess
+        dispute for the difference, linked to the payment that brought it, so it shows in Kaam -> Wapas dena. Often a typing
+        mistake: reversing that payment shrinks / closes this dispute (sync_refund_disputes)."""
+        if b.status == BookingStatus.CANCELLED:
+            return
+        await self.db.flush()
+        m = await load_money(self.db, b)
+        if m.refund_due <= 0:
+            return
+        disputes = (await self.db.scalars(select(PaymentDispute).where(PaymentDispute.booking_id == b.id,
+                                                                       PaymentDispute.resolved.is_(False)))).all()
+        remaining = sum(max(_i(d.refund_amount) - _i(d.refunded_amount), 0) for d in disputes)
+        gap = m.refund_due - remaining
+        if gap <= 0:
+            return
+        source = await self.db.scalar(
+            select(PaymentEntry).where(PaymentEntry.booking_id == b.id, PaymentEntry.kind == EntryKind.PAYMENT,
+                                       PaymentEntry.amount_pkr > 0, PaymentEntry.dispute_id.is_(None))
+            .order_by(PaymentEntry.amount_pkr.desc(), PaymentEntry.created_at).limit(1)
+        )
+        d = PaymentDispute(booking_id=b.id, player_id=b.player_id, reason="overpayment_excess", refund_amount=gap,
+                           resolution_note="backfill: zyada paisa darj hua (shayad typing ki ghalti)")
+        self.db.add(d)
+        await self.db.flush()
+        if source is not None:
+            source.dispute_id = d.id
+        self.counts["dispute_added_overpayment_excess"] += 1
+        self.log[b.id].append(f"+ refund dispute {gap:,} (zyada paisa, dispute nahi tha)")
+
     # ---- step 7 ------------------------------------------------------------------------------------------------------
     async def finish(self, b: Booking) -> Money:
         from app.services.payment_ledger_service import recompute_payment_totals
@@ -344,6 +377,7 @@ class Run:
         await self.old_noshow(b)
         await self.db.flush()
         await self.old_cancel(b)
+        await self.excess_without_dispute(b)
         m = await self.finish(b)
         self.before[b.id]["after"] = m
 

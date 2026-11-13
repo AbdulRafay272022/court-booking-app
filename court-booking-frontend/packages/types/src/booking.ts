@@ -70,6 +70,8 @@ export interface WalkinBookingInput {
   player_phone?: string;
   /** audit 2026-10-28 item 19: the owner told the player the receipt comes on WhatsApp (stored from Phase 2). */
   whatsapp_opt_in?: boolean;
+  /** ledger v2: amount above the booking total -> refund or keep as the player's credit (owner only) */
+  excess_choice?: "refund" | "credit";
   amount_paid: number;
 }
 

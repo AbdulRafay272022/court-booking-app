@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import AppError, ErrorCode
 from app.models.booking import Booking
-from app.models.payment_entry import PaymentEntry, PaymentMethod
+from app.models.payment_entry import EntryKind, PaymentEntry, PaymentMethod
 from app.models.user import User, UserRole
 from app.services.audit_service import AuditService
 
@@ -28,12 +28,16 @@ async def recompute_payment_totals(db: AsyncSession, booking: Booking) -> None:
     )
     total = int(total or 0)
     booking.amount_paid = total
-    # Ledger v2 read path (flag-free, contract 4.2): a waiver is not part of the price, so it is subtracted here; without it a
-    # waived booking (whose price the backfill restores) would show its due again.
+    # Ledger v2 (contract 1 + 4.2, flag-free): price = base_price - active deductions (this is now its only writer after
+    # creation), and a waiver is not part of the price, so it is subtracted here; without it a waived booking would show its
+    # due again. New entries get their venue business day.
+    from app.services.ledger_v2 import apply_price, stamp_business_dates
     from app.services.money import waived_total
 
+    await apply_price(db, booking)
     waived = await waived_total(db, booking.id)
     booking.balance_due = max(round(float(booking.price) - total - waived, 2), 0.0)
+    await stamp_business_dates(db, booking)
 
 
 class PaymentLedgerService:
@@ -54,8 +58,19 @@ class PaymentLedgerService:
         method: PaymentMethod,
         recorded_by: User | None,
         note: str | None = None,
+        business_date=None,
+        excess_choice: str | None = None,
+        confirm_duplicate: bool = False,
+        payment_id: uuid.UUID | None = None,
+        v2: bool | None = None,
+        commit: bool = True,
     ) -> PaymentEntry:
-        """Records a real payment against a booking. Refuses to push the booking's total paid past its
+        """Ledger v2 (flag ledger_v2, or `v2=True`): ALL the money is recorded; the part above what is owed needs
+        `excess_choice` (refund -> an overpayment_excess dispute linked to this entry; credit -> the player's credit, owner
+        only); same amount + method within 10 minutes needs `confirm_duplicate`; `business_date` may be an earlier day (with a
+        note), never a later one. Flag off: the old rule below.
+
+        Records a real payment against a booking. Refuses to push the booking's total paid past its
         price (over-payment is rejected, not silently clamped). Row-locks the booking first -- the same
         concurrency concern `payment_service._claim_review` guards against for approve/reject, just solved
         differently here: the invariant is a running SUM across child rows, not a single column's value, so
@@ -74,10 +89,19 @@ class PaymentLedgerService:
         )
         current_paid = int(current_paid or 0)
         # ledger v2 read path (flag-free): a waived amount is not owed
+        from app.services import ledger_v2 as lv2
         from app.services.money import waived_total
 
+        if v2 is None:
+            v2 = await lv2.v2_on(self.db)
+        excess = 0
+        if v2:
+            await lv2.check_duplicate(self.db, booking, amount_pkr, method, confirm_duplicate)
+            business_date = await lv2.check_business_date(self.db, booking, business_date, note)
+            excess = await lv2.excess_for(self.db, booking, amount_pkr)
+            excess_choice = await lv2.require_excess_choice(self.db, booking, excess, excess_choice, recorded_by)
         balance = round(float(booking.price) - current_paid - await waived_total(self.db, booking.id), 2)
-        if amount_pkr > balance:
+        if not v2 and amount_pkr > balance:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST,
                 ErrorCode.PAYMENT_EXCEEDS_BALANCE,
@@ -91,9 +115,13 @@ class PaymentLedgerService:
             method=method,
             recorded_by=recorded_by.id if recorded_by else None,
             note=note,
+            money_business_date=business_date,
         )
         self.db.add(entry)
         await self.db.flush()
+        if excess > 0:
+            await lv2.settle_excess(self.db, booking, excess=excess, choice=excess_choice, actor=recorded_by,
+                                    source_entry=entry, payment_id=payment_id)
 
         await recompute_payment_totals(self.db, booking)
 
@@ -103,10 +131,15 @@ class PaymentLedgerService:
             action="payment_entry.recorded",
             entity_type="booking",
             entity_id=booking.id,
-            new_value={"amount_pkr": amount_pkr, "method": method.value, "amount_paid": float(booking.amount_paid)},
+            new_value={"amount_pkr": amount_pkr, "method": method.value, "amount_paid": float(booking.amount_paid),
+                       "excess_pkr": excess, "excess_choice": excess_choice,
+                       "business_date": business_date.isoformat() if business_date else None},
         )
-        await self.db.commit()
-        await self.db.refresh(entry)
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(entry)
+        else:
+            await self.db.flush()
         return entry
 
     async def adjust_total_paid(
@@ -144,6 +177,7 @@ class PaymentLedgerService:
             booking_id=booking.id,
             amount_pkr=delta,
             method=PaymentMethod.CASH_AT_VENUE if delta > 0 else PaymentMethod.OTHER,
+            kind=EntryKind.PAYMENT if delta > 0 else EntryKind.CORRECTION,
             recorded_by=recorded_by.id if recorded_by else None,
             note=note_up if delta > 0 else note_down,
         )
@@ -176,10 +210,18 @@ class PaymentLedgerService:
             recorded_by=actor.id,
             note=reason,
             reverses_entry_id=original.id,
+            kind=EntryKind.CORRECTION,
+            dispute_id=original.dispute_id if original.kind == EntryKind.REFUND else None,
         )
         self.db.add(reversal)
         await self.db.flush()
 
+        await recompute_payment_totals(self.db, booking)
+        # ledger v2: a payment reversed (often a typing mistake, e.g. 4,000 typed for 2,000) may lower what is owed back;
+        # the open refund disputes shrink / close with it, so Kaam never shows a refund that is no longer due
+        from app.services.ledger_v2 import sync_refund_disputes
+
+        await sync_refund_disputes(self.db, booking)
         await recompute_payment_totals(self.db, booking)
 
         await self.audit.log(

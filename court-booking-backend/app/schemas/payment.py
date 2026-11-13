@@ -33,6 +33,9 @@ class PaymentApproveIn(BaseModel):
     # Round 2 Stage 2 (spec B.a): approving a duplicate-flagged screenshot needs this explicit confirm, else 409
     # DUPLICATE_PROOF_CONFIRM_REQUIRED {used_on_bookings}.
     confirm_duplicate: bool = False
+    # ledger v2 (contract 2.4): money above the booking total -> "refund" (Player ko wapas) or "credit" (Player ke jama mein,
+    # owner only). Required when there is extra money and ledger_v2 is on (else 409 EXCESS_CHOICE_REQUIRED).
+    excess_choice: Literal["refund", "credit"] | None = None
 
 
 class PaymentOut(BaseModel):

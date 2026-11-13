@@ -5,11 +5,13 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
 import { StaffActivityView } from "@/components/owner/staff-activity-view";
 import { MoneyHealthCard } from "@/components/owner/money-health-card";
+import { useLedgerV2 } from "@/lib/use-paisa-v2";
 
 /** Audit 2026-10-28 item 16: the owner's staff dashboard (owner only; the shell hides it from staff). */
 export default function OwnerStaffActivityPage() {
   const t = useT();
   const { activeVenueId } = useOwnerVenues();
+  const ledgerV2 = useLedgerV2().on;
   return (
     <div className="flex min-w-0 max-w-6xl flex-col gap-6 p-4 sm:p-8">
       <div>
@@ -18,7 +20,7 @@ export default function OwnerStaffActivityPage() {
       </div>
       {activeVenueId ? <MoneyHealthCard venueId={activeVenueId} /> : null}
       {activeVenueId ? (
-        <StaffActivityView queryKey={["staff-activity", activeVenueId]} load={(from, to) => api.owners.staffActivity(activeVenueId, from, to)} canDecide />
+        <StaffActivityView queryKey={["staff-activity", activeVenueId]} load={(from, to) => api.owners.staffActivity(activeVenueId, from, to)} canDecide kaamLinks={ledgerV2} />
       ) : null}
     </div>
   );

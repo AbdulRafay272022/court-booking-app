@@ -21,6 +21,7 @@ import { NotificationBell } from "@/components/site/notification-bell";
 import { useT } from "@/components/i18n/lang-provider";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { routeAllowed } from "@/lib/my-permissions";
+import { useLedgerV2, usePaisaT } from "@/lib/use-paisa-v2";
 
 interface NavItem {
   href: string;
@@ -61,6 +62,15 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
   });
   const approvalsCount = badgesQuery.data?.approvals ?? 0;
   const refundsCount = badgesQuery.data?.refunds ?? 0;
+  // ledger v2: the Paisa badge is the Kaam count (mark_refunds-only staff get only the refund groups from the server)
+  const ledgerV2 = useLedgerV2().on;
+  const pt = usePaisaT();
+  const kaamQuery = useQuery({
+    queryKey: ["paisa", "tasks", activeVenueId, null, ""],
+    queryFn: () => api.paisa.tasks(activeVenueId),
+    enabled: ready && !!activeVenueId && ledgerV2,
+    refetchInterval: (query) => pollInterval(query, 30_000),
+  });
 
   // Nav entries hide when their feature flag is globally off; "Staff" is
   // owner/admin-only (staff can't manage other staff). Per-action permissions
@@ -73,7 +83,9 @@ export function OwnerShell({ children }: { children: React.ReactNode }) {
     { href: "/dashboard/owner/walkin", label: t("notif.nav.walkin") },
     { href: "/dashboard/bookings", label: t("notif.nav.bookings") },
     // fix/nov-7: Ledger, Bank check, Dues and Refunds are the tabs of one Paisa page
-    { href: "/dashboard/owner/paisa", label: t("odash.nav.paisa"), count: refundsOn ? refundsCount : 0 },
+    ledgerV2
+      ? { href: "/dashboard/owner/paisa", label: pt("paisa.title"), count: kaamQuery.data?.total ?? 0 }
+      : { href: "/dashboard/owner/paisa", label: t("odash.nav.paisa"), count: refundsOn ? refundsCount : 0 },
     ...(isOn("growth_suggestions") ? [{ href: "/dashboard/owner/growth", label: t("odash.nav.growth") }] : []),
     ...(isOn("reviews") ? [{ href: "/dashboard/owner/reviews", label: t("odash.nav.reviews") }] : []),
     { href: "/dashboard/owner/settings", label: t("odash.nav.settings") },

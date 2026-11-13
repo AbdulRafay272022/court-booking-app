@@ -701,7 +701,14 @@ async def _apply_player_win(db: AsyncSession, settings: Settings, admin: User, e
             return {}
         booking = await db.get(Booking, c.booking_id, with_for_update=True)
         old = float(booking.price)
-        booking.price = round(float(booking.amount_paid or 0), 2)
+        # ledger v2: Khelo's decision for the player is a 'waived' adjustment (the price stays)
+        from app.services.ledger_v2 import add_adjustment
+        from app.services.money import owed_now
+
+        due = await owed_now(db, booking)
+        if due > 0:
+            await add_adjustment(db, booking, "waived", due, reason="Khelo ne player ke haq mein faisla kiya", actor=admin,
+                                 short_claim_id=c.id)
         await recompute_payment_totals(db, booking)
         c.owner_decision, c.decided_by, c.decided_at = "waive", admin.id, datetime.now(timezone.utc)
         c.resolved_at, c.resolution = datetime.now(timezone.utc), "waived"
@@ -710,7 +717,7 @@ async def _apply_player_win(db: AsyncSession, settings: Settings, admin: User, e
 
             await add_points(db, c.player_id, c.booking_id, c.penalty_applied, "short_no_reply_returned")
             c.penalty_returned = True
-        return {"price_before": old, "price_after": float(booking.price)}
+        return {"price_before": old, "price_after": float(booking.price), "waived_pkr": due}
     if e.kind == "refund":
         from app.models.payment_entry import PaymentEntry, PaymentMethod
         from app.services.payment_ledger_service import UNCREDITED_REFUND_REASONS, recompute_payment_totals
@@ -722,10 +729,16 @@ async def _apply_player_win(db: AsyncSession, settings: Settings, admin: User, e
         amount = float(t.amount)
         d.refunded_amount = round(max(float(d.refunded_amount or 0) - amount, 0.0), 2)
         d.refund_status, d.resolved = "owed", False
-        if d.reason not in UNCREDITED_REFUND_REASONS:
+        from app.services.ledger_v2 import dispute_is_credited
+
+        if d.reason not in UNCREDITED_REFUND_REASONS or await dispute_is_credited(db, d):
             booking = await db.get(Booking, d.booking_id, with_for_update=True)
+            # ledger v2: the refund entry of this transfer is REVERSED (a correction), never booked as money received
+            refund_entry = await db.scalar(select(PaymentEntry).where(PaymentEntry.refund_transfer_id == t.id))
             db.add(PaymentEntry(
-                booking_id=booking.id, amount_pkr=int(round(amount)), method=PaymentMethod.OTHER, recorded_by=admin.id,
+                booking_id=booking.id, amount_pkr=int(round(amount)), method=refund_entry.method if refund_entry else PaymentMethod.OTHER,
+                kind="correction", recorded_by=admin.id, dispute_id=d.id,
+                reverses_entry_id=refund_entry.id if refund_entry else None,
                 note=f"Refund taken back by Khelo: the player did not receive it (escalation {short_code(e.id)})",
             ))
             await db.flush()

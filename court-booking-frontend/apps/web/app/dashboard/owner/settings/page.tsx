@@ -37,6 +37,8 @@ import { VenueTimersCard } from "@/components/setup/venue-timers-card";
 import { IdentityCard } from "@/components/identity/identity-card";
 import { slotMinutesDefault } from "@/components/settings/hint-state";
 import { useAuthStore } from "@/lib/auth-store";
+import { useLedgerV2 } from "@/lib/use-paisa-v2";
+import { Choice } from "@/components/owner/paisa-v2/ui";
 import { PhotoManager } from "@/components/setup/photo-manager";
 import { CourtTabs } from "@/components/setup/court-tabs";
 import { CourtBasicsFields } from "@/components/setup/court-basics-fields";
@@ -70,6 +72,7 @@ export default function VenueSettingsPage() {
   const { activeVenue } = useOwnerVenues();
   const role = useAuthStore((s) => s.user?.role);
   const isOwner = role === "owner";
+  const ledgerV2 = useLedgerV2().on;
   const [tab, setTab] = useState<SettingsTab>("venue");
   // audit 2026-10-28 item 11: venue basics and bank details are owner-only (PATCH /venues is RequireOwner); courts need
   // edit_court_settings and photos manage_photos. Say up front what a staff member can and cannot change here.
@@ -135,6 +138,14 @@ export default function VenueSettingsPage() {
               venueId={activeVenue.id}
               initialAllowed={activeVenue.cancellation_allowed}
               initialCutoff={activeVenue.cancellation_cutoff_hours}
+            />
+          ) : null}
+          {/* ledger v2 (contract 2.2): what a no-show costs at this venue */}
+          {activeVenue && isOwner && ledgerV2 ? (
+            <VenueNoShowCard
+              key={`noshow-${activeVenue.id}`}
+              venueId={activeVenue.id}
+              initial={(activeVenue as { no_show_charge?: string }).no_show_charge === "full" ? "full" : "advance"}
             />
           ) : null}
           {/* audit Phase 3 item 3: the owner-funded points discount (shown to players only while player_points is on). */}
@@ -586,6 +597,44 @@ function VenueCancellationCard({
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
       <SaveMessage message={message} />
       <PrimaryButton label={t("setup.set.saveCancel")} onClick={save} busy={saving} />
+    </div>
+  );
+}
+
+/** ledger v2 (contract 2.2): 'advance' keeps what was paid and charges nothing more; 'full' leaves the rest due. */
+function VenueNoShowCard({ venueId, initial }: { venueId: string; initial: "advance" | "full" }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState<"advance" | "full">(initial);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+  async function save() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api.venues.update(venueId, { no_show_charge: value } as Parameters<typeof api.venues.update>[1]);
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ kind: "ok", text: t("odash.ledger.noShow.saved") });
+    } catch (e) {
+      setMessage({ kind: "error", text: friendlyErrorMessage(e, t) });
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-owner-border bg-white p-5" data-testid="venue-noshow">
+      <h3 className="text-[16px] font-bold">{t("odash.ledger.noShow.title")}</h3>
+      <Choice<"advance" | "full">
+        value={value}
+        onChange={setValue}
+        testId="venue-noshow-choice"
+        options={[
+          { value: "advance", label: t("odash.ledger.noShow.advance") },
+          { value: "full", label: t("odash.ledger.noShow.full") },
+        ]}
+      />
+      <SaveMessage message={message} />
+      <PrimaryButton label={t("odash.ledger.noShow.save")} onClick={save} busy={saving} />
     </div>
   );
 }

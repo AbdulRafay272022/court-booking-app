@@ -319,6 +319,8 @@ class AdminService:
         amount: float | None,
         reference: str,
         screenshot_key: str | None,
+        method: str = "transfer",
+        note: str | None = None,
     ) -> PaymentDispute:
         """Section 32 Part 10. The one place a manual (no payment gateway)
         refund is actually recorded as paid. Uses the same atomic
@@ -392,22 +394,34 @@ class AdminService:
         # (the ledger is capped at the price), so there is nothing to subtract -- it is tracked on the dispute only.
         from app.services.payment_ledger_service import recompute_payment_totals
 
-        from app.services.payment_ledger_service import UNCREDITED_REFUND_REASONS
+        from app.services.ledger_v2 import dispute_is_credited
 
-        if target_amount > 0 and dispute.reason not in UNCREDITED_REFUND_REASONS:
+        self.last_refund_entry = None
+        # ledger v2: every refund whose money is in the ledger gets a linked refund entry (kind refund, cash or transfer,
+        # the dispute, the payment it returns); old uncredited ones (never in the ledger) still get none
+        if target_amount > 0 and await dispute_is_credited(self.db, dispute):
             booking = await self.db.get(Booking, dispute.booking_id, with_for_update=True)
             if booking is not None:
-                self.db.add(
-                    PaymentEntry(
-                        booking_id=booking.id,
-                        amount_pkr=-int(round(target_amount)),
-                        method=PaymentMethod.OTHER,
-                        recorded_by=actor.id,
-                        note=f"Refund paid ({reference})"
-                        + ("" if fully_refunded else f" -- partial, PKR {max(owed - new_total, 0):,.0f} still owed"),
-                    )
+                returned = await self.db.scalar(
+                    select(PaymentEntry.id).where(PaymentEntry.booking_id == booking.id, PaymentEntry.kind == "payment",
+                                                  PaymentEntry.amount_pkr > 0)
+                    .order_by(PaymentEntry.created_at.desc()).limit(1)
                 )
+                entry = PaymentEntry(
+                    booking_id=booking.id,
+                    amount_pkr=-int(round(target_amount)),
+                    method=PaymentMethod.CASH_AT_VENUE if method == "cash" else PaymentMethod.BANK_TRANSFER_PROOF,
+                    kind="refund",
+                    dispute_id=dispute.id,
+                    refund_of_entry_id=returned,
+                    recorded_by=actor.id,
+                    note=f"Refund paid ({reference})"
+                    + ("" if fully_refunded else f" -- partial, PKR {max(owed - new_total, 0):,.0f} still owed")
+                    + (f" · {note}" if note else ""),
+                )
+                self.db.add(entry)
                 await self.db.flush()
+                self.last_refund_entry = entry
                 await recompute_payment_totals(self.db, booking)
         await self.audit.log(
             actor_user_id=actor.id,

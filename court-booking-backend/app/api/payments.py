@@ -1,11 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from sqlalchemy import select
 
 from app.dependencies import AppSettings, CurrentUser, DbSession, RequireStaffCapable, require_feature
 from app.errors import AppError, ErrorCode
 from app.models.court import Court
-from app.models.payment_entry import PaymentEntry
+from app.models.payment import Payment
+from app.models.payment_entry import PaymentEntry, PaymentMethod
 from app.models.user import User
 from app.models.venue import Venue
 from app.schemas.booking import BookingOut
@@ -171,6 +173,14 @@ async def approve_payment(
     )
     payment_service.require_awaiting(payment, booking)
     await payment_service.require_duplicate_confirmed(payment, bool(payload and payload.confirm_duplicate))
+    # ledger v2 (contract 2.4): money above the total needs the owner's choice BEFORE anything is claimed
+    from app.services.ledger_v2 import excess_for, require_excess_choice, v2_on
+    from app.services.payment_service import approval_credit_amount
+
+    if await v2_on(db):
+        planned = approval_credit_amount(payment, booking, payload.amount_pkr if payload else None)
+        extra = await excess_for(db, booking, planned)
+        await require_excess_choice(db, booking, extra, payload.excess_choice if payload else None, owner)
     paid_before = int(round(float(booking.amount_paid or 0)))
     # audit fixes 2026-10-31: a balance / no-show-reversal screenshot (checked at the venue) gets the normal receipt instead of
     # "booking confirmed" (the booking was confirmed long ago) and no "pay the rest by transfer" line. Points notices as usual.
@@ -182,6 +192,7 @@ async def approve_payment(
         owner,
         amount_pkr=payload.amount_pkr if payload else None,
         accept_mode=payload.accept_mode if payload else None,
+        excess_choice=payload.excess_choice if payload else None,
     )
     await db.refresh(booking)
     await _after_money(db, settings, booking)
@@ -333,6 +344,12 @@ async def record_payment_entry(
     due. Blocked (403 FEATURE_DISABLED) when the split-payments flag is off."""
     booking_service = BookingService(db, settings)
     booking = await booking_service.require_accessible_booking(booking_id, owner, permission="record_payments")
+    # ledger v2: new money is Cash here; a Transfer goes through its screenshot (POST .../payment-entries/transfer -> Approvals)
+    from app.services.ledger_v2 import v2_on
+
+    if await v2_on(db) and payload.method != PaymentMethod.CASH_AT_VENUE:
+        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR,
+                       "A transfer is recorded with its screenshot.", details={"field": "method"})
 
     ledger = PaymentLedgerService(db)
     entry = await ledger.record_entry(
@@ -341,6 +358,9 @@ async def record_payment_entry(
         method=payload.method,
         recorded_by=owner,
         note=payload.note,
+        business_date=payload.business_date,
+        excess_choice=payload.excess_choice,
+        confirm_duplicate=payload.confirm_duplicate,
     )
     await db.refresh(booking)
     return PaymentEntryResponse(
@@ -348,6 +368,40 @@ async def record_payment_entry(
         amount_paid=float(booking.amount_paid),
         balance_due=float(booking.balance_due),
     )
+
+
+@router.post("/bookings/{booking_id}/payment-entries/transfer", response_model=PaymentOut, status_code=status.HTTP_201_CREATED)
+async def record_payment_transfer(
+    booking_id: uuid.UUID,
+    db: DbSession,
+    settings: AppSettings,
+    owner: RequireStaffCapable,
+    amount_pkr: int = Form(..., gt=0),
+    screenshot: UploadFile = File(...),
+    note: str | None = Form(None),
+    excess_choice: str | None = Form(None),
+) -> PaymentOut:
+    """Ledger v2 "Paisa darj karein" with Kaise mila = Transfer: the screenshot goes to Approvals (OCR, duplicate and receiver
+    checks); nothing is in the ledger until someone approves it (the owner can approve at once). Money above the total
+    needs `excess_choice` now and is settled at approval."""
+    from app.services.ledger_v2 import excess_for, require_excess_choice
+    from app.services.phase3_service import _owner_balance_proof
+
+    booking_service = BookingService(db, settings)
+    booking = await booking_service.require_accessible_booking(booking_id, owner, permission="record_payments")
+    extra = await excess_for(db, booking, amount_pkr)
+    choice = await require_excess_choice(db, booking, extra, excess_choice, owner)
+    data = await screenshot.read()
+    await _owner_balance_proof(
+        db, settings, owner, booking, amount_pkr, (data, screenshot.filename or "transfer.jpg", screenshot.content_type or "image/jpeg"),
+        {"origin": "record_payment", "excess_choice": choice, "note": (note or "").strip() or None},
+    )
+    payment = await db.scalar(
+        select(Payment).where(Payment.booking_id == booking.id, Payment.review_verdict.is_(None)).order_by(Payment.created_at.desc()).limit(1)
+    )
+    if payment is None:
+        raise AppError(status.HTTP_409_CONFLICT, ErrorCode.INVALID_BOOKING_STATE, "The screenshot was not queued.")
+    return _payment_out(payment)
 
 
 @router.get("/bookings/{booking_id}/payment-entries", response_model=list[PaymentEntryOut])
@@ -378,6 +432,14 @@ async def reverse_payment_entry(
         raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Payment entry not found")
     booking_service = BookingService(db, settings)
     await booking_service.require_accessible_booking(entry.booking_id, owner, permission="record_payments")
+    # ledger v2: reversing money is owner-only, and only a payment can be reversed here (refunds have their own flow)
+    from app.services.ledger_v2 import require_owner_v2, v2_on
+
+    await require_owner_v2(db, owner)
+    if await v2_on(db):
+        done = await db.scalar(select(PaymentEntry.id).where(PaymentEntry.reverses_entry_id == entry.id).limit(1))
+        if entry.kind != "payment" or entry.amount_pkr <= 0 or done is not None:
+            raise AppError(status.HTTP_400_BAD_REQUEST, ErrorCode.VALIDATION_ERROR, "This entry cannot be reversed.")
 
     ledger = PaymentLedgerService(db)
     reversal = await ledger.reverse_entry(entry_id, actor=owner, reason=payload.reason)

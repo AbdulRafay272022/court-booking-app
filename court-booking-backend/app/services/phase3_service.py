@@ -279,8 +279,11 @@ async def redeem_points(db: AsyncSession, settings: Settings, player: User, book
         await db.rollback()
         raise _err(ErrorCode.POINTS_NOT_AVAILABLE, "Not enough points yet.")
     old_price = float(booking.price)
-    booking.price = round(old_price - discount, 2)
+    # ledger v2: a points discount is a 'points' adjustment; recompute_payment_totals sets price = base - deductions
+    from app.services.ledger_v2 import add_adjustment
+
     booking.points_discount_pkr = discount
+    await add_adjustment(db, booking, "points", int(discount), reason=f"{REDEEM_POINTS} points", actor=player)
     if float(booking.advance_amount) > float(booking.price):
         booking.advance_amount = booking.price
     await recompute_payment_totals(db, booking)
@@ -477,6 +480,9 @@ async def _resolve(db: AsyncSession, settings: Settings, claim: ShortPaymentClai
 
 async def decide_short(db: AsyncSession, settings: Settings, actor: User, claim_id: uuid.UUID, decision: str) -> ShortPaymentClaim:
     """The owner's answer to "Ghalat hai": collect (the due stays and is carried) or waive (the price drops to what was paid)."""
+    from app.services.ledger_v2 import require_owner_v2
+
+    await require_owner_v2(db, actor)  # ledger v2: owner-only (contract 4.1)
     from app.services.audit_service import AuditService
     from app.services.payment_ledger_service import recompute_payment_totals
 
@@ -490,13 +496,19 @@ async def decide_short(db: AsyncSession, settings: Settings, actor: User, claim_
     claim.decided_by = actor.id
     claim.decided_at = datetime.now(timezone.utc)
     if decision == "waive":
+        # ledger v2: a waiver is its own 'waived' adjustment (never a price cut): Balance = Final - Net - Waived
+        from app.services.ledger_v2 import add_adjustment
+
         booking = await db.get(Booking, booking.id, with_for_update=True)
         old = float(booking.price)
-        booking.price = round(float(booking.amount_paid or 0), 2)
+        due = await owed_now(db, booking)
+        if due > 0:
+            await add_adjustment(db, booking, "waived", due, reason="Owner ne maaf kiya", actor=actor, short_claim_id=claim.id)
         await recompute_payment_totals(db, booking)
         await AuditService(db).log(
             actor_user_id=actor.id, actor_type=actor.role.value, action="booking.due_waived", entity_type="booking",
-            entity_id=booking.id, old_value={"price": old}, new_value={"price": float(booking.price), "claim_id": str(claim.id)},
+            entity_id=booking.id, old_value={"price": old},
+            new_value={"price": float(booking.price), "waived_pkr": due, "claim_id": str(claim.id)},
         )
         await _resolve(db, settings, claim, "waived")
     else:
@@ -573,6 +585,9 @@ async def reverse_noshow(db: AsyncSession, settings: Settings, actor: User, book
     transfer -> the screenshot goes through the balance-proof flow and is credited only once approved there; approving it
                 as correct gives the player +10 points (once per booking, flag player_points).
     The booking becomes completed. Money still due afterwards follows the normal "kam mila" path."""
+    from app.services.ledger_v2 import require_owner_v2
+
+    await require_owner_v2(db, actor)  # ledger v2: owner-only (contract 4.1)
     from app.services.audit_service import AuditService
     from app.services.booking_service import BookingService
     from app.services.payment_ledger_service import PaymentLedgerService, recompute_payment_totals
@@ -610,11 +625,22 @@ async def reverse_noshow(db: AsyncSession, settings: Settings, actor: User, book
 
     locked = await db.get(Booking, booking.id, with_for_update=True)
     old_price = float(locked.price)
-    if int(round(old_price)) != final_price:
-        locked.price = final_price
-        if float(locked.advance_amount) > float(locked.price):
-            locked.advance_amount = locked.price
-        await recompute_payment_totals(db, locked)
+    # ledger v2: the no-show deduction is undone, then a lower final price is a 'price_reduced' adjustment (the price is
+    # never written here; recompute_payment_totals derives it)
+    from app.services.ledger_v2 import active_of_kind, add_adjustment, reverse_adjustment
+
+    for adj in await active_of_kind(db, locked.id, "no_show"):
+        await reverse_adjustment(db, adj, actor=actor, reason="No-show hataya")
+    await recompute_payment_totals(db, locked)
+    full = int(round(float(locked.price)))
+    if final_price > full:
+        raise _err(ErrorCode.VALIDATION_ERROR, f"The final price can't be more than the booking amount ({full}).")
+    if final_price < full:
+        await add_adjustment(db, locked, "price_reduced", full - final_price, reason="No-show hatane par final raqam",
+                             actor=actor)
+    if float(locked.advance_amount) > float(locked.price):
+        locked.advance_amount = locked.price
+    await recompute_payment_totals(db, locked)
     await AuditService(db).log(
         actor_user_id=actor.id, actor_type=actor.role.value, action="booking.noshow_reversed", entity_type="booking",
         entity_id=locked.id, old_value={"status": BookingStatus.NO_SHOW.value, "price": old_price},
@@ -919,6 +945,9 @@ async def reply_noshow(db: AsyncSession, settings: Settings, player: User, booki
 async def decide_noshow(db: AsyncSession, settings: Settings, actor: User, reply_id: uuid.UUID, decision: str) -> NoShowReply:
     """keep = the no-show stands. reverse is not taken here: it needs the price / received / method dialog
     (reverse_noshow, POST /owners/bookings/{id}/noshow-reverse), so the money is never guessed."""
+    from app.services.ledger_v2 import require_owner_v2
+
+    await require_owner_v2(db, actor)  # ledger v2: owner-only (contract 4.1)
     from app.services.booking_service import BookingService
 
     reply = await db.get(NoShowReply, reply_id)

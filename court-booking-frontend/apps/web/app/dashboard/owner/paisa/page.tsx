@@ -13,6 +13,8 @@ import { HisaabTab } from "@/components/owner/paisa/hisaab-tab";
 import { BankTab } from "@/components/owner/paisa/bank-tab";
 import { DuesTab } from "@/components/owner/paisa/dues-tab";
 import { RefundsTab } from "@/components/owner/paisa/refunds-tab";
+import { PaisaV2Page } from "@/components/owner/paisa-v2/paisa-page";
+import { useLedgerV2 } from "@/lib/use-paisa-v2";
 
 const TABS: { key: PaisaTab; label: string }[] = [
   { key: "hisaab", label: "Hisaab" },
@@ -68,10 +70,17 @@ function PaisaPage() {
   );
 }
 
+/** ledger v2 (flag ledger_v2, default OFF): the new four-tab page; flag off = the page above, unchanged. */
+function PaisaSwitch() {
+  const v2 = useLedgerV2();
+  if (v2.loading) return null;
+  return v2.on ? <PaisaV2Page /> : <PaisaPage />;
+}
+
 export default function PaisaRoute() {
   return (
     <Suspense fallback={null}>
-      <PaisaPage />
+      <PaisaSwitch />
     </Suspense>
   );
 }

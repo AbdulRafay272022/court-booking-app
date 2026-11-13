@@ -198,9 +198,13 @@ export function createOwnersApi(client: ApiClient) {
       screenshot?: string | Blob,
       fileName = "refund.jpg",
       mimeType = "image/jpeg",
+      /** ledger v2: "transfer" (reference required) or "cash" (note required) */
+      opts: { method?: "transfer" | "cash"; note?: string } = {},
     ) => {
       const formData = new FormData();
-      formData.append("reference", reference);
+      if (reference) formData.append("reference", reference);
+      if (opts.method) formData.append("method", opts.method);
+      if (opts.note) formData.append("note", opts.note);
       if (amount !== undefined) formData.append("amount", String(amount));
       if (screenshot !== undefined) {
         const part =

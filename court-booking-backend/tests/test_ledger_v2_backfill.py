@@ -14,6 +14,7 @@ import ledger_v2_check as ck  # noqa: E402
 import ledger_v2_legacy_fixture as fx  # noqa: E402
 
 from app.models.booking import Booking  # noqa: E402
+from app.models.dispute import PaymentDispute  # noqa: E402
 from app.models.payment_entry import PaymentEntry  # noqa: E402
 from app.services.money import load_money  # noqa: E402
 from app.utils.timezone import pkt_date_of  # noqa: E402
@@ -40,7 +41,7 @@ async def test_backfill_then_check_then_idempotent(db_session):
     fails, totals, n = await ck.run_checks(db_session)
     assert n == 23
     bad = {c: v for c, v in fails.items() if v}
-    assert list(bad) == ["C4"] and len(bad["C4"]) == 1 and "S16 Walkin 4000" in bad["C4"][0]
+    assert bad == {}  # 9/9 (founder 13 Nov: the walk-in 4,000/2,000 case now gets its refund dispute)
     assert totals["final"] == totals["net"] + totals["due"] + totals["due_at_slot"] + totals["waived"] - totals["refund_due"]
 
     async def money(key):
@@ -58,6 +59,11 @@ async def test_backfill_then_check_then_idempotent(db_session):
     assert (m.payments, m.refunds, m.refund_due) == (5500, 500, 0)
     b, m = await money("S14")  # money on an expired booking: received, owed back
     assert (m.final, m.net, m.refund_due, m.status) == (0, 2000, 2000, "cancel_refund")
+    b, m = await money("S16")  # walk-in 4,000 on 2,000: 2,000 owed back, with a dispute linked to the 4,000 entry
+    d = (await db_session.scalars(select(PaymentDispute).where(PaymentDispute.booking_id == b.id))).all()
+    assert m.refund_due == 2000 and len(d) == 1 and d[0].reason == "overpayment_excess" and float(d[0].refund_amount) == 2000
+    linked = await db_session.scalar(select(PaymentEntry).where(PaymentEntry.dispute_id == d[0].id))
+    assert linked is not None and linked.amount_pkr == 4000
     b, m = await money("S21")  # points + waive on one booking
     assert (m.base_price, m.deductions["points"], m.final, m.waived, m.due) == (6000, 500, 5500, 1500, 0)
 

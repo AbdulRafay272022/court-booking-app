@@ -19,6 +19,7 @@ from app.models.user import User
 from app.models.venue import Venue
 from app.schemas.booking import (
     BookingCancelIn,
+    CancelPreviewOut,
     BookingHoldIn,
     BookingHoldResponse,
     BookingOut,
@@ -139,6 +140,7 @@ async def create_walkin_booking(
         slot_count=slot_compat.to_new_slot_count(court, payload.slot_count) if legacy else payload.slot_count,
         legacy_units=legacy,
         whatsapp_opt_in=payload.whatsapp_opt_in,
+        excess_choice=payload.excess_choice,
     )
     # audit fixes 2026-10-31: every walk-in whose box was ticked gets the welcome, with or without an account (flag
     # whatsapp_templates)
@@ -210,7 +212,10 @@ async def cancel_booking(
     was_awaiting_approval = booking.status == BookingStatus.PAYMENT_SUBMITTED
 
     cancelled_by = CancelledBy.PLAYER if booking.player_id == user.id else CancelledBy.OWNER
-    booking = await service.cancel_booking(booking, cancelled_by, payload.reason, actor=user)
+    booking = await service.cancel_booking(
+        booking, cancelled_by, payload.reason, actor=user,
+        cancelled_for=payload.cancelled_for, accept_keep_advance=payload.accept_keep_advance,
+    )
     response = BookingResponse(booking=BookingOut.model_validate(booking))
 
     # cancel_booking is idempotent (a no-op on an already-cancelled
@@ -269,6 +274,18 @@ async def cancel_booking(
                 logger.warning("booking.cancel.owner_refund_notification_failed", error=type(exc).__name__)
 
     return response
+
+
+@router.get("/{booking_id}/cancel-preview", response_model=CancelPreviewOut)
+async def cancel_preview(
+    booking_id: uuid.UUID, db: DbSession, settings: AppSettings, user: CurrentUser,
+    cancelled_for: str | None = None,
+) -> CancelPreviewOut:
+    """ledger v2: what cancelling now does with the money, for the confirm text ("Advance PKR X wapas nahi hoga")."""
+    service = BookingService(db, settings)
+    booking = await service.require_accessible_booking(booking_id, user, permission="cancel_booking")
+    cancelled_by = CancelledBy.PLAYER if booking.player_id == user.id else CancelledBy.OWNER
+    return CancelPreviewOut(**await service.cancel_terms(booking, cancelled_by, cancelled_for))
 
 
 @router.post("/{booking_id}/checkin", response_model=BookingResponse)

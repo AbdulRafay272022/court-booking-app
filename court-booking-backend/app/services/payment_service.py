@@ -117,6 +117,18 @@ def compute_receiver_match(receiver_name: str | None, venue: Venue | None, setti
     return "match" if fuzzy_name_match(receiver_name, account_title) else "mismatch"
 
 
+def approval_credit_amount(payment: Payment, booking: Booking, amount_pkr: int | None) -> int:
+    """What approving this screenshot credits (before any cap): the owner's amount, else for a balance screenshot the
+    owner-reported amount / the screenshot amount, else the advance rule below."""
+    if amount_pkr is not None:
+        return int(amount_pkr)
+    if is_balance_proof(payment):
+        if (payment.ocr_raw or {}).get("origin"):
+            return int(round(float(payment.amount_claimed or 0)))
+        return int(round(float(payment.ocr_amount or payment.amount_claimed or 0)))
+    return default_credit_amount(payment, booking)
+
+
 def default_credit_amount(payment: Payment, booking: Booking) -> int:
     """What an approval credits when the owner doesn't type an amount: the amount the screenshot actually
     showed when OCR read one, else the expected advance (full price for a full-payment flow, where
@@ -819,8 +831,11 @@ class PaymentService:
         payment.reviewed_at = datetime.now(timezone.utc)
         payment.auto_approved = True
         try:
+            from app.services.ledger_v2 import v2_on
+
             await self.booking_service.confirm_booking(
-                booking, amount_pkr=default_credit_amount(payment, booking), payment=payment
+                booking, amount_pkr=default_credit_amount(payment, booking), payment=payment,
+                excess_choice="refund" if await v2_on(self.db) else None,  # auto-approve: extra money is always refunded
             )
         except AppError:
             # Lost a race with something else that moved the booking off
@@ -987,8 +1002,12 @@ class PaymentService:
         approved_by: User,
         amount_pkr: int | None = None,
         accept_mode: str | None = None,
+        excess_choice: str | None = None,
     ) -> Payment:
-        """No upfront `if booking.status != PAYMENT_SUBMITTED` / `if
+        """ledger v2 (flag on): everything the screenshot is approved at is credited; the part above the booking total is
+        settled by `excess_choice` (refund by default), never dropped and never silently kept. `accept_mode` is ignored.
+
+        No upfront `if booking.status != PAYMENT_SUBMITTED` / `if
         payment.review_verdict is not None` pre-check here on purpose: a
         plain Python read of either would itself be the exact read-then-
         mutate race this method exists to close. _claim_review (payment)
@@ -1018,19 +1037,25 @@ class PaymentService:
             # still due); the booking itself is already confirmed.
             from app.services.payment_ledger_service import PaymentLedgerService
 
-            if amount_pkr is not None:
-                amount = amount_pkr
-            elif payment.ocr_raw.get("origin"):
-                # owner-reported transfer: the owner already said how much (the screenshot may show a bigger total)
-                amount = int(round(float(payment.amount_claimed or 0)))
+            from app.services.ledger_v2 import v2_on
+
+            amount = approval_credit_amount(payment, booking, amount_pkr)
+            if await v2_on(self.db):
+                # ledger v2 (bug 2 fix): nothing is dropped; the extra is refund (default) or credit
+                choice = excess_choice or (payment.ocr_raw or {}).get("excess_choice") or "refund"
+                if amount > 0:
+                    await PaymentLedgerService(self.db).record_entry(
+                        booking.id, amount_pkr=amount, method=PaymentMethod.BANK_TRANSFER_PROOF, recorded_by=approved_by,
+                        note="Balance by transfer (screenshot approved)", excess_choice=choice, confirm_duplicate=True,
+                        payment_id=payment.id, v2=True,
+                    )
             else:
-                amount = int(round(float(payment.ocr_amount or payment.amount_claimed or 0)))
-            amount = max(0, min(amount, int(round(float(booking.balance_due or 0)))))
-            if amount > 0:
-                await PaymentLedgerService(self.db).record_entry(
-                    booking.id, amount_pkr=amount, method=PaymentMethod.BANK_TRANSFER_PROOF, recorded_by=approved_by,
-                    note="Balance by transfer (screenshot approved)",
-                )
+                amount = max(0, min(amount, int(round(float(booking.balance_due or 0)))))
+                if amount > 0:
+                    await PaymentLedgerService(self.db).record_entry(
+                        booking.id, amount_pkr=amount, method=PaymentMethod.BANK_TRANSFER_PROOF, recorded_by=approved_by,
+                        note="Balance by transfer (screenshot approved)",
+                    )
             await self.db.commit()
             await self.db.refresh(payment)
             return payment
@@ -1040,6 +1065,12 @@ class PaymentService:
         # Owner Round 2 (A10.3): accept_mode "advance_only" credits only the expected advance and queues the rest as
         # an `overpayment_excess` refund owed (existing columns). "full"/None = the behaviour above: everything up to
         # the price is credited, only money above the price becomes a refund (inside confirm_booking).
+        # ledger v2: advance_only is gone (more than the advance but less than the total is a bigger advance).
+        from app.services.ledger_v2 import v2_on
+
+        v2 = await v2_on(self.db)
+        if v2:
+            accept_mode = None
         advance_excess = 0
         if accept_mode == "advance_only":
             expected = int(round(float(booking.advance_amount)))
@@ -1048,7 +1079,8 @@ class PaymentService:
                 credit = expected
         try:
             await self.booking_service.confirm_booking(
-                booking, recorded_by=approved_by, amount_pkr=credit, payment=payment
+                booking, recorded_by=approved_by, amount_pkr=credit, payment=payment,
+                excess_choice=(excess_choice or "refund") if v2 else None,
             )
         except AppError as exc:
             if exc.code != ErrorCode.BOOKING_ALREADY_CANCELLED:
@@ -1108,7 +1140,7 @@ class PaymentService:
         # audit 2026-10-28 Phase 3 item 1: a rejected BALANCE screenshot (or any proof on a booking that is already booked /
         # completed) only rejects that screenshot; the booking stays. It used to cancel a paid booking.
         if booking.status in AWAITING_STATES:
-            await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason, actor=rejected_by)
+            await self.booking_service.cancel_booking(booking, CancelledBy.OWNER, reason, actor=rejected_by, cancelled_for="venue")
 
         # Safety net: the owner rejected the proof, but "rejected" does not prove no money moved (the transfer may have
         # been real and the rejection for another reason -- wrong amount, wrong account, a stale screenshot). Leave a

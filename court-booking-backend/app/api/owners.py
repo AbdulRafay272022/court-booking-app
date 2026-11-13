@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 
 from app.api.payments import _payment_out
 from app.dependencies import AppSettings, DbSession, RequireOwner, RequireStaffCapable, require_feature
@@ -402,9 +403,11 @@ async def owner_mark_refund_paid(
     db: DbSession,
     settings: AppSettings,
     owner: RequireStaffCapable,
-    reference: str = Form(...),
+    reference: str | None = Form(None),
     amount: float | None = Form(None),
     screenshot: UploadFile | None = File(None),
+    method: str = Form("transfer"),
+    note: str | None = Form(None),
 ) -> OwnerRefundOut:
     """The owner sent the refund outside the app (JazzCash/bank transfer)
     and is recording that here -- there is no payment gateway integration,
@@ -416,6 +419,23 @@ async def owner_mark_refund_paid(
         raise AppError(status.HTTP_404_NOT_FOUND, ErrorCode.NOT_FOUND, "Refund not found")
     booking_service = BookingService(db, settings)
     booking = await booking_service.require_accessible_booking(dispute.booking_id, owner, permission="mark_refunds")
+    # ledger v2 (contract 2.6): Transfer needs a reference (screenshot optional); Cash needs a note. Flag off: reference always.
+    from app.services.ledger_v2 import v2_on
+
+    reference = (reference or "").strip()
+    note = (note or "").strip() or None
+    if method not in ("transfer", "cash"):
+        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR, "method is transfer or cash")
+    if not await v2_on(db):
+        method = "transfer"
+    if method == "transfer" and not reference:
+        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR, "A reference is required.",
+                       details={"field": "reference"})
+    if method == "cash" and not note:
+        raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.VALIDATION_ERROR, "Write a note for a cash refund.",
+                       details={"field": "note"})
+    if method == "cash" and not reference:
+        reference = "Cash"
 
     screenshot_key: str | None = None
     screenshot_bytes: bytes | None = None
@@ -437,8 +457,9 @@ async def owner_mark_refund_paid(
     admin_service = AdminService(db, settings)
     already_refunded = float(dispute.refunded_amount or 0)
     dispute = await admin_service.mark_refund_paid(
-        dispute, actor=owner, amount=amount, reference=reference, screenshot_key=screenshot_key
+        dispute, actor=owner, amount=amount, reference=reference, screenshot_key=screenshot_key, method=method, note=note
     )
+    refund_entry_id = admin_service.last_refund_entry.id if admin_service.last_refund_entry is not None else None
 
     court = await db.get(Court, booking.court_id)
     venue = await db.get(Venue, court.venue_id) if court is not None else None
@@ -448,11 +469,16 @@ async def owner_mark_refund_paid(
 
     sent_now = float(dispute.refunded_amount or 0) - already_refunded
     if sent_now > 0.009:  # a 0-amount "refund" (nothing was owed) leaves no transfer to check or answer
-        await record_transfer(
+        transfer = await record_transfer(
             db, settings, owner, dispute, booking, amount=sent_now, reference=reference,
             screenshot=(screenshot_bytes, screenshot.content_type) if screenshot is not None and screenshot_bytes else None,
             screenshot_key=screenshot_key,
         )
+        if refund_entry_id is not None and transfer is not None:
+            from app.models.payment_entry import PaymentEntry
+
+            await db.execute(sa_update(PaymentEntry).where(PaymentEntry.id == refund_entry_id).values(refund_transfer_id=transfer.id))
+            await db.commit()
 
     await db.refresh(dispute)
     payment = await db.get(Payment, dispute.payment_id) if dispute.payment_id else None

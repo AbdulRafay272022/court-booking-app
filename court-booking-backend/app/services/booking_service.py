@@ -325,6 +325,7 @@ class BookingService:
         slot_count: int | None = None,
         legacy_units: bool = False,
         whatsapp_opt_in: bool | None = None,
+        excess_choice: str | None = None,
     ) -> Booking:
         """The owner/staff records a booking for a customer: `slot_count` consecutive 30-minute slots (None = the court's
         minimum) as ONE booking, validated and priced by the same quote_range as a player's hold (grid, closing time,
@@ -352,6 +353,18 @@ class BookingService:
         if player_phone:
             linked_player = await self.db.scalar(select(User).where(User.phone == player_phone))
 
+        # ledger v2 (bug 1 fix, contract 2.4): more than the total is never accepted silently -- the extra is refund or
+        # credit. Checked BEFORE the booking is inserted (the insert commits).
+        from app.services import ledger_v2 as lv2
+
+        amount_pkr = int(round(amount_paid))
+        excess = 0
+        if await lv2.v2_on(self.db):
+            excess = max(amount_pkr - int(round(float(price))), 0)
+            probe = Booking(player_id=linked_player.id if linked_player else None, player_phone=player_phone)
+            excess_choice = await lv2.require_excess_choice(self.db, probe, excess, excess_choice, recorded_by)
+            self.db.expunge(probe) if probe in self.db else None
+
         booking = Booking(
             court_id=court_id,
             player_id=linked_player.id if linked_player else None,
@@ -369,18 +382,19 @@ class BookingService:
 
         # Section 32 Part 5: the walk-in's amount is a real payment_entries row (method defaults to cash at
         # the venue, the overwhelmingly common case), not a hand-set amount_paid column.
-        amount_pkr = int(round(amount_paid))
         if amount_pkr > 0:
-            self.db.add(
-                PaymentEntry(
-                    booking_id=booking.id,
-                    amount_pkr=amount_pkr,
-                    method=method,
-                    recorded_by=recorded_by.id,
-                    note="Walk-in booking",
-                )
+            walkin_entry = PaymentEntry(
+                booking_id=booking.id,
+                amount_pkr=amount_pkr,
+                method=method,
+                recorded_by=recorded_by.id,
+                note="Walk-in booking",
             )
+            self.db.add(walkin_entry)
             await self.db.flush()
+            if excess > 0:
+                await lv2.settle_excess(self.db, booking, excess=excess, choice=excess_choice, actor=recorded_by,
+                                        source_entry=walkin_entry)
             await recompute_payment_totals(self.db, booking)
 
         if linked_player is not None:
@@ -438,8 +452,40 @@ class BookingService:
                         )
         raise AppError(status.HTTP_403_FORBIDDEN, ErrorCode.NOT_YOUR_BOOKING, "Not your booking")
 
+    async def cancel_terms(self, booking: Booking, cancelled_by: CancelledBy, cancelled_for: str | None) -> dict:
+        """ledger v2 (contract 2.3): what a cancel now does with the money. 'venue' -> always a full refund; the player (or an
+        owner cancelling for the player) -> full refund before the cutoff, the advance is kept after it (or when the venue
+        does not allow cancelling paid bookings). Nothing paid -> 'clear'."""
+        from app.models.venue import Venue
+        from app.services.money import load_money
+
+        m = await load_money(self.db, booking)
+        court = await self.db.get(Court, booking.court_id)
+        venue = await self.db.get(Venue, court.venue_id) if court is not None else None
+        for_player = cancelled_by == CancelledBy.PLAYER or cancelled_for == "player"
+        late = False
+        allowed = True
+        if for_player and booking.status == BookingStatus.BOOKED and venue is not None:
+            if not venue.cancellation_allowed:
+                late = True
+                allowed = cancelled_by != CancelledBy.PLAYER  # the player cannot cancel there; the owner can, keeping it
+            elif venue.cancellation_cutoff_hours is not None:
+                late = datetime.now(timezone.utc) >= booking.starts_at - timedelta(hours=venue.cancellation_cutoff_hours)
+            else:
+                late = datetime.now(timezone.utc) >= booking.starts_at
+        paid = max(m.net, 0)
+        if paid <= 0:
+            mode = "clear"
+        elif late:
+            mode = "keep"
+        else:
+            mode = "refund"
+        return {"allowed": allowed, "mode": mode, "late": late, "paid_pkr": paid,
+                "refund_pkr": paid if mode == "refund" else 0, "keep_pkr": paid if mode == "keep" else 0}
+
     async def cancel_booking(
-        self, booking: Booking, cancelled_by: CancelledBy, reason: str | None, actor: User | None = None
+        self, booking: Booking, cancelled_by: CancelledBy, reason: str | None, actor: User | None = None,
+        cancelled_for: str | None = None, accept_keep_advance: bool = False,
     ) -> Booking:
         """Idempotent by design: a booking that's already CANCELLED is a
         safe no-op (same booking returned, unchanged) rather than a 400 --
@@ -454,7 +500,24 @@ class BookingService:
             raise AppError(
                 status.HTTP_400_BAD_REQUEST, ErrorCode.INVALID_BOOKING_STATE, "Booking cannot be cancelled"
             )
-        if cancelled_by == CancelledBy.PLAYER and booking.status == BookingStatus.BOOKED:
+        from app.services import ledger_v2 as lv2
+
+        v2 = await lv2.v2_on(self.db)
+        terms = None
+        if v2:
+            if cancelled_by == CancelledBy.OWNER and cancelled_for is None:
+                cancelled_for = "venue" if actor is not None and actor.role == UserRole.ADMIN else None
+                if cancelled_for is None:
+                    raise AppError(status.HTTP_422_UNPROCESSABLE_ENTITY, ErrorCode.CANCELLED_FOR_REQUIRED,
+                                   "Who asked to cancel: the player or the venue?")
+            terms = await self.cancel_terms(booking, cancelled_by, cancelled_for)
+            if not terms["allowed"]:
+                await self._enforce_cancellation_policy(booking)  # raises the venue's own "not allowed" error
+            if terms["mode"] == "keep" and not accept_keep_advance:
+                raise AppError(status.HTTP_409_CONFLICT, ErrorCode.CANCEL_KEEPS_ADVANCE,
+                               f"The advance of PKR {terms['keep_pkr']:,} will not be refunded.",
+                               details={"advance_pkr": terms["keep_pkr"]})
+        elif cancelled_by == CancelledBy.PLAYER and booking.status == BookingStatus.BOOKED:
             await self._enforce_cancellation_policy(booking)
         old_status = booking.status
         ok = await self._atomic_transition(
@@ -480,7 +543,23 @@ class BookingService:
                 status.HTTP_409_CONFLICT, ErrorCode.INVALID_BOOKING_STATE, "Booking cannot be cancelled"
             )
         self.created_refund = None
-        if old_status == BookingStatus.BOOKED:
+        if terms is not None:
+            # ledger v2: refund -> the whole final is cancelled and what was paid is owed back (dispute); keep -> the
+            # advance stays (final = paid), no refund; clear -> nothing paid
+            from app.services.money import load_money
+
+            locked = await self.db.get(Booking, booking.id, with_for_update=True)
+            m = await load_money(self.db, locked)
+            if terms["mode"] == "keep":
+                amount = m.final - max(m.net, 0)
+            else:
+                amount = m.final
+            if amount > 0:
+                why = {"keep": "Cancel: advance rakha", "refund": "Cancel: sab wapas", "clear": "Cancel"}[terms["mode"]]
+                await lv2.add_adjustment(self.db, locked, "cancellation", amount, reason=why, actor=actor)
+            if terms["mode"] == "refund" and old_status == BookingStatus.BOOKED:
+                self.created_refund = await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
+        elif old_status == BookingStatus.BOOKED:
             # Money-correctness fix: an OWNER cancelling a paid (booked) booking owes the player a refund
             # exactly like a player cancel does (previously only PLAYER cancels were flagged).
             self.created_refund = await self._flag_refund_for_voluntary_cancel(booking, cancelled_by)
@@ -492,7 +571,8 @@ class BookingService:
             entity_type="booking",
             entity_id=booking.id,
             old_value={"status": old_status.value},
-            new_value={"status": booking.status.value, "reason": reason, "cancelled_by": cancelled_by.value},
+            new_value={"status": booking.status.value, "reason": reason, "cancelled_by": cancelled_by.value,
+                       **({"cancelled_for": cancelled_for, "money": terms["mode"], "kept_pkr": terms["keep_pkr"]} if terms else {})},
         )
         await self.db.commit()
         await self.db.refresh(booking)
@@ -647,8 +727,12 @@ class BookingService:
         recorded_by: User | None = None,
         amount_pkr: int | None = None,
         payment: Payment | None = None,
+        excess_choice: str | None = None,
     ) -> Booking:
-        """Called once an owner (or auto-approve) verifies the advance
+        """ledger v2 (`excess_choice` given): the WHOLE amount is credited and the part above the booking total is settled by
+        the choice (refund -> overpayment_excess dispute linked to the entry; credit -> player credit). Otherwise the old rule:
+
+        Called once an owner (or auto-approve) verifies the advance
         payment. Guarded by a conditional UPDATE (see _atomic_transition) so
         a double-tap approve, two concurrent approve requests, or an approve
         racing a cancel can never both take effect -- raises
@@ -678,15 +762,16 @@ class BookingService:
         expected = int(round(float(booking.advance_amount)))
         paid = int(round(amount_pkr)) if amount_pkr is not None else expected
         price_int = int(round(float(booking.price)))
-        credited = min(paid, price_int)
-        excess = paid - credited
+        credited = min(paid, price_int) if excess_choice is None else paid
+        excess = paid - min(paid, price_int)
         if credited > 0:
             ocr_text = ""
             if payment is not None and payment.ocr_amount is not None:
                 ocr_text = f" Screenshot showed PKR {int(round(float(payment.ocr_amount))):,}."
             excess_text = f" Excess PKR {excess:,} queued as a refund owed." if excess > 0 else ""
-            self.db.add(
-                PaymentEntry(
+            if excess_choice is not None and excess > 0:
+                excess_text = f" PKR {excess:,} above the total: {'refund' if excess_choice == 'refund' else 'player credit'}."
+            advance_entry = PaymentEntry(
                     booking_id=booking.id,
                     amount_pkr=credited,
                     method=PaymentMethod.BANK_TRANSFER_PROOF,
@@ -696,10 +781,15 @@ class BookingService:
                         + f" Expected PKR {expected:,}.{ocr_text} Paid PKR {paid:,}. Credited PKR {credited:,}.{excess_text}"
                     ),
                 )
-            )
+            self.db.add(advance_entry)
             await self.db.flush()
+            if excess_choice is not None and excess > 0:
+                from app.services.ledger_v2 import settle_excess
+
+                await settle_excess(self.db, booking, excess=excess, choice=excess_choice, actor=recorded_by,
+                                    source_entry=advance_entry, payment_id=payment.id if payment else None)
             await recompute_payment_totals(self.db, booking)
-        if excess > 0 and payment is not None:
+        if excess > 0 and payment is not None and excess_choice is None:
             self.db.add(
                 PaymentDispute(
                     booking_id=booking.id,
@@ -869,7 +959,31 @@ class BookingService:
         )
         await self.db.commit()
         await self.db.refresh(booking)
+        await self._apply_noshow_charge(booking, actor)
         return booking
+
+    async def _apply_noshow_charge(self, booking: Booking, actor: User | None) -> None:
+        """ledger v2 (contract 2.2): venue setting 'advance' (default) keeps what was paid and charges nothing more (a no_show
+        deduction for the rest); 'full' leaves the rest due and the 'kam mila' flow asks the player (24 h)."""
+        from app.services import ledger_v2 as lv2
+        from app.services.money import load_money
+
+        if not await lv2.v2_on(self.db):
+            return
+        venue = await lv2.venue_of(self.db, booking)
+        m = await load_money(self.db, booking)
+        if venue is not None and venue.no_show_charge == "full":
+            if m.balance > 0:
+                from app.services.phase3_service import open_short_claim
+
+                await open_short_claim(self.db, self.settings, booking)
+            return
+        if m.balance > 0:
+            locked = await self.db.get(Booking, booking.id, with_for_update=True)
+            await lv2.add_adjustment(self.db, locked, "no_show", m.balance, reason="No-show: advance rakha, baqi charge nahi",
+                                     actor=actor)
+            await self.db.commit()
+            await self.db.refresh(booking)
 
     async def mark_completed(self, booking: Booking, actor: User | None = None) -> Booking:
         """Round 2 Stage 2 (spec C.3): the owner's Haan/Nahi on a finished booking settles its status as COMPLETED,

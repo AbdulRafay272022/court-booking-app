@@ -1,3 +1,4 @@
+from typing import Literal
 import re
 import uuid
 from datetime import datetime
@@ -123,6 +124,8 @@ class VenueUpdateIn(BaseModel):
     # audit Phase 3 item 3: the owner-funded points discount (500 points -> this many rupees off)
     points_discount_enabled: bool | None = None
     points_discount_pkr: int | None = Field(default=None, ge=0, le=100000)
+    # ledger v2 (contract 2.2): what a no-show costs -- 'advance' (keep what was paid) or 'full' (the rest is due)
+    no_show_charge: Literal["advance", "full"] | None = None
 
 
 class VenueOut(BaseModel):
@@ -152,6 +155,7 @@ class VenueOut(BaseModel):
     booking_horizon_days: int = 90
     points_discount_enabled: bool = False
     points_discount_pkr: int = 500
+    no_show_charge: str = "advance"
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None
@@ -219,6 +223,7 @@ class VenuePublicOut(BaseModel):
     booking_horizon_days: int = 90
     points_discount_enabled: bool = False
     points_discount_pkr: int = 500
+    no_show_charge: str = "advance"
     created_at: datetime
     courts: list[CourtOut] = Field(default_factory=list)
     average_rating: float | None = None

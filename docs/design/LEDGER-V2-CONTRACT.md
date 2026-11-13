@@ -14,6 +14,8 @@ Is file aur prompt mein takraav ho to **yeh file** chalegi (isme founder ke baad
 - Ek Alembic migration (schema), down_revision `c3e8a1f5b902`. **Migration-Go chahiye.**
 - Data backfill alag script mein: `scripts/ledger_v2_backfill.py`. Idempotent hai, `--dry-run` deta hai aur report likhta hai. Check script: `scripts/ledger_v2_check.py`. Dono migration ke baad chalenge (section 3.3).
 - Ab nahi: expenses, profit, charts, cash handover, bank API, auto reconciliation, month closing.
+- **Prod gate 1 (founder, 13 Nov):** prod se pehle **prod ki copy** par `ledger_v2_backfill.py --dry-run` + `ledger_v2_check.py`. Local DB khali tha, is liye asli data par backfill abhi pakka nahi. Check report founder ko dikhani hai; prod sirf founder ke GO par.
+- **Prod gate 2 (founder, 13 Nov):** prod par **migration + backfill + flag `ledger_v2` ON ek hi deploy window mein, ek saath**. Alag alag nahi: backfill ke baad flag OFF par bhi Final price dikhti hai (maslan no-show 5,000 → 1,000), jo purane screens par ajeeb lagega.
 
 ---
 
@@ -77,6 +79,7 @@ Maslan Mon 6 PM – Tue 4 AM wale venue par Tue 1:00 AM ka paisa Monday ka hai. 
 - `money_business_date ≤ business_date(venue, now)`: aage ki tareekh `VALIDATION_ERROR`.
 - **Purani tareekh:** business_date < aaj ho to note zaroori, `created_at` = abhi.
 - Statement booking ke slot ke business day par filter hoga. "Paisa kaise aaya" aur Len-den `money_business_date` par.
+- **Statement mein kaun si bookings (founder, 13 Nov):** booked / completed / no_show / cancelled hamesha. `held` aur `payment_submitted` **sirf tab** jab un par koi approved paisa ho (net ≠ 0), maslan advance approve ho chuka aur sirf baqi ka screenshot review mein hai; warna asal mila hua paisa gaib ho jata.
 
 ### 2.2 No-show (`venues.no_show_charge`)
 - `advance` (default): no-show mark karte hi `no_show` adjustment = max(final − net, 0). Final = net, settled.
@@ -128,7 +131,7 @@ Raste: record payment, walk-in, advance approve, balance screenshot approve, own
 
 ### 2.7 Galti theek karna
 Kuch edit ya delete nahi hota.
-- Payment galat → reversal (owner-only).
+- Payment galat → reversal (owner-only). Reversal ke baad refund_due kam ho to khule refund disputes (sab se naya pehle) utne chhote / band ho jate hain (`sync_refund_disputes`), taake Kaam mein jhoota "Wapas dena" na bache.
 - Adjustment galat → us adjustment ka reversal (owner-only).
 - Dono par wajah zaroori, aur reversal original se link.
 
@@ -212,6 +215,7 @@ Ek booking par ek transaction. Dobara chalana safe (`backfilled` flags). `--dry-
    - Asar: in dino ka purana "Mila" barh jayega aur "Wapas diye" bhi. Net wohi rahega. Report mein din-wise farq dikhega.
    (Yeh step purane cancel se **pehle** chalta hai, taake cancel adjustment sahi net par bane.)
 6. **Purane cancel:** open refund remaining `R` (disputes se) le kar `cancellation` = final − (net − R). Yeh negative aaye → adjustment nahi, check list mein.
+6a. **Zyada paisa jis ka dispute nahi (S16 walk-in jaisa, founder 13 Nov):** cancel ke baghair booking par refund_due > khule disputes ka remaining ho to farq ka `overpayment_excess` dispute banta hai (us payment entry se linked, jo zyada aayi), taake Kaam → Wapas dena mein aaye. Aisa paisa aksar typing ki ghalti hota hai, is liye owner ke paas us entry par "Ghalti theek karein" (reverse) rehta hai; reverse se refund_due ghatta hai aur dispute **khud** utna chhota / band ho jata hai (2.7 ka sync).
 7. Har touched booking par `recompute_payment_totals`.
 8. Report `docs/design/ledger-v2-backfill-report.md` mein (booking id, kya bana, purana aur naya price / paid / due) + din-wise "Mila" / "Wapas diye" ka farq.
 9. **Backfill abhi sirf local/dev DB par. Prod par sirf founder ke kehne par.**

@@ -27,6 +27,11 @@ import { RefundPayoutBlock } from "@/components/owner/paisa/refund-payout-block"
 import { parseQueueFilter } from "@/lib/queue-filter";
 import { isNaya } from "@/lib/owner-seen";
 import { useSeenSince } from "@/lib/use-owner-seen";
+import { useAuthStore } from "@/lib/auth-store";
+import { usePaisaT } from "@/lib/use-paisa-v2";
+import { parseRupees, pkrText } from "@/lib/paisa-v2";
+import { Sheet } from "@/components/fl";
+import { Choice, ErrorText, PrimaryButton, TextField } from "@/components/owner/paisa-v2/ui";
 
 const TEAL = "var(--color-fl-teal)";
 const DANGER = "var(--color-fl-danger)";
@@ -74,15 +79,22 @@ function reasonText(t: TFunction, refund: OwnerRefund): string | null {
 /** Section 32 Part 10 + Round 2 A10: the owner's "Refunds to pay" screen. A refund here was always sent
  * OUTSIDE the app (JazzCash/bank) -- there is no payment gateway. This screen only records
  * that it happened, with a reference the owner can point to later if a player disputes it. */
-export function RefundsTab() {
+export function RefundsTab({ v2 }: { v2?: { notGotOnly?: boolean } } = {}) {
   const t = useT();
+  const pt = usePaisaT();
+  const isOwner = useAuthStore((s) => s.user?.role) !== "staff";
+  const [creditFor, setCreditFor] = useState<OwnerRefund | null>(null);
   const fmt = useFmt();
   const sports = useOwnerCourtSports();
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
   // fix/nov-8: a notification links here with ?booking=<id>&open=1 and that booking's detail opens at once.
-  const [detailId, setDetailId] = useLinkedDetail(useSearchParams());
+  const [linkedId, setLinkedId] = useLinkedDetail(useSearchParams());
+  // ledger v2: the "Nahi mila" copy of this list must not open the linked booking a second time
+  const [localId, setLocalId] = useState<string | null>(null);
+  const detailId = v2?.notGotOnly ? localId : linkedId;
+  const setDetailId = v2?.notGotOnly ? setLocalId : setLinkedId;
   const filter = parseQueueFilter(useSearchParams());
   const since = useSeenSince("refunds", activeVenueId);
   // Stage 2 (B.b): a staff member without "mark_refunds" sees the no-permission state at once (the list needs it too).
@@ -95,7 +107,10 @@ export function RefundsTab() {
     enabled: !!activeVenueId && allowed,
   });
 
-  const list = query.data ?? [];
+  // ledger v2 Kaam: "Refund Nahi mila" is the same list, only the refunds the player answered "not received" (no reply yet)
+  const list = (query.data ?? []).filter(
+    (r) => !v2?.notGotOnly || (r.transfers ?? []).some((tr) => tr.player_response === "not_received" && !tr.owner_reply),
+  );
   const open = list.find((r) => r.id === openId) ?? null;
   const loading = venuesLoading || perms.loading || query.isLoading;
   // A staff member without the refunds permission gets 403 NOT_STAFF_PERMITTED: show ONE clear state (no count line, no
@@ -105,7 +120,7 @@ export function RefundsTab() {
 
   return (
     <div className="max-w-3xl flex flex-col gap-6 min-w-0">
-      <div>
+      <div hidden={!!v2}>
         <h2 className="text-xl font-bold">{t("odash.refunds.title")}</h2>
         {showCount ? (
           <p data-testid="refunds-count" className="text-owner-ink-faint text-sm">
@@ -171,6 +186,11 @@ export function RefundsTab() {
                       <ScreenshotThumb paymentId={refund.payment_id} alt={t("rfd.row.proofAlt", { who })} />
                     </div>
                   ) : null}
+                  {v2 && refund.player_phone ? (
+                    <p className="text-[13px] text-owner-ink" data-testid="refund-player-phone">
+                      <span className="select-all font-semibold tabular-nums">{refund.player_phone}</span>
+                    </p>
+                  ) : null}
                   {/* fix/nov-9 items 10-12: the player's account (masked until shown) + each refund sent, checked and answered */}
                   <RefundPayoutBlock refund={refund} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] })} />
                   <RowLinks
@@ -187,6 +207,16 @@ export function RefundsTab() {
                       <span className="block text-[11px] font-semibold text-owner-ink-faint">{t("rfd.row.of", { total: formatPKR(b.refundDue) })}</span>
                     ) : null}
                   </span>
+                  {v2 && isOwner && b.remaining > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setCreditFor(refund)}
+                      data-testid="refund-keep-credit"
+                      className="px-4 min-h-11 rounded-lg border border-owner-border font-semibold text-[13.5px]"
+                    >
+                      {pt("paisa.act.credit")}
+                    </button>
+                  ) : null}
                   {b.remaining > 0 ? (
                   <button
                     type="button"
@@ -215,8 +245,21 @@ export function RefundsTab() {
         />
       ) : null}
 
+      {creditFor ? (
+        <KeepAsCreditSheet
+          refund={creditFor}
+          onClose={() => setCreditFor(null)}
+          onDone={async () => {
+            setCreditFor(null);
+            await queryClient.invalidateQueries({ queryKey: ["owner-refunds"] });
+            await queryClient.invalidateQueries({ queryKey: ["paisa"] });
+          }}
+        />
+      ) : null}
+
       {open ? (
         <MarkRefundedDialog
+          v2={!!v2}
           refund={open}
           onClose={() => {
             // Esc / outside click / Close after a successful save must not leave the row showing the old amount.
@@ -248,7 +291,9 @@ function MarkRefundedDialog({
   onClose,
   onSaved,
   onDone,
+  v2 = false,
 }: {
+  v2?: boolean;
   refund: OwnerRefund;
   onClose: () => void;
   onSaved?: () => void;
@@ -266,6 +311,10 @@ function MarkRefundedDialog({
   const [touched, setTouched] = useState({ amount: false, reference: false });
   const [serverError, setServerError] = useState<string | null>(null);
   const [done, setDone] = useState<{ amount: number; ref: string; left: number } | null>(null);
+  // ledger v2 (contract 2.6, founder 13 Nov): sent by Transfer (reference) or in Cash (a note instead)
+  const pt = usePaisaT();
+  const [how, setHow] = useState<"transfer" | "cash">("transfer");
+  const [cashNote, setCashNote] = useState("");
   const submitting = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
@@ -289,7 +338,7 @@ function MarkRefundedDialog({
         : amountProblem === "empty"
           ? t("rfd.err.empty")
           : null;
-  const referenceOk = isPlausibleRefundReference(reference);
+  const referenceOk = how === "cash" ? cashNote.trim() !== "" : isPlausibleRefundReference(reference);
   // the "more than owed" message is shown at once (it is the confusing case); the others after a touch
   const showAmountError = amountMessage !== null && (touched.amount || amountProblem === "exceeds");
   const showRefError = !referenceOk && touched.reference;
@@ -326,9 +375,17 @@ function MarkRefundedDialog({
     submitting.current = true;
     setBusy(true);
     setServerError(null);
-    const ref = reference.trim();
+    const ref = how === "cash" ? "" : reference.trim();
     try {
-      await api.owners.markRefundPaid(refund.id, ref, typed, screenshot ?? undefined, screenshot?.name, screenshot?.type || undefined);
+      await api.owners.markRefundPaid(
+        refund.id,
+        ref,
+        typed,
+        screenshot ?? undefined,
+        screenshot?.name,
+        screenshot?.type || undefined,
+        v2 ? { method: how, note: how === "cash" ? cashNote.trim() : undefined } : {},
+      );
       setDone({ amount: typed, ref, left: Math.max(0, Math.round((maxOwed - typed) * 100) / 100) });
       onSaved?.();
     } catch (e) {
@@ -473,6 +530,27 @@ function MarkRefundedDialog({
               ) : null}
             </div>
 
+            {v2 ? (
+              <Choice<"transfer" | "cash">
+                label={pt("paisa.refund.how")}
+                value={how}
+                onChange={setHow}
+                testId="refund-how"
+                options={[
+                  { value: "transfer", label: pt("paisa.rec.transfer") },
+                  { value: "cash", label: pt("paisa.rec.cash") },
+                ]}
+              />
+            ) : null}
+            {how === "cash" ? (
+              <TextField
+                label={pt("paisa.rec.note")}
+                value={cashNote}
+                onChange={setCashNote}
+                error={touched.reference && !cashNote.trim() ? pt("paisa.refund.noteNeeded") : null}
+                testId="refund-cash-note"
+              />
+            ) : (
             <div className="flex flex-col gap-1.5">
               <label htmlFor={`${ids}-ref`} className="text-[13px] font-semibold text-owner-ink-muted">
                 {t("rfd.reference.label")}
@@ -500,6 +578,7 @@ function MarkRefundedDialog({
                 </p>
               ) : null}
             </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor={`${ids}-shot`} className="text-[13px] font-semibold text-owner-ink-muted">
@@ -561,5 +640,44 @@ function DuplicateProofChip({ n }: { n: number }) {
       </svg>
       <span>{n === 1 ? t("rfd.dup.one") : t("rfd.dup.many", { n })}</span>
     </span>
+  );
+}
+
+/** ledger v2 "Jama rakhein" (owner only): an owed refund, or part of it, goes into the player's credit at this venue. */
+function KeepAsCreditSheet({ refund, onClose, onDone }: { refund: OwnerRefund; onClose: () => void; onDone: () => void }) {
+  const t = useT();
+  const pt = usePaisaT();
+  const max = Math.max(0, refundBreakdown(refund).remaining);
+  const [amount, setAmount] = useState(String(max));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const typed = parseRupees(amount);
+  const ok = Number.isFinite(typed) && typed > 0 && typed <= max;
+  async function save() {
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.paisa.keepRefundAsCredit(refund.id, typed);
+      onDone();
+    } catch (e) {
+      setError(friendlyErrorMessage(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Sheet open onClose={onClose} title={pt("paisa.act.credit")} subtitle={refund.player_name ?? refund.player_phone ?? undefined} data-testid="refund-credit-sheet">
+      <TextField
+        label={pt("paisa.rec.amount")}
+        value={amount}
+        onChange={setAmount}
+        inputMode="numeric"
+        error={Number.isFinite(typed) && typed > max ? pt("paisa.adj.max", { amount: pkrText(max) }) : null}
+        autoFocus
+      />
+      <ErrorText text={error} />
+      <PrimaryButton label={pt("paisa.act.save")} onClick={save} disabled={!ok} busy={busy} testId="refund-credit-save" />
+    </Sheet>
   );
 }

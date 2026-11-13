@@ -1,4 +1,5 @@
 import type {
+  CancelPreview,
   Booking,
   HoldBookingInput,
   HoldBookingOut,
@@ -41,11 +42,21 @@ export function createBookingsApi(client: ApiClient) {
     /** Audit 2026-10-28 item 20: where and how much to pay now (advance or balance), plus the Raast QR when switched on. */
     paymentInstructions: (id: string) => client.request<BookingPaymentInstructions>(`/bookings/${id}/payment-instructions`),
 
-    cancel: (id: string, reason?: string) =>
+    /** ledger v2: owner / staff say who asked (`cancelledFor`); a cancel that keeps the advance needs `acceptKeepAdvance`
+     * (409 CANCEL_KEEPS_ADVANCE {advance_pkr} otherwise). */
+    cancel: (id: string, reason?: string, opts: { cancelledFor?: "player" | "venue"; acceptKeepAdvance?: boolean } = {}) =>
       client.request<{ booking: Booking }>(`/bookings/${id}/cancel`, {
         method: "POST",
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({
+          reason,
+          ...(opts.cancelledFor ? { cancelled_for: opts.cancelledFor } : {}),
+          ...(opts.acceptKeepAdvance ? { accept_keep_advance: true } : {}),
+        }),
       }),
+
+    /** ledger v2: what cancelling now does with the money ("Advance PKR X wapas nahi hoga"). */
+    cancelPreview: (id: string, cancelledFor?: "player" | "venue") =>
+      client.request<CancelPreview>(`/bookings/${id}/cancel-preview${cancelledFor ? `?cancelled_for=${cancelledFor}` : ""}`),
 
     checkin: (id: string) =>
       client.request<{ booking: Booking }>(`/bookings/${id}/checkin`, { method: "POST" }),

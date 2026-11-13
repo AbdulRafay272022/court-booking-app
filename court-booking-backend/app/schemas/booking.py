@@ -1,7 +1,7 @@
 import re
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
@@ -74,6 +74,8 @@ class WalkInBookingIn(BaseModel):
     amount_paid: float = Field(ge=0)
     # audit 2026-10-28 Phase 2 item 3: the owner ticked "Player ko bata diya ke WhatsApp par rasid aayegi" (both apps require it)
     whatsapp_opt_in: bool | None = None
+    # ledger v2 (contract 2.4): amount above the booking total -> "refund" or "credit" (owner only); required then
+    excess_choice: Literal["refund", "credit"] | None = None
 
     @field_validator("player_name", mode="before")
     @classmethod
@@ -94,6 +96,21 @@ class WalkInBookingIn(BaseModel):
 
 class BookingCancelIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
+    # ledger v2 (contract 2.3): an owner / staff cancel says WHO asked ("player" on the phone -> the player's rule; "venue" ->
+    # always a full refund); a cancel that keeps the advance needs accept_keep_advance (409 CANCEL_KEEPS_ADVANCE otherwise)
+    cancelled_for: Literal["player", "venue"] | None = None
+    accept_keep_advance: bool = False
+
+
+class CancelPreviewOut(BaseModel):
+    """What cancelling now would do with the money (ledger v2): refund all, keep the advance, or nothing to settle."""
+
+    allowed: bool
+    mode: Literal["refund", "keep", "clear"]
+    late: bool
+    paid_pkr: int
+    refund_pkr: int
+    keep_pkr: int
 
 
 class BookingSelfCheckinIn(BaseModel):

@@ -16,6 +16,8 @@ import type { MessageKey, TFunction } from "@/lib/i18n";
 import { searchHref } from "@/lib/search-links";
 import { statusPill as honestStatus } from "@court-booking/ui-tokens";
 import { useFlLang } from "@/components/fl";
+import { useLedgerV2, usePaisaT } from "@/lib/use-paisa-v2";
+import { pkrText } from "@/lib/paisa-v2";
 
 const REVIEW_EDIT_WINDOW_MS = 7 * 24 * 3600 * 1000;
 
@@ -211,7 +213,10 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   // The server re-checks it at cancel time regardless; this is a UX convenience, not the source of truth.
   const withinCutoff =
     court?.cancellation_cutoff_hours != null && new Date(booking.starts_at).getTime() - now < court.cancellation_cutoff_hours * 3_600_000;
-  const canCancelBooked = booking.status === "booked" && !!court?.cancellation_allowed && !withinCutoff;
+  // ledger v2 (founder 13 Nov): a late cancel is allowed where the venue allows cancelling; the advance is kept (said first)
+  const ledgerV2 = useLedgerV2().on;
+  const pt = usePaisaT();
+  const canCancelBooked = booking.status === "booked" && !!court?.cancellation_allowed && (!withinCutoff || ledgerV2);
   const canCancel = canResumePay || canCancelBooked;
   const bookedNotCancellable = booking.status === "booked" && !canCancelBooked && !!court;
   const policyNote = bookedNotCancellable ? (withinCutoff ? t("bookings.policy.closed") : fmt.cancellationPolicy(court)) : null;
@@ -220,6 +225,24 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   const refundLine = court ? refundPolicyShort(venueQuery.data ?? court, flLang) : null;
 
   async function handleCancel() {
+    if (ledgerV2) {
+      try {
+        const p = await api.bookings.cancelPreview(booking.id);
+        const msg =
+          p.mode === "keep"
+            ? pt("paisa.cancel.keep", { amount: pkrText(p.keep_pkr) })
+            : p.mode === "refund"
+              ? t("bookings.cancel.confirmPaid", { amount: formatPKR(p.refund_pkr) })
+              : t("bookings.cancel.confirmUnpaid");
+        if (!confirm(msg)) return;
+        await api.bookings.cancel(booking.id, undefined, { acceptKeepAdvance: p.mode === "keep" });
+        if (p.mode === "refund") alert(t("bookings.cancel.doneRefund", { amount: formatPKR(p.refund_pkr) }));
+        onChanged();
+      } catch (e) {
+        alert(friendlyErrorMessage(e));
+      }
+      return;
+    }
     const isPaid = booking.status === "booked";
     // The refundable amount is shown BEFORE the player confirms, in plain words. A cancel that is allowed to go through is
     // always fully refundable: the cutoff blocks the cancel outright instead of making part of it non-refundable.

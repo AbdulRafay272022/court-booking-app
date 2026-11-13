@@ -113,6 +113,15 @@ class ErrorCode:
     STAFF_ALREADY_EXISTS = "STAFF_ALREADY_EXISTS"  # this user is already staff at this venue
     INVALID_STAFF_PERMISSION = "INVALID_STAFF_PERMISSION"
     NOT_STAFF_PERMITTED = "NOT_STAFF_PERMITTED"  # staff account lacks the permission for this action
+    # Ledger v2 (docs/design/LEDGER-V2-CONTRACT.md)
+    OWNER_ONLY = "OWNER_ONLY"  # only the venue owner (or an admin) may do this money action
+    EXCESS_CHOICE_REQUIRED = "EXCESS_CHOICE_REQUIRED"  # money above the booking total: refund or keep as credit?
+    POSSIBLE_DUPLICATE = "POSSIBLE_DUPLICATE"  # same booking + amount + method in the last 10 minutes
+    CANCEL_KEEPS_ADVANCE = "CANCEL_KEEPS_ADVANCE"  # a late cancel keeps the advance; confirm with accept_keep_advance
+    BUSINESS_DATE_IN_FUTURE = "BUSINESS_DATE_IN_FUTURE"
+    BACKDATE_NOTE_REQUIRED = "BACKDATE_NOTE_REQUIRED"
+    CREDIT_NOT_AVAILABLE = "CREDIT_NOT_AVAILABLE"  # no player to hold credit, or not enough credit
+    CANCELLED_FOR_REQUIRED = "CANCELLED_FOR_REQUIRED"  # owner/staff cancel: who asked, player or venue?
     # audit 2026-10-28 Phase 3
     POINTS_NOT_AVAILABLE = "POINTS_NOT_AVAILABLE"  # not enough points / venue discount off / already used
     REPLY_WINDOW_CLOSED = "REPLY_WINDOW_CLOSED"  # the 24 h to answer a short-payment message have passed

@@ -84,4 +84,9 @@ export const ruOdashMoney = {
   "odash.reviews.err.empty": "Pehle jawab likhein.",
   "odash.reviews.saving": "Save ho raha hai\u2026",
   "odash.reviews.post": "Jawab post karein",
+  "odash.ledger.noShow.title": "No-show par",
+  "odash.ledger.noShow.advance": "Advance rakhein, baqi charge nahi",
+  "odash.ledger.noShow.full": "Poori raqam charge karein",
+  "odash.ledger.noShow.save": "Save karein",
+  "odash.ledger.noShow.saved": "Save ho gaya",
 } as const;

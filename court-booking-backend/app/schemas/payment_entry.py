@@ -1,5 +1,6 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,6 +11,10 @@ class PaymentEntryIn(BaseModel):
     amount_pkr: int = Field(gt=0)
     method: PaymentMethod
     note: str | None = Field(default=None, max_length=500)
+    # ledger v2 (contract 2.1 / 2.4 / 2.8)
+    business_date: date | None = None
+    excess_choice: Literal["refund", "credit"] | None = None
+    confirm_duplicate: bool = False
 
 
 class PaymentEntryOut(BaseModel):
@@ -23,6 +28,8 @@ class PaymentEntryOut(BaseModel):
     note: str | None
     reverses_entry_id: uuid.UUID | None
     created_at: datetime
+    kind: str = "payment"
+    money_business_date: date | None = None
 
 
 class PaymentEntryResponse(BaseModel):

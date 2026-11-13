@@ -12,7 +12,7 @@ import { useT } from "@/components/i18n/lang-provider";
 
 /** audit 2026-10-28 Phase 3 item 2: "bank se mila lein" -- every transfer credited on one day (advance and balance screenshots
  * approved), to tick off against the bank statement. Owner, or staff with view_ledger. Read-only. */
-export function BankTab() {
+export function BankTab({ bare = false }: { bare?: boolean } = {}) {
   const t = useT();
   const fmt = useFmt();
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
@@ -46,7 +46,7 @@ export function BankTab() {
   const days = [0, -1, -2, -3, -4, -5, -6].map((n) => addDays(today, n));
   return (
     <div className="flex min-w-0 max-w-4xl flex-col gap-6" data-testid="bank-check">
-      <div>
+      <div hidden={bare}>
         <h2 className="text-xl font-bold">{t("odash.bank.title")}</h2>
         <p className="text-sm text-owner-ink-muted">{t("odash.bank.subtitle")}</p>
       </div>

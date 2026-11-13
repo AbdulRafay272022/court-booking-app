@@ -86,4 +86,9 @@ export const enOdashMoney: Record<keyof typeof ruOdashMoney, string> = {
   "odash.reviews.err.empty": "Write a reply first.",
   "odash.reviews.saving": "Saving\u2026",
   "odash.reviews.post": "Post reply",
+  "odash.ledger.noShow.title": "On a no-show",
+  "odash.ledger.noShow.advance": "Keep the advance, charge nothing more",
+  "odash.ledger.noShow.full": "Charge the full amount",
+  "odash.ledger.noShow.save": "Save",
+  "odash.ledger.noShow.saved": "Saved",
 };
