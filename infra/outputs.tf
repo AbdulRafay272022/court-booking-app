@@ -45,8 +45,13 @@ output "whatsapp_webhook_url" {
   value       = "https://${local.api_host}/api/v1/webhooks/whatsapp"
 }
 
-output "rds_endpoint" {
-  value = aws_db_instance.main.address
+output "db_volume_id" {
+  description = "EBS volume holding the Postgres data (mounted at /srv/court-booking-db). prevent_destroy is on."
+  value       = aws_ebs_volume.pgdata.id
+}
+
+output "db_backups_bucket" {
+  value = aws_s3_bucket.db_backups.bucket
 }
 
 output "proofs_bucket" {

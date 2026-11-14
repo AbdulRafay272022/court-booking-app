@@ -7,7 +7,7 @@ set -euxo pipefail
 exec > >(tee -a /var/log/court-booking-user-data.log) 2>&1
 export DEBIAN_FRONTEND=noninteractive
 
-# 1GB RAM: backend + web + nginx + docker daemon is tight. Swap is cheap insurance against OOM kills.
+# backend + web + Postgres + nginx + docker daemon on a small instance is tight. Swap is cheap insurance against OOM kills.
 if ! swapon --show | grep -q /swapfile; then
   fallocate -l 2G /swapfile
   chmod 600 /swapfile
@@ -30,6 +30,25 @@ systemctl enable --now docker
 if ! command -v aws >/dev/null 2>&1; then
   curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
   unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install
+fi
+
+# Postgres data volume (aws_ebs_volume.pgdata in database.tf). On Nitro instances
+# an EBS volume shows up as /dev/nvmeXn1, so find it by its volume id instead of
+# the /dev/sdf name Terraform attached it as. The attachment can land a little
+# after boot, so wait for it. Format ONLY if it has no filesystem yet (first
+# boot ever) -- a re-attached volume after an instance replace keeps its data.
+PG_DEV=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$(echo '${pg_volume_id}' | tr -d '-')
+for i in $(seq 1 120); do [ -e "$PG_DEV" ] && break; sleep 5; done
+if [ ! -e "$PG_DEV" ]; then
+  echo "ERROR: Postgres data volume ${pg_volume_id} never attached -- NOT mounting; remote-deploy.sh will refuse to start the db."
+else
+  if ! blkid "$PG_DEV" >/dev/null 2>&1; then
+    mkfs.ext4 -L cbpgdata "$PG_DEV"
+  fi
+  mkdir -p /srv/court-booking-db
+  PG_UUID=$(blkid -s UUID -o value "$PG_DEV")
+  grep -q "$PG_UUID" /etc/fstab || echo "UUID=$PG_UUID /srv/court-booking-db ext4 defaults,nofail 0 2" >> /etc/fstab
+  mountpoint -q /srv/court-booking-db || mount /srv/court-booking-db
 fi
 
 mkdir -p /opt/court-booking-app /etc/court-booking

@@ -22,3 +22,5 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # audit 2026-10-28 Phase 3: unanswered short-payment questions after 24 h (-20 points), points back on cancelled bookings.
 # A no-op while the short_payment_reply / player_points flags are off. Every 10 minutes.
 */10 * * * *   root flock -n /var/lock/cb-short.lock     docker exec court-booking-backend python -m app.jobs.runner short-payments >> /var/log/court-booking-jobs.log 2>&1
+# Database backup (pg_dump of the on-instance Postgres -> db-backups S3 bucket, expired by lifecycle): daily 01:30 PKT.
+30 20 * * *    root flock -n /var/lock/cb-dbbackup.lock  /opt/court-booking-app/bootstrap.sh db-backup >> /var/log/court-booking-backup.log 2>&1

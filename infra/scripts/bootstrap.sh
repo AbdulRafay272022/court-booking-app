@@ -2,11 +2,15 @@
 # Re-runnable post-provision setup, run ON the instance (via SSM Session
 # Manager) -- see infra/README.md for the exact order:
 #
-#   sudo /opt/court-booking-app/bootstrap.sh env            # build .env/.env.web from SSM
-#   sudo /opt/court-booking-app/bootstrap.sh db-init        # CREATE EXTENSION postgis on RDS
-#   (deploy the containers: push to main, or run the deploy workflow)
+#   sudo /opt/court-booking-app/bootstrap.sh env            # build .env/.env.web/.env.db from SSM
+#   (deploy the containers: push to main, or run the deploy workflow -- starts the db container too)
+#   sudo /opt/court-booking-app/bootstrap.sh db-init        # CREATE EXTENSION postgis (the image already does; harmless)
 #   sudo /opt/court-booking-app/bootstrap.sh migrate        # alembic upgrade head + alembic check
 #   sudo /opt/court-booking-app/bootstrap.sh nginx-cert <letsencrypt-email>
+#
+# Database (Postgres container "court-booking-db", data on /srv/court-booking-db):
+#   sudo /opt/court-booking-app/bootstrap.sh db-backup              # pg_dump -> s3://<db-backups bucket>/... (cron runs it nightly)
+#   sudo /opt/court-booking-app/bootstrap.sh db-restore <s3-key|/path/file.dump>   # pg_restore a custom-format dump
 #
 # Every phase is idempotent. Nothing here ever prints a secret.
 set -euo pipefail
@@ -56,7 +60,7 @@ APP_NAME="Court Booking API"
 DEBUG=false
 API_V1_PREFIX=/api/v1
 ALLOWED_ORIGINS=["https://${WEB_HOST}"]
-DATABASE_URL=postgresql+asyncpg://court_admin:${db_pass}@${db_host}:5432/court_booking?ssl=require
+DATABASE_URL=postgresql+asyncpg://court_admin:${db_pass}@${db_host}:5432/court_booking
 SESSION_TOKEN_SECRET=$(ssm_get "$P/secrets/SESSION_TOKEN_SECRET")
 BANK_DETAILS_ENCRYPTION_KEY=$(ssm_get "$P/secrets/BANK_DETAILS_ENCRYPTION_KEY")
 # Key rotation (optional): earlier keys, comma-separated, only to READ data written with them.
@@ -93,6 +97,13 @@ PLATFORM_ACCOUNT_TITLE=$(ssm_get "$P/secrets/PLATFORM_ACCOUNT_TITLE")
 PLATFORM_ACCOUNT_NUMBER=$(ssm_get "$P/secrets/PLATFORM_ACCOUNT_NUMBER")
 PLATFORM_IBAN=$(ssm_get "$P/secrets/PLATFORM_IBAN")
 ENV
+  # The Postgres container's own credentials (docker-compose.prod.yml, service "db"). Only read on the db's FIRST init
+  # (empty data dir); changing the password later needs ALTER USER inside the db as well.
+  cat > "$APP_DIR/.env.db" <<ENVDB
+POSTGRES_USER=court_admin
+POSTGRES_PASSWORD=${db_pass}
+POSTGRES_DB=court_booking
+ENVDB
   # .env.web is only read by `docker compose` for the web container; the
   # browser-side API URL is baked at IMAGE BUILD time (see the web
   # Dockerfile) -- this only feeds Next's server-side fetches at runtime.
@@ -106,18 +117,48 @@ NEXT_PUBLIC_SUPPORT_HOURS=Roz 10am se 3am
 NEXT_PUBLIC_OWNER_PRICING_TEXT=14 din free trial
 NEXT_PUBLIC_SITE_URL=https://${WEB_HOST}
 ENVWEB
-  chmod 600 "$APP_DIR/.env" "$APP_DIR/.env.web"
-  echo "wrote $APP_DIR/.env and .env.web (AI provider: ${provider})"
+  chmod 600 "$APP_DIR/.env" "$APP_DIR/.env.web" "$APP_DIR/.env.db"
+  echo "wrote $APP_DIR/.env, .env.web and .env.db (AI provider: ${provider})"
 }
 
+DB_CONTAINER=court-booking-db
+db_psql() { docker exec -i "$DB_CONTAINER" psql -U court_admin -d court_booking -v ON_ERROR_STOP=1 "$@"; }
+
 phase_db_init() {
-  local db_host db_pass
-  db_host=$(ssm_get "$P/db/host"); db_pass=$(ssm_get "$P/db/password")
-  # Alembic never creates PostGIS (the local postgis image pre-creates it),
-  # and the geometry columns need it. The RDS master user has rds_superuser,
-  # which is allowed to CREATE EXTENSION postgis.
-  PGPASSWORD="$db_pass" PGSSLMODE=require psql -h "$db_host" -U court_admin -d court_booking -v ON_ERROR_STOP=1 \
-    -c "CREATE EXTENSION IF NOT EXISTS postgis;" -c "SELECT postgis_full_version();"
+  # The postgis/postgis image already creates the extension in POSTGRES_DB on first init; this is a re-runnable check.
+  db_psql -c "CREATE EXTENSION IF NOT EXISTS postgis;" -c "SELECT postgis_full_version();"
+}
+
+phase_db_backup() {
+  local bucket key tmp
+  bucket=$(ssm_get "$P/infra/db_backups_bucket")
+  [ -n "$bucket" ] || { echo "ERROR: SSM $P/infra/db_backups_bucket is empty -- did terraform apply finish?"; exit 1; }
+  key="court_booking/$(date -u +%Y/%m/%d)/court_booking-$(date -u +%Y%m%dT%H%M%SZ).dump"
+  tmp=$(mktemp /tmp/cbdump.XXXXXX)
+  trap 'rm -f "$tmp"' RETURN
+  # Custom format (-Fc): compressed, and pg_restore can restore it selectively.
+  docker exec "$DB_CONTAINER" pg_dump -U court_admin -d court_booking -Fc --no-owner > "$tmp"
+  [ -s "$tmp" ] || { echo "ERROR: pg_dump produced an empty file"; exit 1; }
+  aws s3 cp --only-show-errors "$tmp" "s3://$bucket/$key"
+  echo "backup OK: s3://$bucket/$key ($(stat -c %s "$tmp") bytes)"
+}
+
+# Restore a custom-format dump (from this app's db-backup, or a pg_dump -Fc of the old RDS database) into the running db.
+# --clean --if-exists replaces existing objects. Stop the app first so nothing writes mid-restore.
+phase_db_restore() {
+  local src="${1:-}" bucket file
+  [ -n "$src" ] || { echo "usage: bootstrap.sh db-restore <s3-key in the db-backups bucket | /local/path.dump>"; exit 1; }
+  if [ -f "$src" ]; then file="$src"; else
+    bucket=$(ssm_get "$P/infra/db_backups_bucket"); file=$(mktemp /tmp/cbrestore.XXXXXX)
+    aws s3 cp --only-show-errors "s3://$bucket/$src" "$file"
+  fi
+  docker compose -f "$APP_DIR/docker-compose.prod.yml" --project-directory "$APP_DIR" stop backend web || true
+  db_psql -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+  docker exec -i "$DB_CONTAINER" pg_restore -U court_admin -d court_booking --clean --if-exists --no-owner --no-privileges \
+    < "$file" || echo "WARNING: pg_restore reported errors (often harmless 'extension already exists' style ones) -- check the output above."
+  docker compose -f "$APP_DIR/docker-compose.prod.yml" --project-directory "$APP_DIR" up -d
+  docker exec court-booking-backend alembic current || true
+  echo "restore finished from $src"
 }
 
 phase_migrate() {
@@ -173,7 +214,9 @@ NGINX
 case "${1:-}" in
   env)        phase_env ;;
   db-init)    phase_db_init ;;
+  db-backup)  phase_db_backup ;;
+  db-restore) shift; phase_db_restore "$@" ;;
   migrate)    phase_migrate ;;
   nginx-cert) shift; phase_nginx_cert "$@" ;;
-  *) echo "usage: $0 {env|db-init|migrate|nginx-cert <email>}"; exit 1 ;;
+  *) echo "usage: $0 {env|db-init|db-backup|db-restore <src>|migrate|nginx-cert <email>}"; exit 1 ;;
 esac

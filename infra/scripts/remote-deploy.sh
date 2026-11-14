@@ -16,7 +16,7 @@ export IMAGE_TAG="${IMAGE_TAG:-latest}"
 # IPC-channel directory in /var/lib/amazon/ssm/... which then crashes the deploy's ability to
 # report back at all. Refuse to start rather than let that happen -- the operator can then prune
 # manually, restart the deploy, or grow the disk. 2 GiB of headroom covers one backend image
-# (~1 GB) plus one web image (~400 MB) plus a bit of slack for extract-in-place. Skip the guard
+# (~1 GB) plus one web image (~400 MB) (+ the postgis image, ~600 MB, on the first deploy) plus a bit of slack for extract-in-place. Skip the guard
 # when SKIP_DISK_GUARD=1 (unit test / dry-run scenarios).
 if [ "${SKIP_DISK_GUARD:-0}" != "1" ]; then
   # Available blocks * 1024 to bytes; awk to strip the K suffix that df -k prints as raw kilobytes.
@@ -34,6 +34,23 @@ fi
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
 docker compose -f docker-compose.prod.yml pull
+
+# The database lives on its own EBS volume mounted at /srv/court-booking-db (infra/database.tf). If that mount is
+# missing, Postgres would happily initialise an EMPTY database on the root disk and the app would come up "fine" with no
+# data -- refuse instead.
+if ! mountpoint -q /srv/court-booking-db; then
+  echo "ERROR: /srv/court-booking-db is not mounted (Postgres data volume). Not starting anything. Check: lsblk; sudo mount -a"
+  exit 1
+fi
+[ -f .env.db ] || { echo "ERROR: /opt/court-booking-app/.env.db missing -- run: sudo /opt/court-booking-app/bootstrap.sh env"; exit 1; }
+
+# Start (or keep) Postgres and wait until it is healthy -- the migrations below need it.
+docker compose -f docker-compose.prod.yml up -d db
+for _ in $(seq 1 60); do
+  [ "$(docker inspect -f '{{.State.Health.Status}}' court-booking-db 2>/dev/null)" = "healthy" ] && break
+  sleep 2
+done
+[ "$(docker inspect -f '{{.State.Health.Status}}' court-booking-db)" = "healthy" ] || { echo "ERROR: court-booking-db not healthy"; docker logs --tail 50 court-booking-db; exit 1; }
 
 # Database migrations run from the NEW image BEFORE the new backend starts, so the new code never runs against a
 # missing column (Section 32 rule C). `run` starts a throwaway container from the just-pulled image with the same

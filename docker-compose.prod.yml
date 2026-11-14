@@ -4,7 +4,7 @@
 # for that (Postgres+PostGIS, LocalStack, build-from-source).
 #
 # Real secrets (DATABASE_URL, ANTHROPIC_API_KEY, etc.) live ONLY in .env /
-# .env.web on the instance itself -- never committed here, never passed as
+# .env.web / .env.db on the instance itself -- never committed here, never passed as
 # plain docker-compose environment: values. See RUNBOOK.md and
 # court-booking-backend/.env.example / court-booking-frontend/apps/web's
 # NEXT_PUBLIC_API_BASE_URL for what each file needs.
@@ -15,6 +15,37 @@
 #   IMAGE_TAG=<sha> docker compose -f docker-compose.prod.yml up -d
 
 services:
+  # Postgres + PostGIS on this same instance (no RDS). Data is a bind mount on the dedicated EBS volume mounted at
+  # /srv/court-booking-db (infra/database.tf) -- remote-deploy.sh refuses to start if that volume isn't mounted, so the
+  # database can never silently end up on the root disk. Port 5432 is NOT published: only containers on this compose
+  # network reach it (as host "db"). The image creates the postgis extension in POSTGRES_DB on first init.
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: court-booking-db
+    restart: unless-stopped
+    env_file: .env.db # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB, written by bootstrap.sh env
+    # Sized for a 2GB instance that also runs the backend and web containers.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=50
+    shm_size: 128mb
+    volumes:
+      - /srv/court-booking-db/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     image: ${ECR_REGISTRY}/court-booking-app-backend:${IMAGE_TAG:-latest}
     # Fixed name: the host's cron (infra/scripts/court-booking.cron) runs the
@@ -31,6 +62,9 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
 
   web:
     image: ${ECR_REGISTRY}/court-booking-app-web:${IMAGE_TAG:-latest}

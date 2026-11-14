@@ -3,7 +3,8 @@
 # Access: SSM Session Manager only. No SSH key pair, no port 22 (see
 # network.tf). `aws ssm start-session --target <instance-id>`.
 #
-# The instance runs host-level nginx + certbot (apt) and the two app
+# The instance runs host-level nginx + certbot (apt), the Postgres/PostGIS
+# container (data on its own EBS volume, see database.tf) and the two app
 # containers pulled from ECR via docker-compose.prod.yml (it never builds
 # images -- 1GB RAM can't reliably build Next.js/Python deps; see
 # .github/workflows/deploy.yml). Background jobs run from cron on this same
@@ -98,6 +99,12 @@ resource "aws_iam_role_policy" "ec2_app" {
         Resource = aws_kms_key.proofs.arn
       },
       {
+        Sid      = "DbBackups" # bootstrap.sh db-backup / db-restore
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+        Resource = [aws_s3_bucket.db_backups.arn, "${aws_s3_bucket.db_backups.arn}/*"]
+      },
+      {
         # Read the app's config/secrets; create-if-missing only for the three
         # secrets the bootstrap script generates itself (never overwrite).
         Sid      = "ParamsRead"
@@ -149,12 +156,15 @@ resource "aws_instance" "app" {
     project       = var.project_name
     bootstrap_b64 = base64encode(file("${path.module}/scripts/bootstrap.sh"))
     cron_b64      = base64encode(file("${path.module}/scripts/court-booking.cron"))
+    pg_volume_id  = aws_ebs_volume.pgdata.id
   })
 
   # A newer AMI or edited user-data must not silently stop/replace the only
   # server. To roll out a changed user-data/bootstrap on purpose:
   #   terraform apply -replace=aws_instance.app
-  # (safe: all state is in RDS/S3; the Elastic IP re-associates.)
+  # (safe: the database is on the separate aws_ebs_volume.pgdata, which is
+  # re-attached and re-mounted; files are in S3; the Elastic IP re-associates.
+  # Take a `bootstrap.sh db-backup` first anyway.)
   lifecycle {
     ignore_changes = [ami, user_data]
   }

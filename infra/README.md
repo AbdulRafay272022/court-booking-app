@@ -6,14 +6,14 @@ region to the Karachi pilot; AWS has none in Pakistan).
 | File | What it defines |
 |---|---|
 | `ecr.tf`, `oidc.tf` | ECR repos + the GitHub Actions OIDC role (Part 0). `oidc.tf` also grants that role `ssm:SendCommand` on the one app instance — that's how deploys reach it. |
-| `network.tf` | VPC, 1 public + 2 private subnets, IGW, `ec2-sg` (80/443 only — **no port 22**), `rds-sg` (5432 from `ec2-sg` only). No NAT Gateway, by design. |
-| `compute.tf` | The `t3.micro` Ubuntu 24.04 instance, its IAM role (SSM + ECR pull + this project's S3/KMS/SSM params only), the Elastic IP, and the `sslip.io` hostnames. |
-| `database.tf` | RDS Postgres 16, `db.t3.micro`, single-AZ, private subnets, not publicly accessible, encrypted, **1-day** automated backups (Free-plan limit; see RUNBOOK.md). |
-| `storage.tf` | KMS key, private payment-proofs bucket (KMS, versioned), venue-photos bucket served **only** via CloudFront (Origin Access Control), and the SSM params the instance reads. |
+| `network.tf` | VPC, 1 public subnet, IGW, `ec2-sg` (80/443 only — **no port 22**). No private subnets / DB security group (no RDS). No NAT Gateway, by design. |
+| `compute.tf` | The `t3.small` Ubuntu 24.04 instance (`var.ec2_instance_type`), its IAM role (SSM + ECR pull + this project's S3/KMS/SSM params only), the Elastic IP, and the `sslip.io` hostnames. |
+| `database.tf` | **No RDS.** Postgres 16 + PostGIS runs as the `db` container in `docker-compose.prod.yml` on the instance. Its data lives on a dedicated encrypted gp3 EBS volume (`aws_ebs_volume.pgdata`, `prevent_destroy`) mounted at `/srv/court-booking-db`, so replacing the instance keeps the data. DB password generated here → SSM. |
+| `storage.tf` | KMS key, private payment-proofs bucket (KMS, versioned), venue-photos bucket served **only** via CloudFront (Origin Access Control), the SSM params the instance reads, and the private `db-backups` bucket (nightly `pg_dump`, expired after `db_backup_retention_days`). |
 | `scripts/` | `user_data.sh.tftpl` (first boot), `bootstrap.sh` (re-runnable setup phases), `court-booking.cron` (background jobs), `remote-deploy.sh` (what a deploy runs on the box), `promote_admin.sh` + `promote_admin.py` (make an existing verified player an admin over SSM; see `court-booking-backend/RUNBOOK.md` section 5). |
 
 State is local (`terraform.tfstate`, gitignored) — fine for one operator. It contains
-the generated RDS password, so **move it to an encrypted S3 backend before a second
+the generated DB password, so **move it to an encrypted S3 backend before a second
 person runs `apply`**, and never commit or share it.
 
 ## First-time deploy, in order
@@ -21,7 +21,7 @@ person runs `apply`**, and never commit or share it.
 ```bash
 cd infra
 terraform init
-terraform plan -out=tfplan      # review it -- 45 resources on first apply
+terraform plan -out=tfplan      # review it
 terraform apply tfplan
 terraform output                # instance id, Elastic IP, URLs
 ```
@@ -63,17 +63,40 @@ Then, once, **before the first deploy**:
 3. **Connect** (no SSH — see below) and run the bootstrap phases:
    ```bash
    aws ssm start-session --region ap-south-1 --target "$(terraform output -raw ec2_instance_id)"
-   sudo /opt/court-booking-app/bootstrap.sh env       # builds .env / .env.web from SSM
-   sudo /opt/court-booking-app/bootstrap.sh db-init   # CREATE EXTENSION postgis on RDS
+   mountpoint /srv/court-booking-db                   # must say "is a mountpoint" (the Postgres data volume)
+   sudo /opt/court-booking-app/bootstrap.sh env       # builds .env / .env.web / .env.db from SSM
    ```
 4. **Deploy the containers**: push to `main` (or run the workflow manually). The
    workflow builds both images, pushes to ECR, and runs `remote-deploy.sh` on the
-   instance via SSM.
+   instance via SSM. It starts the `db` container first (fresh, empty database) and runs
+   `alembic upgrade head` against it.
 5. Back on the box:
    ```bash
+   sudo /opt/court-booking-app/bootstrap.sh db-init                 # confirms postgis is installed
    sudo /opt/court-booking-app/bootstrap.sh migrate                 # alembic upgrade head + alembic check
    sudo /opt/court-booking-app/bootstrap.sh nginx-cert <your-email> # nginx + one Let's Encrypt cert for both hostnames
    ```
+
+## Database: backups, restore, moving data in
+
+Postgres is the `court-booking-db` container; data is on `/srv/court-booking-db` (its own EBS volume).
+
+```bash
+sudo /opt/court-booking-app/bootstrap.sh db-backup                       # pg_dump -Fc -> s3://court-booking-app-db-backups-<acct>/court_booking/YYYY/MM/DD/...
+sudo /opt/court-booking-app/bootstrap.sh db-restore court_booking/2026/11/14/court_booking-....dump   # from the bucket
+sudo /opt/court-booking-app/bootstrap.sh db-restore /tmp/old-rds.dump    # or a local file
+docker exec -it court-booking-db psql -U court_admin -d court_booking    # a psql shell
+```
+
+Cron runs `db-backup` nightly at 01:30 PKT (log: `/var/log/court-booking-backup.log`). **Take one by hand before
+any migration** (see the migration guard).
+
+**Moving data from the old RDS database** (the previous deployment in the other AWS account): from that account's
+instance, `PGPASSWORD=... pg_dump -h <rds-endpoint> -U court_admin -d court_booking -Fc --no-owner > old-rds.dump`
+(`PGSSLMODE=require`), copy the file to this instance (e.g. via an S3 presigned URL), then `bootstrap.sh db-restore
+/path/old-rds.dump`. The restored data must be read with the SAME `BANK_DETAILS_ENCRYPTION_KEY` (and `CNIC_HASH_KEY`)
+as the old deployment -- copy those SSM secrets across BEFORE running `bootstrap.sh env`, or stored bank details become
+unreadable. Payment proofs / venue photos live in the old account's S3 buckets and have to be copied separately.
 
 ## Connecting to the instance
 
@@ -189,7 +212,7 @@ Between 1 and 2, queries that touch the new columns fail. Prefer additive, nulla
 (the old code then tolerates the new schema) and do it when traffic is lowest. Section 26's
 password-auth migration (`4785869bebe6`) is such a release -- see the backend CLAUDE.md.
 
-## Current state (verified 2026-09-20)
+## Previous deployment (verified 2026-09-20 -- the OLD stack with RDS in the AbdulRafay272022-era AWS account; kept for reference)
 
 - Applied and live: instance, RDS, buckets, CloudFront, ECR, OIDC role, Elastic IP
   `3.6.48.6` (see `terraform output`; don't release or replace it, the cert and every
@@ -214,9 +237,9 @@ password-auth migration (`4785869bebe6`) is such a release -- see the backend CL
 
 ## Cost to expect (approximate — check the AWS pricing pages and your account's free-tier status)
 
-EC2 `t3.micro` + RDS `db.t3.micro` + 20 GB storage each, plus the Elastic IP's
-public-IPv4 charge, a KMS key (standard SSM parameters, which this uses,
-are free). Roughly **$30–35/month** if nothing is free-tier-covered; free-tier
-eligibility depends on when the account was created. Note the RDS instance has
-`deletion_protection` on and takes a final snapshot on delete — `terraform destroy`
-needs `-var deletion_protection=false` applied first, on purpose.
+EC2 `t3.small` (~$15/month in ap-south-1; `t3.micro` halves that but 1 GB RAM is too tight for backend + web +
+Postgres), 20 GB root + 10 GB data gp3 volumes (~$2.5), the Elastic IP's public-IPv4 charge (~$3.6), a KMS key (~$1),
+plus S3/CloudFront usage. Roughly **$22–25/month** -- no RDS charge any more.
+
+The data volume has `prevent_destroy`, so `terraform destroy` fails on it on purpose: take a `db-backup`, then remove
+that lifecycle line in its own commit if you really mean to delete the database.

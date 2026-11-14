@@ -3,8 +3,8 @@
 #
 # WHY: every push to main deploys, and the deploy script (infra/scripts/remote-deploy.sh) runs `alembic upgrade head`
 # on PRODUCTION from the new image before the new backend starts. So a push that contains a migration IS the migration.
-# The project owner requires that no migration reaches production without their explicit "go" (and a fresh manual RDS
-# snapshot). This script makes that impossible to do by accident:
+# The project owner requires that no migration reaches production without their explicit "go" (and a fresh DB backup --
+# bootstrap.sh db-backup). This script makes that impossible to do by accident:
 #
 #   - no migration file added/changed in the push  -> passes silently
 #   - a migration file added/changed               -> prints a loud warning, and FAILS the run (nothing is deployed)
@@ -47,7 +47,7 @@ if grep -qx "Migration-Go: owner-approved" <<< "$COMMIT_MSGS"; then
 fi
 
 cat <<'MSG'
-::error::MIGRATION BLOCKED. A migration must never reach production without the project owner's explicit "go" (and a fresh manual RDS snapshot). Nothing was deployed.
+::error::MIGRATION BLOCKED. A migration must never reach production without the project owner's explicit "go" (and a fresh DB backup: bootstrap.sh db-backup). Nothing was deployed.
 To proceed, the owner says "go"; then add a line reading exactly 'Migration-Go: owner-approved' to a commit message in the push (docs/SECTION_32_PLAN.md, "Migration rules"). Otherwise, remove the migration from this push.
 MSG
 exit 1
