@@ -26,7 +26,7 @@
       "env": {
         "APP_VARIANT": "preview",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "EXPO_PUBLIC_UPDATE_URL": "https://3.6.48.6.sslip.io/app"
+        "EXPO_PUBLIC_UPDATE_URL": "https://court-booking-app-app-downloads-959666773387.s3.ap-south-1.amazonaws.com/app/khelo-latest.apk"
       }
     },
     "production": {
@@ -35,7 +35,7 @@
       "env": {
         "APP_VARIANT": "production",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "EXPO_PUBLIC_UPDATE_URL": "https://3.6.48.6.sslip.io/app"
+        "EXPO_PUBLIC_UPDATE_URL": "https://court-booking-app-app-downloads-959666773387.s3.ap-south-1.amazonaws.com/app/khelo-latest.apk"
       }
     }
   },

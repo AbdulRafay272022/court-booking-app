@@ -7,9 +7,10 @@
 #   app/khelo-latest.apk               replaced every time  -> the fixed link (https://<web>/app redirects here)
 #   app/khelo-YYYY-MM-DD-<sha>.apk     a dated copy, kept   -> to go back to an older APK if needed
 # Then checks that both links serve the new file. Needs the AWS CLI logged in to the project account.
-# Run from Git Bash; the prefix MSYS_NO_PATHCONV=1 is set below so "/app/..." keys are not rewritten into Windows paths.
+# Runs in Git Bash or any bash. (No MSYS_NO_PATHCONV: the S3 keys do not start with "/", and it would break the temp path.)
 set -euo pipefail
-export MSYS_NO_PATHCONV=1
+# a ~150 MB upload over a home connection: retry dropped parts instead of failing the whole file
+export AWS_RETRY_MODE="${AWS_RETRY_MODE:-adaptive}" AWS_MAX_ATTEMPTS="${AWS_MAX_ATTEMPTS:-10}"
 
 REGION="ap-south-1"
 BUCKET="${DOWNLOADS_BUCKET:-court-booking-app-app-downloads-959666773387}"
@@ -37,8 +38,10 @@ echo "APK ${SIZE} bytes -> s3://${BUCKET}/${DATED} and s3://${BUCKET}/app/khelo-
 # the dated copy first: if the second upload fails, the old latest is still intact
 aws s3 cp "$SRC" "s3://${BUCKET}/${DATED}" --region "$REGION" --content-type "$TYPE" \
   --content-disposition "attachment; filename=khelo.apk" --cache-control "public, max-age=31536000, immutable"
-aws s3 cp "$SRC" "s3://${BUCKET}/app/khelo-latest.apk" --region "$REGION" --content-type "$TYPE" \
-  --content-disposition "attachment; filename=khelo.apk" --cache-control "no-cache"
+# "latest" is a server-side copy of the dated file: the APK is uploaded once (a second 150 MB upload over a home
+# connection failed on 14 Nov), and the copy inside S3 takes seconds
+aws s3 cp "s3://${BUCKET}/${DATED}" "s3://${BUCKET}/app/khelo-latest.apk" --region "$REGION" --content-type "$TYPE" \
+  --content-disposition "attachment; filename=khelo.apk" --cache-control "no-cache" --metadata-directive REPLACE
 
 echo "Checking the links..."
 LATEST="https://${BUCKET}.s3.${REGION}.amazonaws.com/app/khelo-latest.apk"

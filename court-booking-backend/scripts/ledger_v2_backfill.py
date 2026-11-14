@@ -421,6 +421,14 @@ async def main() -> None:
         sys.exit("refusing: not a localhost database (production needs the founder's go: --i-have-the-go)")
 
     async with AsyncSessionLocal() as db:
+        # a local URL can still reach RDS through a tunnel (SSM port forwarding): ask the server where it really is.
+        # Local Docker Postgres answers 127.x / 172.16-31.x / ::1; an RDS instance answers with its VPC address (10.x).
+        from sqlalchemy import text
+
+        addr = (await db.execute(text("select coalesce(host(inet_server_addr()), '')"))).scalar() or ""
+        local = addr in ("", "::1") or addr.startswith("127.") or any(addr.startswith(f"172.{n}.") for n in range(16, 32))
+        if not local and not args.i_have_the_go:
+            sys.exit(f"refusing: the database server is at {addr} (not local); a real database needs --i-have-the-go")
         run, bookings_meta, days_after = await run_backfill(db, args.dry_run)
         write_report(run, bookings_meta, days_after, args.dry_run)
     print(f"done ({'dry run, rolled back' if args.dry_run else 'committed'}); report: {REPORT}")

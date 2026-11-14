@@ -2,13 +2,14 @@
 
 Owners install the Android app from an APK (no Play Store; no iPhone yet). One fixed link always gives the latest APK:
 
-- **`https://3.6.48.6.sslip.io/app`**: the link inside the app ("Update karein") and the one to share. It redirects to:
 - **`https://court-booking-app-app-downloads-959666773387.s3.ap-south-1.amazonaws.com/app/khelo-latest.apk`**: the file
-  itself, replaced on every release.
+  itself, replaced on every release. This is the link INSIDE the app ("Update karein", `EXPO_PUBLIC_UPDATE_URL`), because it
+  does not depend on the server's address.
+- **`https://3.6.48.6.sslip.io/app`**: a short link to share with owners on WhatsApp; it redirects to the file above.
 
-The web's `/app` (`apps/web/app/app/route.ts`) redirects to `APK_URL` from `.env.web` if set (https only), else to the S3
-file above. Changing `APK_URL` needs only a web restart, no rebuild. When the site moves off sslip.io, also update
-`EXPO_PUBLIC_UPDATE_URL` (apps/mobile/eas.json and `scripts/ota-preview.sh`) and `KHELO_WEB_URL` below.
+The web's `/app` (`apps/web/app/app/route.ts`) redirects to `APK_URL` from `.env.web` if set (https only), else to the
+S3 file. Changing `APK_URL` needs only a web restart, no rebuild. When the site moves off sslip.io, only the shared link and
+`KHELO_WEB_URL` (publish-apk.sh) change; the app's link stays the S3 file.
 
 ## The bucket (infra/downloads.tf)
 

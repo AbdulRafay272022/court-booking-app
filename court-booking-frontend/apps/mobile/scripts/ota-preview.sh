@@ -13,7 +13,8 @@ cd "$(dirname "$0")/.."
 
 MSG="${1:?usage: ota-preview.sh \"what changed\"}"
 PROD_API="https://api.3.6.48.6.sslip.io"
-UPDATE_URL="https://3.6.48.6.sslip.io/app"
+# the S3 file itself, not the website /app (that one is only for sharing on WhatsApp; the server IP could change)
+UPDATE_URL="https://court-booking-app-app-downloads-959666773387.s3.ap-south-1.amazonaws.com/app/khelo-latest.apk"
 
 if [[ -n "${EXPO_PUBLIC_API_BASE_URL:-}" && "${EXPO_PUBLIC_API_BASE_URL}" != "$PROD_API" ]]; then
   echo "STOP: EXPO_PUBLIC_API_BASE_URL=${EXPO_PUBLIC_API_BASE_URL} (not production). Unset it and run again." >&2
