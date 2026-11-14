@@ -245,8 +245,23 @@ def _status_matches(m, money_status: str) -> bool:
     return m.status == money_status
 
 
+# Statement box -> the amount it adds up. A booking is in a box's list exactly when it adds a non-zero amount to that box's
+# total, so the list's totals[box] always equals the Statement's number (founder 14 Nov: Due / Due at slot must not filter
+# on the pill).
+BOXES = {
+    "received": lambda m: m.net,
+    "due": lambda m: m.due,
+    "due_at_slot": lambda m: m.due_at_slot,
+    "waived": lambda m: m.waived,
+    "refund_due": lambda m: m.refund_due,
+    "deductions": lambda m: m.deductions_total,
+}
+
+
 async def bookings(db, venue: Venue, court_ids, period: str, start, end, *, q: str | None, money_status: str | None,
-                   booking: uuid.UUID | None, only_ids: set[uuid.UUID] | None, page: int, page_size: int) -> dict:
+                   booking: uuid.UUID | None, only_ids: set[uuid.UUID] | None, page: int, page_size: int,
+                   box: str | None = None) -> dict:
+    box_amount = BOXES.get(box) if box else None
     ctx = await Ctx(db, venue, court_ids).load()
     first = min((ctx.bdate(b.starts_at) for b in ctx.bookings), default=None)
     d0, d1 = period_range(period, ctx.today, start, end, first)
@@ -270,6 +285,8 @@ async def bookings(db, venue: Venue, court_ids, period: str, start, end, *, q: s
                 if term not in hay and not (digits and digits in "".join(ch for ch in (b.player_phone or "") if ch.isdigit())):
                     continue
             if money_status and not _status_matches(ctx.money[b.id], money_status):
+                continue
+            if box_amount is not None and box_amount(ctx.money[b.id]) == 0:
                 continue
         rows.append(b)
     total = len(rows)

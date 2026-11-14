@@ -9,10 +9,13 @@ import {
   PAISA_DEFAULT_PERIOD,
   PAISA_PERIODS,
   moneyStatusKey,
+  boxKey,
   periodKey,
+  staffActKey,
   tabKey,
   type MoneyStatus,
   type OwnerRefund,
+  type PaisaBox,
   type PaisaBookingRow,
   type PaisaDaybookRow,
   type PaisaPeriod,
@@ -90,6 +93,7 @@ export default function PaisaScreen() {
   const [to, setTo] = useState(params.to || today);
   const [courtIds, setCourtIds] = useState<string[]>(params.courts ? params.courts.split(",").filter(Boolean) : []);
   const [status, setStatus] = useState<MoneyStatus | null>((MONEY_STATUSES as readonly string[]).includes(params.status ?? "") ? (params.status as MoneyStatus) : null);
+  const [box, setBox] = useState<PaisaBox | null>(null);
   const [text, setText] = useState(params.q ?? "");
   const [q, setQ] = useState(params.q ?? "");
   const [focusBooking, setFocusBooking] = useState<string | null>(params.booking || null);
@@ -131,10 +135,10 @@ export default function PaisaScreen() {
   const enabled = v2 && !!activeVenueId && full;
   const summary = useQuery({ queryKey: ["paisa-summary", activeVenueId, courtIds.join(","), period, from, to], queryFn: () => api.paisa.summary(range), enabled, subscribed: focused });
   const bookings = useInfiniteQuery({
-    queryKey: ["paisa-bookings", activeVenueId, courtIds.join(","), period, from, to, q, status, focusBooking, staffFilter?.staff, staffFilter?.act],
+    queryKey: ["paisa-bookings", activeVenueId, courtIds.join(","), period, from, to, q, status, box, focusBooking, staffFilter?.staff, staffFilter?.act],
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
-      api.paisa.bookings({ ...range, q: q || undefined, moneyStatus: status ?? undefined, booking: focusBooking ?? undefined, staff: staffFilter?.staff, act: staffFilter?.act, page: pageParam, pageSize: PAGE }),
+      api.paisa.bookings({ ...range, q: q || undefined, moneyStatus: status ?? undefined, box: box ?? undefined, booking: focusBooking ?? undefined, staff: staffFilter?.staff, act: staffFilter?.act, page: pageParam, pageSize: PAGE }),
     getNextPageParam: (last) => (last.page * last.page_size < last.total ? last.page + 1 : undefined),
     enabled: enabled && view === "bookings",
     subscribed: focused,
@@ -178,7 +182,7 @@ export default function PaisaScreen() {
     setCsvBusy(true);
     setCsvError(null);
     try {
-      const csv = await api.paisa.bookingsCsv({ ...range, q: q || undefined, moneyStatus: status ?? undefined });
+      const csv = await api.paisa.bookingsCsv({ ...range, q: q || undefined, moneyStatus: status ?? undefined, box: box ?? undefined });
       await shareCsv(csv, `paisa_${summary.data?.range.from ?? from}_${summary.data?.range.to ?? to}.csv`);
     } catch (e) {
       setCsvError(moneyError(e, t));
@@ -281,7 +285,7 @@ export default function PaisaScreen() {
       {view === "bookings" ? (
         <>
           {filters}
-          {s ? <StatementCard s={s.statement} t={t} /> : <Skeleton height={260} r={radius.card} />}
+          {s ? <StatementCard s={s.statement} t={t} onBox={(b) => { setBox(b); setStatus(null); }} /> : <Skeleton height={260} r={radius.card} />}
           {s ? <MoneyInCard m={s.money_in} t={t} /> : null}
           {s && s.by_month.length ? (
             <PaisaCard>
@@ -293,7 +297,10 @@ export default function PaisaScreen() {
           {bookings.data?.pages[0]?.search_all_dates && q ? <Text variant="caption" tone="muted">{t("paisa.searchAllDates")}</Text> : null}
           <SelectButton value={`${t("paisa.status")}: ${status ? t(moneyStatusKey(status)) : t("paisa.status.all")}`} onPress={() => setSheet({ kind: "status" })} compact />
           {staffFilter ? (
-            <Banner tone="info" body={t("paisa.staffFilter", { who: staffFilter.who || "Staff", what: staffFilter.act })} action={<Button label={t("paisa.clearFilter")} variant="soft" size="sm" onPress={() => setStaffFilter(null)} />} testID="paisa-staff-banner" />
+            <Banner tone="info" body={t("paisa.staffFilter", { who: staffFilter.who || "Staff", what: staffActKey(staffFilter.act) ? t(staffActKey(staffFilter.act)!) : staffFilter.act })} action={<Button label={t("paisa.clearFilter")} variant="soft" size="sm" onPress={() => setStaffFilter(null)} />} testID="paisa-staff-banner" />
+          ) : null}
+          {box ? (
+            <Banner tone="info" body={t("paisa.boxFilter", { what: t(boxKey(box)) })} action={<Button label={t("paisa.clearFilter")} variant="soft" size="sm" onPress={() => setBox(null)} />} testID="paisa-box-banner" />
           ) : null}
           {focusBooking ? (
             <Banner tone="info" body={t("paisa.focusOnly")} action={<Button label={t("paisa.clearFilter")} variant="soft" size="sm" onPress={() => setFocusBooking(null)} />} testID="paisa-focus-banner" />
@@ -447,9 +454,9 @@ export default function PaisaScreen() {
       {sheet?.kind === "status" ? (
         <BottomSheet title={t("paisa.status")} onClose={() => setSheet(null)}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-            <Chip label={t("paisa.status.all")} selected={status === null} onPress={() => { setStatus(null); setSheet(null); }} />
+            <Chip label={t("paisa.status.all")} selected={status === null} onPress={() => { setStatus(null); setBox(null); setSheet(null); }} />
             {MONEY_STATUSES.map((m) => (
-              <Chip key={m} label={t(moneyStatusKey(m))} selected={status === m} onPress={() => { setStatus(m); setSheet(null); }} />
+              <Chip key={m} label={t(moneyStatusKey(m))} selected={status === m} onPress={() => { setStatus(m); setBox(null); setSheet(null); }} />
             ))}
           </View>
         </BottomSheet>

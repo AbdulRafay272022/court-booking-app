@@ -90,11 +90,15 @@ async def _staff_filter(db, actor, venue, staff: uuid.UUID | None, act: str | No
     return await staff_booking_ids(db, venue, d0, d1, staff, act)
 
 
+BOX_PATTERN = "^(" + "|".join(ps.BOXES) + ")$"
+
+
 @router.get("/bookings")
 async def paisa_bookings(db: DbSession, actor: RequireStaffCapable, venue_id: uuid.UUID | None = None, court_ids: CourtIds = None,
                          period: str = "this_month", date_from: date | None = Query(None, alias="from"),
                          date_to: date | None = Query(None, alias="to"), q: str | None = None, money_status: str | None = None,
                          booking: uuid.UUID | None = None, staff: uuid.UUID | None = None, act: str | None = None,
+                         box: str | None = Query(None, pattern=BOX_PATTERN),
                          page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200)) -> dict:
     _o, venue, _p = await _venue(db, actor, venue_id, "view_ledger")
     only = None
@@ -102,17 +106,17 @@ async def paisa_bookings(db: DbSession, actor: RequireStaffCapable, venue_id: uu
         d0 = date_from
         only = await _staff_filter(db, actor, venue, staff, act, d0, date_to)
     return await ps.bookings(db, venue, _ids(court_ids), period, date_from, date_to, q=q, money_status=money_status,
-                             booking=booking, only_ids=only, page=page, page_size=page_size)
+                             booking=booking, only_ids=only, page=page, page_size=page_size, box=box)
 
 
 @router.get("/bookings.csv")
 async def paisa_bookings_csv(db: DbSession, actor: RequireStaffCapable, venue_id: uuid.UUID | None = None, court_ids: CourtIds = None,
                              period: str = "this_month", date_from: date | None = Query(None, alias="from"),
                              date_to: date | None = Query(None, alias="to"), q: str | None = None,
-                             money_status: str | None = None) -> Response:
+                             money_status: str | None = None, box: str | None = Query(None, pattern=BOX_PATTERN)) -> Response:
     _o, venue, _p = await _venue(db, actor, venue_id, "view_ledger")
     data = await ps.bookings(db, venue, _ids(court_ids), period, date_from, date_to, q=q, money_status=money_status, booking=None,
-                             only_ids=None, page=1, page_size=100000)
+                             only_ids=None, page=1, page_size=100000, box=box)
     buf = io.StringIO()
     w = csv.writer(buf)
     cols = ["short_code", "business_date", "starts_at", "court", "player", "phone", "status", "money_status", "base_price",

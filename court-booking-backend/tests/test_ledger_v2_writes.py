@@ -339,3 +339,55 @@ async def test_refund_due_filter_includes_cancelled_and_matches_the_box(client, 
     rows = (await client.get(f"{API}/owners/paisa/bookings", headers=oh, params={**params, "money_status": "refund_due"})).json()
     assert {i["booking_id"] for i in rows["items"]} == {str(cancelled.id), str(over.id)}
     assert rows["totals"]["refund_due"] == st["refund_due"] == 1000
+
+
+async def test_every_statement_box_filter_lists_exactly_its_total(client, setup, make_user, make_auth_headers):
+    """Founder 14 Nov: tapping a Statement box (Mila, Lena baqi, Slot par lena, Maaf kiya, Wapas dena, Kami) lists exactly the
+    bookings in that box's number: sum of the listed rows = the box, on every box. Before, Due / Due at slot filtered on the
+    part_paid / advance_paid pill and missed unpaid and no-show bookings."""
+    sf, court, oh = setup["sf"], setup["court"], setup["oh"]
+    player = await make_user("+923001110196", name="Player")
+    done = BookingStatus.COMPLETED
+    unpaid_played = await booking(sf, court, price=4000, status=done, hours_from_now=-2)                                   # due, pill unpaid
+    await booking(sf, court, price=5000, paid=3000, status=done, hours_from_now=-4)                     # due, part_paid
+    noshow = await booking(sf, court, price=3000, paid=1000, status=BookingStatus.NO_SHOW, hours_from_now=-6)               # due, no-show pill
+    await booking(sf, court, price=5000, paid=1000, hours_from_now=30)                                  # due at slot, advance_paid
+    unpaid_later = await booking(sf, court, price=3000, hours_from_now=33)                              # due at slot, pill unpaid
+    waived = await booking(sf, court, price=5000, paid=3000, status=done, hours_from_now=-8)
+    reduced = await booking(sf, court, price=6000, paid=5000, status=done, hours_from_now=-10)
+    await booking(sf, court, price=6000, paid=6500, status=done, hours_from_now=-12)                                        # refund due
+    cancelled = await booking(sf, court, price=5000, paid=500, hours_from_now=48, player_id=player.id)  # refund due, cancel pill
+    await booking(sf, court, price=5000, paid=5000, status=done, hours_from_now=-14)                                        # paid in full only
+    url = f"{API}/owners/paisa/bookings"
+    r = await client.post(f"{url}/{waived.id}/adjustments", headers=oh, json={"kind": "waived", "amount_pkr": 2000, "reason": "x"})
+    assert r.status_code == 201, r.text
+    r = await client.post(f"{url}/{reduced.id}/adjustments", headers=oh, json={"kind": "price_reduced", "amount_pkr": 1000, "reason": "x"})
+    assert r.status_code == 201, r.text
+    r = await client.post(f"{API}/bookings/{cancelled.id}/cancel", headers=await make_auth_headers(player), json={})
+    assert r.status_code == 200, r.text
+
+    today = datetime.now(timezone.utc).date()
+    params = {"venue_id": str(setup["venue"].id), "period": "custom", "from": str(today - timedelta(days=3)),
+              "to": str(today + timedelta(days=3)), "page_size": 200}
+    st = (await client.get(f"{API}/owners/paisa/summary", headers=oh, params=params)).json()["statement"]
+    box_total = {"received": st["received"], "due": st["due"], "due_at_slot": st["due_at_slot"], "waived": st["waived"],
+                 "refund_due": st["refund_due"], "deductions": st["deductions"]["total"]}
+    assert box_total == {"received": 25000, "due": 8000, "due_at_slot": 7000, "waived": 2000, "refund_due": 1000, "deductions": 6000}
+    lists = {}
+    for box, total in box_total.items():
+        r = await client.get(url, headers=oh, params={**params, "box": box})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["total"] == len(data["items"])
+        assert sum(i[box] for i in data["items"]) == total, box
+        t = data["totals"]["deductions"]["total"] if box == "deductions" else data["totals"][box]
+        assert t == total, box
+        assert all(i[box] != 0 for i in data["items"]), box  # nothing in the list that the box does not count
+        lists[box] = {i["booking_id"] for i in data["items"]}
+    assert len(lists["received"]) == 8  # every booking that has money on it (not the unpaid ones)
+    assert {str(unpaid_played.id), str(noshow.id)} <= lists["due"] and len(lists["due"]) == 3
+    assert str(unpaid_later.id) in lists["due_at_slot"] and len(lists["due_at_slot"]) == 2
+    assert lists["waived"] == {str(waived.id)} and lists["deductions"] == {str(reduced.id), str(cancelled.id)}  # cancel = Final 0
+    assert str(cancelled.id) in lists["refund_due"] and len(lists["refund_due"]) == 2
+    r = await client.get(url, headers=oh, params={**params, "box": "nope"})
+    assert r.status_code == 422

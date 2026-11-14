@@ -62,6 +62,9 @@ export type DeductionKind = "points" | "no_show" | "cancellation" | "price_reduc
 export type AdjustmentKind = DeductionKind | "waived";
 export type EntryKind = "payment" | "refund" | "correction" | "credit_in" | "credit_out";
 
+/** A Statement box: tapping it lists exactly the bookings that add up its number (backend paisa_service.BOXES). */
+export type PaisaBox = "received" | "due" | "due_at_slot" | "waived" | "refund_due" | "deductions";
+
 export interface PaisaStatement {
   booking_amount: number;
   deductions: Record<DeductionKind, number> & { total: number };

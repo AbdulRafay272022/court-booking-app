@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
-import { deductionKey, type ExcessChoice, type ExcessChoiceDetails, type PaisaBookingRow, type PaisaDaybookRow, type PaisaMoneyIn, type PaisaPlayer, type PaisaStatement } from "@court-booking/types";
+import { deductionKey, type ExcessChoice, type ExcessChoiceDetails, type PaisaBookingRow, type PaisaDaybookRow, type PaisaMoneyIn, type PaisaPlayer, type PaisaBox, type PaisaStatement } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
 import { Banner, Input, Text } from "@/components/ui";
@@ -13,24 +13,26 @@ import { BottomSheet, OutlineButton, PrimaryButton } from "@/components/overview
 import { Choice, Line, MoneyStatusPill, PaisaCard, moneyError, pkr, type PT } from "./kit";
 
 /** Statement card, single column (contract 6.2): Booking amount, − Deductions (+ breakdown), = Final, Received, + Due,
- * + Due at slot, + Waived, − Refund due. Every box comes from the server statement. */
-export function StatementCard({ s, t }: { s: PaisaStatement; t: PT }) {
+ * + Due at slot, + Waived, − Refund due. Every box comes from the server statement; tapping a box lists exactly the bookings in
+ * its number (backend box filter). */
+export function StatementCard({ s, t, onBox }: { s: PaisaStatement; t: PT; onBox?: (b: PaisaBox) => void }) {
+  const tap = (b: PaisaBox) => (onBox ? () => onBox(b) : undefined);
   const parts = (["points", "no_show", "cancellation", "price_reduced"] as const).filter((k) => s.deductions[k] > 0);
   return (
     <PaisaCard testID="paisa-statement">
       <Text variant="bodyBold">{t("paisa.st.title")}</Text>
       <Line label={t("paisa.st.bookingAmount")} value={pkr(s.booking_amount)} />
-      <Line label={`− ${t("paisa.st.deductions")}`} value={pkr(-s.deductions.total)} />
+      <Line label={`− ${t("paisa.st.deductions")}`} value={pkr(-s.deductions.total)} onPress={tap("deductions")} testID="paisa-st-deductions" />
       {parts.map((k) => (
         <Line key={k} indent label={t(deductionKey(k))} value={pkr(-s.deductions[k])} />
       ))}
       <Line strong label={`= ${t("paisa.st.final")}`} value={pkr(s.final)} testID="paisa-st-final" />
       <View style={{ height: 1, backgroundColor: palette.line, marginVertical: space[1] }} />
-      <Line label={t("paisa.st.received")} value={pkr(s.received)} />
-      <Line label={`+ ${t("paisa.st.due")}`} value={pkr(s.due)} tone={s.due > 0 ? "waiting" : undefined} />
-      <Line label={`+ ${t("paisa.st.dueAtSlot")}`} value={pkr(s.due_at_slot)} />
-      <Line label={`+ ${t("paisa.st.waived")}`} value={pkr(s.waived)} />
-      <Line label={`− ${t("paisa.st.refundDue")}`} value={pkr(-s.refund_due)} tone={s.refund_due > 0 ? "danger" : undefined} />
+      <Line label={t("paisa.st.received")} value={pkr(s.received)} onPress={tap("received")} testID="paisa-st-received" />
+      <Line label={`+ ${t("paisa.st.due")}`} value={pkr(s.due)} tone={s.due > 0 ? "waiting" : undefined} onPress={tap("due")} testID="paisa-st-due" />
+      <Line label={`+ ${t("paisa.st.dueAtSlot")}`} value={pkr(s.due_at_slot)} onPress={tap("due_at_slot")} testID="paisa-st-due-at-slot" />
+      <Line label={`+ ${t("paisa.st.waived")}`} value={pkr(s.waived)} onPress={tap("waived")} testID="paisa-st-waived" />
+      <Line label={`− ${t("paisa.st.refundDue")}`} value={pkr(-s.refund_due)} tone={s.refund_due > 0 ? "danger" : undefined} onPress={tap("refund_due")} testID="paisa-st-refund-due" />
     </PaisaCard>
   );
 }

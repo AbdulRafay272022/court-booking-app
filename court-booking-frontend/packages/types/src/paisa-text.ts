@@ -1,7 +1,7 @@
 /** Ledger v2 "Paisa" labels (LEDGER-BUILD-PROMPT A3): ONE source for web and mobile, so one thing has one name on both.
  * Roman Urdu is the default; owner tone ("karein"). Web spreads these into its dictionaries (messages/{ru,en}/odash-paisa.ts);
  * mobile calls paisaT(lang, key). Keys never change meaning; add new ones at the end of their group. */
-import type { MoneyStatus, PaisaPeriod, PaisaTab, PaisaTaskKey } from "./paisa";
+import type { MoneyStatus, PaisaBox, PaisaPeriod, PaisaTab, PaisaTaskKey } from "./paisa";
 
 export type PaisaLang = "ru" | "en";
 
@@ -78,6 +78,7 @@ const RU = {
   "paisa.focusOnly": "Sirf ye booking",
   "paisa.staffFilter": "{who} ka kaam: {what}",
   "paisa.clearFilter": "Filter hatayein",
+  "paisa.boxFilter": "Sirf {what} wali bookings",
   "paisa.staffAct.created": "Bookings banayi",
   "paisa.staffAct.marked": "Mukammal ki",
   "paisa.staffAct.no_show": "Nahi aaye",
@@ -309,6 +310,7 @@ const EN: Record<PaisaKey, string> = {
   "paisa.focusOnly": "Only this booking",
   "paisa.staffFilter": "{who}'s work: {what}",
   "paisa.clearFilter": "Clear filter",
+  "paisa.boxFilter": "Only bookings in {what}",
   "paisa.staffAct.created": "Bookings made",
   "paisa.staffAct.marked": "Marked complete",
   "paisa.staffAct.no_show": "No-shows",
@@ -480,6 +482,9 @@ export const taskKey = (k: PaisaTaskKey): PaisaKey => `paisa.kaam.${k}` as Paisa
 /** Staff ka kaam link (?staff=&act=): unknown acts fall back to the raw value. */
 export const staffActKey = (a: string): PaisaKey | null => (`paisa.staffAct.${a}` in RU ? (`paisa.staffAct.${a}` as PaisaKey) : null);
 export const deductionKey = (k: string): PaisaKey => `paisa.ded.${k}` as PaisaKey;
+/** The Statement label of a box. */
+export const boxKey = (b: PaisaBox): PaisaKey =>
+  ({ received: "paisa.st.received", due: "paisa.st.due", due_at_slot: "paisa.st.dueAtSlot", waived: "paisa.st.waived", refund_due: "paisa.st.refundDue", deductions: "paisa.st.deductions" })[b] as PaisaKey;
 
 /** The pill tone of a money status (text + colour, never colour alone). */
 export function moneyStatusTone(s: MoneyStatus): "open" | "waiting" | "danger" | "neutral" | "info" {

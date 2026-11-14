@@ -41,9 +41,23 @@ export function PaisaCard({ children, style, testID }: { children: ReactNode; st
 }
 
 /** One line of a money card: label left, value right; values never truncate. */
-export function Line({ label, value, strong, tone, indent, testID }: { label: string; value: string; strong?: boolean; tone?: "danger" | "open" | "waiting" | "muted"; indent?: boolean; testID?: string }) {
+export function Line({ label, value, strong, tone, indent, testID, onPress }: { label: string; value: string; strong?: boolean; tone?: "danger" | "open" | "waiting" | "muted"; indent?: boolean; testID?: string; onPress?: () => void }) {
+  const style = { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space[3], paddingLeft: indent ? space[3] : 0, flexWrap: "wrap" } as const;
+  if (onPress) {
+    return (
+      <Pressable testID={testID} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label} ${value}`} hitSlop={4}
+        style={({ pressed }) => [style, { minHeight: 32, opacity: pressed ? 0.6 : 1 }]}>
+        <Text variant={strong ? "bodyBold" : "body"} tone={strong ? "primary" : "muted"} style={{ flexShrink: 1, textDecorationLine: "underline" }}>
+          {label}
+        </Text>
+        <Text variant={strong ? "bodyStrong" : "bodyBold"} tone={tone ?? "primary"} align="right" style={{ marginLeft: "auto" }}>
+          {value}
+        </Text>
+      </Pressable>
+    );
+  }
   return (
-    <View testID={testID} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space[3], paddingLeft: indent ? space[3] : 0, flexWrap: "wrap" }}>
+    <View testID={testID} style={style}>
       <Text variant={strong ? "bodyBold" : indent ? "meta" : "body"} tone={strong ? "primary" : "muted"} style={{ flexShrink: 1 }}>
         {label}
       </Text>

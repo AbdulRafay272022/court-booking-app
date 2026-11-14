@@ -43,6 +43,7 @@ export function createPaisaApi(client: ApiClient) {
       r: PaisaRange & {
         q?: string;
         moneyStatus?: string;
+        box?: string;
         booking?: string;
         staff?: string;
         act?: string;
@@ -55,6 +56,7 @@ export function createPaisaApi(client: ApiClient) {
           ...range(r),
           q: r.q,
           money_status: r.moneyStatus,
+          box: r.box,
           booking: r.booking,
           staff: r.staff,
           act: r.act,
@@ -62,8 +64,8 @@ export function createPaisaApi(client: ApiClient) {
           page_size: r.pageSize,
         })}`,
       ),
-    bookingsCsv: (r: PaisaRange & { q?: string; moneyStatus?: string }) =>
-      client.requestText(`/owners/paisa/bookings.csv${qs({ ...range(r), q: r.q, money_status: r.moneyStatus })}`),
+    bookingsCsv: (r: PaisaRange & { q?: string; moneyStatus?: string; box?: string }) =>
+      client.requestText(`/owners/paisa/bookings.csv${qs({ ...range(r), q: r.q, money_status: r.moneyStatus, box: r.box })}`),
     booking: (bookingId: string, venueId?: string) =>
       client.request<PaisaBookingDetail>(`/owners/paisa/bookings/${bookingId}${qs({ venue_id: venueId })}`),
     daybook: (r: PaisaRange & { show?: "money" | "with_deductions" | "deductions"; method?: string; person?: string; kind?: string }) =>

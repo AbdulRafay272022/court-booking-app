@@ -13,6 +13,8 @@ import {
   pktDateString,
   periodKey,
   staffActKey,
+  boxKey,
+  type PaisaBox,
   type MoneyStatus,
   type PaisaPeriod,
   type PaisaStatement,
@@ -94,6 +96,7 @@ export function BookingsTab({
   const [q, setQ] = useState("");
   const [typed, setTyped] = useState("");
   const [status, setStatus] = useState<MoneyStatus | "">("");
+  const [box, setBox] = useState<PaisaBox | null>(null);
   const [pages, setPages] = useState(1);
   const [staffFilter, setStaffFilter] = useState(staff);
   const staffActK = staffFilter ? staffActKey(staffFilter.act) : null;
@@ -111,8 +114,8 @@ export function BookingsTab({
   const params = rangeParams(range, venueId);
   const summary = useQuery({ queryKey: ["paisa", "summary", params], queryFn: () => api.paisa.summary(params), enabled: !!venueId });
   const list = useQuery({
-    queryKey: ["paisa", "bookings", params, q, status, pages, staffFilter?.id, staffFilter?.act],
-    queryFn: () => api.paisa.bookings({ ...params, q: q || undefined, moneyStatus: status || undefined, staff: staffFilter?.id, act: staffFilter?.act, page: 1, pageSize: 20 * pages }),
+    queryKey: ["paisa", "bookings", params, q, status, box, pages, staffFilter?.id, staffFilter?.act],
+    queryFn: () => api.paisa.bookings({ ...params, q: q || undefined, moneyStatus: status || undefined, box: box ?? undefined, staff: staffFilter?.id, act: staffFilter?.act, page: 1, pageSize: 20 * pages }),
     enabled: !!venueId,
     placeholderData: (prev) => prev,
   });
@@ -120,10 +123,19 @@ export function BookingsTab({
   const rn = s?.right_now;
   const statusOptions = useMemo(() => [{ value: "" as const, label: pt("paisa.status.all") }, ...MONEY_STATUSES.map((m) => ({ value: m, label: pt(moneyStatusKey(m)) }))], [pt]);
 
+  const scrollToList = () => document.getElementById("paisa-booking-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
   const filterBy = (m: MoneyStatus) => {
     setStatus(m);
+    setBox(null);
     setPages(1);
-    document.getElementById("paisa-booking-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollToList();
+  };
+  // a Statement box lists exactly the bookings in its number (backend box filter), not a status pill
+  const filterByBox = (b: PaisaBox) => {
+    setBox(b);
+    setStatus("");
+    setPages(1);
+    scrollToList();
   };
 
   return (
@@ -149,7 +161,7 @@ export function BookingsTab({
 
       {s ? (
         <div className="grid min-w-0 gap-4 min-[860px]:grid-cols-2">
-          <StatementCard st={s.statement} onFilter={filterBy} />
+          <StatementCard st={s.statement} onFilter={filterByBox} />
           <Section title={pt("paisa.in.title")} testId="paisa-money-in">
             <MoneyBar cash={s.money_in.cash} transfer={s.money_in.transfer} other={s.money_in.other} />
             <MoneyLine label={pt("paisa.in.cash")} value={pkrText(s.money_in.cash)} />
@@ -205,6 +217,12 @@ export function BookingsTab({
             <PrimaryButton label={pt("paisa.clearFilter")} tone="ghost" onClick={() => setStaffFilter(null)} />
           </div>
         ) : null}
+        {box ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-owner-accent-soft px-3 py-2 text-[13.5px]" data-testid="paisa-box-banner">
+            <span>{pt("paisa.boxFilter", { what: pt(boxKey(box)) })}</span>
+            <PrimaryButton label={pt("paisa.clearFilter")} tone="ghost" onClick={() => { setBox(null); setPages(1); }} />
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-w-[14rem] flex-1 flex-col gap-1">
             <span className="text-[11.5px] font-bold tracking-wide text-owner-ink-faint">{pt("paisa.search")}</span>
@@ -216,7 +234,7 @@ export function BookingsTab({
               className="h-10 rounded-lg border border-owner-border bg-owner-surface px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-owner-accent"
             />
           </label>
-          <Select<MoneyStatus | ""> label={pt("paisa.status")} value={status} onChange={(v) => { setStatus(v); setPages(1); }} options={statusOptions} testId="paisa-status" className="min-w-[12rem]" />
+          <Select<MoneyStatus | ""> label={pt("paisa.status")} value={status} onChange={(v) => { setStatus(v); setBox(null); setPages(1); }} options={statusOptions} testId="paisa-status" className="min-w-[12rem]" />
         </div>
         {list.data?.search_all_dates && q ? <p className="text-[12.5px] text-owner-ink-muted">{pt("paisa.searchAllDates")}</p> : null}
         {list.isError ? <ErrorText text={friendlyErrorMessage(list.error, t)} /> : null}
@@ -278,7 +296,7 @@ function NowCard({ label, value, href, onClick, tone, testId }: { label: string;
   );
 }
 
-function StatementCard({ st, onFilter }: { st: PaisaStatement; onFilter: (m: MoneyStatus) => void }) {
+function StatementCard({ st, onFilter }: { st: PaisaStatement; onFilter: (b: PaisaBox) => void }) {
   const pt = usePaisaT();
   const kinds = ["points", "no_show", "cancellation", "price_reduced"] as const;
   return (
@@ -288,13 +306,15 @@ function StatementCard({ st, onFilter }: { st: PaisaStatement; onFilter: (m: Mon
         label={`− ${pt("paisa.st.deductions")}`}
         value={signedPkr(-st.deductions.total)}
         sub={kinds.filter((k) => st.deductions[k]).map((k) => `${pt(deductionKey(k))} ${pkrText(st.deductions[k])}`).join(" · ") || undefined}
+        onClick={() => onFilter("deductions")}
+        testId="st-deductions"
       />
       <MoneyLine label={`= ${pt("paisa.st.final")}`} value={pkrText(st.final)} strong testId="st-final" />
       <div className="my-1 border-t border-owner-border-light" />
-      <MoneyLine label={pt("paisa.st.received")} value={pkrText(st.received)} testId="st-received" />
-      <MoneyLine label={`+ ${pt("paisa.st.due")}`} value={pkrText(st.due)} tone={st.due ? "warn" : undefined} onClick={() => onFilter("part_paid")} testId="st-due" />
-      <MoneyLine label={`+ ${pt("paisa.st.dueAtSlot")}`} value={pkrText(st.due_at_slot)} onClick={() => onFilter("advance_paid")} testId="st-due-at-slot" />
-      <MoneyLine label={`+ ${pt("paisa.st.waived")}`} value={pkrText(st.waived)} testId="st-waived" />
+      <MoneyLine label={pt("paisa.st.received")} value={pkrText(st.received)} onClick={() => onFilter("received")} testId="st-received" />
+      <MoneyLine label={`+ ${pt("paisa.st.due")}`} value={pkrText(st.due)} tone={st.due ? "warn" : undefined} onClick={() => onFilter("due")} testId="st-due" />
+      <MoneyLine label={`+ ${pt("paisa.st.dueAtSlot")}`} value={pkrText(st.due_at_slot)} onClick={() => onFilter("due_at_slot")} testId="st-due-at-slot" />
+      <MoneyLine label={`+ ${pt("paisa.st.waived")}`} value={pkrText(st.waived)} onClick={() => onFilter("waived")} testId="st-waived" />
       <MoneyLine label={`− ${pt("paisa.st.refundDue")}`} value={signedPkr(-st.refund_due)} tone={st.refund_due ? "danger" : undefined} onClick={() => onFilter("refund_due")} testId="st-refund-due" />
     </Section>
   );
