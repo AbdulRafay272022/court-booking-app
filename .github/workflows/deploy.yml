@@ -56,7 +56,7 @@ jobs:
           echo "checking migrations since the last successful deploy: ${BASE:-none} -> $SHA"
           bash infra/scripts/check-migration-guard.sh "$BASE" "$SHA"
 
-  # Copies the app's keys from this repo's Actions variables/secrets into SSM Parameter Store, where
+  # Copies the app's keys from this repo's Actions variables into SSM Parameter Store, where
   # deploy/server-env.sh reads them. Only names in the list below are copied; values are never printed.
   sync-config:
     runs-on: ubuntu-latest
@@ -66,10 +66,9 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Actions variables/secrets -> SSM /court-booking-app/secrets/*
+      - name: Actions variables -> SSM /court-booking-app/secrets/*
         env:
           VARS_JSON: ${{ toJSON(vars) }}
-          SECRETS_JSON: ${{ toJSON(secrets) }}
         run: |
           set -euo pipefail
           KEYS="ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY WHATSAPP_API_TOKEN WHATSAPP_PHONE_NUMBER_ID
@@ -78,11 +77,9 @@ jobs:
             PLATFORM_BANK_NAME PLATFORM_ACCOUNT_TITLE PLATFORM_ACCOUNT_NUMBER PLATFORM_IBAN
             BANK_DETAILS_ENCRYPTION_KEY BANK_DETAILS_ENCRYPTION_KEYS_OLD SESSION_TOKEN_SECRET"
           echo "Actions variables present: $(echo "$VARS_JSON" | jq -r 'keys | join(" ")')"
-          echo "Actions secrets present:   $(echo "$SECRETS_JSON" | jq -r 'keys | map(select(. != "github_token")) | join(" ")')"
           synced=""
           for k in $KEYS; do
-            # a secret wins over a variable of the same name
-            v="$(jq -rn --arg k "$k" --argjson s "$SECRETS_JSON" --argjson v "$VARS_JSON" '$s[$k] // $v[$k] // ""')"
+            v="$(jq -rn --arg k "$k" --argjson v "$VARS_JSON" '$v[$k] // ""')"
             [ -n "$v" ] || continue
             echo "::add-mask::$v"
             cur="$(aws ssm get-parameter --name "/court-booking-app/secrets/$k" --with-decryption --query Parameter.Value --output text 2>/dev/null || true)"
