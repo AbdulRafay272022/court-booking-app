@@ -52,7 +52,15 @@ export interface ApiClientConfig {
   onTokenRefreshed: (token: string, expiresAt: string) => Promise<void>;
   /** Called once a 401 survives a refresh attempt — should clear the session and route to login. */
   onUnauthorized: () => Promise<void>;
+  /** Who is calling (founder 14 Nov, minimum app version for owner/staff): web says "web" and is never blocked; the
+   * native app says android/ios plus its APP_LEVEL. Sent on every request. */
+  clientInfo?: { platform: "web" | "android" | "ios"; appLevel?: number };
+  /** Called when the server answers 426 UPGRADE_REQUIRED (an owner/staff app older than the venue's minimum). */
+  onUpgradeRequired?: () => void;
 }
+
+export const CLIENT_PLATFORM_HEADER = "X-Client-Platform";
+export const APP_LEVEL_HEADER = "X-App-Level";
 
 interface RequestOpts {
   /** Hit baseUrl directly, skipping the /api/v1 prefix (only /health, /health/ready today). */
@@ -91,6 +99,16 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 }
 
 export function createApiClient(config: ApiClientConfig) {
+  const clientHeaders: Record<string, string> = config.clientInfo
+    ? {
+        [CLIENT_PLATFORM_HEADER]: config.clientInfo.platform,
+        ...(config.clientInfo.appLevel != null ? { [APP_LEVEL_HEADER]: String(config.clientInfo.appLevel) } : {}),
+      }
+    : {};
+  const fail = (e: ApiError): ApiError => {
+    if (e.code === "UPGRADE_REQUIRED") config.onUpgradeRequired?.();
+    return e;
+  };
   let refreshPromise: Promise<RefreshOutcome> | null = null;
 
   async function tryRefresh(): Promise<RefreshOutcome> {
@@ -101,7 +119,7 @@ export function createApiClient(config: ApiClientConfig) {
       try {
         const res = await fetchWithTimeout(
           `${config.baseUrl}${API_PREFIX}/auth/refresh`,
-          { method: "POST", headers: { Authorization: `Bearer ${token}`, [SLOT_GRID_HEADER]: SLOT_GRID_VALUE } },
+          { method: "POST", headers: { Authorization: `Bearer ${token}`, [SLOT_GRID_HEADER]: SLOT_GRID_VALUE, ...clientHeaders } },
           DEFAULT_TIMEOUT_MS,
         );
         if (!res.ok) return res.status >= 500 ? ("network" as const) : ("rejected" as const);
@@ -145,6 +163,7 @@ export function createApiClient(config: ApiClientConfig) {
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string> | undefined),
       [SLOT_GRID_HEADER]: SLOT_GRID_VALUE,
+      ...clientHeaders,
     };
     if (!isFormData && options.body !== undefined && !("Content-Type" in headers)) {
       headers["Content-Type"] = "application/json";
@@ -163,12 +182,12 @@ export function createApiClient(config: ApiClientConfig) {
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      throw new ApiError(
+      throw fail(new ApiError(
         body?.error?.code ?? "UNKNOWN_ERROR",
         body?.error?.message ?? response.statusText,
         response.status,
         body?.error?.details,
-      );
+      ));
     }
 
     if (response.status === 204) return undefined as T;
@@ -196,6 +215,7 @@ export function createApiClient(config: ApiClientConfig) {
         xhr.timeout = UPLOAD_TIMEOUT_MS;
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         xhr.setRequestHeader(SLOT_GRID_HEADER, SLOT_GRID_VALUE);
+        for (const [k, v] of Object.entries(clientHeaders)) xhr.setRequestHeader(k, v);
         if (xhr.upload && onProgress) {
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) onProgress(uploadProgressFraction(e.loaded, e.total));
@@ -229,12 +249,12 @@ export function createApiClient(config: ApiClientConfig) {
           }
           if (xhr.status < 200 || xhr.status >= 300) {
             reject(
-              new ApiError(
+              fail(new ApiError(
                 body?.error?.code ?? "UNKNOWN_ERROR",
                 body?.error?.message ?? xhr.statusText,
                 xhr.status,
                 body?.error?.details,
-              ),
+              )),
             );
             return;
           }
@@ -251,6 +271,7 @@ export function createApiClient(config: ApiClientConfig) {
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string> | undefined),
       [SLOT_GRID_HEADER]: SLOT_GRID_VALUE,
+      ...clientHeaders,
     };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -268,12 +289,12 @@ export function createApiClient(config: ApiClientConfig) {
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      throw new ApiError(
+      throw fail(new ApiError(
         body?.error?.code ?? "UNKNOWN_ERROR",
         body?.error?.message ?? response.statusText,
         response.status,
         body?.error?.details,
-      );
+      ));
     }
 
     return response.text();

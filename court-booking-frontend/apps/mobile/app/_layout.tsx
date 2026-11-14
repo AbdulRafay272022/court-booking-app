@@ -55,6 +55,8 @@ import { useAuthStore } from "@/lib/auth-store";
 import { registerForPushNotifications } from "@/lib/push-notifications";
 import { OfflineBanner } from "@/components/offline-banner";
 import { SessionUnreachable } from "@/components/session-unreachable";
+import { UpdateRequired } from "@/components/update-required";
+import { useUpgradeStore } from "@/lib/app-level";
 import { initSentry, wrapRoot } from "@/lib/sentry";
 
 // No-op unless EXPO_PUBLIC_SENTRY_DSN is set (lib/sentry.ts).
@@ -185,6 +187,7 @@ function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  const upgradeRequired = useUpgradeStore((st) => st.required);
   if (!ready) return null;
 
   return (
@@ -196,6 +199,8 @@ function RootLayout() {
         {status === "signedIn" && role !== "player" ? <OfflineBanner /> : null}
         {status === "unreachable" ? (
           <SessionUnreachable onRetry={() => void restore(true)} />
+        ) : upgradeRequired && status === "signedIn" && (role === "owner" || role === "staff") ? (
+          <UpdateRequired />
         ) : (
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Protected guard={status === "signedOut"}>

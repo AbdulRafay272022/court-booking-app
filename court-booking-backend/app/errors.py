@@ -114,6 +114,7 @@ class ErrorCode:
     INVALID_STAFF_PERMISSION = "INVALID_STAFF_PERMISSION"
     NOT_STAFF_PERMITTED = "NOT_STAFF_PERMITTED"  # staff account lacks the permission for this action
     # Ledger v2 (docs/design/LEDGER-V2-CONTRACT.md)
+    UPGRADE_REQUIRED = "UPGRADE_REQUIRED"  # 426: an owner/staff app older than MIN_STAFF_APP_LEVEL
     OWNER_ONLY = "OWNER_ONLY"  # only the venue owner (or an admin) may do this money action
     EXCESS_CHOICE_REQUIRED = "EXCESS_CHOICE_REQUIRED"  # money above the booking total: refund or keep as credit?
     POSSIBLE_DUPLICATE = "POSSIBLE_DUPLICATE"  # same booking + amount + method in the last 10 minutes

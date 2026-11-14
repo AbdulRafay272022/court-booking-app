@@ -66,6 +66,10 @@ async def get_current_user(
         )
     # Picked up by RequestContextMiddleware's structured request log.
     request.state.user_id = user.id
+    # ledger v2 rollout: an owner/staff app older than MIN_STAFF_APP_LEVEL gets 426 (off by default; never players / web)
+    from app.services.client_version import check_staff_client
+
+    check_staff_client(request, user, settings)
     return user
 
 

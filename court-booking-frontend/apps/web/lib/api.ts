@@ -11,4 +11,6 @@ export const api = createCourtBookingApi({
   onUnauthorized: async () => {
     useAuthStore.getState().signOut();
   },
+  // the web is never blocked by the owner/staff minimum app level (founder 14 Nov)
+  clientInfo: { platform: "web" },
 });

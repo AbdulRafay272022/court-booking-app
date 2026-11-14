@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # fix/nov-9: key ROTATION. Comma-separated earlier keys, used only to READ data written with them (MultiFernet);
     # everything new is written with BANK_DETAILS_ENCRYPTION_KEY. Rotate = put the old key here, a new one above.
     BANK_DETAILS_ENCRYPTION_KEYS_OLD: str = ""
+    # Ledger v2 rollout (founder 14 Nov): the lowest app "level" (X-App-Level, a code constant in the mobile app, NOT the
+    # store version, so an OTA update can raise it) an OWNER or STAFF member may use. 0 = OFF (default): nobody is blocked.
+    # Set only on the backfill + flag-ON day. Players, admins and the web are never blocked (app/services/client_version.py).
+    MIN_STAFF_APP_LEVEL: int = 0
     # Section 26: sessions are short-lived (8h) and kept alive by proactive
     # refresh (POST /auth/refresh) while the user is active. This is NOT the
     # same clock as phone verification below.
