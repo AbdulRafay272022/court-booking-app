@@ -26,7 +26,7 @@
       "env": {
         "APP_VARIANT": "preview",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "EXPO_PUBLIC_UPDATE_URL": "https://REPLACE-WITH-LATEST-APK-LINK"
+        "EXPO_PUBLIC_UPDATE_URL": "https://3.6.48.6.sslip.io/app"
       }
     },
     "production": {
@@ -35,7 +35,7 @@
       "env": {
         "APP_VARIANT": "production",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "EXPO_PUBLIC_UPDATE_URL": "https://REPLACE-WITH-LATEST-APK-LINK"
+        "EXPO_PUBLIC_UPDATE_URL": "https://3.6.48.6.sslip.io/app"
       }
     }
   },
