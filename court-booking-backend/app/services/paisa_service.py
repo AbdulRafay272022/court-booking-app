@@ -479,6 +479,10 @@ async def players(db, venue: Venue, q: str | None) -> dict:
     return {"points_awarded": t.get("points_awarded", 0), "points_used": t.get("points_used", 0), "items": out}
 
 
+def _tf(t, key):
+    return t.get(key) if isinstance(t, dict) else getattr(t, key, None)
+
+
 async def tasks(db, settings, owner: User, actor: User, venue: Venue, perms: set[str] | None, *, date_: date | None, court_ids) -> dict:
     """Kaam (contract 5.6). mark_refunds-only staff get the refund groups only."""
     from app.services.owner_dashboard_service import OwnerDashboardService
@@ -500,7 +504,8 @@ async def tasks(db, settings, owner: User, actor: User, venue: Venue, perms: set
                    {"key": "noshow_reply", "count": len(noshow), "items": noshow}]
     if refunds_ok:
         refunds = await OwnerDashboardService(db, settings).refunds_owed(owner, venue_id=venue.id, on_date=date_, court_ids=court_ids)
-        not_got = [r for r in refunds if any(getattr(t, "player_response", None) == "not_received" and not getattr(t, "owner_reply", None)
+        # transfers are dicts (refund_flow_service.transfer_out): "Paisa nahi mila" that the venue has not answered yet
+        not_got = [r for r in refunds if any(_tf(t, "player_response") == "not_received" and not _tf(t, "owner_reply")
                                              for t in (getattr(r, "transfers", None) or []))]
         now = datetime.now(timezone.utc)
         rem = [r for r in refunds]

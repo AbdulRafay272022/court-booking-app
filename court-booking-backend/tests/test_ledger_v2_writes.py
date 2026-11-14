@@ -391,3 +391,32 @@ async def test_every_statement_box_filter_lists_exactly_its_total(client, setup,
     assert str(cancelled.id) in lists["refund_due"] and len(lists["refund_due"]) == 2
     r = await client.get(url, headers=oh, params={**params, "box": "nope"})
     assert r.status_code == 422
+
+
+async def test_kaam_refund_not_got_counts_an_unanswered_not_received(client, setup, make_user, make_auth_headers):
+    """Kaam "Paisa nahi mila": the player says a refund transfer never arrived and the venue has not replied yet. The refund
+    rows carry their transfers as dicts, so the group used to read 0 forever (found on the 14 Nov screenshot run)."""
+    from app.models.refund_flow import RefundTransfer
+
+    sf, court, oh = setup["sf"], setup["court"], setup["oh"]
+    player = await make_user("+923001110195", name="Player")
+    ph = await make_auth_headers(player)
+    b = await booking(sf, court, price=5000, paid=1000, hours_from_now=48, player_id=player.id)
+    assert (await client.post(f"{API}/bookings/{b.id}/cancel", headers=ph, json={})).status_code == 200
+    params = {"venue_id": str(setup["venue"].id)}
+    groups = lambda t: {g["key"]: g["count"] for g in t["groups"]}  # noqa: E731
+    t = (await client.get(f"{API}/owners/paisa/tasks", headers=oh, params=params)).json()
+    refund = next(g for g in t["groups"] if g["key"] == "refund_due")["items"][0]
+    assert groups(t)["refund_not_got"] == 0
+    r = await client.post(f"{API}/owners/refunds/{refund['id']}/mark-refunded", headers=oh, data={"reference": "TX-1", "amount": "400"})
+    assert r.status_code == 200, r.text
+    async with sf() as s:
+        tid = (await s.scalars(select(RefundTransfer.id).where(RefundTransfer.booking_id == b.id))).one()
+    r = await client.post(f"{API}/refund-transfers/{tid}/answer", headers=ph, json={"answer": "not_received", "note": "nahi aaya"})
+    assert r.status_code == 200, r.text
+    t = (await client.get(f"{API}/owners/paisa/tasks", headers=oh, params=params)).json()
+    assert groups(t)["refund_not_got"] == 1
+    r = await client.post(f"{API}/owners/refund-transfers/{tid}/reply", headers=oh, json={"note": "Dobara bhej diya"})
+    assert r.status_code == 200, r.text
+    t = (await client.get(f"{API}/owners/paisa/tasks", headers=oh, params=params)).json()
+    assert groups(t)["refund_not_got"] == 0
