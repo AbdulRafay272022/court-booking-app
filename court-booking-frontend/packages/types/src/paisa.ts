@@ -233,7 +233,7 @@ export interface PaisaDaybookRow {
 export interface PaisaDaybook {
   range: { from: string; to: string };
   days: { date: string; total: number; rows: PaisaDaybookRow[] }[];
-  footer: { in: number; out: number; net: number; cash_by: { name: string; amount: number }[] };
+  footer: { in: number; out: number; net: number; cash_by: { name: string | null; amount: number }[] };  // name null = nobody recorded (old rows)
 }
 
 export interface PaisaPlayer {

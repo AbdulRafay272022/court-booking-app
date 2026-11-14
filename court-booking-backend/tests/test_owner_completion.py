@@ -131,13 +131,14 @@ async def test_nahi_adjusts_total_paid_up_or_down_never_editing_rows(seed, make_
     assert row["completion"] == {**row["completion"], "result": "no", "received_pkr": 1200, "reason": "Paid half at the desk"}
     assert [e.amount_pkr for e in await _entries(db_session_factory, b.id)] == [500, 700]
 
-    # Nahi with less than recorded: a NEGATIVE `other` correction entry, nothing deleted or edited
+    # Nahi with less than recorded: a NEGATIVE correction entry, nothing deleted or edited. Ledger v2 (14 Nov): it takes the
+    # method of the payment it lowers (the 700 cash), never "other"/Doosra
     down = await client.post(completion_url(b.id), json={"result": "no", "received_pkr": 300}, headers=headers)
     assert down.status_code == 200
     assert (down.json()["total_paid"], down.json()["due"]) == (300, 1700)
     entries = await _entries(db_session_factory, b.id)
     assert [e.amount_pkr for e in entries] == [500, 700, -900]
-    assert entries[2].method.value == "other" and entries[2].reverses_entry_id is None
+    assert entries[2].method.value == "cash_at_venue" and entries[2].reverses_entry_id is None
     await _consistent(db_session_factory, b.id)
 
     # nothing received at all

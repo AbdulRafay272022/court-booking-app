@@ -15,7 +15,7 @@ import { Pill, Sheet } from "@/components/fl";
 import { NoShowReverseDialog } from "@/components/owner/money-dialogs";
 import { RecordPaymentSheet } from "@/components/owner/record-payment-sheet";
 import { paisaV2Href, parseRupees, pkrText, signedPkr } from "@/lib/paisa-v2";
-import { usePaisaT, type PaisaTFn } from "@/lib/use-paisa-v2";
+import { usePaisaNote, usePaisaT, type PaisaTFn } from "@/lib/use-paisa-v2";
 import { Choice, ErrorText, MoneyLine, PrimaryButton, TextField } from "./ui";
 
 /** Every Paisa query starts with "paisa"; one invalidation refreshes the page after any money change. */
@@ -47,6 +47,7 @@ function historyLabel(pt: PaisaTFn, h: PaisaHistoryItem): string {
 export function PaisaBookingSheet({ bookingId, venueId, onClose }: { bookingId: string; venueId?: string; onClose: () => void }) {
   const t = useT();
   const pt = usePaisaT();
+  const pnote = usePaisaNote();
   const fmt = useFmt();
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
@@ -95,7 +96,7 @@ export function PaisaBookingSheet({ bookingId, venueId, onClose }: { bookingId: 
             <section aria-label={pt("paisa.detail.calc")} className="rounded-xl bg-owner-bg p-2" data-testid="paisa-sheet-calc">
               <MoneyLine label={pt("paisa.st.bookingAmount")} value={pkrText(d.calc.booking_amount)} />
               {d.calc.deductions.map((x) => (
-                <MoneyLine key={x.id} label={`− ${pt(deductionKey(x.kind))}`} sub={x.reason ?? undefined} value={signedPkr(-x.amount)} />
+                <MoneyLine key={x.id} label={`− ${pt(deductionKey(x.kind))}`} sub={pnote(x.reason) ?? undefined} value={signedPkr(-x.amount)} />
               ))}
               <MoneyLine label={`= ${pt("paisa.st.final")}`} value={pkrText(d.calc.final)} strong />
               <MoneyLine label={pt("paisa.st.received")} value={pkrText(d.calc.received)} />
@@ -103,7 +104,7 @@ export function PaisaBookingSheet({ bookingId, venueId, onClose }: { bookingId: 
               {d.calc.credit_in ? <MoneyLine label={pt("paisa.h.credit_in")} value={pkrText(d.calc.credit_in)} /> : null}
               {d.calc.credit_out ? <MoneyLine label={pt("paisa.h.credit_out")} value={signedPkr(-d.calc.credit_out)} /> : null}
               {d.calc.waivers.map((w) => (
-                <MoneyLine key={w.id} label={`+ ${pt("paisa.st.waived")}`} sub={w.reason ?? undefined} value={pkrText(w.amount)} />
+                <MoneyLine key={w.id} label={`+ ${pt("paisa.st.waived")}`} sub={pnote(w.reason) ?? undefined} value={pkrText(w.amount)} />
               ))}
               {d.calc.due > 0 ? (
                 <MoneyLine label={pt("paisa.detail.result.due")} value={pkrText(d.calc.due)} strong tone="warn" testId="paisa-sheet-result" />
@@ -171,7 +172,7 @@ export function PaisaBookingSheet({ bookingId, venueId, onClose }: { bookingId: 
                     <span className="flex min-w-0 flex-col">
                       <span className="text-[14px] font-semibold text-owner-ink">{historyLabel(pt, h)}</span>
                       <span className="text-[12.5px] text-owner-ink-muted">
-                        {[fmt.when(h.at), h.by ? pt("paisa.h.by", { by: h.by }) : null, h.note].filter(Boolean).join(" · ")}
+                        {[fmt.when(h.at), h.by ? pt("paisa.h.by", { by: h.by }) : null, pnote(h.note)].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                     <span className={`shrink-0 tabular-nums text-[14px] font-bold ${h.amount < 0 ? "text-owner-danger" : "text-owner-ink"}`}>{signedPkr(h.amount)}</span>

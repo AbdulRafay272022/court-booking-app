@@ -42,7 +42,7 @@ import { RefundSheet } from "@/components/refund-sheet";
 import { usePaisaTasks } from "@/components/owner-tab-bar";
 import { PaisaBookingSheet, invalidatePaisa } from "@/components/paisa/booking-sheet";
 import { KaamGroupCard, orderedGroups, type KaamOpen } from "@/components/paisa/kaam-view";
-import { GlassTile, Line, PaisaCard, moneyError, pkr, usePT } from "@/components/paisa/kit";
+import { GlassTile, Line, PaisaCard, moneyError, pf, pkr, usePT } from "@/components/paisa/kit";
 import { BookingRowCard, DayHeader, DaybookRow, MoneyInCard, PlayerRow, StatementCard, TakePaymentSheet } from "@/components/paisa/views";
 import { HeroLayout } from "../_fl";
 
@@ -268,8 +268,8 @@ export default function PaisaScreen() {
       </View>
       {period === "custom" ? (
         <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }}>
-          <View style={{ flexGrow: 1, flexBasis: 130 }}><SelectButton label={t("paisa.from")} value={formatDayHeader(from)} onPress={() => setSheet({ kind: "from" })} /></View>
-          <View style={{ flexGrow: 1, flexBasis: 130 }}><SelectButton label={t("paisa.to")} value={formatDayHeader(to)} onPress={() => setSheet({ kind: "to" })} /></View>
+          <View style={{ flexGrow: 1, flexBasis: 130 }}><SelectButton label={t("paisa.from")} value={pf.date(from)} onPress={() => setSheet({ kind: "from" })} /></View>
+          <View style={{ flexGrow: 1, flexBasis: 130 }}><SelectButton label={t("paisa.to")} value={pf.date(to)} onPress={() => setSheet({ kind: "to" })} /></View>
         </View>
       ) : null}
       {rangeLine ? <Text variant="caption" tone="muted" testID="paisa-range-line">{rangeLine}</Text> : null}
@@ -359,7 +359,7 @@ export default function PaisaScreen() {
         {daybook.data.footer.cash_by.length ? (
           <PaisaCard>
             <Text variant="bodyBold">{t("paisa.lenden.cashBy")}</Text>
-            {daybook.data.footer.cash_by.map((c) => <Line key={c.name} label={c.name} value={pkr(c.amount)} />)}
+            {daybook.data.footer.cash_by.map((c) => <Line key={c.name ?? "-"} label={c.name ?? t("paisa.lenden.unknownPerson")} value={pkr(c.amount)} />)}
           </PaisaCard>
         ) : null}
       </View>

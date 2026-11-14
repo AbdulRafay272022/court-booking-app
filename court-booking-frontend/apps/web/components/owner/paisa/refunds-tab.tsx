@@ -79,7 +79,7 @@ function reasonText(t: TFunction, refund: OwnerRefund): string | null {
 /** Section 32 Part 10 + Round 2 A10: the owner's "Refunds to pay" screen. A refund here was always sent
  * OUTSIDE the app (JazzCash/bank) -- there is no payment gateway. This screen only records
  * that it happened, with a reference the owner can point to later if a player disputes it. */
-export function RefundsTab({ v2 }: { v2?: { notGotOnly?: boolean } } = {}) {
+export function RefundsTab({ v2 }: { v2?: { notGotOnly?: boolean; onOpenBooking?: (bookingId: string) => void; openLinked?: boolean } } = {}) {
   const t = useT();
   const pt = usePaisaT();
   const isOwner = useAuthStore((s) => s.user?.role) !== "staff";
@@ -89,12 +89,18 @@ export function RefundsTab({ v2 }: { v2?: { notGotOnly?: boolean } } = {}) {
   const { activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
+  // ledger v2 (founder 14 Nov): compact cards; transfers, account and the reply box sit under "Details" (open in "Nahi mila")
+  const [shown, setShown] = useState<Set<string>>(new Set());
+  const detailsOpen = (id: string) => !v2 || !!v2.notGotOnly || shown.has(id);
+  const toggleDetails = (id: string) => setShown((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // fix/nov-8: a notification links here with ?booking=<id>&open=1 and that booking's detail opens at once.
   const [linkedId, setLinkedId] = useLinkedDetail(useSearchParams());
   // ledger v2: the "Nahi mila" copy of this list must not open the linked booking a second time
   const [localId, setLocalId] = useState<string | null>(null);
-  const detailId = v2?.notGotOnly ? localId : linkedId;
-  const setDetailId = v2?.notGotOnly ? setLocalId : setLinkedId;
+  // ledger v2: the Paisa page opens a notification's booking in its own sheet, so neither Kaam copy of this list opens it again
+  // (openLinked: a refunds-only staff member, who has no Paisa sheet, still gets the notification's booking here)
+  const detailId = v2 && !v2.openLinked ? localId : linkedId;
+  const setDetailId = v2 && !v2.openLinked ? setLocalId : setLinkedId;
   const filter = parseQueueFilter(useSearchParams());
   const since = useSeenSince("refunds", activeVenueId);
   // Stage 2 (B.b): a staff member without "mark_refunds" sees the no-permission state at once (the list needs it too).
@@ -108,8 +114,12 @@ export function RefundsTab({ v2 }: { v2?: { notGotOnly?: boolean } } = {}) {
   });
 
   // ledger v2 Kaam: "Refund Nahi mila" is the same list, only the refunds the player answered "not received" (no reply yet)
-  const list = (query.data ?? []).filter(
-    (r) => !v2?.notGotOnly || (r.transfers ?? []).some((tr) => tr.player_response === "not_received" && !tr.owner_reply),
+  // ledger v2 Wapas dena (founder 14 Nov): only refunds with money still to send; a fully refunded one the player says never
+  // arrived is only in "Nahi mila"
+  const list = (query.data ?? []).filter((r) =>
+    v2?.notGotOnly
+      ? (r.transfers ?? []).some((tr) => tr.player_response === "not_received" && !tr.owner_reply)
+      : !v2 || refundBreakdown(r).remaining > 0,
   );
   const open = list.find((r) => r.id === openId) ?? null;
   const loading = venuesLoading || perms.loading || query.isLoading;
@@ -165,9 +175,10 @@ export function RefundsTab({ v2 }: { v2?: { notGotOnly?: boolean } } = {}) {
                   </p>
                   <p className="text-owner-ink-muted text-[13px]">
                     {courtLabel(refund.court_name, refund.court_sport ?? sports.byName(refund.court_name, refund.venue_name))}{" \u00b7 "}{fmt.when(refund.starts_at)}
+                    {v2 ? ` \u00b7 KH-${refund.booking_id.replace(/-/g, "").slice(0, 8).toUpperCase()}` : null}
                   </p>
                   {why ? <p className="text-owner-ink-faint text-[12.5px]">{why}</p> : null}
-                  {refund.player_note ? (
+                  {refund.player_note && detailsOpen(refund.id) ? (
                     <p className="text-owner-ink text-[12.5px]" data-testid="refund-player-note">
                       {t("rfd.playerNote", { note: refund.player_note })}
                     </p>
@@ -181,24 +192,41 @@ export function RefundsTab({ v2 }: { v2?: { notGotOnly?: boolean } } = {}) {
                       {t("odash.refunds.overdue", { when: fmt.when(refund.created_at) })}
                     </p>
                   ) : null}
-                  {refund.payment_id ? (
+                  {refund.payment_id && detailsOpen(refund.id) ? (
                     <div className="mt-1">
                       <ScreenshotThumb paymentId={refund.payment_id} alt={t("rfd.row.proofAlt", { who })} />
                     </div>
                   ) : null}
-                  {v2 && refund.player_phone ? (
+                  {v2 && refund.player_phone && detailsOpen(refund.id) ? (
                     <p className="text-[13px] text-owner-ink" data-testid="refund-player-phone">
                       <span className="select-all font-semibold tabular-nums">{refund.player_phone}</span>
                     </p>
                   ) : null}
                   {/* fix/nov-9 items 10-12: the player's account (masked until shown) + each refund sent, checked and answered */}
-                  <RefundPayoutBlock refund={refund} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] })} />
-                  <RowLinks
-                    bookingId={refund.booking_id}
-                    startsAt={refund.starts_at}
-                    who={who}
-                    onDetails={() => setDetailId(refund.booking_id)}
-                  />
+                  {detailsOpen(refund.id) ? (
+                    <RefundPayoutBlock refund={refund} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["owner-refunds"] })} />
+                  ) : null}
+                  {v2 ? (
+                    <div className="flex flex-wrap gap-3 pt-1">
+                      <button type="button" onClick={() => (v2.onOpenBooking ? v2.onOpenBooking(refund.booking_id) : setDetailId(refund.booking_id))}
+                        data-testid="refund-open-booking" className="min-h-10 cursor-pointer rounded-lg border border-owner-border px-3 text-[13px] font-semibold">
+                        {pt("paisa.act.openBooking")}
+                      </button>
+                      {v2.notGotOnly ? null : (
+                        <button type="button" onClick={() => toggleDetails(refund.id)} aria-expanded={detailsOpen(refund.id)} data-testid="refund-details"
+                          className="min-h-10 cursor-pointer rounded-lg border border-owner-border px-3 text-[13px] font-semibold">
+                          {pt("paisa.kaam.details")} {detailsOpen(refund.id) ? "▴" : "▾"}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <RowLinks
+                      bookingId={refund.booking_id}
+                      startsAt={refund.starts_at}
+                      who={who}
+                      onDetails={() => setDetailId(refund.booking_id)}
+                    />
+                  )}
                 </div>
                 <div className="flex items-center gap-3 shrink-0 flex-wrap">
                   <span className="tabular-nums font-bold text-[15px]" data-testid="refund-remaining">

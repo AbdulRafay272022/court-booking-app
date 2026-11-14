@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
+import { sportLabel } from "@court-booking/types";
 
 /** Plain-text label for a court: "Court 1 · Padel" (just the name when the sport is unknown). Use this in
  * strings (aria-labels, confirm dialogs, select options); use <CourtLabel> in JSX. */
 export function courtLabel(name: string, sport?: string | null): string {
-  return sport ? `${name} · ${sport}` : name;
+  return sport ? `${name} · ${sportLabel(sport)}` : name;
 }
 
 /** A court's name with its sport next to it, so two courts with similar names but different sports (a padel
@@ -29,7 +30,7 @@ export function CourtLabel({
           data-testid="court-sport"
           className={`text-[0.78em] font-semibold px-1.5 py-0.5 rounded bg-black/[0.06] opacity-80 ${badgeClassName}`}
         >
-          {sport}
+          {sportLabel(sport)}
         </span>
       ) : null}
       {children}

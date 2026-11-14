@@ -5,7 +5,7 @@ import { router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CalendarPlus, Check, Clock3, MessageCircle, Navigation, Phone, QrCode, ScanLine, Share2, X } from "lucide-react-native";
 import { ApiError } from "@court-booking/api-client";
-import { bookingHeader, refundSummary, formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink, type BookingStatus } from "@court-booking/types";
+import { bookingHeader, paisaT, refundSummary, formatDate, formatTime, formatTimeRange, formatWhen, paymentLineLabel, timelineLabel, whatsappLink, type BookingStatus } from "@court-booking/types";
 import { formatPkr, isConfirmed, journeySteps, palette, radius, space } from "@court-booking/ui-tokens";
 
 import {
@@ -32,6 +32,7 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { LightStatusBar } from "@/components/ui/StatusBarStyle";
 import { safeBack } from "@/lib/safe-back";
 import { cancelErrorCopy, cancelPolicySentence, cancelState, shownStatus } from "@/lib/player-flow";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
 import { RaastQr } from "@/components/raast-qr";
 import { BalanceProofUpload } from "@/components/balance-proof-upload";
 import { BookingExtrasCard } from "@/components/booking-extras";
@@ -90,6 +91,12 @@ export default function BookingStatusScreen() {
     enabled: !!booking && booking.status !== "held",
   });
   const [cancelOpen, setCancelOpen] = useState(false);
+  const { v2: ledgerV2 } = useLedgerV2();
+  const cancelPreview = useQuery({
+    queryKey: ["cancel-preview", id],
+    queryFn: () => api.bookings.cancelPreview(id),
+    enabled: ledgerV2 && cancelOpen && !!id,
+  });
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
@@ -155,7 +162,14 @@ export default function BookingStatusScreen() {
   const when = `${formatDate(booking.starts_at, new Date(), lang)}`;
   const time = formatTimeRange(booking.starts_at, booking.ends_at, lang);
   const policy = place.venue ? cancelPolicySentence(place.venue, lang) : null;
-  const cancel = cancelState(booking, place.venue, now);
+  const baseCancel = cancelState(booking, place.venue, now);
+  // ledger v2 (contract 6.3, founder 13 Nov): a late cancel is allowed where the venue allows cancelling; the advance is kept
+  // and the sheet says so first ("Advance PKR X wapas nahi hoga")
+  const lateCancelOk = ledgerV2 && booking.status === "booked" && baseCancel.blocked === "window_closed" && !!place.venue?.cancellation_allowed
+    && Date.parse(booking.starts_at) > now;
+  const cancel = lateCancelOk ? { ...baseCancel, canCancel: true, blocked: undefined } : baseCancel;
+  const preview = cancelPreview.data;
+  const keptAdvance = booking.status === "cancelled" ? booking.advance_kept_pkr ?? 0 : 0;
   const paid = donePaidAmount(booking);
   const isOver = Date.parse(booking.ends_at) <= now;
   const detail = detailQuery.data;
@@ -179,7 +193,7 @@ export default function BookingStatusScreen() {
     setCancelling(true);
     setCancelError(null);
     try {
-      const { booking: b } = await api.bookings.cancel(id);
+      const { booking: b } = await api.bookings.cancel(id, undefined, { acceptKeepAdvance: ledgerV2 && preview?.mode === "keep" });
       queryClient.setQueryData(["booking", id], b);
       void queryClient.invalidateQueries({ queryKey: ["bookings-mine"] });
       setCancelOpen(false);
@@ -257,6 +271,9 @@ export default function BookingStatusScreen() {
           <IconButton icon={ArrowLeft} variant="onDark" accessibilityLabel={copy("Wapas", "Back")} onPress={() => safeBack()} testID="status-back" />
           <StatusPill booking={shown} />
         </View>
+        {keptAdvance > 0 ? (
+          <Text variant="bodyBold" tone="hero" align="center" testID="status-advance-kept">{paisaT(lang, "paisa.pcancel.keptLine", { amount: formatPkr(keptAdvance) })}</Text>
+        ) : null}
         <View style={{ alignItems: "center", gap: space[3], paddingTop: space[2] }}>
           <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: heroBadge, alignItems: "center", justifyContent: "center" }} accessibilityElementsHidden importantForAccessibility="no">
             <HeroIcon size={34} color={heroIconColor} strokeWidth={2.6} />
@@ -539,6 +556,26 @@ export default function BookingStatusScreen() {
         }
       >
         {cancelError ? <Banner tone="danger" body={cancelError} /> : null}
+        {ledgerV2 && booking.status === "booked" && preview ? (
+          <View style={{ gap: space[3] }}>
+            <MoneyRows
+              rows={[
+                { label: copy("Booking", "Booking"), value: `${venueName} · ${when}, ${formatTime(booking.starts_at)}` },
+                { label: copy("Venue ne darj kiya", "Recorded as paid"), value: formatPkr(preview.paid_pkr) },
+                ...(preview.mode === "refund" ? [{ label: copy("Wapas milega", "Refund due"), value: formatPkr(preview.refund_pkr), strong: true }] : []),
+              ]}
+            />
+            {preview.mode === "keep" ? (
+              <View testID="cancel-keep-line" style={{ gap: space[2] }}>
+                <Banner tone="danger" body={paisaT(lang, "paisa.cancel.keep", { amount: formatPkr(preview.keep_pkr) })} />
+                <Text variant="meta" tone="muted">{paisaT(lang, "paisa.pcancel.lateNote")}</Text>
+              </View>
+            ) : preview.mode === "clear" ? (
+              <Text variant="meta" tone="muted">{paisaT(lang, "paisa.pcancel.clear")}</Text>
+            ) : null}
+          </View>
+        ) : (
+        <>
         <MoneyRows
           rows={[
             { label: copy("Booking", "Booking"), value: `${venueName} · ${when}, ${formatTime(booking.starts_at)}` },
@@ -551,6 +588,8 @@ export default function BookingStatusScreen() {
             ? copy("Refund venue khud bhejta hai (JazzCash / bank); app apne aap paisa nahi bhejti. Slot dobara khul jayega.", "The venue sends the refund itself (JazzCash / bank); the app doesn't send money. The slot opens again.")
             : copy("Slot dobara khul jayega. Agar aap paisa bhej chuke hain to venue se baat karein.", "The slot opens again. If you already sent money, talk to the venue.")}
         </Text>
+        </>
+        )}
       </Sheet>
     </Screen>
   );

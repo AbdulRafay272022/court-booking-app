@@ -2,18 +2,18 @@ import { useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { taskKey, type OwnerRefund, type PaisaBankMissingItem, type PaisaDueItem, type PaisaNoShowItem, type PaisaTaskGroup, type PaisaTasks } from "@court-booking/types";
+import { taskKey, type OwnerRefund, type PaisaBankMissingItem, type PaisaBookingRow, type PaisaDueItem, type PaisaNoShowItem, type PaisaTaskGroup, type PaisaTasks } from "@court-booking/types";
 import { formatPkr, palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Button, EmptyState, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
-import { formatDayHeader, formatWhen } from "@/lib/format";
+import { useMyPermissions } from "@/lib/use-my-permissions";
 import { GroupLabel } from "@/app/(owner)/_fl";
 import { BankCheckBlock } from "./bank-check-block";
 import { RefundCard } from "./refund-card";
 import { invalidatePaisa } from "./booking-sheet";
-import { MoneyStatusPill, moneyError, pkr, type PT } from "./kit";
+import { MoneyStatusPill, moneyError, pf, pkr, type PT } from "./kit";
 
 export type KaamOpen =
   | { kind: "booking"; id: string }
@@ -72,7 +72,7 @@ export function KaamGroupCard({ group, t, open, courtName, filterDate, onClearFi
             <Text variant="bodyStrong" style={{ flex: 1 }} onPress={() => open({ kind: "booking", id: d.booking_id })}>{`${d.player_name ?? "Player"} · ${d.code}`}</Text>
             <Text variant="bodyStrong">{pkr(d.due_pkr)}</Text>
           </View>
-          <Text variant="meta" tone="muted">{[dueStatus(d, t), d.starts_at ? formatWhen(d.starts_at, new Date(), "ru") : null].filter(Boolean).join(" · ")}</Text>
+          <Text variant="meta" tone="muted">{[dueStatus(d, t), d.starts_at ? pf.when(d.starts_at) : null].filter(Boolean).join(" · ")}</Text>
           {d.player_reason ? <Text variant="body">{t("paisa.detail.playerSays", { reason: d.player_reason })}</Text> : null}
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], paddingTop: space[1] }}>
             {group.key === "short_decide" && !isStaff ? (
@@ -81,14 +81,15 @@ export function KaamGroupCard({ group, t, open, courtName, filterDate, onClearFi
                 <Button label={t("paisa.act.waive")} size="sm" variant="danger" loading={busy === `w${d.id}`} onPress={() => act(`w${d.id}`, () => api.phase3.decideShort(d.id, "waive"))} testID="kaam-waive" />
               </>
             ) : null}
-            {group.key === "due_collect" ? <Button label={t("paisa.players.take")} size="sm" onPress={() => open({ kind: "due", due: d })} testID="kaam-due-done" /> : null}
+            {/* founder 14 Nov: Baqi wasooli records the money ("Paisa darj karein"); "Raqam lein" is only the dispute decision */}
+            {group.key === "due_collect" ? <Button label={t("paisa.act.record")} size="sm" onPress={() => open({ kind: "due", due: d })} testID="kaam-due-done" /> : null}
           </View>
         </Card>
       ));
       break;
     case "noshow_reply":
       body = (group.items as PaisaNoShowItem[]).map((n) => {
-        const sub = [n.player_name ?? "Player", n.court_name ?? "", n.starts_at ? formatWhen(n.starts_at, new Date(), "ru") : ""].filter(Boolean).join(" · ");
+        const sub = [n.player_name ?? "Player", n.court_name ?? "", n.starts_at ? pf.when(n.starts_at) : ""].filter(Boolean).join(" · ");
         return (
           <Card key={n.booking_id} red={n.highlight} testID="kaam-noshow">
             <Text variant="bodyStrong" onPress={() => open({ kind: "booking", id: n.booking_id })}>{sub}</Text>
@@ -112,10 +113,11 @@ export function KaamGroupCard({ group, t, open, courtName, filterDate, onClearFi
             <Text variant="meta" tone="muted" testID="kaam-refund-header">{t("paisa.kaam.refundHeader", { amount: pkr(group.total), days: group.oldest_days })}</Text>
           ) : null}
           {group.key === "refund_due" && filterDate ? (
-            <Banner tone="info" body={formatDayHeader(filterDate)} action={<Button label={t("paisa.clearFilter")} variant="soft" size="sm" onPress={onClearFilter} />} />
+            <Banner tone="info" body={pf.date(filterDate)} action={<Button label={t("paisa.clearFilter")} variant="soft" size="sm" onPress={onClearFilter} />} />
           ) : null}
           {(group.items as OwnerRefund[]).map((r) => (
-            <RefundCard key={r.id} refund={r} court={courtName(r)} t={t} canMark onMark={() => open({ kind: "refund", refund: r })} onOpenBooking={() => open({ kind: "booking", id: r.booking_id })} />
+            <RefundCard key={r.id} refund={r} court={courtName(r)} t={t} canMark canCredit={!isStaff} notGot={group.key === "refund_not_got"}
+              onMark={() => open({ kind: "refund", refund: r })} onOpenBooking={() => open({ kind: "booking", id: r.booking_id })} />
           ))}
         </>
       );
@@ -126,7 +128,7 @@ export function KaamGroupCard({ group, t, open, courtName, filterDate, onClearFi
           {(group.items as PaisaBankMissingItem[]).map((m) => (
             <Card key={m.entry_id} red testID="kaam-bank-open">
               <Text variant="bodyStrong">{`${m.code} · ${m.player_name ?? "Player"} · ${formatPkr(m.amount_pkr)}`}</Text>
-              <Text variant="meta" weight="bold" tone="danger">{`${m.approved_by_name ?? "?"} · ${formatWhen(m.credited_at, new Date(), "ru")}`}</Text>
+              <Text variant="meta" weight="bold" tone="danger">{`${m.approved_by_name ?? "?"} · ${pf.when(m.credited_at)}`}</Text>
               {!isStaff ? (
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], paddingTop: space[1] }}>
                   {m.approved_by_role === "staff" ? (
@@ -152,18 +154,7 @@ export function KaamGroupCard({ group, t, open, courtName, filterDate, onClearFi
       );
       break;
     case "attendance":
-      body = group.items.map((r) => (
-        <Card key={r.booking_id} testID="kaam-attendance">
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2], flexWrap: "wrap" }}>
-            <Text variant="bodyStrong" style={{ flexShrink: 1 }} onPress={() => open({ kind: "booking", id: r.booking_id })}>{`${r.player} · ${r.short_code}`}</Text>
-            <MoneyStatusPill status={r.money_status} t={t} />
-          </View>
-          <Text variant="meta" tone="muted">{`${formatWhen(r.starts_at, new Date(), "ru")} · ${r.court}`}</Text>
-          <View style={{ flexDirection: "row" }}>
-            <Button label={t("paisa.kaam.attendance")} size="sm" variant="soft" onPress={() => open({ kind: "booking", id: r.booking_id })} />
-          </View>
-        </Card>
-      ));
+      body = group.items.map((r) => <AttendanceRow key={r.booking_id} r={r} t={t} onOpen={() => open({ kind: "booking", id: r.booking_id })} />);
       break;
   }
   const empty = group.count === 0 && group.key !== "bank_check" && group.key !== "screenshots";
@@ -173,6 +164,64 @@ export function KaamGroupCard({ group, t, open, courtName, filterDate, onClearFi
       {empty ? <Text variant="meta" tone="muted">{t("paisa.empty.group")}</Text> : body}
       {error ? <Banner tone="danger" body={error} /> : null}
     </View>
+  );
+}
+
+/** Hazri lagayein (founder 14 Nov): "Khel liya" / "Nahi aaye" right on the row. "Khel liya" with money still to take asks
+ * once whether the rest came (cash) or not (it stays Due); it never records money on its own. "Nahi aaye" asks to confirm. */
+function AttendanceRow({ r, t, onOpen }: { r: PaisaBookingRow; t: PT; onOpen: () => void }) {
+  const qc = useQueryClient();
+  const { can } = useMyPermissions();
+  const [ask, setAsk] = useState<null | "rest" | "noshow">(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function run(key: string, fn: () => Promise<unknown>) {
+    setBusy(key);
+    setError(null);
+    try {
+      await fn();
+      setAsk(null);
+      await invalidatePaisa(qc);
+    } catch (e) {
+      setError(moneyError(e, t));
+    } finally {
+      setBusy(null);
+    }
+  }
+  const rest = r.due_at_slot;
+  const played = () => (rest > 0 ? setAsk("rest") : run("yes", () => api.owners.markCompletion(r.booking_id, { result: "yes" })));
+  return (
+    <Card testID="kaam-attendance">
+      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2], flexWrap: "wrap" }}>
+        <Text variant="bodyStrong" style={{ flexShrink: 1 }} onPress={onOpen}>{`${r.player} · ${r.short_code}`}</Text>
+        <MoneyStatusPill status={r.money_status} t={t} />
+      </View>
+      <Text variant="meta" tone="muted">{`${pf.when(r.starts_at)} · ${r.court}${rest > 0 ? ` · ${pkr(rest)}` : ""}`}</Text>
+      {ask === "rest" ? (
+        <View style={{ gap: space[2], paddingTop: space[1] }}>
+          <Text variant="bodyBold">{t("paisa.att.restQ", { amount: pkr(rest) })}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+            <Button label={t("paisa.att.restYes")} size="sm" loading={busy === "yes"} onPress={() => run("yes", () => api.owners.markCompletion(r.booking_id, { result: "yes" }))} testID="att-rest-yes" />
+            <Button label={t("paisa.att.restNo")} size="sm" variant="soft" loading={busy === "no"} onPress={() => run("no", () => api.owners.markCompletion(r.booking_id, { result: "no", received_now: 0 }))} testID="att-rest-no" />
+            <Button label={t("paisa.act.cancelForm")} size="sm" variant="soft" onPress={() => setAsk(null)} />
+          </View>
+        </View>
+      ) : ask === "noshow" ? (
+        <View style={{ gap: space[2], paddingTop: space[1] }}>
+          <Text variant="bodyBold">{t("paisa.att.noshowQ")}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
+            <Button label={t("paisa.att.noshowYes")} size="sm" variant="danger" loading={busy === "ns"} onPress={() => run("ns", () => api.bookings.noShow(r.booking_id))} testID="att-noshow-yes" />
+            <Button label={t("paisa.act.cancelForm")} size="sm" variant="soft" onPress={() => setAsk(null)} />
+          </View>
+        </View>
+      ) : (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], paddingTop: space[1] }}>
+          {can("record_payments") ? <Button label={t("paisa.act.played")} size="sm" loading={busy === "yes"} onPress={played} testID="att-played" /> : null}
+          {can("check_in") || can("record_payments") ? <Button label={t("paisa.act.noshow")} size="sm" variant="soft" onPress={() => setAsk("noshow")} testID="att-noshow" /> : null}
+        </View>
+      )}
+      {error ? <Banner tone="danger" body={error} /> : null}
+    </Card>
   );
 }
 

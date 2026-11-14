@@ -273,7 +273,8 @@ async def test_bank_not_received_is_red_under_the_staff_member_and_staff_se_waso
     bk = await _booking(db_session_factory, b.id)
     assert float(bk.balance_due) == 0 and float(bk.price) == 2000
     last = (await _entries(db_session_factory, b.id))[-1]
-    assert last.method == PaymentMethod.OTHER and last.amount_pkr == 1000 and "Staff se wasool" in last.note
+    # ledger v2 (14 Nov): collected from the staff member in cash, not "Doosra"
+    assert last.method == PaymentMethod.CASH_AT_VENUE and last.amount_pkr == 1000 and "Staff se wasool" in last.note
     assert await _player_logs_since(db_session_factory, player.id, before) == []
     act = (await client.get("/api/v1/owners/staff-activity", params=q, headers=oh)).json()
     row = next(p for p in act["people"] if p["user_id"] == str(staff.id))

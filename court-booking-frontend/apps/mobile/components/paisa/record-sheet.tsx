@@ -4,15 +4,15 @@ import * as ImagePicker from "expo-image-picker";
 import type { ExcessChoice, ExcessChoiceDetails, Payment } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { space } from "@court-booking/ui-tokens";
-import { Banner, Button, Chip, Input, Text } from "@/components/ui";
+import { Banner, Button, Input, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
-import { addDays, formatDateRelative, formatPKR, pktDateString } from "@/lib/format";
+import { addDays, formatPKR, pktDateString } from "@/lib/format";
 import { parseAmount } from "@/lib/paisa-mobile";
 import { prepareProofImage } from "@/lib/proof-image";
 import { BottomSheet, OutlineButton, PrimaryButton } from "@/components/overview/ui";
-import { Choice, moneyError, pkr, usePT } from "./kit";
+import { Choice, DaySelect, moneyError, pf, pkr, usePT } from "./kit";
 
 type Shot = { file: string | Blob; name: string };
 
@@ -95,7 +95,7 @@ export function PaisaRecordSheet({
         setChoice("refund");
       } else if (e instanceof ApiError && (e.code as string) === "POSSIBLE_DUPLICATE") {
         const d = (e.details ?? {}) as { recorded_at?: string; by?: string | null };
-        setDup({ when: d.recorded_at ? formatDateRelative(d.recorded_at) : "", by: d.by ?? "" });
+        setDup({ when: d.recorded_at ? pf.day(d.recorded_at) : "", by: d.by ?? "" });
       } else {
         setError(moneyError(e, t));
       }
@@ -182,14 +182,7 @@ export function PaisaRecordSheet({
           <OutlineButton label={shot ? shot.name : t("paisa.rec.screenshotPick")} onPress={pick} testID="paisa-record-shot" />
         </View>
       ) : (
-        <View style={{ gap: space[2] }}>
-          <Text variant="label">{t("paisa.rec.day")}</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-            {days.map((d) => (
-              <Chip key={d} label={formatDateRelative(`${d}T12:00:00+05:00`, new Date(), "ru")} selected={day === d} onPress={() => setDay(d)} />
-            ))}
-          </View>
-        </View>
+        <DaySelect label={t("paisa.rec.day")} days={days} value={day} onChange={setDay} testID="paisa-record-day" />
       )}
       <Input label={t("paisa.rec.note")} value={note} onChangeText={setNote} error={noteMissing ? t("paisa.rec.noteNeeded") : null} testID="paisa-record-note" />
       {excess ? (

@@ -183,7 +183,9 @@ async def list_my_bookings(
     bookings = await service.list_for_player(
         user.id, when=status_filter, offset=page.offset, limit=page.page_size
     )
-    return [BookingOut.model_validate(b) for b in bookings]
+    from app.services.ledger_v2 import booking_out
+
+    return await booking_out(db, list(bookings))
 
 
 @router.get("/{booking_id}", response_model=BookingOut)
@@ -192,7 +194,9 @@ async def get_booking(
 ) -> BookingOut:
     service = BookingService(db, settings)
     booking = await service.require_accessible_booking(booking_id, user)
-    return BookingOut.model_validate(booking)
+    from app.services.ledger_v2 import booking_out
+
+    return (await booking_out(db, [booking]))[0]
 
 
 @router.post("/{booking_id}/cancel", response_model=BookingResponse)
@@ -216,7 +220,9 @@ async def cancel_booking(
         booking, cancelled_by, payload.reason, actor=user,
         cancelled_for=payload.cancelled_for, accept_keep_advance=payload.accept_keep_advance,
     )
-    response = BookingResponse(booking=BookingOut.model_validate(booking))
+    from app.services.ledger_v2 import booking_out
+
+    response = BookingResponse(booking=(await booking_out(db, [booking]))[0])
 
     # cancel_booking is idempotent (a no-op on an already-cancelled
     # booking) -- skip re-notifying/re-waking the waitlist on a repeat call.

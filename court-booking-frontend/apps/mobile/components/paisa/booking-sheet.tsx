@@ -7,14 +7,13 @@ import { Banner, Button, Input, MoneyRows, Pill, Skeleton, Text, type MoneyRow }
 
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
-import { formatWhen, formatWhenRange } from "@/lib/format";
 import { invalidateOwnerMoney } from "@/lib/owner-cache";
 import { parseAmount } from "@/lib/paisa-mobile";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { KeyValue, KeyValueBlock } from "@/app/(owner)/_fl";
 import { BottomSheet, OutlineButton, PrimaryButton } from "@/components/overview/ui";
 import { NoShowReverseSheet } from "@/components/money-sheets";
-import { Choice, MoneyStatusPill, moneyError, pkr, usePT, type PT } from "./kit";
+import { Choice, MoneyStatusPill, moneyError, pf, pkr, usePT, type PT } from "./kit";
 import { PaisaRecordSheet } from "./record-sheet";
 
 export const PAISA_KEYS = ["paisa-summary", "paisa-bookings", "paisa-booking", "paisa-daybook", "paisa-players", "paisa-tasks"] as const;
@@ -177,7 +176,7 @@ function Detail({ d, t, more, isStaff, busy, error, onMore, onDecide, onFollow }
   const c = d.calc;
   const can = (a: string) => d.actions.includes(a as never);
   const rows: MoneyRow[] = [{ label: t("paisa.st.bookingAmount"), value: pkr(c.booking_amount) }];
-  for (const x of c.deductions) rows.push({ label: `− ${t(deductionKey(x.kind))}`, value: pkr(-x.amount), note: x.reason ?? undefined });
+  for (const x of c.deductions) rows.push({ label: `− ${t(deductionKey(x.kind))}`, value: pkr(-x.amount), note: pf.note(x.reason) ?? undefined });
   rows.push({ label: `= ${t("paisa.st.final")}`, value: pkr(c.final), strong: true });
   rows.push({ label: t("paisa.st.received"), value: pkr(c.received) });
   if (c.waived > 0) rows.push({ label: t("paisa.st.waived"), value: pkr(c.waived) });
@@ -195,7 +194,7 @@ function Detail({ d, t, more, isStaff, busy, error, onMore, onDecide, onFollow }
       <KeyValueBlock>
         <KeyValue label={t("paisa.detail.player")} value={b.player} />
         {b.phone ? <KeyValue label={t("paisa.detail.phone")} value={b.phone} /> : null}
-        <KeyValue label={t("paisa.detail.slot")} value={formatWhenRange(b.starts_at, b.ends_at, new Date(), "ru")} last />
+        <KeyValue label={t("paisa.detail.slot")} value={pf.whenRange(b.starts_at, b.ends_at)} last />
       </KeyValueBlock>
       <MoneyRows rows={rows} testID="paisa-calc" />
       {d.dispute?.player_reason ? <Banner tone="waiting" body={t("paisa.detail.playerSays", { reason: d.dispute.player_reason })} /> : null}
@@ -227,9 +226,9 @@ function Detail({ d, t, more, isStaff, busy, error, onMore, onDecide, onFollow }
                 <Text variant="bodyBold" tone={h.amount < 0 ? "danger" : "primary"}>{pkr(h.amount)}</Text>
               </View>
               <Text variant="caption" tone="muted">
-                {[formatWhen(h.at, new Date(), "ru"), h.method ? (h.method === "cash_at_venue" ? t("paisa.in.cash") : h.method === "bank_transfer_proof" ? t("paisa.in.transfer") : t("paisa.in.other")) : null, h.by ? t("paisa.h.by", { by: h.by }) : null].filter(Boolean).join(" · ")}
+                {[pf.when(h.at), h.method ? (h.method === "cash_at_venue" ? t("paisa.in.cash") : h.method === "bank_transfer_proof" ? t("paisa.in.transfer") : t("paisa.in.other")) : null, h.by ? t("paisa.h.by", { by: h.by }) : null].filter(Boolean).join(" · ")}
               </Text>
-              {h.note ? <Text variant="caption" tone="muted">{h.note}</Text> : null}
+              {h.note ? <Text variant="caption" tone="muted">{pf.note(h.note)}</Text> : null}
               {more && h.reversible && !isStaff ? (
                 <View style={{ flexDirection: "row" }}>
                   <Button

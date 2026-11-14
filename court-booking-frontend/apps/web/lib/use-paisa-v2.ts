@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { paisaT, type PaisaKey } from "@court-booking/types";
+import { paisaNote, paisaT, type PaisaKey } from "@court-booking/types";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/i18n/lang-provider";
 
@@ -11,6 +11,12 @@ import { useLang } from "@/components/i18n/lang-provider";
 export function useLedgerV2(): { on: boolean; loading: boolean } {
   const q = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.featureFlags.publicFlags(), staleTime: 60_000 });
   return { on: q.data?.flags?.ledger_v2 === true, loading: q.isLoading };
+}
+
+/** A stored payment / adjustment note in the site language (system notes translated, typed notes as they are). */
+export function usePaisaNote() {
+  const lang = useLang();
+  return useCallback((note: string | null | undefined) => paisaNote(note, lang), [lang]);
 }
 
 /** Paisa labels from the ONE shared dictionary (packages/types paisa-text), in the site language. */

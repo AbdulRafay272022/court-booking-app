@@ -9,6 +9,7 @@ import { useFmt } from "@/lib/use-fmt";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useT } from "@/components/i18n/lang-provider";
+import { Select } from "@/components/owner/paisa-v2/ui";
 
 /** audit 2026-10-28 Phase 3 item 2: "bank se mila lein" -- every transfer credited on one day (advance and balance screenshots
  * approved), to tick off against the bank statement. Owner, or staff with view_ledger. Read-only. */
@@ -50,6 +51,11 @@ export function BankTab({ bare = false }: { bare?: boolean } = {}) {
         <h2 className="text-xl font-bold">{t("odash.bank.title")}</h2>
         <p className="text-sm text-owner-ink-muted">{t("odash.bank.subtitle")}</p>
       </div>
+      {/* ledger v2 Kaam (founder 14 Nov): a day dropdown, not a row of chips; the flag-off page keeps its chips */}
+      {bare ? (
+        <Select label={t("odash.bank.day")} value={day} onChange={setDay} testId="bank-check-day" className="max-w-xs"
+          options={days.map((d) => ({ value: d, label: fmt.dateRelative(`${d}T12:00:00+05:00`) }))} />
+      ) : (
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("odash.bank.day")}>
         {days.map((d) => (
           <button
@@ -64,6 +70,7 @@ export function BankTab({ bare = false }: { bare?: boolean } = {}) {
           </button>
         ))}
       </div>
+      )}
       {query.isError ? (
         <p className="text-owner-danger">{friendlyErrorMessage(query.error, t)}</p>
       ) : venuesLoading || query.isLoading || !data ? (

@@ -41,3 +41,4 @@ export * from "./bank-check";
 export * from "./phase3";
 export * from "./paisa";
 export * from "./paisa-text";
+export * from "./paisa-notes";

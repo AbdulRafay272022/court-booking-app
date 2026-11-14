@@ -121,7 +121,7 @@ async def decide(db: AsyncSession, settings: Settings, actor: User, entry_id: uu
     if decision == "staff":
         # the venue collects it from the staff member; the player's booking is settled again and the player hears nothing
         await PaymentLedgerService(db).record_entry(
-            booking.id, amount_pkr=entry.amount_pkr, method=PaymentMethod.OTHER, recorded_by=actor,
+            booking.id, amount_pkr=entry.amount_pkr, method=PaymentMethod.CASH_AT_VENUE, recorded_by=actor,  # cash from the staff member, not "Doosra"
             note=f"Staff se wasool: {staff.name or staff.phone} (bank mein nahi mila)",
         )
     else:

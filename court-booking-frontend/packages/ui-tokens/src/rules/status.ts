@@ -10,6 +10,8 @@ export interface StatusInput {
   status: BookingStatusLike;
   cancelled_by?: "player" | "owner" | "system" | null;
   cancellation_reason?: string | null;
+  /** ledger v2 (contract 6.3): a late cancel kept this advance -> "Cancel · advance rakha" */
+  advance_kept_pkr?: number | null;
 }
 
 export interface StatusPillSpec {
@@ -20,6 +22,7 @@ export interface StatusPillSpec {
     | "completed"
     | "noShow"
     | "cancelledByPlayer"
+    | "cancelledKept"
     | "rejectedByOwner"
     | "holdExpired"
     | "reviewExpired"
@@ -35,6 +38,7 @@ const LABELS: Record<StatusPillSpec["key"], { ru: string; en: string; tone: Tone
   completed: { ru: "Khel liya", en: "Completed", tone: "neutral" },
   noShow: { ru: "No-show", en: "No-show", tone: "danger" },
   cancelledByPlayer: { ru: "Aap ne cancel kiya", en: "You cancelled", tone: "neutral" },
+  cancelledKept: { ru: "Cancel · advance rakha", en: "Cancelled · advance kept", tone: "neutral" },
   rejectedByOwner: { ru: "Venue ne reject/cancel kiya", en: "Rejected by venue", tone: "danger" },
   holdExpired: { ru: "Hold khatam", en: "Hold expired", tone: "danger" },
   reviewExpired: { ru: "Check ka waqt khatam", en: "Review expired", tone: "danger" },
@@ -54,6 +58,7 @@ export function statusKey(b: StatusInput): StatusPillSpec["key"] {
     case "no_show":
       return "noShow";
     case "cancelled":
+      if ((b.advance_kept_pkr ?? 0) > 0) return "cancelledKept";
       if (b.cancelled_by === "player") return "cancelledByPlayer";
       if (b.cancelled_by === "owner") return "rejectedByOwner";
       if (b.cancelled_by === "system" && b.cancellation_reason === "hold_expired") return "holdExpired";

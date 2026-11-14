@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, formatDateRelative, formatTime, pktDateString, type BankCheckItem } from "@court-booking/types";
+import { addDays, formatTime, pktDateString, type BankCheckItem } from "@court-booking/types";
 import { formatPkr, palette, radius, space } from "@court-booking/ui-tokens";
-import { Banner, Button, Chip, EmptyState, ErrorState, SkeletonCard, Text } from "@/components/ui";
+import { Banner, Button, EmptyState, ErrorState, SkeletonCard, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { DaySelect } from "./kit";
 
 /**
  * "Bank se mila lein" (audit 2026-10-28 Phase 3 item 2): every transfer credited on one of the last 7 days, to tick off against
@@ -26,11 +27,7 @@ export function BankCheckBlock() {
   const days = [0, -1, -2, -3, -4, -5, -6].map((n) => addDays(today, n));
   return (
     <View style={{ gap: space[3] }} testID="bank-check-block">
-      <View style={{ flexDirection: "row", gap: space[2], flexWrap: "wrap" }} accessibilityRole="radiogroup" accessibilityLabel="Din">
-        {days.map((d) => (
-          <Chip key={d} label={formatDateRelative(`${d}T12:00:00+05:00`, new Date(), "ru")} selected={day === d} onPress={() => setDay(d)} />
-        ))}
-      </View>
+      <DaySelect days={days} value={day} onChange={setDay} testID="bank-check-day" />
       {query.isError ? (
         <ErrorState message={friendlyErrorMessage(query.error)} onRetry={() => query.refetch()} />
       ) : !data ? (

@@ -148,6 +148,8 @@ class BookingOut(BaseModel):
     checked_in_at: datetime | None
     checked_in_by: str | None = None
     created_at: datetime
+    # ledger v2 (contract 6.3): a late cancel that kept the advance -> the player sees "Cancel · advance rakha" and this amount
+    advance_kept_pkr: int = 0
 
 
 class BookingResponse(BaseModel):

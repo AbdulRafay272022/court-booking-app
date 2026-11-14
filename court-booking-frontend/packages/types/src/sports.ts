@@ -12,6 +12,14 @@ export const SPORT_OPTIONS = [
   "Badminton",
 ] as const;
 
+/** A stored sport ("padel", "PADEL", "Padel") as its display label ("Padel"); an unknown one gets a capital first letter. */
+export function sportLabel(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "";
+  const known = SPORT_OPTIONS.find((o) => o.toLowerCase() === s.toLowerCase());
+  return known ?? s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 /** Amenity keys stored in Venue.amenities (lowercase, stable) with their display labels. */
 export const AMENITY_OPTIONS = [
   { key: "floodlights", label: "Floodlights" },

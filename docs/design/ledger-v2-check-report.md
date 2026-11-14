@@ -1,6 +1,6 @@
 # Ledger v2 check report
 
-2026-11-14 06:58 · 28 bookings · read-only
+2026-11-14 08:17 · 30 bookings · read-only
 
 | check | nateeja |
 |---|---|
@@ -14,4 +14,4 @@
 | C8 | OK |
 | C9 | OK |
 
-Kul (sab bookings): final 87,500, net 54,000, due 13,000, due_at_slot 20,500, waived 5,000, refund_due 5,000
+Kul (sab bookings): final 90,500, net 57,000, due 13,000, due_at_slot 20,500, waived 5,000, refund_due 5,000

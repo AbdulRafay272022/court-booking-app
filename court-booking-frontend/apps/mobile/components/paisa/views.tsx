@@ -6,11 +6,11 @@ import { palette, radius, shadow, space } from "@court-booking/ui-tokens";
 import { Banner, Input, Text } from "@/components/ui";
 
 import { api } from "@/lib/api";
-import { formatPKR, formatShortDate, formatTime } from "@/lib/format";
+import { formatPKR, formatTime } from "@/lib/format";
 import { cashShare, parseAmount, waLink } from "@/lib/paisa-mobile";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { BottomSheet, OutlineButton, PrimaryButton } from "@/components/overview/ui";
-import { Choice, Line, MoneyStatusPill, PaisaCard, moneyError, pkr, type PT } from "./kit";
+import { Choice, Line, MoneyStatusPill, PaisaCard, moneyError, pf, pkr, type PT } from "./kit";
 
 /** Statement card, single column (contract 6.2): Booking amount, − Deductions (+ breakdown), = Final, Received, + Due,
  * + Due at slot, + Waived, − Refund due. Every box comes from the server statement; tapping a box lists exactly the bookings in
@@ -65,7 +65,7 @@ export function BookingRowCard({ r, t, highlighted, onPress }: { r: PaisaBooking
       <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text variant="bodyStrong">{r.player}</Text>
-          <Text variant="caption" tone="muted">{`${formatShortDate(r.starts_at)} · ${formatTime(r.starts_at)} · ${r.court} · ${r.short_code}`}</Text>
+          <Text variant="caption" tone="muted">{`${pf.when(r.starts_at)} · ${r.court} · ${r.short_code}`}</Text>
           <Text variant="caption" tone="muted">{t("paisa.row.final", { final: pkr(r.final), received: pkr(r.received) })}</Text>
         </View>
         <View style={{ alignItems: "flex-end", gap: 6, maxWidth: "45%" }}>
@@ -98,7 +98,7 @@ export function DaybookRow({ r, t, onPress }: { r: PaisaDaybookRow; t: PT; onPre
       <View style={{ flex: 1, gap: 2 }}>
         <Text variant="bodyBold">{r.player}</Text>
         <Text variant="caption" tone="muted">{[rowKind(r, t), methodLabel(r.method, t), r.by].filter(Boolean).join(" · ")}</Text>
-        <Text variant="caption" tone="muted">{`${r.short_code} · ${t("paisa.lenden.slotDay", { date: formatShortDate(`${r.slot_business_date}T12:00:00+05:00`) })}`}</Text>
+        <Text variant="caption" tone="muted">{`${r.short_code} · ${t("paisa.lenden.slotDay", { date: pf.date(r.slot_business_date) })}`}</Text>
       </View>
       <View style={{ alignItems: "flex-end", gap: 2 }}>
         <Text variant="bodyStrong" tone={r.amount < 0 ? "danger" : "primary"}>{`${r.amount < 0 ? "−" : "+"}${pkr(Math.abs(r.amount))}`}</Text>
@@ -111,7 +111,7 @@ export function DaybookRow({ r, t, onPress }: { r: PaisaDaybookRow; t: PT; onPre
 export function DayHeader({ date, total, t }: { date: string; total: number; t: PT }) {
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: space[2], paddingHorizontal: space[3], paddingTop: space[4], paddingBottom: space[2], flexWrap: "wrap" }} testID="paisa-lenden-day">
-      <Text variant="bodyBold">{formatShortDate(`${date}T12:00:00+05:00`)}</Text>
+      <Text variant="bodyBold">{pf.date(date)}</Text>
       <Text variant="meta" tone="muted">{t("paisa.lenden.dayTotal", { amount: pkr(total) })}</Text>
     </View>
   );
@@ -176,7 +176,7 @@ export function TakePaymentSheet({ p, t, venueName, onClose, onSaved }: { p: Pai
       <Text variant="label">{t("paisa.players.oldestFirst")}</Text>
       <PaisaCard style={{ backgroundColor: palette.ground }}>
         {plan.map((b) => (
-          <Line key={b.booking_id} label={`${b.short_code} · ${formatShortDate(b.starts_at)}`} value={`${pkr(b.part)} / ${pkr(b.due)}`} />
+          <Line key={b.booking_id} label={`${b.short_code} · ${pf.day(b.starts_at)}`} value={`${pkr(b.part)} / ${pkr(b.due)}`} />
         ))}
       </PaisaCard>
       {excess ? (

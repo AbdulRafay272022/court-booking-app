@@ -37,9 +37,8 @@ export function PaisaV2Page() {
   const ledger = perms.can("view_ledger");
   const tabs: PaisaTab[] = ledger ? ["bookings", "lenden", "players", "kaam"] : perms.can("mark_refunds") ? ["kaam"] : [];
   const tab: PaisaTab = tabs.includes(place.tab) ? place.tab : (tabs[0] ?? "bookings");
-  // a refund notification lands on Kaam > Wapas dena, whose list opens that booking itself
-  const refundLanding = place.tab === "kaam" && (place.group === "refund_due" || place.group === "refund_not_got");
-  const [sheetId, setSheetId] = useState<string | null>(params.get("open") === "1" && !refundLanding ? params.get("booking") : null);
+  // a notification (refund -> Kaam > Wapas dena, history -> Bookings) opens its booking in the Paisa sheet (contract 6.1)
+  const [sheetId, setSheetId] = useState<string | null>(params.get("open") === "1" ? params.get("booking") : null);
   const [range, setRange] = useState<PaisaRangeState>({ period: PAISA_DEFAULT_PERIOD, from: pktDateString(), to: pktDateString(), courtId: "" });
   const [exporting, setExporting] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);

@@ -32,6 +32,8 @@ export interface Booking {
    * or "player" (self-check-in via the venue's printed QR). Null until checked in. */
   checked_in_by: "owner" | "player" | null;
   created_at: string;
+  /** ledger v2 (contract 6.3): a late cancel kept this advance ("Cancel · advance rakha"); 0 otherwise */
+  advance_kept_pkr?: number;
 }
 
 export interface PaymentInstructions {

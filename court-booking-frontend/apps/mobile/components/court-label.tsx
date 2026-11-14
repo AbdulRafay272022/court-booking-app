@@ -1,9 +1,10 @@
 import { Text, type TextProps } from "react-native";
+import { sportLabel } from "@court-booking/types";
 
 /** "Court 1 · Padel" -- the ONE way a court's name is shown next to its sport. Sport is optional because a few API payloads
  * (approvals, refunds, waitlist) only carry the court's name; callers look the sport up where they can. */
 export function courtLabel(name: string, sport?: string | null): string {
-  return sport ? `${name} · ${sport}` : name;
+  return sport ? `${name} · ${sportLabel(sport)}` : name;
 }
 
 /** Text version. Pass the same className/style you would pass to a plain <Text>. */

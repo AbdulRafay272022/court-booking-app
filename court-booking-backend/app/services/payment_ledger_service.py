@@ -173,10 +173,17 @@ class PaymentLedgerService:
         delta = target_pkr - paid_before
         if delta == 0:
             return None, paid_before, paid_before
+        # ledger v2 (founder 14 Nov): a downward correction counts under the method of the payment it lowers, never "Doosra"
+        last_method = await self.db.scalar(
+            select(PaymentEntry.method)
+            .where(PaymentEntry.booking_id == booking.id, PaymentEntry.kind == EntryKind.PAYMENT, PaymentEntry.amount_pkr > 0,
+                   PaymentEntry.method.in_([PaymentMethod.CASH_AT_VENUE, PaymentMethod.BANK_TRANSFER_PROOF]))
+            .order_by(PaymentEntry.created_at.desc()).limit(1)
+        )
         entry = PaymentEntry(
             booking_id=booking.id,
             amount_pkr=delta,
-            method=PaymentMethod.CASH_AT_VENUE if delta > 0 else PaymentMethod.OTHER,
+            method=PaymentMethod.CASH_AT_VENUE if delta > 0 else (last_method or PaymentMethod.CASH_AT_VENUE),
             kind=EntryKind.PAYMENT if delta > 0 else EntryKind.CORRECTION,
             recorded_by=recorded_by.id if recorded_by else None,
             note=note_up if delta > 0 else note_down,

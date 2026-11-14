@@ -280,3 +280,9 @@ test("venue card data: real fields only, rating hidden without reviews, null pri
   assert.equal(formatDistance(23_400), "23 km");
   assert.ok(placeholderIndex("v1") >= 0 && placeholderIndex("v1") < 4);
 });
+
+test("ledger v2: a late cancel that kept the advance reads 'Cancel · advance rakha' (contract 6.3)", () => {
+  assert.equal(statusPill({ status: "cancelled", cancelled_by: "player", advance_kept_pkr: 1000 }, "ru").label, "Cancel · advance rakha");
+  assert.equal(statusPill({ status: "cancelled", cancelled_by: "player", advance_kept_pkr: 1000 }, "en").label, "Cancelled · advance kept");
+  assert.equal(statusPill({ status: "cancelled", cancelled_by: "player", advance_kept_pkr: 0 }, "ru").label, "Aap ne cancel kiya");
+});

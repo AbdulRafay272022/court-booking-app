@@ -48,15 +48,16 @@ export function paisaV2Href(tab: PaisaTab, group?: PaisaTaskKey | null, keep: Re
 }
 
 /** Whole rupees, never a float on screen. */
+/** "PKR 1,234"; a negative amount keeps its sign ("−PKR 2,000"), same as mobile, so a number never flips between apps. */
 export function pkrText(n: number): string {
   const v = Math.round(n);
-  return `PKR ${Math.abs(v).toLocaleString("en-US")}`;
+  return `${v < 0 ? "−" : ""}PKR ${Math.abs(v).toLocaleString("en-US")}`;
 }
 
 /** "+ PKR 1,000" / "− PKR 500" (a real minus sign). */
 export function signedPkr(n: number): string {
   if (n === 0) return pkrText(0);
-  return `${n > 0 ? "+" : "−"} ${pkrText(n)}`;
+  return `${n > 0 ? "+" : "−"} ${pkrText(Math.abs(n))}`;
 }
 
 /** Digits only ("1,500" / "PKR 1500" -> 1500); NaN when empty or not a whole number. */

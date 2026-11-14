@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { moneyStatusKey, taskKey, type PaisaDueItem, type PaisaKey, type PaisaTaskGroup, type PaisaTaskKey } from "@court-booking/types";
+import { moneyStatusKey, taskKey, type PaisaBookingRow, type PaisaDueItem, type PaisaKey, type PaisaTaskGroup, type PaisaTaskKey } from "@court-booking/types";
 
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -13,7 +13,6 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useMyPermissions } from "@/lib/use-my-permissions";
 import { parseQueueFilter } from "@/lib/queue-filter";
 import { useSearchParams } from "next/navigation";
-import { BookingDetail } from "@/components/owner/booking-detail";
 import { DueDoneDialog, NoShowReverseDialog, type ReverseTarget } from "@/components/owner/money-dialogs";
 import { RefundsTab } from "@/components/owner/paisa/refunds-tab";
 import { BankTab } from "@/components/owner/paisa/bank-tab";
@@ -45,7 +44,6 @@ export function KaamTab({ venueId, focus, onOpenBooking }: { venueId?: string; f
   const [error, setError] = useState<string | null>(null);
   const [reverse, setReverse] = useState<ReverseTarget | null>(null);
   const [doneFor, setDoneFor] = useState<PaisaDueItem | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!focus || !q.data) return;
@@ -99,7 +97,8 @@ export function KaamTab({ venueId, focus, onOpenBooking }: { venueId?: string; f
                   <PrimaryButton label={pt("paisa.act.waive")} tone="ghost" busy={busy === `w${d.id}`} onClick={() => void run(`w${d.id}`, () => api.phase3.decideShort(d.id, "waive"))} />
                 </>
               ) : null}
-              {g.key === "due_collect" && perms.can("record_payments") ? <PrimaryButton label={pt("paisa.players.take")} onClick={() => setDoneFor(d)} /> : null}
+              {/* founder 14 Nov: Baqi wasooli records the money; "Raqam lein" is only the dispute decision */}
+              {g.key === "due_collect" && perms.can("record_payments") ? <PrimaryButton label={pt("paisa.act.record")} onClick={() => setDoneFor(d)} /> : null}
             </div>
           </div>
         ));
@@ -120,9 +119,9 @@ export function KaamTab({ venueId, focus, onOpenBooking }: { venueId?: string; f
           </div>
         ));
       case "refund_due":
-        return <RefundsTab v2={{}} />;
+        return <RefundsTab v2={{ onOpenBooking, openLinked: !perms.can("view_ledger") }} />;
       case "refund_not_got":
-        return g.count ? <RefundsTab v2={{ notGotOnly: true }} /> : null;
+        return g.count ? <RefundsTab v2={{ notGotOnly: true, onOpenBooking }} /> : null;
       case "bank_check":
         return (
           <>
@@ -152,12 +151,7 @@ export function KaamTab({ venueId, focus, onOpenBooking }: { venueId?: string; f
           </div>
         );
       case "attendance":
-        return g.items.map((r) => (
-          <button key={r.booking_id} type="button" onClick={() => setDetailId(r.booking_id)} className={`${card} cursor-pointer text-left`} data-testid="kaam-attendance-item">
-            <span className="font-bold">{r.player}</span>
-            <span className="text-[13px] text-owner-ink-muted">{`${fmt.when(r.starts_at)} · ${r.court} · ${r.short_code} · ${pt(moneyStatusKey(r.money_status))}`}</span>
-          </button>
-        ));
+        return g.items.map((r) => <AttendanceRow key={r.booking_id} r={r} className={card} onOpen={() => onOpenBooking(r.booking_id)} />);
     }
   };
 
@@ -205,7 +199,67 @@ export function KaamTab({ venueId, focus, onOpenBooking }: { venueId?: string; f
           }}
         />
       ) : null}
-      {detailId ? <BookingDetail bookingId={detailId} onClose={() => setDetailId(null)} onChanged={() => void refreshPaisa(qc)} /> : null}
+    </div>
+  );
+}
+
+/** Hazri lagayein (founder 14 Nov): "Khel liya" / "Nahi aaye" right on the row. "Khel liya" with money still to take asks once
+ * whether the rest came (cash) or not (it stays Due); it never records money on its own. "Nahi aaye" asks to confirm. */
+function AttendanceRow({ r, className, onOpen }: { r: PaisaBookingRow; className: string; onOpen: () => void }) {
+  const t = useT();
+  const pt = usePaisaT();
+  const fmt = useFmt();
+  const qc = useQueryClient();
+  const perms = useMyPermissions();
+  const [ask, setAsk] = useState<null | "rest" | "noshow">(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function run(key: string, fn: () => Promise<unknown>) {
+    setBusy(key);
+    setError(null);
+    try {
+      await fn();
+      setAsk(null);
+      await refreshPaisa(qc);
+    } catch (e) {
+      setError(friendlyErrorMessage(e, t));
+    } finally {
+      setBusy(null);
+    }
+  }
+  const rest = r.due_at_slot;
+  const yes = () => run("yes", () => api.owners.markCompletion(r.booking_id, { result: "yes" }));
+  return (
+    <div className={className} data-testid="kaam-attendance-item">
+      <button type="button" onClick={onOpen} className="flex cursor-pointer flex-wrap items-baseline justify-between gap-2 text-left">
+        <span className="font-bold">{r.player}</span>
+        {rest > 0 ? <span className="text-[15px] font-extrabold tabular-nums">{pkrText(rest)}</span> : null}
+      </button>
+      <span className="text-[13px] text-owner-ink-muted">{`${fmt.when(r.starts_at)} · ${r.court} · ${r.short_code} · ${pt(moneyStatusKey(r.money_status))}`}</span>
+      {ask === "rest" ? (
+        <div className="flex flex-col gap-2">
+          <b className="text-[14px]">{pt("paisa.att.restQ", { amount: pkrText(rest) })}</b>
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton label={pt("paisa.att.restYes")} busy={busy === "yes"} onClick={() => void yes()} testId="att-rest-yes" />
+            <PrimaryButton label={pt("paisa.att.restNo")} tone="ghost" busy={busy === "no"} onClick={() => void run("no", () => api.owners.markCompletion(r.booking_id, { result: "no", received_now: 0 }))} testId="att-rest-no" />
+            <PrimaryButton label={pt("paisa.act.cancelForm")} tone="ghost" onClick={() => setAsk(null)} />
+          </div>
+        </div>
+      ) : ask === "noshow" ? (
+        <div className="flex flex-col gap-2">
+          <b className="text-[14px]">{pt("paisa.att.noshowQ")}</b>
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton label={pt("paisa.att.noshowYes")} busy={busy === "ns"} onClick={() => void run("ns", () => api.bookings.noShow(r.booking_id))} testId="att-noshow-yes" />
+            <PrimaryButton label={pt("paisa.act.cancelForm")} tone="ghost" onClick={() => setAsk(null)} />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {perms.can("record_payments") ? <PrimaryButton label={pt("paisa.act.played")} busy={busy === "yes"} onClick={() => (rest > 0 ? setAsk("rest") : void yes())} testId="att-played" /> : null}
+          {perms.can("check_in") || perms.can("record_payments") ? <PrimaryButton label={pt("paisa.act.noshow")} tone="ghost" onClick={() => setAsk("noshow")} testId="att-noshow" /> : null}
+        </div>
+      )}
+      <ErrorText text={error} />
     </div>
   );
 }

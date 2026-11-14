@@ -150,8 +150,21 @@ def statement(ctx: Ctx, books: list[Booking]) -> dict:
     return out
 
 
+METHOD_KEY = {PaymentMethod.CASH_AT_VENUE: "cash", PaymentMethod.BANK_TRANSFER_PROOF: "transfer"}
+
+
+def method_key(e: PaymentEntry) -> str:
+    """cash | transfer | other, as resolved by _entries (a correction counts under the method of what it corrects)."""
+    return getattr(e, "_paisa_method", None) or METHOD_KEY.get(e.method, "other")
+
+
 async def _entries(db, booking_ids: list[uuid.UUID], start: date | None = None, end: date | None = None) -> list[tuple]:
-    """(entry, bucket) for these bookings, bucket = the kind a correction counts under (the kind of what it reverses)."""
+    """(entry, bucket) for these bookings, bucket = the kind a correction counts under (the kind of what it reverses).
+
+    Founder 14 Nov: a correction / reversal is counted under the METHOD of the entry it corrects (cash or transfer), never
+    "Doosra"; "Doosra" is only for old method=other payments. A legacy correction with no link (old "Booking completed:
+    owner says X received", written as method=other) lowers the booking's latest payment before it, so it takes that
+    payment's method. The resolved method is on method_key(e)."""
     if not booking_ids:
         return []
     q = select(PaymentEntry).where(PaymentEntry.booking_id.in_(booking_ids))
@@ -159,14 +172,33 @@ async def _entries(db, booking_ids: list[uuid.UUID], start: date | None = None, 
         q = q.where(PaymentEntry.money_business_date >= start, PaymentEntry.money_business_date <= end)
     rows = list((await db.scalars(q.order_by(PaymentEntry.created_at))).all())
     targets = {r.reverses_entry_id for r in rows if r.reverses_entry_id}
-    kinds = {}
+    linked: dict = {}
     if targets:
-        kinds = dict((await db.execute(select(PaymentEntry.id, PaymentEntry.kind).where(PaymentEntry.id.in_(targets)))).all())
+        linked = {i: (k, m) for i, k, m in (await db.execute(
+            select(PaymentEntry.id, PaymentEntry.kind, PaymentEntry.method).where(PaymentEntry.id.in_(targets)))).all()}
+    loose = {r.booking_id for r in rows if r.kind == EntryKind.CORRECTION and not r.reverses_entry_id and r.method == PaymentMethod.OTHER}
+    paid_before: dict = defaultdict(list)
+    if loose:
+        for bid, at, m in (await db.execute(
+                select(PaymentEntry.booking_id, PaymentEntry.created_at, PaymentEntry.method)
+                .where(PaymentEntry.booking_id.in_(loose), PaymentEntry.kind == EntryKind.PAYMENT,
+                       PaymentEntry.method.in_([PaymentMethod.CASH_AT_VENUE, PaymentMethod.BANK_TRANSFER_PROOF]))
+                .order_by(PaymentEntry.created_at))).all():
+            paid_before[bid].append((at, m))
     out = []
     for e in rows:
         bucket = e.kind
-        if e.kind == EntryKind.CORRECTION and e.reverses_entry_id and kinds.get(e.reverses_entry_id) not in (None, EntryKind.CORRECTION):
-            bucket = kinds[e.reverses_entry_id]
+        method = METHOD_KEY.get(e.method, "other")
+        if e.kind == EntryKind.CORRECTION and e.reverses_entry_id and e.reverses_entry_id in linked:
+            k, m = linked[e.reverses_entry_id]
+            if k != EntryKind.CORRECTION:
+                bucket = k
+            method = METHOD_KEY.get(m, method)
+        elif e.kind == EntryKind.CORRECTION and e.method == PaymentMethod.OTHER:
+            before = [m for at, m in paid_before.get(e.booking_id, []) if at <= e.created_at]
+            if before:
+                method = METHOD_KEY[before[-1]]
+        e._paisa_method = method
         out.append((e, bucket))
     return out
 
@@ -175,7 +207,7 @@ def money_in(pairs: list[tuple]) -> dict:
     out = {"cash": 0, "transfer": 0, "other": 0, "refunds_paid": {"cash": 0, "transfer": 0, "other": 0, "total": 0},
            "credit_in": 0, "credit_out": 0, "net": 0}
     for e, bucket in pairs:
-        method = {PaymentMethod.CASH_AT_VENUE: "cash", PaymentMethod.BANK_TRANSFER_PROOF: "transfer"}.get(e.method, "other")
+        method = method_key(e)
         if bucket in (EntryKind.PAYMENT, EntryKind.CORRECTION):
             out[method] += e.amount_pkr
         elif bucket == EntryKind.REFUND:
@@ -315,7 +347,7 @@ async def booking_detail(db, venue: Venue, booking_id: uuid.UUID, actor: User, p
     history = []
     for e, bucket in pairs:
         history.append({"at": e.created_at, "business_date": e.money_business_date, "type": "entry", "kind": e.kind, "bucket": bucket,
-                        "method": e.method.value, "amount": e.amount_pkr, "by": who(e.recorded_by), "note": e.note, "id": e.id,
+                        "method": {"cash": "cash_at_venue", "transfer": "bank_transfer_proof"}.get(method_key(e), e.method.value), "amount": e.amount_pkr, "by": who(e.recorded_by), "note": e.note, "id": e.id,
                         "reversible": owner and e.kind == EntryKind.PAYMENT and e.amount_pkr > 0 and e.id not in reversed_ids})
     for a in adjs:
         history.append({"at": a.created_at, "business_date": ctx.bdate(a.created_at), "type": "adjustment", "kind": a.kind,
@@ -386,7 +418,7 @@ async def daybook(db, venue: Venue, court_ids, period: str, start, end, *, show:
     rows = []
     if show in ("money", "with_deductions"):
         for e, bucket in await _entries(db, list(by_id), d0, d1):
-            m = {PaymentMethod.CASH_AT_VENUE: "cash", PaymentMethod.BANK_TRANSFER_PROOF: "transfer"}.get(e.method, "other")
+            m = method_key(e)
             if method and m != method:
                 continue
             if person and e.recorded_by != person:
@@ -424,7 +456,7 @@ async def daybook(db, venue: Venue, court_ids, period: str, start, end, *, show:
             else:
                 tout += -r["amount"]
             if r["method"] == "cash" and r["bucket"] in (EntryKind.PAYMENT, EntryKind.CORRECTION):
-                cash_by[r["by"] or "System"] += r["amount"]
+                cash_by[r["by"] or ""] += r["amount"]  # "" = nobody recorded (old rows): the screens say "Pata nahi (purana)"
     out_days = []
     for d in sorted(days, reverse=True):
         lst = sorted(days[d], key=lambda r: r["at"], reverse=True)
@@ -432,7 +464,7 @@ async def daybook(db, venue: Venue, court_ids, period: str, start, end, *, show:
         out_days.append({"date": d, "total": total, "rows": lst})
     return {"range": {"from": d0, "to": d1}, "days": out_days,
             "footer": {"in": tin, "out": tout, "net": tin - tout,
-                       "cash_by": [{"name": k, "amount": v} for k, v in sorted(cash_by.items(), key=lambda kv: -kv[1]) if v]}}
+                       "cash_by": [{"name": k or None, "amount": v} for k, v in sorted(cash_by.items(), key=lambda kv: -kv[1]) if v]}}
 
 
 async def players(db, venue: Venue, q: str | None) -> dict:
@@ -508,7 +540,9 @@ async def tasks(db, settings, owner: User, actor: User, venue: Venue, perms: set
         not_got = [r for r in refunds if any(_tf(t, "player_response") == "not_received" and not _tf(t, "owner_reply")
                                              for t in (getattr(r, "transfers", None) or []))]
         now = datetime.now(timezone.utc)
-        rem = [r for r in refunds]
+        # founder 14 Nov: Wapas dena = only refunds with money still to send; a fully refunded one the player says never
+        # arrived lives in "Refund Nahi mila" only
+        rem = [r for r in refunds if round(float(getattr(r, "remaining_amount", 0) or 0)) > 0]
         total = 0
         oldest = 0
         for r in rem:

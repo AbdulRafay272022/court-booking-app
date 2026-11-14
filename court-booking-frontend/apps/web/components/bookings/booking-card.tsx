@@ -4,7 +4,7 @@ import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { refundPolicyShort, statusGroup, type Booking, type BookingStatus, type Review, type StatusGroup } from "@court-booking/types";
+import { refundPolicyShort, statusGroup, type Booking, type BookingStatus, type CancelPreview, type Review, type StatusGroup } from "@court-booking/types";
 import { courtLabel } from "@/components/court-label";
 import { api } from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/error-messages";
@@ -70,11 +70,11 @@ function StatusIcon({ name, size = 13 }: { name: IconName; size?: number }) {
  * The booking's status pill. The words come from the shared honest mapping (statusPill in @court-booking/ui-tokens): "Pakki ✓"
  * only for `booked`, Hold / Venue check while waiting, and who cancelled (player / venue / expired) for cancelled bookings.
  */
-export function StatusPill({ booking, dark = false }: { booking: Pick<Booking, "status" | "cancelled_by" | "cancellation_reason">; dark?: boolean }) {
+export function StatusPill({ booking, dark = false }: { booking: Pick<Booking, "status" | "cancelled_by" | "cancellation_reason" | "advance_kept_pkr">; dark?: boolean }) {
   const lang = useFlLang();
   const meta = STATUS_META[booking.status];
   const style = GROUP_STYLE[statusGroup(booking.status)];
-  const spec = honestStatus({ status: booking.status, cancelled_by: booking.cancelled_by, cancellation_reason: booking.cancellation_reason }, lang);
+  const spec = honestStatus({ status: booking.status, cancelled_by: booking.cancelled_by, cancellation_reason: booking.cancellation_reason, advance_kept_pkr: booking.advance_kept_pkr }, lang);
   return (
     <span
       data-testid="status-pill"
@@ -224,20 +224,12 @@ function useBookingView(booking: Booking, onChanged: () => void) {
   const flLang = useFlLang();
   const refundLine = court ? refundPolicyShort(venueQuery.data ?? court, flLang) : null;
 
+  // ledger v2 (contract 6.3): the cancel sheet reads cancel-preview; a late cancel says "Advance PKR X wapas nahi hoga" first
+  const [cancelPreview, setCancelPreview] = useState<CancelPreview | null>(null);
   async function handleCancel() {
     if (ledgerV2) {
       try {
-        const p = await api.bookings.cancelPreview(booking.id);
-        const msg =
-          p.mode === "keep"
-            ? pt("paisa.cancel.keep", { amount: pkrText(p.keep_pkr) })
-            : p.mode === "refund"
-              ? t("bookings.cancel.confirmPaid", { amount: formatPKR(p.refund_pkr) })
-              : t("bookings.cancel.confirmUnpaid");
-        if (!confirm(msg)) return;
-        await api.bookings.cancel(booking.id, undefined, { acceptKeepAdvance: p.mode === "keep" });
-        if (p.mode === "refund") alert(t("bookings.cancel.doneRefund", { amount: formatPKR(p.refund_pkr) }));
-        onChanged();
+        setCancelPreview(await api.bookings.cancelPreview(booking.id));
       } catch (e) {
         alert(friendlyErrorMessage(e));
       }
@@ -270,6 +262,17 @@ function useBookingView(booking: Booking, onChanged: () => void) {
     policyNote,
     refundLine,
     handleCancel,
+    cancelDialog: cancelPreview ? (
+      <PlayerCancelDialog
+        booking={booking}
+        preview={cancelPreview}
+        onClose={() => setCancelPreview(null)}
+        onDone={() => {
+          setCancelPreview(null);
+          onChanged();
+        }}
+      />
+    ) : null,
     goPay: () => router.push(`/booking/${booking.id}/pay`),
     goDetail: () => router.push(`/booking/${booking.id}/done`),
     goCheckin: () => router.push(`/booking/${booking.id}/checkin`),
@@ -344,6 +347,7 @@ export function BookingTags({
 export function BookingCard({ booking, review, onChanged }: { booking: Booking; review?: Review; onChanged: () => void }) {
   const t = useT();
   const fmt = useFmt();
+  const pt = usePaisaT();
   const v = useBookingView(booking, onChanged);
   const group = statusGroup(booking.status);
   const style = GROUP_STYLE[group];
@@ -437,7 +441,11 @@ export function BookingCard({ booking, review, onChanged }: { booking: Booking; 
           <p className="text-[13px] leading-snug text-fl-muted" data-testid="booking-refund-line">{v.refundLine}</p>
         ) : null}
         {booking.status === "completed" ? <RateGame booking={booking} review={review} onChanged={onChanged} /> : null}
+        {booking.status === "cancelled" && (booking.advance_kept_pkr ?? 0) > 0 ? (
+          <p className="text-[13px] font-semibold text-fl-night" data-testid="booking-advance-kept">{pt("paisa.pcancel.keptLine", { amount: pkrText(booking.advance_kept_pkr ?? 0) })}</p>
+        ) : null}
       </div>
+      {v.cancelDialog}
     </article>
   );
 }
@@ -517,6 +525,7 @@ export function NextBookingCard({ booking, onChanged, showPaid = false }: { book
         </div>
         {v.policyNote && group === "confirmed" ? <p className="text-[13px] text-white/75">{v.policyNote}</p> : null}
       </div>
+      {v.cancelDialog}
     </section>
   );
 }
@@ -532,5 +541,54 @@ function BringLine({ balance }: { balance: number }) {
       <span className="font-extrabold text-white">{amount}</span>
       {after}
     </p>
+  );
+}
+
+/** Ledger v2 player cancel (contract 6.3): what happens to the money, from cancel-preview, then a clear Yes / No. A late cancel
+ * (mode "keep") says "Advance PKR X wapas nahi hoga" before the player confirms; the slot opens again either way. */
+function PlayerCancelDialog({ booking, preview, onClose, onDone }: { booking: Booking; preview: CancelPreview; onClose: () => void; onDone: () => void }) {
+  const pt = usePaisaT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const line =
+    preview.mode === "keep"
+      ? pt("paisa.cancel.keep", { amount: pkrText(preview.keep_pkr) })
+      : preview.mode === "refund"
+        ? pt("paisa.pcancel.refund", { amount: pkrText(preview.refund_pkr) })
+        : pt("paisa.pcancel.clear");
+  async function confirmCancel() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.bookings.cancel(booking.id, undefined, { acceptKeepAdvance: preview.mode === "keep" });
+      onDone();
+    } catch (e) {
+      setError(friendlyErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="pcancel-title"
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }} data-testid="player-cancel-dialog">
+      <div className="flex w-full max-w-md flex-col gap-4 rounded-2xl bg-white p-5 text-fl-night shadow-xl">
+        <h2 id="pcancel-title" className="text-[20px] font-extrabold">{pt("paisa.pcancel.title")}</h2>
+        <p data-testid="player-cancel-line"
+          className={`rounded-xl px-4 py-3 text-[15px] font-bold ${preview.mode === "keep" ? "border-[1.5px] border-fl-danger bg-fl-danger-tint text-fl-night" : "bg-fl-booked-bg"}`}>
+          {line}
+        </p>
+        {preview.mode === "keep" ? <p className="text-[13.5px] text-fl-muted">{pt("paisa.pcancel.lateNote")}</p> : null}
+        {error ? <p role="alert" className="text-[13.5px] font-semibold text-fl-danger">{error}</p> : null}
+        <div className="flex flex-col gap-2">
+          <button type="button" onClick={() => void confirmCancel()} disabled={busy} data-testid="player-cancel-yes"
+            className="min-h-12 cursor-pointer rounded-xl bg-fl-danger px-4 text-[15px] font-extrabold text-white disabled:opacity-60">
+            {pt("paisa.pcancel.yes")}
+          </button>
+          <button type="button" onClick={onClose} className="min-h-12 cursor-pointer rounded-xl border border-fl-line px-4 text-[15px] font-bold">
+            {pt("paisa.pcancel.no")}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

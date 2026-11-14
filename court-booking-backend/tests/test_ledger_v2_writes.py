@@ -200,9 +200,14 @@ async def test_cancel_rules(client, setup, make_user, make_auth_headers):
     r = await client.post(f"{API}/bookings/{late.id}/cancel", headers=ph, json={})
     assert r.status_code == 409 and r.json()["error"]["code"] == "CANCEL_KEEPS_ADVANCE"
     assert r.json()["error"]["details"]["advance_pkr"] == 1000
-    assert (await client.post(f"{API}/bookings/{late.id}/cancel", headers=ph, json={"accept_keep_advance": True})).status_code == 200
+    r = await client.post(f"{API}/bookings/{late.id}/cancel", headers=ph, json={"accept_keep_advance": True})
+    assert r.status_code == 200 and r.json()["booking"]["advance_kept_pkr"] == 1000
     _b, m = await money(sf, late.id)
     assert (m.final, m.refund_due, m.status) == (1000, 0, "cancel_kept")
+    # contract 6.3: the player's own screens say "Cancel · advance rakha" with the amount; the early (refunded) one does not
+    assert (await client.get(f"{API}/bookings/{late.id}", headers=ph)).json()["advance_kept_pkr"] == 1000
+    mine = {b["id"]: b["advance_kept_pkr"] for b in (await client.get(f"{API}/bookings/mine", headers=ph)).json()}
+    assert mine[str(late.id)] == 1000 and mine[str(early.id)] == 0
 
     venue_cancel = await booking(sf, court, price=5000, paid=1000, hours_from_now=3)
     r = await client.post(f"{API}/bookings/{venue_cancel.id}/cancel", headers=oh, json={})
@@ -420,3 +425,61 @@ async def test_kaam_refund_not_got_counts_an_unanswered_not_received(client, set
     assert r.status_code == 200, r.text
     t = (await client.get(f"{API}/owners/paisa/tasks", headers=oh, params=params)).json()
     assert groups(t)["refund_not_got"] == 0
+
+
+async def test_corrections_count_under_the_method_they_correct_never_doosra(client, setup):
+    """Founder 14 Nov: "Doosra" is only for old method=other payments. A reversal counts under its original's method; an old
+    unlinked correction (method=other, "Booking completed: owner says X received") lowers the cash/transfer paid before it.
+    The day book's "Cash kis ne liya" never says "System": nobody recorded = null (the screens say "Pata nahi (purana)")."""
+    from app.models.payment_entry import EntryKind
+
+    sf, court, oh = setup["sf"], setup["court"], setup["oh"]
+    vid = str(setup["venue"].id)
+    cash = await booking(sf, court, price=5000, paid=3000, status=BookingStatus.COMPLETED, hours_from_now=-3)
+    tr = await booking(sf, court, price=4000, paid=2000, status=BookingStatus.COMPLETED, hours_from_now=-5,
+                       method=PaymentMethod.BANK_TRANSFER_PROOF)
+    async with sf() as s:
+        # the legacy shape: an unlinked "other" correction lowering the cash
+        s.add(PaymentEntry(booking_id=cash.id, amount_pkr=-1000, method=PaymentMethod.OTHER, kind=EntryKind.CORRECTION,
+                           note="Booking completed: owner says PKR 2,000 received"))
+        from app.services.payment_ledger_service import recompute_payment_totals
+
+        await recompute_payment_totals(s, await s.get(Booking, cash.id))  # stamps the business day, as every writer does
+        await s.commit()
+        tr_entry = (await s.scalars(select(PaymentEntry.id).where(PaymentEntry.booking_id == tr.id))).one()
+    r = await client.post(f"{API}/payment-entries/{tr_entry}/reverse", headers=oh, json={"reason": "galat booking"})
+    assert r.status_code in (200, 201), r.text
+    mi = (await client.get(f"{API}/owners/paisa/summary", headers=oh, params={"venue_id": vid, "period": "this_month"})).json()["money_in"]
+    assert (mi["cash"], mi["transfer"], mi["other"]) == (2000, 0, 0)
+    day = (await client.get(f"{API}/owners/paisa/daybook", headers=oh, params={"venue_id": vid, "period": "this_month"})).json()
+    methods = {(row["note"], row["method"]) for d in day["days"] for row in d["rows"]}
+    assert ("Booking completed: owner says PKR 2,000 received", "cash") in methods
+    assert day["footer"]["cash_by"] == [{"name": None, "amount": 2000}]  # the fixture rows have no recorder
+    # the write path: a "Nahi" completion lowering the paid amount takes the payment's method too
+    r = await client.post(f"{API}/owners/bookings/{cash.id}/completion", headers=oh, json={"result": "no", "received_pkr": 1500})
+    assert r.status_code == 200, r.text
+    async with sf() as s:
+        last = (await s.scalars(select(PaymentEntry).where(PaymentEntry.booking_id == cash.id).order_by(PaymentEntry.created_at.desc()))).first()
+    assert last.amount_pkr == -500 and last.method == PaymentMethod.CASH_AT_VENUE
+
+
+async def test_wapas_dena_lists_only_refunds_still_owed(client, setup, make_user, make_auth_headers):
+    """Founder 14 Nov: a fully refunded booking the player says never arrived is in "Refund Nahi mila" only, not Wapas dena."""
+    from app.models.refund_flow import RefundTransfer
+
+    sf, court, oh = setup["sf"], setup["court"], setup["oh"]
+    player = await make_user("+923001110194", name="Player")
+    ph = await make_auth_headers(player)
+    b = await booking(sf, court, price=5000, paid=1000, hours_from_now=48, player_id=player.id)
+    assert (await client.post(f"{API}/bookings/{b.id}/cancel", headers=ph, json={})).status_code == 200
+    params = {"venue_id": str(setup["venue"].id)}
+    t = (await client.get(f"{API}/owners/paisa/tasks", headers=oh, params=params)).json()
+    refund = next(g for g in t["groups"] if g["key"] == "refund_due")["items"][0]
+    r = await client.post(f"{API}/owners/refunds/{refund['id']}/mark-refunded", headers=oh, data={"reference": "TX-9"})
+    assert r.status_code == 200, r.text
+    async with sf() as s:
+        tid = (await s.scalars(select(RefundTransfer.id).where(RefundTransfer.booking_id == b.id))).one()
+    assert (await client.post(f"{API}/refund-transfers/{tid}/answer", headers=ph, json={"answer": "not_received"})).status_code == 200
+    t = (await client.get(f"{API}/owners/paisa/tasks", headers=oh, params=params)).json()
+    counts = {g["key"]: g["count"] for g in t["groups"]}
+    assert counts["refund_due"] == 0 and counts["refund_not_got"] == 1

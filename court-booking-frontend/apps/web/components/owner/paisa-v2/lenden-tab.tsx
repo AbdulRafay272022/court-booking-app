@@ -144,7 +144,7 @@ export function LendenTab({ venueId, courts, onOpenBooking }: { venueId?: string
             <div className="flex flex-col gap-1 border-t border-owner-border-light pt-2">
               <span className="px-2 text-[12.5px] font-bold text-owner-ink-muted">{pt("paisa.lenden.cashBy")}</span>
               {f.cash_by.map((c) => (
-                <MoneyLine key={c.name} label={c.name} value={pkrText(c.amount)} />
+                <MoneyLine key={c.name ?? "-"} label={c.name ?? pt("paisa.lenden.unknownPerson")} value={pkrText(c.amount)} />
               ))}
             </div>
           ) : null}

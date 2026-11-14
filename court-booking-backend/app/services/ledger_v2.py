@@ -378,3 +378,41 @@ async def keep_refund_as_credit(db, d: PaymentDispute, amount: int, *, actor: Us
     await db.flush()
     await recompute_payment_totals(db, booking)
     return e
+
+
+KEEP_REASON = "Cancel: advance rakha"
+
+
+async def advance_kept(db, bookings) -> dict:
+    """booking id -> the advance a late cancel kept (contract 6.3: the player's "Cancel · advance rakha"). Only bookings
+    with a live 'cancellation' adjustment written by a keep-the-advance cancel; the kept amount is what was paid."""
+    from app.models.booking import BookingStatus
+    from app.services.money import Adj, active_adjustments
+
+    ids = [b.id for b in bookings if b.status == BookingStatus.CANCELLED]
+    if not ids:
+        return {}
+    rows = (await db.scalars(select(BookingAdjustment).where(BookingAdjustment.booking_id.in_(ids)))).all()
+    by_booking: dict = {}
+    for a in rows:
+        by_booking.setdefault(a.booking_id, []).append(a)
+    out = {}
+    paid = {b.id: b.amount_paid for b in bookings}
+    for bid, adjs in by_booking.items():
+        live = {x.id for x in active_adjustments([Adj(a.id, a.kind, a.amount_pkr, a.reverses_adjustment_id) for a in adjs])}
+        if any(a.id in live and a.kind == AdjustmentKind.CANCELLATION and a.reason == KEEP_REASON for a in adjs):
+            out[bid] = max(round(float(paid.get(bid) or 0)), 0)
+    return out
+
+
+async def booking_out(db, bookings):
+    """BookingOut for the player's own screens, with advance_kept_pkr filled."""
+    from app.schemas.booking import BookingOut
+
+    kept = await advance_kept(db, bookings)
+    outs = []
+    for b in bookings:
+        o = BookingOut.model_validate(b)
+        o.advance_kept_pkr = kept.get(b.id, 0)
+        outs.append(o)
+    return outs

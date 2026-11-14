@@ -1,15 +1,28 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
-import { moneyStatusKey, moneyStatusTone, paisaT, type MoneyStatus, type PaisaKey } from "@court-booking/types";
+import { formatDateRelative, formatWhen, formatWhenRange, moneyStatusKey, moneyStatusTone, paisaNote, paisaT, type MoneyStatus, type PaisaKey } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
 import { alpha, palette, radius, space } from "@court-booking/ui-tokens";
 import { Pill, Text } from "@/components/ui";
 
 import { friendlyErrorMessage } from "@/lib/error-messages";
+import { SelectButton } from "@/components/overview/ui";
 import { formatPKR } from "@/lib/format";
 import { useOwnerLang } from "@/lib/owner-lang";
 
 /** Ledger v2 Paisa building blocks (mobile). Every label comes from packages/types paisa-text (ru default, en option). */
+
+/** Dates and system notes in the owner's language, through the SAME shared formatters web uses (founder 14 Nov: "Aaj, Kal,
+ * Budh 18 Nov" on both). Reads the language at call time; the screen re-renders on a change through usePT. */
+const lang = () => useOwnerLang.getState().lang;
+export const pf = {
+  when: (instant: string) => formatWhen(instant, new Date(), lang()),
+  whenRange: (start: string, end: string) => formatWhenRange(start, end, new Date(), lang()),
+  day: (instant: string) => formatDateRelative(instant, new Date(), lang()),
+  /** a "YYYY-MM-DD" business date */
+  date: (ymd: string) => formatDateRelative(`${ymd}T12:00:00+05:00`, new Date(), lang()),
+  note: (note: string | null | undefined) => paisaNote(note, lang()),
+};
 
 export type PT = (key: PaisaKey, vars?: Record<string, string | number>) => string;
 
@@ -125,5 +138,29 @@ export function GlassTile({ label, value, sub, onPress, testID }: { label: strin
     <Pressable testID={testID} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? "button" : undefined} accessibilityLabel={`${label} ${value}`} style={{ flexGrow: 1, flexBasis: "46%" }}>
       {body}
     </Pressable>
+  );
+}
+
+/** A day dropdown (founder 14 Nov: no rows of day chips). SelectButton shows the chosen day; tapping it opens the list right
+ * below, so it also works inside a sheet (no sheet on top of a sheet). `days` are "YYYY-MM-DD", newest first. */
+export function DaySelect({ label, days, value, onChange, testID }: { label?: string; days: string[]; value: string; onChange: (d: string) => void; testID?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ gap: space[2] }} testID={testID}>
+      <SelectButton label={label} value={pf.date(value)} onPress={() => setOpen((v) => !v)} />
+      {open ? (
+        <View accessibilityRole="radiogroup" style={{ borderRadius: radius.input, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.white, overflow: "hidden" }}>
+          {days.map((d, i) => {
+            const on = d === value;
+            return (
+              <Pressable key={d} onPress={() => { onChange(d); setOpen(false); }} accessibilityRole="radio" accessibilityState={{ selected: on }}
+                style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: space[4], borderTopWidth: i ? 1 : 0, borderTopColor: palette.line, backgroundColor: on ? palette.ground : palette.white }}>
+                <Text variant={on ? "bodyBold" : "body"}>{`${on ? "✓ " : ""}${pf.date(d)}`}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
   );
 }
