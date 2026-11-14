@@ -102,3 +102,10 @@ export function parseAmount(text: string): number | null {
   const n = Number(t);
   return n > 0 ? n : null;
 }
+
+/** The given keys of a route-params object that are set (for carrying params through a redirect). */
+export function pick(p: Record<string, string | undefined>, keys: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of keys) if (p[k]) out[k] = p[k] as string;
+  return out;
+}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
-import { router, useIsFocused } from "expo-router";
+import { router, useIsFocused, Redirect } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Download } from "lucide-react-native";
 import type { LedgerEntry } from "@court-booking/types";
@@ -19,6 +19,7 @@ import { useMyPermissions } from "@/lib/use-my-permissions";
 import { useFeatureFlags } from "@/lib/use-feature-flags";
 import { CorrectPaymentSheet } from "@/components/correct-payment-sheet";
 import { HeroLayout, PaisaSwitch } from "../_fl";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
 
 type RangeKey = "7d" | "30d" | "month";
 
@@ -44,9 +45,17 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
 
 const METHOD_LABEL: Record<string, string> = { bank_transfer_proof: "Bank", cash_at_venue: "Cash", other: "Kuch aur" };
 
+/** Ledger v2 (contract 6.2): with the flag on this route opens Paisa Bookings. */
+export default function LedgerScreen() {
+  const { v2, loaded } = useLedgerV2();
+  if (!loaded) return null;
+  if (v2) return <Redirect href={{ pathname: "/(owner)/(tabs)/paisa", params: { view: "bookings" } }} />;
+  return <LedgerScreenOld />;
+}
+
 /** OPaisa frame 1 (Ledger): every payment entry (GET /owners/ledger). The "Aaj" tile is `collected_today`, the SAME number
  * the Aaj hero shows. "Theek karein" reverses one entry (POST /payment-entries/{id}/reverse, flag split_payments). */
-export default function LedgerScreen() {
+function LedgerScreenOld() {
   const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();

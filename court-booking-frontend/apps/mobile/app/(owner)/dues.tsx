@@ -11,6 +11,8 @@ import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { OwnerHeader } from "./_fl";
 import { VenueMoneyHealth } from "@/components/money-health-card";
 import { DueDoneSheet } from "@/components/money-sheets";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
+import { Redirect } from "expo-router";
 
 const STATUS: Record<ShortPaymentDue["status"], string> = {
   awaiting_reply: "Player ke jawab ka intezar",
@@ -19,11 +21,19 @@ const STATUS: Record<ShortPaymentDue["status"], string> = {
   no_reply: "Player ne jawab nahi diya",
 };
 
+/** Ledger v2 (contract 6.2): with the flag on this route opens Paisa Players. */
+export default function DuesScreen() {
+  const { v2, loaded } = useLedgerV2();
+  if (!loaded) return null;
+  if (v2) return <Redirect href={{ pathname: "/(owner)/(tabs)/paisa", params: { view: "players" } }} />;
+  return <DuesScreenOld />;
+}
+
 /**
  * audit 2026-10-28 Phase 3 items 4 + 5: the venue's open dues (short payments not settled yet). "Ghalat hai" ones wait for the
  * owner's decision (collect / waive); any due can be marked done when the rest was received: cash (now) or transfer (screenshot to Approvals). Owner, or staff with view_ledger.
  */
-export default function DuesScreen() {
+function DuesScreenOld() {
   const { activeVenue, activeVenueId } = useOwnerVenues();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["owner-dues", activeVenueId], queryFn: () => api.phase3.dues(activeVenueId!), enabled: !!activeVenueId });

@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackHandler, Pressable, ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Svg, { Path } from "react-native-svg";
-import { Building2, CalendarX2, ChevronRight, Clock3, Grid2x2, IdCard, Landmark, RotateCcw, Star } from "lucide-react-native";
+import { Building2, CalendarX2, ChevronRight, Clock3, Grid2x2, IdCard, Landmark, RotateCcw, Star, UserX } from "lucide-react-native";
 import { alpha, palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Button, ErrorState, Pill, Screen, SegmentedToggle, Skeleton, Text, useToast } from "@/components/ui";
 import * as Location from "expo-location";
@@ -37,6 +37,7 @@ import { formatWhen } from "@/lib/format";
 import { NoAccess } from "@/components/no-access";
 import { moreItemAllowed, venueSettingsAccess } from "@/lib/owner-access";
 import { useMyPermissions } from "@/lib/use-my-permissions";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
 import { DayPicker, TimeField12 } from "@/components/time-fields";
 import { CancellationPolicyFields, CourtSetupFields } from "@/components/court-setup-fields";
 import {
@@ -66,13 +67,14 @@ function notify(title: string, body: string, tone: "success" | "danger" = "dange
 }
 
 /** OSettings hub board: one list, each row opens its own part of the settings (the old Venue / Courts toggle is gone). */
-type Section = "details" | "courts" | "blackout" | "timers" | "cancel" | "points" | "bank" | "cnic" | "photos";
+type Section = "details" | "courts" | "blackout" | "timers" | "cancel" | "noshow" | "points" | "bank" | "cnic" | "photos";
 const SECTION_TITLE: Record<Section, string> = {
   details: "Venue ki tafseel",
   courts: "Courts aur qeemat",
   blackout: "Band din (blackout)",
   timers: "Timers aur reminders",
   cancel: "Cancel policy",
+  noshow: "No-show par",
   points: "Points ki chhoot",
   bank: "Bank details",
   cnic: "Shanakht (CNIC)",
@@ -139,6 +141,7 @@ export default function VenueSettingsScreen() {
   if (perms.settled && !moreItemAllowed("venueSettings", perms.can, perms.isStaff)) return <NoAccess what="Venue settings" />;
   // Per section, what this account may change (the backend's own rules); the rest is shown read-only.
   const access = venueSettingsAccess(perms.can, perms.isStaff);
+  const { v2: ledgerV2 } = useLedgerV2();
 
   const status = activeVenue?.status;
   return (
@@ -170,7 +173,7 @@ export default function VenueSettingsScreen() {
           </View>
         ) : null}
         {/* OSettings board: the list sits right under the venue card; the detail banners follow it. */}
-        {!section && activeVenue && perms.settled ? <HubList rows={hubRows(activeVenue, courts.length, identity.data?.status)} onOpen={setSection} /> : null}
+        {!section && activeVenue && perms.settled ? <HubList rows={hubRows(activeVenue, courts.length, identity.data?.status, ledgerV2 && !perms.isStaff)} onOpen={setSection} /> : null}
         {!section && activeVenue?.missing_for_approval && activeVenue.missing_for_approval.length > 0 ? (
           // audit 2026-10-28 item 9: what the venue needs before the admin can approve it
           <Banner
@@ -217,6 +220,9 @@ export default function VenueSettingsScreen() {
                     initialAllowed={activeVenue.cancellation_allowed}
                     initialCutoff={activeVenue.cancellation_cutoff_hours}
                   />
+                ) : null}
+                {section === "noshow" ? (
+                  <NoShowChargeCard key={`noshow-${activeVenue.id}`} venueId={activeVenue.id} initial={(activeVenue as { no_show_charge?: string }).no_show_charge === "full" ? "full" : "advance"} />
                 ) : null}
                 {section === "timers" ? (
                   <BookingHorizonCard key={`horizon-${activeVenue.id}`} venueId={activeVenue.id} initialDays={activeVenue.booking_horizon_days} />
@@ -330,7 +336,7 @@ export default function VenueSettingsScreen() {
 type HubRow = { key: Section; label: string; sub: string; icon: ReactNode; warn?: boolean; quiet?: boolean };
 
 /** The hub rows with a one-line summary each (OSettings board). "Baqi" marks a row that still blocks or defaults something. */
-function hubRows(venue: Venue, courtCount: number, cnicStatus: string | undefined): HubRow[] {
+function hubRows(venue: Venue, courtCount: number, cnicStatus: string | undefined, ledgerV2: boolean): HubRow[] {
   const missing = new Set((venue.missing_for_approval ?? []).map((m) => MISSING_SECTION[m.code]).filter(Boolean));
   const unconfirmed = venue.unconfirmed_settings ?? [];
   const timersDefault = unconfirmed.some((u) => u.code !== "advance");
@@ -350,6 +356,10 @@ function hubRows(venue: Venue, courtCount: number, cnicStatus: string | undefine
     { key: "blackout", label: SECTION_TITLE.blackout, sub: "Court band karne ke din", icon: <CalendarX2 size={20} color={ink} />, quiet: true },
     { key: "timers", label: SECTION_TITLE.timers, sub: "Hold, reminders, auto-cancel, kitne din aage", icon: <Clock3 size={20} color={teal} />, warn: timersDefault },
     { key: "cancel", label: SECTION_TITLE.cancel, sub: policy, icon: <RotateCcw size={20} color={ink} />, quiet: true },
+    // ledger v2 (contract 2.2 / 6.2): what a no-show costs at this venue; owner only
+    ...(ledgerV2
+      ? [{ key: "noshow" as const, label: SECTION_TITLE.noshow, sub: NO_SHOW_LABEL[(venue as { no_show_charge?: string }).no_show_charge === "full" ? "full" : "advance"], icon: <UserX size={20} color={ink} />, quiet: true }]
+      : []),
     { key: "points", label: SECTION_TITLE.points, sub: venue.points_discount_enabled ? `On · PKR ${venue.points_discount_pkr ?? 500}` : "Off", icon: <Star size={20} color={ink} />, quiet: true },
     { key: "bank", label: SECTION_TITLE.bank, sub: bank?.bank ? `${bank.bank} · ****${(bank.account_number ?? "").slice(-4)}` : "Abhi nahi diye", icon: <Landmark size={20} color={ink} />, quiet: true, warn: missing.has("bank") },
     {
@@ -579,6 +589,55 @@ function VenueCancellationCard({ venueId, initialAllowed, initialCutoff }: { ven
       <CancellationPolicyFields allowed={allowed} cutoffHours={cutoff} onAllowedChange={setAllowed} onCutoffChange={setCutoff} />
       <PrimaryButton label="Cancel policy save karein" onPress={save} loading={saving} />
     </View>
+  );
+}
+
+const NO_SHOW_LABEL = { advance: "Advance rakhein, baqi charge nahi", full: "Poori raqam charge karein" } as const;
+
+/** ledger v2 (contract 2.2): 'advance' keeps what was paid and charges nothing more; 'full' leaves the rest due. Same as web. */
+function NoShowChargeCard({ venueId, initial }: { venueId: string; initial: "advance" | "full" }) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState<"advance" | "full">(initial);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api.venues.update(venueId, { no_show_charge: value } as Parameters<typeof api.venues.update>[1]);
+      await queryClient.invalidateQueries({ queryKey: ["owner-venues"] });
+      setMessage({ ok: true, text: "Save ho gaya." });
+    } catch (e) {
+      setMessage({ ok: false, text: friendlyErrorMessage(e) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard>
+      <SectionLabel>No-show par</SectionLabel>
+      <SegmentedToggle
+        options={[
+          { value: "advance", label: NO_SHOW_LABEL.advance },
+          { value: "full", label: NO_SHOW_LABEL.full },
+        ]}
+        value={value}
+        onChange={(v) => {
+          setMessage(null);
+          setValue(v as "advance" | "full");
+        }}
+        accessibilityLabel="No-show par"
+        testID="venue-noshow-choice"
+      />
+      {message ? (
+        <Text accessibilityRole="alert" variant="bodyBold" tone={message.ok ? "info" : "danger"}>
+          {message.text}
+        </Text>
+      ) : null}
+      <PrimaryButton label="Save karein" onPress={save} disabled={saving} loading={saving} testID="venue-noshow-save" />
+    </SectionCard>
   );
 }
 

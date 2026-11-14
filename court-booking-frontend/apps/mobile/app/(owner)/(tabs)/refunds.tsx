@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
-import { router, useIsFocused, useLocalSearchParams } from "expo-router";
+import { router, useIsFocused, useLocalSearchParams, Redirect } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TriangleAlert } from "lucide-react-native";
 import { refundBreakdown, type OwnerRefund } from "@court-booking/types";
@@ -22,6 +22,8 @@ import { BookingLinks } from "@/components/booking-links";
 import { RefundSheet } from "@/components/refund-sheet";
 import { RefundPayoutBlock } from "@/components/refund-payout-block";
 import { HeroLayout, PaisaSwitch } from "../_fl";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
+import { pick } from "@/lib/paisa-mobile";
 
 const DAY = 86400_000;
 
@@ -40,7 +42,16 @@ const REFUND_REASON_RU: Record<string, string> = {
   player_refund_request: "Player ne refund maanga",
 };
 
+/** Ledger v2 (contract 6.2): with the flag on this route opens Paisa Kaam (Wapas dena), keeping its params. */
 export default function RefundsScreen() {
+  const p = useLocalSearchParams<Record<string, string>>();
+  const { v2, loaded } = useLedgerV2();
+  if (!loaded) return null;
+  if (v2) return <Redirect href={{ pathname: "/(owner)/(tabs)/paisa", params: { view: "kaam", group: "refund_due", ...pick(p, ["date", "courts", "booking", "open"]) } }} />;
+  return <RefundsScreenOld />;
+}
+
+function RefundsScreenOld() {
   const tabRoom = useTabBarRoom();
   const t = useRoleTheme();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();

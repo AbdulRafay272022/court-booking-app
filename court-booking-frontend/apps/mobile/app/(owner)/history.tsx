@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, Redirect } from "expo-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { STAFF_ACTIVITY_KINDS, type HistoryStatusFilter, type StaffActivityKind } from "@court-booking/types";
 import { ApiError } from "@court-booking/api-client";
@@ -22,6 +22,8 @@ import { useLinkedDetail } from "@/lib/linked-booking";
 import { HistoryCard } from "@/components/overview/booking-card";
 import { DateChooserSheet, MultiSelectSheet, courtsSummary } from "@/components/overview/pickers";
 import { OutlineButton, SelectButton } from "@/components/overview/ui";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
+import { historyToPaisa } from "@/lib/paisa-mobile";
 
 type Preset = "aaj" | "kal" | "hafta" | "mahina" | "custom";
 
@@ -53,8 +55,17 @@ const STAFF_ACT_LABEL: Record<StaffActivityKind, string> = {
   created: "Bookings banayi", marked: "Mukammal ki", no_show: "Nahi aaye", check_in: "Check-in kiye", short: "Kam mila", cash: "Cash liya", transfer: "Transfer liye",
 };
 
-/** Bookings history: date range (presets + custom), courts, statuses, search; paginated card list with a totals strip. */
+/** Ledger v2 (contract 6.2): with the flag on this route opens Paisa Bookings, keeping its params. */
 export default function HistoryScreen() {
+  const p = useLocalSearchParams<Record<string, string>>();
+  const { v2, loaded } = useLedgerV2();
+  if (!loaded) return null;
+  if (v2) return <Redirect href={{ pathname: "/(owner)/(tabs)/paisa", params: { ...historyToPaisa(p) } as Record<string, string> }} />;
+  return <HistoryScreenOld />;
+}
+
+/** Bookings history: date range (presets + custom), courts, statuses, search; paginated card list with a totals strip. */
+function HistoryScreenOld() {
   const params = useLocalSearchParams<{ from?: string; to?: string; courts?: string; status?: string; q?: string; booking?: string; open?: string; staff?: string; act?: string; who?: string }>();
   const { activeVenue, activeVenueId, isLoading: venuesLoading } = useOwnerVenues();
   const perms = useMyPermissions();

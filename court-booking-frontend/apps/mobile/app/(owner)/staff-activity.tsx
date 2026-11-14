@@ -13,6 +13,8 @@ import { friendlyErrorMessage } from "@/lib/error-messages";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { OwnerHeader } from "./_fl";
 import { VenueMoneyHealth } from "@/components/money-health-card";
+import { usePT } from "@/components/paisa/kit";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
 
 const PRESETS = [7, 30, 90] as const;
 
@@ -23,6 +25,7 @@ const PRESETS = [7, 30, 90] as const;
  */
 export default function StaffActivityScreen() {
   const { activeVenue, activeVenueId } = useOwnerVenues();
+  const { v2 } = useLedgerV2();
   const [days, setDays] = useState<(typeof PRESETS)[number]>(30);
   const to = pktDateString();
   const from = addDays(to, -(days - 1));
@@ -72,7 +75,7 @@ export default function StaffActivityScreen() {
             Baqi raqam ke transfer jo venue par approve hue lekin bank mein nahi aaye. Faisla karein: staff se wasool ya player se baqi.
           </Text>
           {(data.bank_missing ?? []).map((m) => (
-            <BankMissingCard key={m.entry_id} m={m} />
+            <BankMissingCard key={m.entry_id} m={m} kaam={v2} />
           ))}
         </View>
       ) : null}
@@ -105,7 +108,9 @@ export default function StaffActivityScreen() {
                 {n.highlight ? <Text variant="meta" weight="bold" tone="danger">GPS: player venue par tha</Text> : null}
                 {n.player_replied ? <Text variant="body">{`Player ne kaha: main aaya tha${n.player_note ? ` ("${n.player_note}")` : ""}`}</Text> : null}
                 {n.owner_decision ? <Text variant="meta" tone="muted">{n.owner_decision === "reverse" ? "Aap ne no-show hata diya." : "Aap ne no-show rakha."}</Text> : null}
-                {n.reply_id && !n.owner_decision ? (
+                {n.reply_id && !n.owner_decision && v2 ? (
+                  <KaamLink group="noshow_reply" testID="sact-noshow-kaam" />
+                ) : n.reply_id && !n.owner_decision ? (
                   <NoShowDecision
                     replyId={n.reply_id}
                     bookingId={n.booking_id}
@@ -177,7 +182,7 @@ function PersonCard({ p, from, to }: { p: StaffActivityRow; from: string; to: st
 
 /** audit fixes 2026-10-31 (b): a balance transfer the bank never got. The owner chooses once: collect it from the staff member
  * (no player message) or ask the player (the normal short-payment flow). */
-function BankMissingCard({ m }: { m: StaffBankMissing }) {
+function BankMissingCard({ m, kaam }: { m: StaffBankMissing; kaam: boolean }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<"staff" | "player" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +216,12 @@ function BankMissingCard({ m }: { m: StaffBankMissing }) {
       <Text variant="meta" weight={open ? "bold" : undefined} tone={open ? "danger" : "muted"}>
         {`${m.approved_by_name ?? "?"} ne approve kiya, ${formatWhen(m.credited_at, new Date(), "ru")}`}
       </Text>
-      {open ? (
+      {open && kaam ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], paddingTop: space[1] }}>
+          <Text variant="meta" weight="bold" tone="danger">Faisla baqi</Text>
+          <KaamLink group="bank_check" testID="sact-bank-kaam" />
+        </View>
+      ) : open ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], paddingTop: space[1] }}>
           {m.approved_by_role === "staff" ? (
             <Button label="Staff se wasool karein" size="sm" loading={busy === "staff"} onPress={() => decide("staff")} testID="sact-bank-staff" />
@@ -223,6 +233,15 @@ function BankMissingCard({ m }: { m: StaffBankMissing }) {
       )}
       {error ? <Banner tone="danger" body={error} /> : null}
     </View>
+  );
+}
+
+/** Ledger v2 (contract 6.1/6.2): the decisions live in Paisa > Kaam; here only the status line and this link. */
+function KaamLink({ group, testID }: { group: "noshow_reply" | "bank_check"; testID: string }) {
+  const t = usePT();
+  return (
+    <Button label={t("paisa.act.openKaam")} size="sm" variant="soft" testID={testID}
+      onPress={() => router.push({ pathname: "/(owner)/(tabs)/paisa", params: { view: "kaam", group } } as never)} />
   );
 }
 
