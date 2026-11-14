@@ -1,0 +1,61 @@
+# Production stack on the shared AFTR web-server EC2 (13.233.73.99), deployed by .github/workflows/deploy.yml.
+# Copied to /opt/court-booking on the server at every deploy. Images come from ECR; the server never builds.
+#
+# Routing: the Caddy container (thesiscraftmentors) terminates TLS and proxies to the docker0 bridge IP
+#   khelo.13.233.73.99.sslip.io      -> 172.17.0.1:3100 (web)
+#   api.khelo.13.233.73.99.sslip.io  -> 172.17.0.1:8100 (backend)
+# Postgres is NOT published on any host port; only this compose network reaches it (host "db").
+name: court-booking
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: court-booking-db
+    restart: unless-stopped
+    env_file: .env.db
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "effective_cache_size=256MB", "-c", "work_mem=4MB",
+              "-c", "maintenance_work_mem=32MB", "-c", "max_connections=40"]
+    shm_size: 128mb
+    mem_limit: 384m
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ${ECR_REGISTRY}/court-booking-app-backend:${IMAGE_TAG:-latest}
+    # Fixed name: cron (court-booking.cron) runs the background jobs with `docker exec court-booking-backend ...`.
+    container_name: court-booking-backend
+    restart: unless-stopped
+    env_file: .env
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:8100:8000"
+      - "172.17.0.1:8100:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  web:
+    image: ${ECR_REGISTRY}/court-booking-app-web:${IMAGE_TAG:-latest}
+    container_name: court-booking-web
+    restart: unless-stopped
+    env_file: .env.web
+    mem_limit: 384m
+    ports:
+      - "127.0.0.1:3100:3000"
+      - "172.17.0.1:3100:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+    name: court-booking-pgdata

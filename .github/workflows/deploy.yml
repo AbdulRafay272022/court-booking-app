@@ -1,21 +1,14 @@
 name: Build, push, deploy
 
 # !!! A PUSH TO MAIN THAT CONTAINS A DATABASE MIGRATION RUNS IT ON PRODUCTION !!!
-# The deploy job's remote script (infra/scripts/remote-deploy.sh) runs `alembic upgrade head` from the new image before
-# the new backend starts. The project owner requires that a migration is NEVER pushed without their explicit "go" and a
-# fresh manual RDS snapshot. The `migration-guard` job below enforces it: it fails the run (nothing deploys) if any
-# migration file changed since the last successful deploy, unless a commit in that range has a line that is exactly 'Migration-Go: owner-approved'.
-
-# Runs on every push to main: builds both images, pushes them to ECR, then
-# (once the EC2_INSTANCE_ID Actions variable is set -- see the "deploy"
-# job's guard) pulls and restarts them on the EC2 instance via SSM Run
-# Command. There is no SSH path into the instance at all (no port 22, no
-# key pair) -- see infra/network.tf. The instance
-# itself never runs `docker build` -- a t3.micro's 1GB RAM isn't reliably
-# enough to build a Next.js app or the Python dependency set without
-# risking an OOM kill mid-build. Until the EC2 secrets exist, this
-# workflow still fully builds and pushes real images to ECR on every push
-# -- only the final restart step is skipped.
+# deploy/remote-deploy.sh runs `alembic upgrade head` from the new image before the new backend starts. The
+# `migration-guard` job fails the run (nothing deploys) if any migration file changed since the last successful deploy,
+# unless a commit in that range has a line that is exactly 'Migration-Go: owner-approved'. Take a DB backup first:
+#   sudo /opt/court-booking/db-backup.sh
+#
+# Every push to main: build backend + web images -> ECR, then SSM Run Command on the AFTR web-server EC2
+# (13.233.73.99) runs deploy/remote-deploy.sh from this commit. Keyless: GitHub OIDC -> IAM role, no secrets in GitHub.
+# App secrets live in SSM Parameter Store under /court-booking-app/ (see deploy/server-env.sh).
 
 on:
   push:
@@ -23,15 +16,21 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  id-token: write # OIDC -- see infra/oidc.tf. No AWS access keys stored anywhere.
+  id-token: write
   contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 env:
   AWS_REGION: ap-south-1
+  AWS_ROLE_ARN: arn:aws:iam::545908811041:role/github-actions-court-booking-deploy
+  INSTANCE_ID: i-0fe1dd19adfb072d6
+  # Baked into the web image's browser bundle at build time (NEXT_PUBLIC_*).
+  API_BASE_URL: https://api.khelo.13.233.73.99.sslip.io
 
 jobs:
-  # Blocks a deploy that would run a migration nobody approved. It compares against the last SUCCESSFUL deploy (not just
-  # this push's parent) so that a blocked migration keeps blocking later pushes until it is approved or removed.
   migration-guard:
     runs-on: ubuntu-latest
     permissions:
@@ -48,10 +47,11 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
-          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          BASE="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/$REPO/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1"             | python3 -c "import json,sys; r=json.load(sys.stdin)['workflow_runs']; print(r[0]['head_sha'] if r else '')" || true)"
+          BASE="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1" \
+            | python3 -c "import json,sys; r=json.load(sys.stdin)['workflow_runs']; print(r[0]['head_sha'] if r else '')" || true)"
           if [ -z "$BASE" ]; then BASE="$EVENT_BEFORE"; fi
           echo "checking migrations since the last successful deploy: ${BASE:-none} -> $SHA"
           bash infra/scripts/check-migration-guard.sh "$BASE" "$SHA"
@@ -68,14 +68,12 @@ jobs:
       - id: meta
         run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Log in to ECR
-        id: ecr-login
+      - id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push backend image
@@ -93,21 +91,12 @@ jobs:
       - name: Build and push web image
         uses: docker/build-push-action@v6
         with:
-          # Build context is the frontend WORKSPACE ROOT, not apps/web --
-          # this is an npm workspaces monorepo (apps/web depends on
-          # packages/types and packages/api-client), so `npm ci` needs the
-          # root package.json/package-lock.json in scope. See the comment
-          # at the top of apps/web/Dockerfile.
+          # npm workspaces monorepo: context is the frontend workspace root (see apps/web/Dockerfile).
           context: court-booking-frontend
           file: court-booking-frontend/apps/web/Dockerfile
           push: true
-          # Baked into the client bundle at build time (NEXT_PUBLIC_*), so it
-          # has to be known HERE, not on the instance. Set the API_BASE_URL
-          # Actions variable from `terraform output api_base_url`. Unset =
-          # the Dockerfile's localhost default, fine for a build-only run
-          # but the deployed site would call localhost from users' browsers.
           build-args: |
-            NEXT_PUBLIC_API_BASE_URL=${{ vars.API_BASE_URL || 'http://localhost:8000' }}
+            NEXT_PUBLIC_API_BASE_URL=${{ env.API_BASE_URL }}
           tags: |
             ${{ steps.ecr-login.outputs.registry }}/court-booking-app-web:${{ steps.meta.outputs.tag }}
             ${{ steps.ecr-login.outputs.registry }}/court-booking-app-web:latest
@@ -118,73 +107,35 @@ jobs:
     needs: [build-and-push, migration-guard]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Check deploy target is configured
-        id: check
-        env:
-          EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
-          API_BASE_URL: ${{ vars.API_BASE_URL }}
-        run: |
-          if [ -z "$EC2_INSTANCE_ID" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::EC2_INSTANCE_ID Actions variable is not set -- images were built and pushed to ECR, but the restart-on-EC2 step is skipped until the instance exists (terraform output ec2_instance_id). Expected until then."
-          elif [ -z "$API_BASE_URL" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::error::EC2_INSTANCE_ID is set but API_BASE_URL is not -- the web image just built would point browsers at localhost. Set API_BASE_URL (terraform output api_base_url), then re-run."
-            exit 1
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Configure AWS credentials (OIDC)
-        if: steps.check.outputs.configured == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Pull and restart on EC2 (SSM Run Command)
-        if: steps.check.outputs.configured == 'true'
+      - name: Deploy on EC2 (SSM Run Command)
         env:
-          EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+          RAW: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}
         run: |
           set -euo pipefail
-          # Assemble the remote script: variables, then this commit's compose
-          # file (the instance never clones the repo), then the deploy steps.
-          {
-            echo "export AWS_REGION='${AWS_REGION}' IMAGE_TAG='${IMAGE_TAG}'"
-            echo "mkdir -p /opt/court-booking-app"
-            echo "echo '$(base64 -w0 docker-compose.prod.yml)' | base64 -d > /opt/court-booking-app/docker-compose.prod.yml"
-            cat infra/scripts/remote-deploy.sh
-          } > remote.sh
-
-          # AWS-RunShellScript executes its commands with /bin/sh (dash on
-          # Ubuntu) no matter what shebang the payload carries -- and here the
-          # shebang in remote-deploy.sh is just a comment mid-file anyway. dash
-          # rejects `set -o pipefail`, which is worth keeping. So ship the
-          # script as base64, write it to a temp file, and run it with bash
-          # explicitly. (A file, not `bash -s` on stdin, so a command inside
-          # that reads stdin can't swallow the rest of the script.)
-          REMOTE_B64="$(base64 -w0 remote.sh)"
-          WRAPPER="$(printf 'f=$(mktemp); echo %s | base64 -d > "$f"; bash "$f"; rc=$?; rm -f "$f"; exit $rc' "'${REMOTE_B64}'")"
-          jq -n --arg cmd "$WRAPPER" '{commands: [$cmd]}' > params.json
-
+          # AWS-RunShellScript uses /bin/sh; fetch the real script and run it with bash.
+          CMD="curl -fsSL ${RAW}/deploy/remote-deploy.sh -o /tmp/court-booking-deploy.sh && IMAGE_TAG=${IMAGE_TAG} RAW=${RAW} bash /tmp/court-booking-deploy.sh"
+          PARAMS="$(jq -n --arg c "$CMD" '{commands: [$c]}')"
           CMD_ID="$(aws ssm send-command \
-            --instance-ids "$EC2_INSTANCE_ID" \
+            --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --comment "deploy ${IMAGE_TAG}" \
-            --parameters file://params.json \
+            --comment "court-booking deploy ${IMAGE_TAG}" \
+            --parameters "$PARAMS" \
+            --timeout-seconds 1200 \
             --query Command.CommandId --output text)"
           echo "SSM command: $CMD_ID"
-
-          # `wait` exits non-zero if the command fails or times out; on
-          # failure, show what the instance actually printed.
-          if ! aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$EC2_INSTANCE_ID"; then
-            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$EC2_INSTANCE_ID" \
-              --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output json
-            exit 1
-          fi
-          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$EC2_INSTANCE_ID" \
-            --query StandardOutputContent --output text
+          for _ in $(seq 1 120); do   # up to ~20 min
+            sleep 10
+            RES="$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" 2>/dev/null || echo '{"Status":"Pending"}')"
+            case "$(echo "$RES" | jq -r .Status)" in Pending|InProgress|Delayed) continue;; *) break;; esac
+          done
+          echo "$RES" | jq -r .StandardOutputContent
+          echo "$RES" | jq -r .StandardErrorContent
+          STATUS="$(echo "$RES" | jq -r .Status)"
+          echo "Status: $STATUS"
+          [ "$STATUS" = "Success" ]

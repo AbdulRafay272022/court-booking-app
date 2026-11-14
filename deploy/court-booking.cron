@@ -1,0 +1,25 @@
+# Court booking background jobs on the shared web-server. Installed to /etc/cron.d/court-booking by deploy/remote-deploy.sh. Each runs inside the running
+# backend container via app.jobs.runner. `flock -n` skips a run if the
+# previous one is still going, so a slow run never stacks up on itself.
+# Cron runs in UTC; PKT = UTC+5.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+
+# Expiry / no-show / escalation / waitlist cleanup: every minute.
+* * * * *      root flock -n /var/lock/cb-expiry.lock    docker exec court-booking-backend python -m app.jobs.runner expiry    >> /var/log/court-booking-jobs.log 2>&1
+# 2h-ahead booking reminders (idempotent via notification_log): every 10 min.
+*/10 * * * *   root flock -n /var/lock/cb-reminders.lock docker exec court-booking-backend python -m app.jobs.runner reminders >> /var/log/court-booking-jobs.log 2>&1
+# Owner WhatsApp daily digest: 08:00 PKT.
+0 3 * * *      root flock -n /var/lock/cb-digest.lock    docker exec court-booking-backend python -m app.jobs.runner digest    >> /var/log/court-booking-jobs.log 2>&1
+# Nightly slot_stats / growth materialization: 02:00 PKT.
+0 21 * * *     root flock -n /var/lock/cb-growth.lock    docker exec court-booking-backend python -m app.jobs.runner growth    >> /var/log/court-booking-jobs.log 2>&1
+# Web Push: delete subscriptions revoked > 30 days ago, revoke ones unseen for 90 days. Daily 04:00 PKT. Idempotent.
+0 23 * * *     root flock -n /var/lock/cb-webpush.lock   docker exec court-booking-backend python -m app.jobs.runner webpush-clean >> /var/log/court-booking-jobs.log 2>&1
+# Owner premium billing: lapse statuses, due invoices, reminders. Daily 03:00 PKT. A no-op until the `owner_billing_enforced`
+# flag is switched on, and safe to repeat.
+0 22 * * *     root flock -n /var/lock/cb-billing.lock   docker exec court-booking-backend python -m app.jobs.runner billing   >> /var/log/court-booking-jobs.log 2>&1
+# audit 2026-10-28 Phase 3: unanswered short-payment questions after 24 h (-20 points), points back on cancelled bookings.
+# A no-op while the short_payment_reply / player_points flags are off. Every 10 minutes.
+*/10 * * * *   root flock -n /var/lock/cb-short.lock     docker exec court-booking-backend python -m app.jobs.runner short-payments >> /var/log/court-booking-jobs.log 2>&1
+# Database backup -> S3 (court-booking-app-db-backups-<account>): daily 01:30 PKT.
+30 20 * * *    root flock -n /var/lock/cb-dbbackup.lock  /opt/court-booking/db-backup.sh >> /var/log/court-booking-backup.log 2>&1
