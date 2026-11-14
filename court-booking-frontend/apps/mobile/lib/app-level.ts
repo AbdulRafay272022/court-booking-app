@@ -11,11 +11,11 @@ import { create } from "zustand";
  */
 export const APP_LEVEL = 1;
 
-/** Store / APK page for when the OTA update cannot be applied (dev build, updates off, no update found, error). */
+/** The fixed "latest APK" link, for when the OTA update cannot be applied (dev build, updates off, no update found,
+ * error). Owners install the APK directly (no Play Store). Set EXPO_PUBLIC_UPDATE_URL (eas.json build env, and the same
+ * value when running `eas update`); until a real https link is set, the screen offers WhatsApp support instead. */
 export const UPDATE_URL =
-  process.env.EXPO_PUBLIC_UPDATE_URL ??
-  (Constants.expoConfig?.extra?.updateUrl as string | undefined) ??
-  "https://play.google.com/store/apps/details?id=com.aftrsolutions.khelo";
+  process.env.EXPO_PUBLIC_UPDATE_URL ?? (Constants.expoConfig?.extra?.updateUrl as string | undefined) ?? "";
 
 /** Set by the api client when the server answers 426 UPGRADE_REQUIRED; the root layout then shows "Update karein". */
 export const useUpgradeStore = create<{ required: boolean; setRequired: (v: boolean) => void }>((set) => ({
@@ -23,4 +23,4 @@ export const useUpgradeStore = create<{ required: boolean; setRequired: (v: bool
   setRequired: (required) => set({ required }),
 }));
 
-export { updateAction } from "./update-action";
+export { hasUpdateUrl, updateAction } from "./update-action";

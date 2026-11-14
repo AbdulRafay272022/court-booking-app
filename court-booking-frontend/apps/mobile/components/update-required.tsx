@@ -6,16 +6,29 @@ import { DownloadCloud } from "lucide-react-native";
 import { palette, space } from "@court-booking/ui-tokens";
 import { Banner, Button, RoleProvider, Text } from "@/components/ui";
 
-import { UPDATE_URL, updateAction } from "@/lib/app-level";
+import { UPDATE_URL, hasUpdateUrl, updateAction } from "@/lib/app-level";
+import { openSupportWhatsApp } from "@/lib/support";
 
 /**
  * "Update karein" (founder 14 Nov): shown to an owner / staff member when the server says this app is too old
  * (426 UPGRADE_REQUIRED). Roman Urdu + English together (the owner's language setting may not have loaded). The button takes
- * the OTA update itself and restarts the app; if there is none (or updates are off / a dev build), it opens the store / APK page.
+ * the OTA update itself and restarts the app; if there is none (or updates are off / a dev build), it opens the fixed
+ * "latest APK" link (owners install the APK directly), or WhatsApp support while that link is not set.
  */
 export function UpdateRequired() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+
+  // the fixed "latest APK" link (owners install the APK directly); until it is set, WhatsApp support
+  function openLatestApk() {
+    if (hasUpdateUrl(UPDATE_URL)) {
+      void Linking.openURL(UPDATE_URL).catch(() => {});
+      setNote("Naya APK download ho raha hai. Install ke baad app dobara kholein. / The new APK is downloading: install it, then reopen the app.");
+    } else {
+      openSupportWhatsApp("Salam, Khelo app update karni hai. Naya APK bhej dein.");
+      setNote("Naye APK ke liye Khelo support se WhatsApp par rabta karein. / Message Khelo support on WhatsApp for the new APK.");
+    }
+  }
 
   async function update() {
     setBusy(true);
@@ -29,11 +42,9 @@ export function UpdateRequired() {
           return;
         }
       }
-      await Linking.openURL(UPDATE_URL);
-      setNote("Store / APK page khul gaya. Install ke baad app dobara kholein. / The store page is open: install, then reopen the app.");
+      openLatestApk();
     } catch {
-      await Linking.openURL(UPDATE_URL).catch(() => {});
-      setNote("Update khud nahi aa saka, store / APK page se install karein. / The update could not load: install it from the store page.");
+      openLatestApk();
     } finally {
       setBusy(false);
     }
