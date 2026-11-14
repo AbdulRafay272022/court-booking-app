@@ -133,7 +133,11 @@ async def test_ghalat_hai_goes_to_the_owner_who_can_waive(client, db_session_fac
     assert (await client.post(f"/api/v1/owners/short-payments/{claim.id}/decide", json={"decision": "collect"}, headers=oh)).status_code == 409
     async with db_session_factory() as s:
         bk = await s.get(Booking, b.id)
-        assert float(bk.price) == 1000 and float(bk.balance_due) == 0
+        # ledger v2 (contract 2.5, flag-free): a waiver is a 'waived' adjustment, the price stays; nothing is due
+        from app.services.money import load_money
+
+        m = await load_money(s, bk)
+        assert float(bk.price) == 2000 and float(bk.balance_due) == 0 and m.waived == 1000 and m.due == 0
     assert (await client.get("/api/v1/owners/dues", params={"venue_id": str(venue.id)}, headers=oh)).json() == []
     # another owner cannot see or settle it
     other = await make_auth_headers(await make_user("+923003110048", role=UserRole.OWNER))

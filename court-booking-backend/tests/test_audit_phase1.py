@@ -327,7 +327,7 @@ async def _audit_rows(db_session_factory, action):
     from app.models.audit import AuditLog
 
     async with db_session_factory() as s:
-        return list((await s.execute(select(AuditLog).where(AuditLog.action == action))).scalars().all())
+        return list((await s.execute(select(AuditLog).where(AuditLog.action == action).order_by(AuditLog.created_at))).scalars().all())
 
 
 async def _booked_walkin(client, owner_headers, court, phone, paid=0, hour=10):

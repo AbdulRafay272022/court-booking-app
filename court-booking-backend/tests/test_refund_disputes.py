@@ -293,7 +293,11 @@ async def test_disputed_due_kept_by_the_venue_is_waived_when_khelo_sides_with_th
         c = await s.get(ShortPaymentClaim, claim.id)
         b = await s.get(Booking, booking.id)
         assert c.resolution == "waived" and c.resolved_at is not None
-        assert float(b.price) == 3000.0 and float(b.balance_due) == 0.0
+        # ledger v2 (contract 2.5, flag-free): Khelo's "player is right" is a 'waived' adjustment, the price stays
+        from app.services.money import load_money
+
+        m = await load_money(s, b)
+        assert float(b.price) == 3500.0 and float(b.balance_due) == 0.0 and m.waived == 500 and m.due == 0
         assert (await s.execute(select(AuditLog).where(AuditLog.action == "escalation.decided"))).scalars().first() is not None
 
 
