@@ -9,6 +9,7 @@ import { useAuthStore } from "@/lib/auth-store";
 import { pollInterval } from "@/lib/polling";
 import { useOwnerVenues } from "@/lib/use-owner-venues";
 import { useMyPermissions } from "@/lib/use-my-permissions";
+import { useLedgerV2 } from "@/lib/use-ledger-v2";
 import { activeBarKey, ownerBarTabs, showWalkinFab, type OwnerBarKey } from "@/lib/owner-floodlight";
 
 export function badgeText(n: number): string {
@@ -33,6 +34,22 @@ export function useOwnerBadges(active = true) {
   return q.data ?? { approvals: 0, refunds: 0 };
 }
 
+/** ledger v2: the Paisa badge is the Kaam total (GET /owners/paisa/tasks; a mark_refunds-only staff member gets only the
+ * refund groups, so only their count). Same key as the Paisa screen, so both always agree. */
+export function usePaisaTasks(active = true) {
+  const { activeVenueId } = useOwnerVenues();
+  const { can } = useMyPermissions();
+  const { v2 } = useLedgerV2();
+  return useQuery({
+    queryKey: ["paisa-tasks", activeVenueId],
+    queryFn: () => api.paisa.tasks(activeVenueId),
+    enabled: v2 && !!activeVenueId && (can("view_ledger") || can("mark_refunds")),
+    refetchInterval: (query) => pollInterval(query, 30_000),
+    retry: false,
+    subscribed: active,
+  });
+}
+
 const ICON: Record<OwnerBarKey, IconComponent> = { aaj: CalendarDays, approvals: ShieldCheck, paisa: Wallet, aur: Ellipsis };
 
 /**
@@ -47,11 +64,16 @@ export function OwnerTabBar({ state, navigation }: BottomTabBarProps) {
   // Focus of the whole tab group in the owner Stack: false while walk-in, history, ... are pushed over the tabs.
   const tabsFocused = useIsFocused();
   const badges = useOwnerBadges(tabsFocused);
+  const { v2 } = useLedgerV2();
+  const tasks = usePaisaTasks(tabsFocused);
   const activeRoute = state.routes[state.index]?.name;
   const lit = activeBarKey(activeRoute);
   const staffPending = role === "staff" && !settled;
-  const tabs = staffPending ? ownerBarTabs(() => false) : ownerBarTabs(can);
-  const count: Partial<Record<OwnerBarKey, number>> = { approvals: badges.approvals, paisa: can("mark_refunds") ? badges.refunds : 0 };
+  const tabs = staffPending ? ownerBarTabs(() => false) : ownerBarTabs(can, v2);
+  const count: Partial<Record<OwnerBarKey, number>> = {
+    approvals: badges.approvals,
+    paisa: v2 ? tasks.data?.total ?? 0 : can("mark_refunds") ? badges.refunds : 0,
+  };
 
   const items: TabItem[] = tabs.map((t) => {
     const n = count[t.key] ?? 0;

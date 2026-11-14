@@ -11,7 +11,7 @@ type Can = (key: StaffPermissionKey) => boolean;
 
 /** Routes of the real Tabs navigator (app/(owner)/(tabs)/). "refunds" stays a tab route (deep links, notification paths)
  * but has no cell of its own: it lives under Paisa. */
-export type OwnerTabRoute = "today" | "approvals" | "refunds" | "ledger" | "more";
+export type OwnerTabRoute = "today" | "approvals" | "refunds" | "ledger" | "paisa" | "more";
 export type OwnerBarKey = "aaj" | "approvals" | "paisa" | "aur";
 
 export interface OwnerBarTab {
@@ -26,7 +26,7 @@ export interface OwnerBarTab {
  * Aaj / Approvals / Ledger read through view_ledger; Refunds needs mark_refunds. Paisa opens the Ledger when the account
  * may read it, else Refunds (a mark_refunds-only staff member), else it is hidden. "Aur" is always there.
  */
-export function ownerBarTabs(can: Can): OwnerBarTab[] {
+export function ownerBarTabs(can: Can, ledgerV2 = false): OwnerBarTab[] {
   const out: OwnerBarTab[] = [];
   if (can("view_ledger")) {
     out.push({ key: "aaj", route: "today", label: "Aaj" });
@@ -35,7 +35,9 @@ export function ownerBarTabs(can: Can): OwnerBarTab[] {
     // OStaffView board: check-in / walk-in staff get their own Aaj (two big actions), never the money board.
     out.push({ key: "aaj", route: "today", label: "Aaj" });
   }
-  if (can("view_ledger")) out.push({ key: "paisa", route: "ledger", label: "Paisa" });
+  // ledger v2 (flag ledger_v2): ONE Paisa route (Bookings / Len-den / Players / Kaam) for view_ledger and mark_refunds alike
+  if (ledgerV2 && (can("view_ledger") || can("mark_refunds"))) out.push({ key: "paisa", route: "paisa", label: "Paisa" });
+  else if (can("view_ledger")) out.push({ key: "paisa", route: "ledger", label: "Paisa" });
   else if (can("mark_refunds")) out.push({ key: "paisa", route: "refunds", label: "Paisa" });
   out.push({ key: "aur", route: "more", label: "Aur" });
   return out;
@@ -50,6 +52,7 @@ export function activeBarKey(route: string | undefined): OwnerBarKey | null {
       return "approvals";
     case "ledger":
     case "refunds":
+    case "paisa":
       return "paisa";
     case "more":
       return "aur";

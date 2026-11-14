@@ -18,6 +18,7 @@ export default function OwnerTabsLayout() {
       <Tabs.Screen name="approvals" />
       <Tabs.Screen name="refunds" />
       <Tabs.Screen name="ledger" />
+      <Tabs.Screen name="paisa" />
       <Tabs.Screen name="more" />
     </Tabs>
   );

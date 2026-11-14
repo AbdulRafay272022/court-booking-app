@@ -13,6 +13,9 @@ import { Banner, Button, Chip, Input, MoneyRows, Text } from "@/components/ui";
 import { parsePkr } from "@/lib/round2-format";
 import { BottomSheet, OutlineButton, PrimaryButton } from "@/components/overview/ui";
 import { ScreenshotThumb } from "@/components/screenshot-viewer";
+import { useAuthStore } from "@/lib/auth-store";
+import { useOwnerVenues } from "@/lib/use-owner-venues";
+import { Choice, usePT } from "@/components/paisa/kit";
 
 /** The four numbers, top to bottom, so "more than owed" is never shown without them. */
 export function RefundBreakdownCard({ b }: { b: RefundBreakdown }) {
@@ -33,7 +36,14 @@ type Picked = { uri: string; blob?: Blob; name: string; type: string };
 
 /** Round 2 (A10): record a refund the owner sent outside the app. Amount prefilled with what is still owed (max), a
  * "Poora PKR X" chip, reference required, screenshot optional, one submit only, then a summary. */
-export function RefundSheet({ refund, title, onClose, onDone }: { refund: OwnerRefund; title: string; onClose: () => void; onDone: () => void }) {
+export function RefundSheet({ refund, title, onClose, onDone, v2 = false }: { refund: OwnerRefund; title: string; onClose: () => void; onDone: () => void; v2?: boolean }) {
+  // ledger v2 (contract 2.6): "Kaise bheja?" Transfer (reference required) or Cash (note required); the owner may keep it as
+  // the player's credit instead ("Jama rakhein").
+  const pt = usePT();
+  const isStaff = useAuthStore((s) => s.user?.role) === "staff";
+  const { activeVenueId } = useOwnerVenues();
+  const [how, setHow] = useState<"transfer" | "cash">("transfer");
+  const [note, setNote] = useState("");
   const b = refundBreakdown(refund);
   const remaining = Math.round(b.remaining);
   const [amountText, setAmountText] = useState(String(remaining));
@@ -59,7 +69,7 @@ export function RefundSheet({ refund, title, onClose, onDone }: { refund: OwnerR
         : amountProblem === "empty" && amountText.trim() !== ""
           ? "Sirf poore rupay likhein (jaise 2000)."
           : null;
-  const refOk = isPlausibleRefundReference(reference);
+  const refOk = v2 && how === "cash" ? note.trim().length > 0 : isPlausibleRefundReference(reference);
   const canSubmit = !amountProblem && refOk && !busy;
 
   async function pickImage() {
@@ -82,7 +92,9 @@ export function RefundSheet({ refund, title, onClose, onDone }: { refund: OwnerR
     setServerError(null);
     try {
       const shot = picked ? (Platform.OS === "web" && picked.blob ? picked.blob : picked.uri) : undefined;
-      const saved = await api.owners.markRefundPaid(refund.id, reference.trim(), typed as number, shot, picked?.name, picked?.type);
+      const saved = v2
+        ? await api.owners.markRefundPaid(refund.id, how === "cash" ? "" : reference.trim(), typed as number, shot, picked?.name, picked?.type, { method: how, note: note.trim() || undefined })
+        : await api.owners.markRefundPaid(refund.id, reference.trim(), typed as number, shot, picked?.name, picked?.type);
       setDone(saved);
     } catch (e) {
       if (e instanceof ApiError && e.code === "REFUND_EXCEEDS_OWED_AMOUNT") {
@@ -162,6 +174,16 @@ export function RefundSheet({ refund, title, onClose, onDone }: { refund: OwnerR
             error={amountMessage}
           />
           {amountMessage ? <View testID="refund-amount-error" /> : null}
+          {v2 ? (
+            <View style={{ gap: space[2] }}>
+              <Text variant="label">{pt("paisa.refund.how")}</Text>
+              <Choice testID="refund-how" value={how} onChange={setHow} options={[{ value: "transfer", label: pt("paisa.rec.transfer") }, { value: "cash", label: pt("paisa.rec.cash") }]} />
+            </View>
+          ) : null}
+          {v2 && how === "cash" ? (
+            <Input label={pt("paisa.rec.note")} value={note} onChangeText={setNote} onBlur={() => setTouchedRef(true)}
+              error={touchedRef && !note.trim() ? pt("paisa.refund.noteNeeded") : null} testID="refund-note" />
+          ) : (
           <Input
             label="Reference (zaroori)"
             value={reference}
@@ -172,6 +194,7 @@ export function RefundSheet({ refund, title, onClose, onDone }: { refund: OwnerR
             autoCapitalize="characters"
             error={touchedRef && !refOk ? "Transaction ka reference likhein (kam az kam 4 harf ya number)." : null}
           />
+          )}
           <View style={{ gap: space[2] }}>
             <Text variant="label">Screenshot (zaroori nahi)</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3] }}>
@@ -187,6 +210,25 @@ export function RefundSheet({ refund, title, onClose, onDone }: { refund: OwnerR
             <Text variant="meta" weight="bold" tone="danger">
               {serverError}
             </Text>
+          ) : null}
+          {v2 && !isStaff && typed !== null && !amountProblem ? (
+            <Button
+              label={pt("paisa.act.credit")}
+              variant="soft"
+              size="sm"
+              testID="refund-keep-credit"
+              onPress={async () => {
+                setBusy(true);
+                setServerError(null);
+                try {
+                  await api.paisa.keepRefundAsCredit(refund.id, typed as number, activeVenueId);
+                  onDone();
+                } catch (e) {
+                  setServerError(friendlyErrorMessage(e));
+                  setBusy(false);
+                }
+              }}
+            />
           ) : null}
         </>
       )}
