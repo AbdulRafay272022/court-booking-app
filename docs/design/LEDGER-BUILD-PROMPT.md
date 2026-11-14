@@ -338,3 +338,70 @@ Step 6 ke baad RUK jao aur do:
 - tests ka nateeja aur check report dobara.
 Prod par kuch nahi, push nahi.
 ```
+
+## Screenshots review (14 Nov 2026)
+
+```
+Screenshots dekh liye. Kaam achha hai, hisaab barabar hai (Asal = Mila + Lena baqi + Slot par lena + Maaf − Wapas,
+aur Len-den footer Aaya − Gaya = Net). Waiver wala test badalna sahi tha: maaf karne par price nahi girti, flag OFF par bhi.
+
+Yeh theek karo (web aur mobile dono):
+
+A. Web aur mobile mein farq (ek cheez ek jaisi honi chahiye):
+1. "Doosra" web par +PKR 2,000, mobile par −PKR 2,000. Ek hi number aur nishan ho.
+   Aur yeh −2,000 / +2,000 hai kya? Corrections/reversals (S17 completion fix, S15 refund reopened) "Doosra"
+   tareeqe mein nahi jane chahiye; reversal apni asal entry ke tareeqe (cash/transfer) mein gina jaye.
+   "Doosra" sirf purani method=other payments ke liye. Batao kya nikla.
+2. Tareekh ka format: web "Aaj, Kal, Budh 18 Nov", mobile "Today, Wed 18 Nov, Fri 13 Nov". Dono par ru mein
+   Aaj / Kal / Budh ... (en mein Today / Wed). Ek hi helper.
+3. Kaam → Wapas dena: web par "Jama rakhein" + "Refund ho gaya", mobile par sirf "Refund ho gaya".
+   Mobile mein bhi "Jama rakhein" (owner).
+4. "Kis din mila" (Paisa darj): mobile par 7 din ke chips 3 lines mein, web par dropdown. Mobile bhi
+   SelectButton dropdown. Isi tarah Kaam → "Bank se mila lein" ke din web par chips hain: dropdown karo.
+
+B. Galtiyan:
+5. Wapas dena group mein "Baqi PKR 0" (Poora wapas, S15) wali booking nahi aani chahiye. Woh sirf
+   "Refund Nahi mila" mein rahe. Wapas dena = sirf jin par abhi paisa wapas dena baqi hai.
+6. Baqi wasooli group ka button "Raqam lein" ghalat hai (woh jhagre ka faisla hai). Yahan "Paisa darj karein"
+   ho (purana "Done (paisa mil gaya)"). "Raqam lein" sirf Hisaab par faisla mein.
+7. Len-den footer "Cash kis ne liya: System PKR 4,000". Cash koi insaan leta hai. Jin purani entries par
+   banda pata nahi unhein "Pata nahi (purana)" dikhao, System nahi.
+8. History mein English notes ("Advance credited at approval"). System ki har note ru + en label se aaye.
+   "History" heading bhi ru mein "Kya kya hua".
+9. Kaam cards par "History mein dekhein" link ab "Booking dekhein" ho (History screen ab Paisa → Bookings hai).
+10. "padel" chhote harf mein: sport ka naam label se ("Padel").
+
+C. Kaam ka page bohat lamba hai:
+11. Wapas dena aur Refund Nahi mila mein har refund ki transfer history poori khuli hai, aur S11/S15 dono groups
+    mein do dafa. Card compact rakho: naam, ID, wajah, baqi, buttons. Transfers aur jawab box "Details" ke andar,
+    sirf "Nahi mila" wale group mein jawab box khula.
+12. Hazri lagayein: row par seedhe "Khel liya" / "Nahi aaye" buttons.
+
+D. Test data: local test accounts ka password sirf local DB mein rahe. Kisi seed/script/commit mein na jaye.
+
+Phir: contract steps 7–9 (player cancel sheet, baqi redirects/notifications, poore tests). Sirf local.
+Ruk kar do: in fixes ke before/after screenshots (web + mobile), player ka "Advance PKR X wapas nahi hoga"
+cancel screen, tests ka nateeja, check report. Prod par kuch nahi, push nahi.
+```
+
+## Fixes review (14 Nov 2026)
+
+```
+Fixes dekh liye, achhe hain. Password wala lafz maine LEDGER-BUILD-PROMPT.md se hata diya hai (file update ho gayi), ab commit kar do.
+
+Dono confirm:
+1. "Khel liya" → "Abhi nahi": haan, "kam mila" flow chale aur player ko message jaye.
+2. "Staff se wasool" cash mein: haan, theek.
+
+3 chhoti cheezein:
+1. Kaam ke groups ki tarteeb web aur mobile par alag hai (web: Hisaab par faisla pehle, mobile: Hazri pehle).
+   Dono par ek hi tarteeb: Hisaab par faisla · No-show jawab · Wapas dena · Refund Nahi mila · Bank se mila lein ·
+   Screenshots · Hazri lagayein · Baqi wasooli.
+2. Bank se mila lein ke "nahi mila" card par "? ne approve kiya" aa raha hai. Banda na ho to "Khud (auto)" likho,
+   jaise neeche list mein hai.
+3. Player cancel sheet: "Venue ne darj kiya PKR 1,500" ki jagah "Aap ne diye PKR 1,500" (upar Paisa card jaisa).
+
+Phir contract ka step 10 (aakhri report) do: kya bana, kya flag ke peeche hai, prod par jane se pehle kya karna hai
+(prod ki copy par --dry-run + check, migration, backfill + flag ON ek saath, rollback ka tareeqa).
+Ruk jao. Prod par kuch nahi, push nahi.
+```
