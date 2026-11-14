@@ -503,7 +503,7 @@ function MarkRefundedDialog({
                   inputMode="decimal"
                   autoComplete="off"
                   aria-invalid={showAmountError}
-                  aria-describedby={`${amountHintId}${showAmountError ? ` ${amountErrId}` : ""}`}
+                  aria-describedby={[v2 ? "" : amountHintId, showAmountError ? amountErrId : ""].filter(Boolean).join(" ") || undefined}
                   className="h-11 min-w-0 flex-1 basis-32 px-3.5 rounded-lg border outline-none text-sm tabular-nums focus-visible:ring-2 focus-visible:ring-fl-teal"
                   style={{ borderColor: showAmountError ? DANGER : undefined }}
                   data-testid="refund-amount"
@@ -521,7 +521,8 @@ function MarkRefundedDialog({
                   {t("rfd.amount.full", { amount: formatPKR(maxOwed) })}
                 </button>
               </div>
-              <p id={amountHintId} className="text-[12px] text-owner-ink-faint">{t("rfd.amount.hint", { max: formatPKR(maxOwed) })}</p>
+              {/* ledger v2: no help text (the breakdown above already shows what is left) */}
+              {v2 ? null : <p id={amountHintId} className="text-[12px] text-owner-ink-faint">{t("rfd.amount.hint", { max: formatPKR(maxOwed) })}</p>}
               {showAmountError ? (
                 <p id={amountErrId} role="alert" data-testid="refund-amount-error" className="text-[13px] font-semibold" style={{ color: DANGER }}>
                   <span aria-hidden="true">! </span>
@@ -564,13 +565,13 @@ function MarkRefundedDialog({
                 required
                 aria-required="true"
                 aria-invalid={showRefError}
-                aria-describedby={`${refHintId}${showRefError ? ` ${refErrId}` : ""}`}
+                aria-describedby={[v2 ? "" : refHintId, showRefError ? refErrId : ""].filter(Boolean).join(" ") || undefined}
                 maxLength={80}
                 className="h-11 px-3.5 rounded-lg border outline-none text-sm focus-visible:ring-2 focus-visible:ring-fl-teal"
                 style={{ borderColor: showRefError ? DANGER : undefined }}
                 data-testid="refund-reference"
               />
-              <p id={refHintId} className="text-[12px] text-owner-ink-faint">{t("rfd.reference.hint")}</p>
+              {v2 ? null : <p id={refHintId} className="text-[12px] text-owner-ink-faint">{t("rfd.reference.hint")}</p>}
               {showRefError ? (
                 <p id={refErrId} role="alert" className="text-[13px] font-semibold" style={{ color: DANGER }}>
                   <span aria-hidden="true">! </span>

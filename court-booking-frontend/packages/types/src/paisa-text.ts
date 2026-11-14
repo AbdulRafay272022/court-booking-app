@@ -78,6 +78,13 @@ const RU = {
   "paisa.focusOnly": "Sirf ye booking",
   "paisa.staffFilter": "{who} ka kaam: {what}",
   "paisa.clearFilter": "Filter hatayein",
+  "paisa.staffAct.created": "Bookings banayi",
+  "paisa.staffAct.marked": "Mukammal ki",
+  "paisa.staffAct.no_show": "Nahi aaye",
+  "paisa.staffAct.check_in": "Check-in kiye",
+  "paisa.staffAct.short": "Kam mila",
+  "paisa.staffAct.cash": "Cash liya",
+  "paisa.staffAct.transfer": "Transfer liye",
   "paisa.loading": "Load ho raha hai",
   "paisa.row.final": "Asal {final} · Mila {received}",
 
@@ -302,6 +309,13 @@ const EN: Record<PaisaKey, string> = {
   "paisa.focusOnly": "Only this booking",
   "paisa.staffFilter": "{who}'s work: {what}",
   "paisa.clearFilter": "Clear filter",
+  "paisa.staffAct.created": "Bookings made",
+  "paisa.staffAct.marked": "Marked complete",
+  "paisa.staffAct.no_show": "No-shows",
+  "paisa.staffAct.check_in": "Checked in",
+  "paisa.staffAct.short": "Short paid",
+  "paisa.staffAct.cash": "Cash taken",
+  "paisa.staffAct.transfer": "Transfers taken",
   "paisa.loading": "Loading",
   "paisa.row.final": "Final {final} · Received {received}",
 
@@ -463,6 +477,8 @@ export const periodKey = (p: PaisaPeriod): PaisaKey => `paisa.period.${p}` as Pa
 export const tabKey = (t: PaisaTab): PaisaKey => `paisa.tab.${t}` as PaisaKey;
 export const moneyStatusKey = (s: MoneyStatus): PaisaKey => `ms.${s}` as PaisaKey;
 export const taskKey = (k: PaisaTaskKey): PaisaKey => `paisa.kaam.${k}` as PaisaKey;
+/** Staff ka kaam link (?staff=&act=): unknown acts fall back to the raw value. */
+export const staffActKey = (a: string): PaisaKey | null => (`paisa.staffAct.${a}` in RU ? (`paisa.staffAct.${a}` as PaisaKey) : null);
 export const deductionKey = (k: string): PaisaKey => `paisa.ded.${k}` as PaisaKey;
 
 /** The pill tone of a money status (text + colour, never colour alone). */

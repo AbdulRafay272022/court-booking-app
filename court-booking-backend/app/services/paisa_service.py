@@ -237,6 +237,14 @@ async def summary(db, venue: Venue, court_ids, period: str, start: date | None, 
     return out
 
 
+def _status_matches(m, money_status: str) -> bool:
+    """The Statement's "Refund due" box filters on the AMOUNT, not the pill: a cancelled (cancel_refund) or disputed booking
+    that still owes the player money is in that box's total, so it has to be in the list too."""
+    if money_status == "refund_due":
+        return m.refund_due > 0
+    return m.status == money_status
+
+
 async def bookings(db, venue: Venue, court_ids, period: str, start, end, *, q: str | None, money_status: str | None,
                    booking: uuid.UUID | None, only_ids: set[uuid.UUID] | None, page: int, page_size: int) -> dict:
     ctx = await Ctx(db, venue, court_ids).load()
@@ -261,7 +269,7 @@ async def bookings(db, venue: Venue, court_ids, period: str, start, end, *, q: s
                 hay = " ".join([ctx.player(b).lower(), (b.player_phone or ""), short_code(b.id).lower()])
                 if term not in hay and not (digits and digits in "".join(ch for ch in (b.player_phone or "") if ch.isdigit())):
                     continue
-            if money_status and ctx.money[b.id].status != money_status:
+            if money_status and not _status_matches(ctx.money[b.id], money_status):
                 continue
         rows.append(b)
     total = len(rows)

@@ -12,6 +12,7 @@ import {
   moneyStatusTone,
   pktDateString,
   periodKey,
+  staffActKey,
   type MoneyStatus,
   type PaisaPeriod,
   type PaisaStatement,
@@ -95,6 +96,8 @@ export function BookingsTab({
   const [status, setStatus] = useState<MoneyStatus | "">("");
   const [pages, setPages] = useState(1);
   const [staffFilter, setStaffFilter] = useState(staff);
+  const staffActK = staffFilter ? staffActKey(staffFilter.act) : null;
+  const staffActLabel = staffActK ? pt(staffActK) : (staffFilter?.act ?? "");
   const [months, setMonths] = useState(false);
 
   useEffect(() => {
@@ -198,7 +201,7 @@ export function BookingsTab({
       <div id="paisa-booking-list" className="flex scroll-mt-6 flex-col gap-3">
         {staffFilter ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-owner-accent-soft px-3 py-2 text-[13.5px]" data-testid="paisa-staff-banner">
-            <span>{pt("paisa.staffFilter", { who: staffFilter.who, what: staffFilter.act })}</span>
+            <span>{pt("paisa.staffFilter", { who: staffFilter.who, what: staffActLabel })}</span>
             <PrimaryButton label={pt("paisa.clearFilter")} tone="ghost" onClick={() => setStaffFilter(null)} />
           </div>
         ) : null}

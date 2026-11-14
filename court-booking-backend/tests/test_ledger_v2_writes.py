@@ -321,3 +321,21 @@ async def test_paisa_api_is_off_without_the_flag(client, make_user, make_venue, 
     venue = await make_venue(owner)
     r = await client.get(f"{API}/owners/paisa/tasks", headers=await make_auth_headers(owner), params={"venue_id": str(venue.id)})
     assert r.status_code == 403 and r.json()["error"]["code"] == "FEATURE_DISABLED"
+
+
+async def test_refund_due_filter_includes_cancelled_and_matches_the_box(client, setup, make_user, make_auth_headers):
+    """Statement "Refund due" box -> Bookings list: a cancelled booking still owed money (pill cancel_refund) is in the
+    box's total, so the refund_due filter must list it too (web gap 3, 14 Nov)."""
+    sf, court, oh = setup["sf"], setup["court"], setup["oh"]
+    player = await make_user("+923001110198", name="Player")
+    ph = await make_auth_headers(player)
+    cancelled = await booking(sf, court, price=5000, paid=500, hours_from_now=48, player_id=player.id)
+    assert (await client.post(f"{API}/bookings/{cancelled.id}/cancel", headers=ph, json={})).status_code == 200
+    over = await booking(sf, court, price=6000, paid=6500, status=BookingStatus.COMPLETED)
+    await booking(sf, court, price=5000, paid=5000, status=BookingStatus.COMPLETED)
+    vid = str(setup["venue"].id)
+    params = {"venue_id": vid, "period": "this_month"}
+    st = (await client.get(f"{API}/owners/paisa/summary", headers=oh, params=params)).json()["statement"]
+    rows = (await client.get(f"{API}/owners/paisa/bookings", headers=oh, params={**params, "money_status": "refund_due"})).json()
+    assert {i["booking_id"] for i in rows["items"]} == {str(cancelled.id), str(over.id)}
+    assert rows["totals"]["refund_due"] == st["refund_due"] == 1000
