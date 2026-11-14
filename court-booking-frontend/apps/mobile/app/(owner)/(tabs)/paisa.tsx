@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, View } from "react-native";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Redirect, router, useIsFocused, useLocalSearchParams } from "expo-router";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Search } from "lucide-react-native";
@@ -172,8 +172,18 @@ export default function PaisaScreen() {
       return out;
     }
     if (view === "players") return (players.data?.items ?? []).map((p) => ({ t: "player", key: `${p.key.player_id ?? p.key.phone ?? p.name}`, p }));
-    return orderedGroups(kaam.data, group).map((g) => ({ t: "group", key: g.key, g }));
-  }, [view, bookings.data, daybook.data, players.data, kaam.data, group]);
+    return orderedGroups(kaam.data).map((g) => ({ t: "group", key: g.key, g }));
+  }, [view, bookings.data, daybook.data, players.data, kaam.data]);
+
+  // a linked Kaam group (?group=, the Wapas dena tile, a notification) is scrolled into view; the order never changes
+  const listRef = useRef<FlashListRef<Item>>(null);
+  useEffect(() => {
+    if (view !== "kaam" || !group || !kaam.data) return;
+    const i = items.findIndex((it) => it.t === "group" && it.g.key === group);
+    if (i < 0) return;
+    const h = setTimeout(() => listRef.current?.scrollToIndex({ index: i, animated: true, viewOffset: 8 }), 300);
+    return () => clearTimeout(h);
+  }, [view, group, kaam.data, items]);
 
   if (loaded && !v2) return <Redirect href="/(owner)/(tabs)/ledger" />;
   if (settled && !full && !refundsOnly) return <NoAccess what="Paisa" withBack={false} />;
@@ -368,6 +378,7 @@ export default function PaisaScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: palette.ground }} testID="paisa-screen">
       <FlashList
+        ref={listRef}
         data={loadingList ? [] : items}
         keyExtractor={(it) => it.key}
         getItemType={(it) => it.t}

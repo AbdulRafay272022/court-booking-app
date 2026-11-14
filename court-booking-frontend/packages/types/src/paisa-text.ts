@@ -93,6 +93,7 @@ const RU = {
   "paisa.pcancel.clear": "Is booking par koi paisa nahi diya",
   "paisa.pcancel.lateNote": "Cancel ka waqt guzar gaya, is liye venue advance rakhega. Slot dobara khul jayega.",
   "paisa.pcancel.yes": "Haan, cancel karo",
+  "paisa.pcancel.paid": "Aap ne diye",
   "paisa.pcancel.no": "Nahi, booking rakho",
   "paisa.pcancel.keptLine": "Venue ne advance {amount} rakha",
   "paisa.staffAct.created": "Bookings banayi",
@@ -240,6 +241,8 @@ const RU = {
   "paisa.kaam.gps": "GPS: player venue par tha",
   "paisa.kaam.playerCame": "Player ne kaha: main aaya tha",
   "paisa.kaam.bankLine": "{code} · {player} · {amount} · {by} ne approve kiya",
+  "paisa.kaam.bankLineAuto": "{code} · {player} · {amount} · Khud (auto) approve hua",
+  "paisa.kaam.byAuto": "Khud (auto)",
   "paisa.kaam.screenshotsLine": "{n} screenshots approve hone baqi",
 
   "due.awaiting_reply": "Player ke jawab ka intezar (24 ghante)",
@@ -341,6 +344,7 @@ const EN: Record<PaisaKey, string> = {
   "paisa.pcancel.clear": "No money was paid on this booking",
   "paisa.pcancel.lateNote": "The cancellation window has passed, so the venue keeps the advance. The slot opens again.",
   "paisa.pcancel.yes": "Yes, cancel",
+  "paisa.pcancel.paid": "You paid",
   "paisa.pcancel.no": "No, keep it",
   "paisa.pcancel.keptLine": "The venue kept the advance ({amount})",
   "paisa.staffAct.created": "Bookings made",
@@ -488,6 +492,8 @@ const EN: Record<PaisaKey, string> = {
   "paisa.kaam.gps": "GPS: the player was at the venue",
   "paisa.kaam.playerCame": "Player says: I came",
   "paisa.kaam.bankLine": "{code} · {player} · {amount} · approved by {by}",
+  "paisa.kaam.bankLineAuto": "{code} · {player} · {amount} · approved automatically",
+  "paisa.kaam.byAuto": "Automatic",
   "paisa.kaam.screenshotsLine": "{n} screenshots waiting for approval",
 
   "due.awaiting_reply": "Waiting for the player's answer (24 hours)",

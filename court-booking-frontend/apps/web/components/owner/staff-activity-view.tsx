@@ -216,7 +216,7 @@ export function StaffActivityView({
                         {t("odash.sact.bank.line", { code: m.code, player: m.player_name ?? t("odash.sact.player"), amount: formatPKR(m.amount_pkr) })}
                       </span>
                       <span className={m.decision ? "text-owner-ink-muted" : "font-bold text-red-700"}>
-                        {t("odash.sact.bank.by", { name: m.approved_by_name ?? "?", when: fmt.when(m.credited_at) })}
+                        {t("odash.sact.bank.by", { name: m.approved_by_name ?? t("odash.bank.auto"), when: fmt.when(m.credited_at) })}
                       </span>
                     </div>
                     {m.decision ? (

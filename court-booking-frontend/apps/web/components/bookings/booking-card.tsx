@@ -573,6 +573,12 @@ function PlayerCancelDialog({ booking, preview, onClose, onDone }: { booking: Bo
       onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }} data-testid="player-cancel-dialog">
       <div className="flex w-full max-w-md flex-col gap-4 rounded-2xl bg-white p-5 text-fl-night shadow-xl">
         <h2 id="pcancel-title" className="text-[20px] font-extrabold">{pt("paisa.pcancel.title")}</h2>
+        {preview.paid_pkr > 0 ? (
+          <p className="flex items-baseline justify-between gap-3 text-[15px]" data-testid="player-cancel-paid">
+            <span className="text-fl-muted">{pt("paisa.pcancel.paid")}</span>
+            <b className="tabular-nums">{pkrText(preview.paid_pkr)}</b>
+          </p>
+        ) : null}
         <p data-testid="player-cancel-line"
           className={`rounded-xl px-4 py-3 text-[15px] font-bold ${preview.mode === "keep" ? "border-[1.5px] border-fl-danger bg-fl-danger-tint text-fl-night" : "bg-fl-booked-bg"}`}>
           {line}

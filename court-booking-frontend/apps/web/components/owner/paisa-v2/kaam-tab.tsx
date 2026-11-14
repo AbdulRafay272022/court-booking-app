@@ -128,7 +128,8 @@ export function KaamTab({ venueId, focus, onOpenBooking }: { venueId?: string; f
             {g.items.map((m) => (
               <div key={m.entry_id} className={`${card} border-l-4 border-l-owner-danger`} data-testid="kaam-bank-item">
                 <span className="text-[14px] font-semibold">
-                  {pt("paisa.kaam.bankLine", { code: m.code, player: m.player_name ?? pt("paisa.detail.player"), amount: pkrText(m.amount_pkr), by: m.approved_by_name ?? "?" })}
+                  {/* founder 14 Nov: nobody approved it (auto) -> "Khud (auto)", never "?" */}
+                  {pt(m.approved_by_name ? "paisa.kaam.bankLine" : "paisa.kaam.bankLineAuto", { code: m.code, player: m.player_name ?? pt("paisa.detail.player"), amount: pkrText(m.amount_pkr), by: m.approved_by_name ?? "" })}
                 </span>
                 {isOwner ? (
                   <div className="flex flex-wrap gap-2">

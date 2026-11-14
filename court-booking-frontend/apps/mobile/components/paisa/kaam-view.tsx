@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { taskKey, type OwnerRefund, type PaisaBankMissingItem, type PaisaBookingRow, type PaisaDueItem, type PaisaNoShowItem, type PaisaTaskGroup, type PaisaTasks } from "@court-booking/types";
+import { PAISA_TASK_ORDER, taskKey, type OwnerRefund, type PaisaBankMissingItem, type PaisaBookingRow, type PaisaDueItem, type PaisaNoShowItem, type PaisaTaskGroup, type PaisaTasks } from "@court-booking/types";
 import { formatPkr, palette, radius, space } from "@court-booking/ui-tokens";
 import { Banner, Button, EmptyState, Text } from "@/components/ui";
 
@@ -128,7 +128,7 @@ export function KaamGroupCard({ group, t, open, courtName, filterDate, onClearFi
           {(group.items as PaisaBankMissingItem[]).map((m) => (
             <Card key={m.entry_id} red testID="kaam-bank-open">
               <Text variant="bodyStrong">{`${m.code} · ${m.player_name ?? "Player"} · ${formatPkr(m.amount_pkr)}`}</Text>
-              <Text variant="meta" weight="bold" tone="danger">{`${m.approved_by_name ?? "?"} · ${pf.when(m.credited_at)}`}</Text>
+              <Text variant="meta" weight="bold" tone="danger">{`${m.approved_by_name ?? t("paisa.kaam.byAuto")} · ${pf.when(m.credited_at)}`}</Text>
               {!isStaff ? (
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], paddingTop: space[1] }}>
                   {m.approved_by_role === "staff" ? (
@@ -225,12 +225,11 @@ function AttendanceRow({ r, t, onOpen }: { r: PaisaBookingRow; t: PT; onOpen: ()
   );
 }
 
-/** Kaam groups in the contract order; with `focus` that group comes first. */
-export function orderedGroups(tasks: PaisaTasks | undefined, focus?: string): PaisaTaskGroup[] {
+/** Kaam groups ALWAYS in the contract order, same as web (founder 14 Nov); a linked group (`&group=`) is scrolled to, never
+ * moved to the top. */
+export function orderedGroups(tasks: PaisaTasks | undefined): PaisaTaskGroup[] {
   const groups = tasks?.groups ?? [];
-  if (!focus) return groups;
-  const i = groups.findIndex((g) => g.key === focus);
-  return i <= 0 ? groups : [groups[i], ...groups.slice(0, i), ...groups.slice(i + 1)];
+  return [...groups].sort((a, b) => PAISA_TASK_ORDER.indexOf(a.key) - PAISA_TASK_ORDER.indexOf(b.key));
 }
 
 export function KaamEmpty({ t }: { t: PT }) {

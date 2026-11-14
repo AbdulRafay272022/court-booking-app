@@ -561,7 +561,7 @@ export default function BookingStatusScreen() {
             <MoneyRows
               rows={[
                 { label: copy("Booking", "Booking"), value: `${venueName} · ${when}, ${formatTime(booking.starts_at)}` },
-                { label: copy("Venue ne darj kiya", "Recorded as paid"), value: formatPkr(preview.paid_pkr) },
+                { label: copy("Aap ne diye", "You paid"), value: formatPkr(preview.paid_pkr) },
                 ...(preview.mode === "refund" ? [{ label: copy("Wapas milega", "Refund due"), value: formatPkr(preview.refund_pkr), strong: true }] : []),
               ]}
             />
@@ -579,7 +579,7 @@ export default function BookingStatusScreen() {
         <MoneyRows
           rows={[
             { label: copy("Booking", "Booking"), value: `${venueName} · ${when}, ${formatTime(booking.starts_at)}` },
-            { label: copy("Venue ne darj kiya", "Recorded as paid"), value: formatPkr(booking.amount_paid) },
+            { label: copy("Aap ne diye", "You paid"), value: formatPkr(booking.amount_paid) },
             ...(booking.status === "booked" ? [{ label: copy("Wapas milega", "Refund due"), value: formatPkr(booking.amount_paid), strong: true }] : []),
           ]}
         />

@@ -214,7 +214,7 @@ function BankMissingCard({ m, kaam }: { m: StaffBankMissing; kaam: boolean }) {
     >
       <Text variant="bodyStrong">{`${m.code} · ${m.player_name ?? "Player"} · ${formatPkr(m.amount_pkr)}`}</Text>
       <Text variant="meta" weight={open ? "bold" : undefined} tone={open ? "danger" : "muted"}>
-        {`${m.approved_by_name ?? "?"} ne approve kiya, ${formatWhen(m.credited_at, new Date(), "ru")}`}
+        {`${m.approved_by_name ?? "Khud (auto)"} ne approve kiya, ${formatWhen(m.credited_at, new Date(), "ru")}`}
       </Text>
       {open && kaam ? (
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], paddingTop: space[1] }}>
