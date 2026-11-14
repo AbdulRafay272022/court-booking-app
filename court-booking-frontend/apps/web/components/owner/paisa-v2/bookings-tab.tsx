@@ -311,7 +311,7 @@ function StatementCard({ st, onFilter }: { st: PaisaStatement; onFilter: (b: Pai
       />
       <MoneyLine label={`= ${pt("paisa.st.final")}`} value={pkrText(st.final)} strong testId="st-final" />
       <div className="my-1 border-t border-owner-border-light" />
-      <MoneyLine label={pt("paisa.st.received")} value={pkrText(st.received)} onClick={() => onFilter("received")} testId="st-received" />
+      <MoneyLine label={pt("paisa.st.receivedOnBookings")} value={pkrText(st.received)} onClick={() => onFilter("received")} testId="st-received" />
       <MoneyLine label={`+ ${pt("paisa.st.due")}`} value={pkrText(st.due)} tone={st.due ? "warn" : undefined} onClick={() => onFilter("due")} testId="st-due" />
       <MoneyLine label={`+ ${pt("paisa.st.dueAtSlot")}`} value={pkrText(st.due_at_slot)} onClick={() => onFilter("due_at_slot")} testId="st-due-at-slot" />
       <MoneyLine label={`+ ${pt("paisa.st.waived")}`} value={pkrText(st.waived)} onClick={() => onFilter("waived")} testId="st-waived" />

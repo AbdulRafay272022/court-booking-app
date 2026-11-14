@@ -45,6 +45,7 @@ const RU = {
   "paisa.st.deductions": "Kami",
   "paisa.st.final": "Asal raqam",
   "paisa.st.received": "Mila",
+  "paisa.st.receivedOnBookings": "In bookings par mila",
   "paisa.st.due": "Lena baqi",
   "paisa.st.dueAtSlot": "Slot par lena",
   "paisa.st.waived": "Maaf kiya",
@@ -55,7 +56,7 @@ const RU = {
   "paisa.ded.price_reduced": "Raqam kam ki",
   "paisa.ded.waived": "Maaf kiya",
 
-  "paisa.in.title": "Paisa kaise aaya",
+  "paisa.in.title": "Is muddat mein aaya paisa",
   "paisa.in.cash": "Cash",
   "paisa.in.transfer": "Transfer",
   "paisa.in.other": "Doosra",
@@ -296,6 +297,7 @@ const EN: Record<PaisaKey, string> = {
   "paisa.st.deductions": "Deductions",
   "paisa.st.final": "Final amount",
   "paisa.st.received": "Received",
+  "paisa.st.receivedOnBookings": "Received on these bookings",
   "paisa.st.due": "Due",
   "paisa.st.dueAtSlot": "Due at slot",
   "paisa.st.waived": "Waived",
@@ -306,7 +308,7 @@ const EN: Record<PaisaKey, string> = {
   "paisa.ded.price_reduced": "Price reduced",
   "paisa.ded.waived": "Waived",
 
-  "paisa.in.title": "How the money came in",
+  "paisa.in.title": "Money in during this period",
   "paisa.in.cash": "Cash",
   "paisa.in.transfer": "Transfer",
   "paisa.in.other": "Other",

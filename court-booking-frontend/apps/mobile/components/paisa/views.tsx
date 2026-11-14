@@ -28,7 +28,7 @@ export function StatementCard({ s, t, onBox }: { s: PaisaStatement; t: PT; onBox
       ))}
       <Line strong label={`= ${t("paisa.st.final")}`} value={pkr(s.final)} testID="paisa-st-final" />
       <View style={{ height: 1, backgroundColor: palette.line, marginVertical: space[1] }} />
-      <Line label={t("paisa.st.received")} value={pkr(s.received)} onPress={tap("received")} testID="paisa-st-received" />
+      <Line label={t("paisa.st.receivedOnBookings")} value={pkr(s.received)} onPress={tap("received")} testID="paisa-st-received" />
       <Line label={`+ ${t("paisa.st.due")}`} value={pkr(s.due)} tone={s.due > 0 ? "waiting" : undefined} onPress={tap("due")} testID="paisa-st-due" />
       <Line label={`+ ${t("paisa.st.dueAtSlot")}`} value={pkr(s.due_at_slot)} onPress={tap("due_at_slot")} testID="paisa-st-due-at-slot" />
       <Line label={`+ ${t("paisa.st.waived")}`} value={pkr(s.waived)} onPress={tap("waived")} testID="paisa-st-waived" />
